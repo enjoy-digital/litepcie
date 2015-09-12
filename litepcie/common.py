@@ -9,6 +9,14 @@ MB = 1024*KB
 GB = 1024*MB
 
 
+def reverse_bytes(signal):
+    n = (flen(signal)+7)//8
+    r = []
+    for i in reversed(range(n)):
+        r.append(signal[i*8:min((i+1)*8, flen(signal))])
+    return Cat(*r)
+
+
 def get_bar_mask(size):
             mask = 0
             found = 0
