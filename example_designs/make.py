@@ -51,8 +51,9 @@ all             clean, build-csr-csv, build-bitstream, load-bitstream.
     parser.add_argument("-p", "--platform", default=None, help="platform to build for")
     parser.add_argument("-Ot", "--target-option", default=[], nargs=2, action="append", help="set target-specific option")
     parser.add_argument("-Op", "--platform-option", default=[], nargs=2, action="append", help="set platform-specific option")
+    parser.add_argument("-Ob", "--build-option", default=[], nargs=2, action="append", help="set build option")
     parser.add_argument("--csr_csv", default="./test/csr.csv", help="CSV file to save the CSR map into")
-    parser.add_argument("--csr_header", default="../software/linux/kernel/csr.h", help="C header file to save the CSR map into")
+    parser.add_argument("--csr_header", default="../litepcie/software/linux/kernel/csr.h", help="C header file to save the CSR map into")
     parser.add_argument("action", nargs="+", help="specify an action")
 
     return parser.parse_args()
@@ -128,8 +129,6 @@ System Clk: {} MHz
     if actions["build-bitstream"]:
         actions["build-csr-csv"] = True
         actions["build-csr-header"] = True
-        actions["build-bitstream"] = True
-        actions["load-bitstream"] = True
 
     if actions["clean"]:
         subprocess.call(["rm", "-rf", "build/*"])
@@ -143,7 +142,8 @@ System Clk: {} MHz
         write_to_file(args.csr_header, csr_header)
 
     if actions["build-bitstream"]:
-        vns = platform.build(soc, build_name=build_name)
+        build_kwargs = dict((k, autotype(v)) for k, v in args.build_option)
+        vns = platform.build(soc, build_name=build_name, **build_kwargs)
         if hasattr(soc, "do_exit") and vns is not None:
             if hasattr(soc.do_exit, '__call__'):
                 soc.do_exit(vns)
