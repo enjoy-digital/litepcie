@@ -2,7 +2,7 @@ import string
 import mmap
 import sys
 
-from misoclib.tools.litescope.software.driver.reg import *
+from litescope.software.driver.reg import *
 
 
 class LitePCIeWishboneDriverLinux:

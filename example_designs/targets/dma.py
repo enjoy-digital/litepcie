@@ -1,16 +1,17 @@
+from migen.fhdl.std import *
+from migen.bank.description import *
 from migen.bus import wishbone
 from migen.genlib.io import CRG
 from migen.genlib.resetsync import AsyncResetSynchronizer
 from migen.genlib.misc import timeline
 
 from misoclib.soc import SoC
-from misoclib.tools.litescope.common import *
 
 from misoclib.com.uart.bridge import UARTWishboneBridge
 
 from litepcie.phy.s7pciephy import S7PCIEPHY
 from litepcie.core import Endpoint
-from litepcie.core.irq.interrupt_controller import InterruptController
+from litepcie.core.irq import InterruptController
 from litepcie.frontend.dma import DMA
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
@@ -32,10 +33,6 @@ class _CRG(Module, AutoCSR):
         # sys_clk / sys_rst (from PCIe)
         self.comb += self.cd_sys.clk.eq(self.cd_clk125.clk)
         self.specials += AsyncResetSynchronizer(self.cd_sys, self.cd_clk125.rst | soft_rst)
-
-        # scratch register
-        self._scratch = CSR(32)
-        self.sync += If(self._scratch.re, self._scratch.w.eq(self._scratch.r))
 
 
 class PCIeDMASoC(SoC):
