@@ -11,3 +11,5 @@ dma_tb:
 
 example_designs:
 	cd ../example_designs && $(PYTHON) make.py -t dma -p kc705 -Ob run False build-bitstream
+
+all: wishbone_tb dma_tb example_designs
