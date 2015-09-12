@@ -3,10 +3,10 @@ from migen.bus import wishbone
 from migen.sim.generic import run_simulation
 
 from litepcie.core import Endpoint
-from litepcie.frontend.bridge.wishbone import WishboneBridge
+from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
-from litepcie.test.common import *
-from litepcie.test.model.host import *
+from test.common import *
+from test.model.host import *
 
 root_id = 0x100
 endpoint_id = 0x400
@@ -20,7 +20,7 @@ class TB(Module):
             host_debug=False)
         self.submodules.endpoint = Endpoint(self.host.phy)
 
-        self.submodules.wishbone_bridge = WishboneBridge(self.endpoint, lambda a: 1)
+        self.submodules.wishbone_bridge = LitePCIeWishboneBridge(self.endpoint, lambda a: 1)
         self.submodules.sram = wishbone.SRAM(1024, bus=self.wishbone_bridge.wishbone)
 
     def gen_simulation(self, selfp):

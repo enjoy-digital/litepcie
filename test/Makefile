@@ -1,7 +1,7 @@
-MSCDIR = ../../../../
+COREDIR = ../
 PYTHON = python3
 
-CMD = PYTHONPATH=$(MSCDIR) $(PYTHON)
+CMD = PYTHONPATH=$(COREDIR) $(PYTHON)
 
 wishbone_tb:
 	$(CMD) wishbone_tb.py

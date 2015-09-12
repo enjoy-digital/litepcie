@@ -1,7 +1,8 @@
 from litepcie.common import *
 from litepcie.core.packet.common import *
-from litepcie.test.common import *
-from litepcie.test.model.tlp import *
+
+from test.common import *
+from test.model.tlp import *
 
 
 def print_chipset(s):

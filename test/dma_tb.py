@@ -1,15 +1,16 @@
 import random
+
 from migen.fhdl.std import *
 from migen.sim.generic import run_simulation
 from migen.actorlib.structuring import Converter
 
 from litepcie.common import *
 from litepcie.core import Endpoint
-from litepcie.core.irq import interrupt_controller
+from litepcie.core.irq import InterruptController
 from litepcie.frontend.dma import writer, reader
 
-from litepcie.test.common import *
-from litepcie.test.model.host import *
+from test.common import *
+from test.model.host import *
 
 DMA_READER_IRQ = 1
 DMA_WRITER_IRQ = 2
@@ -127,7 +128,7 @@ class TB(Module):
         else:
             self.comb += self.dma_reader.source.connect(self.dma_writer.sink)
 
-        self.submodules.irq_controller = interrupt_controller.InterruptController(2)
+        self.submodules.irq_controller = InterruptController(2)
         self.comb += [
             self.irq_controller.irqs[log2_int(DMA_READER_IRQ)].eq(self.dma_reader.table.irq),
             self.irq_controller.irqs[log2_int(DMA_WRITER_IRQ)].eq(self.dma_writer.table.irq)

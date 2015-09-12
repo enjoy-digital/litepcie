@@ -1,7 +1,9 @@
 import math
+
 from litepcie.common import *
 from litepcie.core.packet.common import *
-from litepcie.test.common import *
+
+from test.common import *
 
 
 def print_chipset(s):

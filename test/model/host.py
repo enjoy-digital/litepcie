@@ -1,9 +1,10 @@
 from litepcie.common import *
 from litepcie.core.packet.common import *
-from litepcie.test.common import *
-from litepcie.test.model.phy import PHY
-from litepcie.test.model.tlp import *
-from litepcie.test.model.chipset import Chipset
+
+from test.common import *
+from test.model.phy import PHY
+from test.model.tlp import *
+from test.model.chipset import Chipset
 
 
 def print_host(s):
