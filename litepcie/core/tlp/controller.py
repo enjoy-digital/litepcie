@@ -36,7 +36,6 @@ class Controller(Module):
         # Requests mgt
         self.submodules.req_fsm = req_fsm = FSM(reset_state="IDLE")
         req_fsm.act("IDLE",
-            req_sink.ack.eq(0),
             If(req_sink.stb & req_sink.sop & ~req_sink.we & tag_fifo.readable,
                 tag_fifo.re.eq(1),
                 NextState("SEND_READ")
@@ -44,26 +43,31 @@ class Controller(Module):
                 NextState("SEND_WRITE")
             )
         )
+        self.comb += Record.connect(req_sink, req_source, leave_out=set(["stb", "ack"]))
         req_fsm.act("SEND_READ",
-            Record.connect(req_sink, req_source),
-            req_sink.ack.eq(0),
+            req_source.stb.eq(req_sink.stb),
             req_source.tag.eq(req_tag),
             If(req_source.stb & req_source.eop & req_source.ack,
                 NextState("UPDATE_INFO_MEM")
+            ).Else(
+                req_sink.ack.eq(req_source.ack)
             )
         )
         req_fsm.act("SEND_WRITE",
-            Record.connect(req_sink, req_source),
+            req_source.stb.eq(req_sink.stb),
+            req_sink.ack.eq(req_source.ack),
             req_source.tag.eq(32),
             If(req_source.stb & req_source.eop & req_source.ack,
                 NextState("IDLE")
             )
         )
+        self.comb += [
+            info_mem_wr_port.adr.eq(req_tag),
+            info_mem_wr_port.dat_w[:8].eq(req_sink.channel),
+            info_mem_wr_port.dat_w[8:].eq(req_sink.user_id)
+        ]
         req_fsm.act("UPDATE_INFO_MEM",
             info_mem_wr_port.we.eq(1),
-            info_mem_wr_port.adr.eq(req_tag),
-            info_mem_wr_port.dat_w[0:8].eq(req_sink.channel),
-            info_mem_wr_port.dat_w[8:16].eq(req_sink.user_id),
             req_sink.ack.eq(1),
             NextState("IDLE")
         )
@@ -95,36 +99,36 @@ class Controller(Module):
                 NextState("IDLE")
             )
         )
-        cmp_fsm.act("IDLE",
-            cmp_sink.ack.eq(1),
+        self.comb += [
             info_mem_rd_port.adr.eq(cmp_sink.tag),
+            Record.connect(cmp_sink, cmp_source, leave_out=set(["stb", "ack"])),
+            cmp_source.channel.eq(info_mem_rd_port.dat_r[:8]),
+            cmp_source.user_id.eq(info_mem_rd_port.dat_r[8:])
+        ]
+        cmp_fsm.act("IDLE",
             If(cmp_sink.stb & cmp_sink.sop,
-                cmp_sink.ack.eq(0),
                 NextState("COPY"),
+            ).Else(
+                cmp_sink.ack.eq(1)
             )
         )
         cmp_fsm.act("COPY",
-            info_mem_rd_port.adr.eq(cmp_sink.tag),
             If(cmp_sink.stb & cmp_sink.eop & cmp_sink.last,
-                cmp_sink.ack.eq(0),
                 NextState("UPDATE_TAG_FIFO"),
             ).Else(
-                Record.connect(cmp_sink, cmp_source),
+                cmp_source.stb.eq(cmp_sink.stb),
+                cmp_sink.ack.eq(cmp_source.ack),
                 If(cmp_sink.stb & cmp_sink.eop & cmp_sink.ack,
                     NextState("IDLE")
                 )
-            ),
-            cmp_source.channel.eq(info_mem_rd_port.dat_r[0:8]),
-            cmp_source.user_id.eq(info_mem_rd_port.dat_r[8:16]),
+            )
         )
         cmp_fsm.act("UPDATE_TAG_FIFO",
             tag_fifo.we.eq(1),
             tag_fifo.din.eq(cmp_sink.tag),
-            info_mem_rd_port.adr.eq(cmp_sink.tag),
-            Record.connect(cmp_sink, cmp_source),
+            cmp_source.stb.eq(cmp_sink.stb),
+            cmp_sink.ack.eq(cmp_source.ack),
             If(cmp_sink.stb & cmp_sink.ack,
                 NextState("IDLE")
-            ),
-            cmp_source.channel.eq(info_mem_rd_port.dat_r[0:8]),
-            cmp_source.user_id.eq(info_mem_rd_port.dat_r[8:16]),
+            )
         )
