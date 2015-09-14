@@ -51,7 +51,9 @@ class HeaderExtracter(Module):
             )
         )
         self.sync += [
-            If(counter.ce, self.source.header.eq(Cat(self.source.header[dw:], sink.dat))),
+            If(counter.ce,
+                self.source.header.eq(Cat(self.source.header[dw:], sink.dat))
+            ),
             If(sink.stb & sink.ack,
                 sink_dat_last.eq(sink.dat),
                 sink_be_last.eq(sink.be)
@@ -68,7 +70,7 @@ class HeaderExtracter(Module):
             If(source.stb & source.ack,
                 sop.reset.eq(1),
                 sink.ack.eq(1 & ~eop.q), # already acked when eop is 1
-                If(source.eop | eop.q,
+                If(source.eop,
                     NextState("IDLE")
                 )
             )

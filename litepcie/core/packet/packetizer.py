@@ -11,62 +11,60 @@ class HeaderInserter(Module):
         self.sink = sink = Sink(tlp_raw_layout(dw))
         self.source = source = Source(phy_layout(dw))
 
-        ###
+        # # #
 
-        fsm = FSM(reset_state="HEADER1")
-        self.submodules += fsm
+        if dw != 64:
+            raise ValueError("Current module only supports dw of 64.")
 
-        sink_dat_r = Signal(dw)
-        sink_eop_r = Signal()
+        dat_last = Signal(dw)
+        eop_last = Signal()
         self.sync += \
             If(sink.stb & sink.ack,
-                sink_dat_r.eq(sink.dat),
-                sink_eop_r.eq(sink.eop)
+                dat_last.eq(sink.dat),
+                eop_last.eq(sink.eop)
             )
 
-        fsm.act("HEADER1",
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        fsm.act("IDLE",
             sink.ack.eq(1),
             If(sink.stb & sink.sop,
                 sink.ack.eq(0),
                 source.stb.eq(1),
                 source.sop.eq(1),
-                source.eop.eq(0),
-                source.dat.eq(sink.header[:64]),
+                source.dat.eq(sink.header[:dw]),
                 source.be.eq(0xff),
                 If(source.stb & source.ack,
-                    NextState("HEADER2"),
+                    NextState("INSERT"),
                 )
             )
         )
-        fsm.act("HEADER2",
+        fsm.act("INSERT",
             source.stb.eq(1),
-            source.sop.eq(0),
             source.eop.eq(sink.eop),
-            source.dat.eq(Cat(sink.header[64:96], reverse_bytes(sink.dat[:32]))),
-            source.be.eq(Cat(Signal(4, reset=0xf), freversed(sink.be[:4]))),
+            source.dat.eq(Cat(sink.header[dw:96], reverse_bytes(sink.dat[:32]))), # XXX add genericity
+            source.be.eq(Cat(Signal(4, reset=0xf), freversed(sink.be[:4]))),      # XXX ditto
             If(source.stb & source.ack,
                 sink.ack.eq(1),
                 If(source.eop,
-                    NextState("HEADER1")
+                    NextState("IDLE")
                 ).Else(
                     NextState("COPY")
                 )
             )
         )
         fsm.act("COPY",
-            source.stb.eq(sink.stb | sink_eop_r),
-            source.sop.eq(0),
-            source.eop.eq(sink_eop_r),
-            source.dat.eq(Cat(reverse_bytes(sink_dat_r[32:64]), reverse_bytes(sink.dat[:32]))),
-            If(sink_eop_r,
+            source.stb.eq(sink.stb | eop_last),
+            source.eop.eq(eop_last),
+            source.dat.eq(Cat(reverse_bytes(dat_last[32:64]), reverse_bytes(sink.dat[:32]))),
+            If(eop_last,
                 source.be.eq(0x0f)
             ).Else(
                 source.be.eq(0xff)
             ),
             If(source.stb & source.ack,
-                sink.ack.eq(~sink_eop_r),
+                sink.ack.eq(~eop_last),
                 If(source.eop,
-                    NextState("HEADER1")
+                    NextState("IDLE")
                 )
             )
         )
