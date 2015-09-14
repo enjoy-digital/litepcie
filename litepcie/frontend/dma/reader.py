@@ -22,7 +22,8 @@ class DMAReader(Module, AutoCSR):
 
         fifo_depth = 2*max_pending_words
 
-    # Request generation
+        # Request generation
+
         # requests from table are splitted in chunks of "max_size"
         self.table = table = DMARequestTable(table_depth)
         splitter = InsertReset(DMARequestSplitter(endpoint.phy.max_request_size))
@@ -30,7 +31,7 @@ class DMAReader(Module, AutoCSR):
         self.comb += splitter.reset.eq(~enable)
         self.comb += table.source.connect(splitter.sink)
 
-    # Request FSM
+        # Request FSM
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
 
         request_ready = Signal()
@@ -39,8 +40,7 @@ class DMAReader(Module, AutoCSR):
                 NextState("REQUEST"),
             )
         )
-        fsm.act("REQUEST",
-            port.source.stb.eq(1),
+        self.comb += [
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
             port.source.sop.eq(1),
@@ -50,16 +50,20 @@ class DMAReader(Module, AutoCSR):
             port.source.len.eq(splitter.source.length[2:]),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.dat.eq(0),
+        ]
+        fsm.act("REQUEST",
+            port.source.stb.eq(1),
             If(port.source.ack,
                 splitter.source.ack.eq(1),
                 NextState("IDLE"),
             )
         )
 
-    # Data FIFO
+        # Data FIFO
+
         # issue read requests when enough space available in fifo
-        fifo = InsertReset(FIFO(dma_layout(endpoint.phy.dw), fifo_depth, buffered=True))
-        self.submodules += fifo
+        fifo = FIFO(dma_layout(endpoint.phy.dw), fifo_depth, buffered=True)
+        self.submodules += InsertReset(fifo)
         self.comb += fifo.reset.eq(~enable)
 
         last_user_id = Signal(8, reset=255)
