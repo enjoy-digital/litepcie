@@ -26,8 +26,8 @@ class DMAReader(Module, AutoCSR):
 
         # requests from table are splitted in chunks of "max_size"
         self.table = table = DMARequestTable(table_depth)
-        splitter = InsertReset(DMARequestSplitter(endpoint.phy.max_request_size))
-        self.submodules += table, splitter
+        splitter = DMARequestSplitter(endpoint.phy.max_request_size)
+        self.submodules += table, InsertReset(splitter)
         self.comb += splitter.reset.eq(~enable)
         self.comb += table.source.connect(splitter.sink)
 

@@ -20,11 +20,12 @@ class DMAWriter(Module, AutoCSR):
         max_words_per_request = max_request_size//(endpoint.phy.dw//8)
         fifo_depth = 4*max_words_per_request
 
-    # Data FIFO
+        # Data FIFO
+
         # store data until we have enough data to issue a
         # write request
-        fifo = InsertReset(SyncFIFO(endpoint.phy.dw, fifo_depth))
-        self.submodules += fifo
+        fifo = SyncFIFO(endpoint.phy.dw, fifo_depth)
+        self.submodules += InsertReset(fifo)
         self.comb += [
             fifo.we.eq(sink.stb & enable),
             sink.ack.eq(fifo.writable & sink.stb & enable),
@@ -32,49 +33,42 @@ class DMAWriter(Module, AutoCSR):
             fifo.reset.eq(~enable)
         ]
 
-    # Request generation
+        # Request generation
+        request_ready = Signal()
+        self.submodules.counter = counter = Counter(max=(2**flen(endpoint.phy.max_payload_size))/8)
+
         # requests from table are splitted in chunks of "max_size"
         self.table = table = DMARequestTable(table_depth)
-        splitter = InsertReset(DMARequestSplitter(endpoint.phy.max_payload_size))
-        self.submodules += table, splitter
-        self.comb += splitter.reset.eq(~enable)
-        self.comb += table.source.connect(splitter.sink)
+        splitter = DMARequestSplitter(endpoint.phy.max_payload_size)
+        self.submodules += table, InsertReset(splitter)
+        self.comb += [
+            splitter.reset.eq(~enable),
+            table.source.connect(splitter.sink)
+        ]
 
-    # Request FSM
-        cnt = Signal(max=(2**flen(endpoint.phy.max_payload_size))/8)
-        clr_cnt = Signal()
-        inc_cnt = Signal()
-        self.sync += \
-            If(clr_cnt,
-                cnt.eq(0)
-            ).Elif(inc_cnt,
-                cnt.eq(cnt + 1)
-            )
-
+        # Request FSM
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
-
-        request_ready = Signal()
         fsm.act("IDLE",
-            clr_cnt.eq(1),
+            counter.reset.eq(1),
             If(request_ready,
                 NextState("REQUEST"),
             )
         )
-        fsm.act("REQUEST",
-            inc_cnt.eq(port.source.stb & port.source.ack),
-
-            port.source.stb.eq(1),
+        self.comb += [
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
-            port.source.sop.eq(cnt == 0),
-            port.source.eop.eq(cnt == splitter.source.length[3:]-1),
+            port.source.sop.eq(counter.value == 0),
+            port.source.eop.eq(counter.value == splitter.source.length[3:]-1),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(splitter.source.length[2:]),
-            port.source.dat.eq(fifo.dout),
-
+            port.source.dat.eq(fifo.dout)
+        ]
+        fsm.act("REQUEST",
+            counter.ce.eq(port.source.stb & port.source.ack),
+            port.source.stb.eq(1),
             If(port.source.ack,
                 fifo.re.eq(1),
                 If(port.source.eop,
