@@ -33,9 +33,9 @@ class DMARequestTable(Module, AutoCSR):
         self._flush = CSR()
         self.irq = Signal()
 
-       # # #
+        # # #
 
-    # CSR signals
+        # CSR signals
         value = self._value.storage
         we = self._we.r & self._we.re
         loop_prog_n = self._loop_prog_n.storage
@@ -44,7 +44,8 @@ class DMARequestTable(Module, AutoCSR):
         level = self._level.status
         flush = self._flush.r & self._flush.re
 
-    # FIFO
+        # FIFO
+
         # instance
         fifo_layout = [("address", aw), ("length", lw), ("start", 1)]
         fifo = InsertReset(SyncFIFO(fifo_layout, depth))
@@ -97,62 +98,45 @@ class DMARequestTable(Module, AutoCSR):
                 )
             )
 
-    # IRQ
+        # IRQ
         self.comb += self.irq.eq(source.stb & source.ack)
 
 
 class DMARequestSplitter(Module, AutoCSR):
-    def __init__(self, max_size, buffered=True):
+    def __init__(self, max_size):
         self.sink = sink = Sink(descriptor_layout())
-        if buffered:
-            self.submodules.buffer = Buffer(descriptor_layout(True))
-            source = self.buffer.d
-            self.source = self.buffer.q
-        else:
-            self.source = source = Source(descriptor_layout(True))
+        self.source = source = Source(descriptor_layout(True))
 
         # # #
 
-        offset = Signal(32)
-        clr_offset = Signal()
-        inc_offset = Signal()
-        self.sync += \
-            If(clr_offset,
-                offset.eq(0)
-            ).Elif(inc_offset,
-                offset.eq(offset + max_size)
-            )
-        user_id = Signal(8)
-        self.sync += \
-            If(sink.stb & sink.ack,
-                user_id.eq(user_id+1)
-            )
+        self.submodules.offset = offset = Counter(32, increment=max_size)
+        self.submodules.user_id = user_id = Counter(8)
+        self.comb += user_id.ce.eq(sink.stb & sink.ack)
 
-        fsm = FSM(reset_state="IDLE")
-        self.submodules += fsm
+        self.submodules.length = length = FlipFlop(16)
+        self.comb += self.length.d.eq(sink.length)
 
-        length = Signal(16)
-        update_length = Signal()
-        self.sync += If(update_length, length.eq(sink.length))
-
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            sink.ack.eq(1),
-            clr_offset.eq(1),
+            offset.reset.eq(1),
             If(sink.stb,
-                update_length.eq(1),
-                sink.ack.eq(0),
+                length.ce.eq(1),
                 NextState("RUN")
+            ).Else(
+                sink.ack.eq(1)
             )
         )
+        self.comb += [
+            source.address.eq(sink.address + offset.value),
+            source.user_id.eq(user_id.value),
+        ]
         fsm.act("RUN",
             source.stb.eq(1),
-            source.address.eq(sink.address + offset),
-            source.user_id.eq(user_id),
-            If((length - offset) > max_size,
+            If((length.q - offset.value) > max_size,
                 source.length.eq(max_size),
-                inc_offset.eq(source.ack)
+                offset.ce.eq(source.ack)
             ).Else(
-                source.length.eq(length - offset),
+                source.length.eq(length.q - offset.value),
                 If(source.ack,
                     NextState("ACK")
                 )
