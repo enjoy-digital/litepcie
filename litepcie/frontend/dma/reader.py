@@ -5,7 +5,7 @@ from migen.actorlib.fifo import SyncFIFO as FIFO
 from migen.actorlib.misc import BufferizeEndpoints
 
 from litepcie.common import *
-from litepcie.core.packet.common import *
+from litepcie.core.tlp.common import *
 from litepcie.frontend.dma.common import *
 
 

@@ -5,52 +5,11 @@ from migen.genlib.fsm import FSM, NextState
 from migen.actorlib.fifo import SyncFIFO as SyncFlowFIFO
 
 from litepcie.common import *
-from litepcie.core.packet.common import *
-from litepcie.core.switch.common import *
+from litepcie.core.common import *
+from litepcie.core.tlp.common import *
+from litepcie.core.tlp.reordering import Reordering
 
-
-class Reordering(Module):
-    def __init__(self, dw, max_pending_requests):
-        self.sink = Sink(completion_layout(dw))
-        self.source = Source(completion_layout(dw))
-
-        self.req_we = Signal()
-        self.req_tag = Signal(log2_int(max_pending_requests))
-
-        # # #
-
-        tag_buffer = SyncFIFO(log2_int(max_pending_requests), 2*max_pending_requests)
-        self.submodules += tag_buffer
-        self.comb += [
-            tag_buffer.we.eq(self.req_we),
-            tag_buffer.din.eq(self.req_tag)
-        ]
-
-        reorder_buffers = [SyncFlowFIFO(completion_layout(dw), 2*max_request_size//(dw//8), buffered=True)
-            for i in range(max_pending_requests)]
-        self.submodules += iter(reorder_buffers)
-
-        # store incoming completion in "sink.tag" buffer
-        cases = {}
-        for i in range(max_pending_requests):
-            cases[i] = [Record.connect(self.sink, reorder_buffers[i].sink)]
-        cases["default"] = [self.sink.ack.eq(1)]
-        self.comb += Case(self.sink.tag, cases)
-
-        # read buffer according to tag_buffer order
-        cases = {}
-        for i in range(max_pending_requests):
-            cases[i] = [Record.connect(reorder_buffers[i].source, self.source)]
-        cases["default"] = []
-        self.comb += [
-            Case(tag_buffer.dout, cases),
-            If(self.source.stb & self.source.eop & self.source.last,
-                tag_buffer.re.eq(self.source.ack)
-            )
-        ]
-
-
-class RequestController(Module):
+class Controller(Module):
     def __init__(self, dw, max_pending_requests, with_reordering=False):
         self.master_in = MasterInternalPort(dw)
         self.master_out = MasterInternalPort(dw)
@@ -74,10 +33,8 @@ class RequestController(Module):
                 req_tag.eq(tag_fifo.dout)
             )
 
-    # requests mgt
-        req_fsm = FSM(reset_state="IDLE")
-        self.submodules += req_fsm
-
+        # Requests mgt
+        self.submodules.req_fsm = req_fsm = FSM(reset_state="IDLE")
         req_fsm.act("IDLE",
             req_sink.ack.eq(0),
             If(req_sink.stb & req_sink.sop & ~req_sink.we & tag_fifo.readable,
@@ -112,7 +69,7 @@ class RequestController(Module):
         )
 
 
-    # completions mgt
+        # Completions mgt
         if with_reordering:
             self.submodules.reordering = Reordering(dw, max_pending_requests)
             self.comb += [
@@ -122,9 +79,7 @@ class RequestController(Module):
             ]
             cmp_source = self.reordering.sink
 
-        cmp_fsm = FSM(reset_state="INIT")
-        self.submodules += cmp_fsm
-
+        self.submodules.cmp_fsm = cmp_fsm = FSM(reset_state="INIT")
         tag_cnt = Signal(max=max_pending_requests)
         inc_tag_cnt = Signal()
         self.sync += \

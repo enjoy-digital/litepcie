@@ -3,7 +3,7 @@ from migen.actorlib.structuring import *
 from migen.genlib.fsm import FSM, NextState
 from migen.genlib.misc import chooser
 
-from litepcie.core.packet.common import *
+from litepcie.core.tlp.common import *
 
 
 class HeaderInserter(Module):
@@ -41,8 +41,11 @@ class HeaderInserter(Module):
         fsm.act("INSERT",
             source.stb.eq(1),
             source.eop.eq(sink.eop),
-            source.dat.eq(Cat(sink.header[dw:96], reverse_bytes(sink.dat[:32]))), # XXX add genericity
-            source.be.eq(Cat(Signal(4, reset=0xf), freversed(sink.be[:4]))),      # XXX ditto
+            # XXX add genericity
+            source.dat.eq(Cat(sink.header[dw:96],
+                              reverse_bytes(sink.dat[:32]))),
+            source.be.eq(Cat(Signal(4, reset=0xf),
+                             freversed(sink.be[:4]))),
             If(source.stb & source.ack,
                 sink.ack.eq(1),
                 If(source.eop,
@@ -55,7 +58,9 @@ class HeaderInserter(Module):
         fsm.act("COPY",
             source.stb.eq(sink.stb | eop_last),
             source.eop.eq(eop_last),
-            source.dat.eq(Cat(reverse_bytes(dat_last[32:64]), reverse_bytes(sink.dat[:32]))),
+            # XXX add genericity
+            source.dat.eq(Cat(reverse_bytes(dat_last[32:64]),
+                              reverse_bytes(sink.dat[:32]))),
             If(eop_last,
                 source.be.eq(0x0f)
             ).Else(

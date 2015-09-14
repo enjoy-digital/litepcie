@@ -2,7 +2,7 @@ from migen.fhdl.std import *
 from migen.actorlib.structuring import *
 from migen.genlib.fsm import FSM, NextState
 
-from litepcie.core.packet.common import *
+from litepcie.core.tlp.common import *
 
 
 class HeaderExtracter(Module):
@@ -42,7 +42,7 @@ class HeaderExtracter(Module):
             sink.ack.eq(1),
             If(sink.stb,
                 counter.ce.eq(1),
-                If(counter.value == 96//dw,
+                If(counter.value == tlp_common_header_length//dw-1,
                     If(sink.eop,
                         eop.ce.eq(1)
                     ),
@@ -60,8 +60,11 @@ class HeaderExtracter(Module):
             )
         ]
         self.comb += [
-            source.dat.eq(Cat(reverse_bytes(sink_dat_last[32:]), reverse_bytes(sink.dat[:32]))), # XXX add genericity
-            source.be.eq(Cat(freversed(sink_be_last[4:]), freversed(sink.be[:4]))),              # XXX ditto
+            # XXX add genericity
+            source.dat.eq(Cat(reverse_bytes(sink_dat_last[32:]),
+                              reverse_bytes(sink.dat[:32]))),
+            source.be.eq(Cat(freversed(sink_be_last[4:]),
+                             freversed(sink.be[:4]))),
         ]
         fsm.act("COPY",
             source.stb.eq(sink.stb | eop.q),

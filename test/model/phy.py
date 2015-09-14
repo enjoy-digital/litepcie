@@ -1,7 +1,7 @@
 import math
 
 from litepcie.common import *
-from litepcie.core.packet.common import *
+from litepcie.core.tlp.common import *
 
 from test.common import *
 

@@ -2,9 +2,9 @@ from migen.fhdl.std import *
 from migen.bank.description import *
 from migen.genlib.record import *
 
-from litepcie.core.packet.depacketizer import Depacketizer
-from litepcie.core.packet.packetizer import Packetizer
-from litepcie.core.switch.crossbar import Crossbar
+from litepcie.core.tlp.depacketizer import Depacketizer
+from litepcie.core.tlp.packetizer import Packetizer
+from litepcie.core.crossbar import Crossbar
 
 
 class Endpoint(Module):

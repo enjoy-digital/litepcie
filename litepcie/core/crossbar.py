@@ -2,8 +2,8 @@ from migen.fhdl.std import *
 from migen.bank.description import *
 
 from litepcie.common import *
-from litepcie.core.switch.common import *
-from litepcie.core.switch.request_controller import RequestController
+from litepcie.core.common import *
+from litepcie.core.tlp.controller import Controller
 
 
 class Crossbar(Module, AutoCSR):
@@ -104,7 +104,7 @@ class Crossbar(Module, AutoCSR):
             rd_rw_masters += self.filter_masters(False, False)
             if rd_rw_masters != []:
                 rd_rw_master = MasterInternalPort(self.dw)
-                controller = RequestController(self.dw, self.max_pending_requests, self.with_reordering)
+                controller = Controller(self.dw, self.max_pending_requests, self.with_reordering)
                 self.submodules += controller
                 self.master_arbitrate_dispatch(rd_rw_masters, controller.master_in)
                 masters.append(controller.master_out)
