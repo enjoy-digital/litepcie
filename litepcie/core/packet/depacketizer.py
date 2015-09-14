@@ -7,74 +7,70 @@ from litepcie.core.packet.common import *
 
 class HeaderExtracter(Module):
     def __init__(self, dw):
-        self.sink = Sink(phy_layout(dw))
-        self.source = Source(tlp_raw_layout(dw))
+        self.sink = sink = Sink(phy_layout(dw))
+        self.source = source = Source(tlp_raw_layout(dw))
 
-        ###
+        # # #
 
-        sink, source = self.sink, self.source
+        if dw != 64:
+            raise ValueError("Current module only supports dw of 64.")
 
-        sop = Signal()
-        shift = Signal()
+        sop = FlipFlop()
+        eop = FlipFlop()
+        self.submodules += sop, eop
+        self.comb += [
+            sop.d.eq(1),
+            eop.d.eq(1)
+        ]
 
-        sink_dat_r = Signal(dw)
-        sink_be_r = Signal(dw//8)
+        counter = Counter(2)
+        self.submodules += counter
 
-        fsm = FSM(reset_state="HEADER1")
-        self.submodules += fsm
+        sink_dat_last = Signal(dw)
+        sink_be_last = Signal(dw//8)
 
-        fsm.act("HEADER1",
-            sink.ack.eq(1),
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        fsm.act("IDLE",
+            sop.ce.eq(1),
+            eop.reset.eq(1),
+            counter.reset.eq(1),
             If(sink.stb,
-                shift.eq(1),
-                NextState("HEADER2")
+                NextState("EXTRACT")
             )
         )
-        fsm.act("HEADER2",
+        fsm.act("EXTRACT",
             sink.ack.eq(1),
             If(sink.stb,
-                shift.eq(1),
-                If(sink.eop,
-                    sink.ack.eq(0),
-                    NextState("TERMINATE"),
-                ).Else(
+                counter.ce.eq(1),
+                If(counter.value == 96//dw,
+                    If(sink.eop,
+                        eop.ce.eq(1)
+                    ),
                     NextState("COPY")
                 )
             )
         )
         self.sync += [
-            If(shift, self.source.header.eq(Cat(self.source.header[64:], sink.dat))),
+            If(counter.ce, self.source.header.eq(Cat(self.source.header[dw:], sink.dat))),
             If(sink.stb & sink.ack,
-                sink_dat_r.eq(sink.dat),
-                sink_be_r.eq(sink.be)
+                sink_dat_last.eq(sink.dat),
+                sink_be_last.eq(sink.be)
             )
         ]
+        self.comb += [
+            source.dat.eq(Cat(reverse_bytes(sink_dat_last[32:]), reverse_bytes(sink.dat[:32]))), # XXX add genericity
+            source.be.eq(Cat(freversed(sink_be_last[4:]), freversed(sink.be[:4]))),              # XXX ditto
+        ]
         fsm.act("COPY",
-            sink.ack.eq(source.ack),
-            source.stb.eq(sink.stb),
-            source.sop.eq(sop),
-            source.eop.eq(sink.eop),
-            source.dat.eq(Cat(reverse_bytes(sink_dat_r[32:]), reverse_bytes(sink.dat[:32]))),
-            source.be.eq(Cat(freversed(sink_be_r[4:]), freversed(sink.be[:4]))),
-            If(source.stb & source.ack & source.eop,
-                NextState("HEADER1")
-            )
-        )
-        self.sync += \
-            If(fsm.before_entering("COPY"),
-                sop.eq(1)
-            ).Elif(source.stb & source.ack,
-                sop.eq(0)
-            )
-        fsm.act("TERMINATE",
-            sink.ack.eq(source.ack),
-            source.stb.eq(1),
-            source.sop.eq(1),
-            source.eop.eq(1),
-            source.dat.eq(reverse_bytes(sink.dat[32:])),
-            source.be.eq(freversed(sink.be[4:])),
-            If(source.stb & source.ack & source.eop,
-                NextState("HEADER1")
+            source.stb.eq(sink.stb | eop.q),
+            source.sop.eq(sop.q),
+            source.eop.eq(sink.eop | eop.q),
+            If(source.stb & source.ack,
+                sop.reset.eq(1),
+                sink.ack.eq(1 & ~eop.q), # already acked when eop is 1
+                If(source.eop | eop.q,
+                    NextState("IDLE")
+                )
             )
         )
 

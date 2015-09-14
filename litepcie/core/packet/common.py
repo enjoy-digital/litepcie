@@ -33,8 +33,8 @@ tlp_common_header_fields = {
     "type": HeaderField(0*4, 24, 5),
 }
 tlp_common_header = Header(tlp_common_header_fields,
-                            tlp_common_header_length,
-                            swap_field_bytes=False)
+                           tlp_common_header_length,
+                           swap_field_bytes=False)
 
 
 tlp_request_header_length = 16
@@ -79,8 +79,8 @@ tlp_completion_header_fields = {
     "lower_address": HeaderField(2*4,  0,  7),
 }
 tlp_completion_header = Header(tlp_completion_header_fields,
-                            tlp_completion_header_length,
-                            swap_field_bytes=False)
+                               tlp_completion_header_length,
+                               swap_field_bytes=False)
 
 
 # layouts

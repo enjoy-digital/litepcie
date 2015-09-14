@@ -17,6 +17,24 @@ def reverse_bytes(signal):
     return Cat(*r)
 
 
+@ResetInserter()
+@CEInserter()
+class FlipFlop(Module):
+    def __init__(self, *args, **kwargs):
+        self.d = Signal(*args, **kwargs)
+        self.q = Signal(*args, **kwargs)
+        self.sync += self.q.eq(self.d)
+
+
+@ResetInserter()
+@CEInserter()
+class Counter(Module):
+    def __init__(self, *args, increment=1, **kwargs):
+        self.value = Signal(*args, **kwargs)
+        self.width = flen(self.value)
+        self.sync += self.value.eq(self.value+increment)
+
+
 def get_bar_mask(size):
             mask = 0
             found = 0
