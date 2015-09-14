@@ -2,6 +2,7 @@ from migen.fhdl.std import *
 from migen.bank.description import *
 from migen.genlib.fsm import FSM, NextState
 from migen.actorlib.fifo import SyncFIFO as FIFO
+from migen.actorlib.misc import BufferizeEndpoints
 
 from litepcie.common import *
 from litepcie.core.packet.common import *
@@ -27,7 +28,7 @@ class DMAReader(Module, AutoCSR):
         # requests from table are splitted in chunks of "max_size"
         self.table = table = DMARequestTable(table_depth)
         splitter = DMARequestSplitter(endpoint.phy.max_request_size)
-        self.submodules += table, InsertReset(splitter)
+        self.submodules += table, BufferizeEndpoints("source")(InsertReset(splitter))
         self.comb += splitter.reset.eq(~enable)
         self.comb += table.source.connect(splitter.sink)
 
