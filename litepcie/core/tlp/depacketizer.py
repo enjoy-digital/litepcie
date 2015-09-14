@@ -42,7 +42,7 @@ class HeaderExtracter(Module):
             sink.ack.eq(1),
             If(sink.stb,
                 counter.ce.eq(1),
-                If(counter.value == tlp_common_header_length//dw-1,
+                If(counter.value == tlp_common_header_length*8//dw-1,
                     If(sink.eop,
                         eop.ce.eq(1)
                     ),

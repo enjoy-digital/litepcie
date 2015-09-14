@@ -38,8 +38,8 @@ class TLP():
     def __repr__(self):
         r = self.name + "\n"
         r += "--------\n"
-        for k in sorted(tlp_headers_dict[self.name].keys()):
-            r += k + " : 0x{:x}".format(getattr(self, k) + "\n")
+        for k in sorted(tlp_headers_dict[self.name].fields.keys()):
+            r += k + " : 0x{:x}".format(getattr(self, k)) + "\n"
         if len(self.data) != 0:
             r += "data:\n"
             for d in self.data:
