@@ -25,8 +25,8 @@ if __name__ == "__main__":
         port = args.port if not args.port.isdigit() else int(args.port)
         wb = UARTWishboneBridgeDriver(port, args.baudrate, "./csr.csv", int(args.busword), debug=False)
     elif args.bridge == "etherbone":
-        from misoclib.com.liteeth.software.wishbone import LiteETHWishboneDriver
-        wb = LiteETHWishboneDriver(args.ip_address, int(args.udp_port), "./csr.csv", int(args.busword), debug=False)
+        from misoclib.com.liteeth.software.wishbone import LiteEthWishboneDriver
+        wb = LiteEthWishboneDriver(args.ip_address, int(args.udp_port), "./csr.csv", int(args.busword), debug=False)
     elif args.bridge == "pcie":
         from litepcie.software.linux.wishbone import LitePCIeWishboneDriver
         wb = LitePCIeWishboneDriver(args.bar, args.bar_size, "./csr.csv", int(args.busword), debug=False)
