@@ -87,8 +87,8 @@ class PCIeDMASoC(SoC):
         self.submodules.irq_controller = InterruptController()
         self.comb += self.irq_controller.source.connect(self.pcie_phy.interrupt)
         self.interrupts = {
-            "dma_writer":    self.dma.writer.table.irq,
-            "dma_reader":    self.dma.reader.table.irq
+            "dma_writer":    self.dma.writer.irq,
+            "dma_reader":    self.dma.reader.irq
         }
         for k, v in sorted(self.interrupts.items()):
             self.comb += self.irq_controller.irqs[self.interrupt_map[k]].eq(v)

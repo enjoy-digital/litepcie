@@ -10,11 +10,11 @@ from litepcie.common import *
 
 def descriptor_layout(with_user_id=False):
     layout = [
-        ("address",        32),
-        ("length",        16)
+        ("address", 32),
+        ("length",  16)
     ]
     if with_user_id:
-        layout += [("user_id",    8)]
+        layout += [("user_id", 8)]
     return EndpointDescription(layout, packetized=True)
 
 
@@ -98,9 +98,6 @@ class DMARequestTable(Module, AutoCSR):
                 )
             )
 
-        # IRQ
-        self.comb += self.irq.eq(source.stb & source.ack)
-
 
 class DMARequestSplitter(Module, AutoCSR):
     def __init__(self, max_size):
@@ -132,10 +129,12 @@ class DMARequestSplitter(Module, AutoCSR):
         ]
         fsm.act("RUN",
             source.stb.eq(1),
+            source.sop.eq(offset.value == 0),
             If((length.q - offset.value) > max_size,
                 source.length.eq(max_size),
                 offset.ce.eq(source.ack)
             ).Else(
+                source.eop.eq(1),
                 source.length.eq(length.q - offset.value),
                 If(source.ack,
                     NextState("ACK")

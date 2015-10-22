@@ -12,9 +12,10 @@ from litepcie.frontend.dma.common import *
 class DMAWriter(Module, AutoCSR):
     def __init__(self, endpoint, port, table_depth=256):
         self.sink = sink = Sink(dma_layout(endpoint.phy.dw))
+        self.irq = Signal()
         self._enable = CSRStorage()
 
-       # # #
+        # # #
 
         enable = self._enable.storage
 
@@ -81,3 +82,8 @@ class DMAWriter(Module, AutoCSR):
 
         fifo_ready = fifo.level >= splitter.source.length[3:]
         self.sync += request_ready.eq(splitter.source.stb & fifo_ready)
+
+        # IRQ
+        self.comb += self.irq.eq(splitter.source.stb &
+		                         splitter.source.ack &
+                                 splitter.source.eop)

@@ -12,6 +12,7 @@ from litepcie.frontend.dma.common import *
 class DMAReader(Module, AutoCSR):
     def __init__(self, endpoint, port, table_depth=256):
         self.source = Source(dma_layout(endpoint.phy.dw))
+        self.irq = Signal()
         self._enable = CSRStorage()
 
         # # #
@@ -29,8 +30,10 @@ class DMAReader(Module, AutoCSR):
         self.table = table = DMARequestTable(table_depth)
         splitter = DMARequestSplitter(endpoint.phy.max_request_size)
         self.submodules += table, BufferizeEndpoints("source")(InsertReset(splitter))
-        self.comb += splitter.reset.eq(~enable)
-        self.comb += table.source.connect(splitter.sink)
+        self.comb += [
+            splitter.reset.eq(~enable),
+            table.source.connect(splitter.sink)
+        ]
 
         # Request FSM
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
@@ -82,3 +85,8 @@ class DMAReader(Module, AutoCSR):
 
         fifo_ready = fifo.fifo.level < (fifo_depth//2)
         self.comb += request_ready.eq(splitter.source.stb & fifo_ready)
+
+        # IRQ
+        self.comb += self.irq.eq(splitter.source.stb & 
+		                         splitter.source.ack &
+                                 splitter.source.eop)
