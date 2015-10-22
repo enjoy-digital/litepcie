@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_pipe_reset.v
-// Version    : 3.0
+// Version    : 3.1
 //------------------------------------------------------------------------------
 //  Filename     :  pipe_reset.v
 //  Description  :  PIPE Reset Module for 7 Series Transceiver
@@ -145,6 +145,7 @@ module pcie_pipe_reset #
     reg                             cpllpd            =  1'd0;
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg                             rxusrclk_rst_reg1 =  1'd0;
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg                             rxusrclk_rst_reg2 =  1'd0;
+                                                  reg                             dclk_rst          =  1'd0;
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg                             dclk_rst_reg1     =  1'd0;
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg                             dclk_rst_reg2     =  1'd0;
     reg                             gtreset           =  1'd0;
@@ -504,36 +505,33 @@ end
 always @ (posedge RST_RXUSRCLK)
 begin
 
-    if (cpllreset) 
-        begin
-        rxusrclk_rst_reg1 <= 1'd1;
-        rxusrclk_rst_reg2 <= 1'd1;
-        end
-    else
-        begin
-        rxusrclk_rst_reg1 <= 1'd0;
-        rxusrclk_rst_reg2 <= rxusrclk_rst_reg1;
-        end   
+    rxusrclk_rst_reg1 <= cpllreset;
+    rxusrclk_rst_reg2 <= rxusrclk_rst_reg1;
           
 end  
 
 
 
 //---------- DCLK Reset Synchronizer -------------------------------------------
-always @ (posedge RST_DCLK)
+always @ (posedge RST_CLK)
 begin
 
     if (fsm == FSM_CFG_WAIT)
         begin
-        dclk_rst_reg1 <= 1'd1;
-        dclk_rst_reg2 <= dclk_rst_reg1;
+        dclk_rst      <= 1'd1;
         end
     else
         begin
-        dclk_rst_reg1 <= 1'd0;
-        dclk_rst_reg2 <= dclk_rst_reg1;
-        end   
-          
+        dclk_rst      <= 1'd0;
+        end
+end
+
+always @ (posedge RST_DCLK)
+begin
+
+    dclk_rst_reg1 <= dclk_rst;
+    dclk_rst_reg2 <= dclk_rst_reg1;
+
 end  
 
 

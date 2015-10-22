@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_axi_basic_rx_null_gen.v
-// Version    : 3.0
+// Version    : 3.1
 //                                                                            //
 //  Description:                                                              //
 //  TRN to AXI RX null generator. Generates null packets for use in           //
@@ -189,6 +189,8 @@ generate
         3'b1_1_1: packet_overhead = 4'd4 + 4'd1 - 4'd2;
       endcase
     end
+assign new_pkt_len =
+         {{9{packet_overhead[3]}}, packet_overhead[2:0]} + {2'b0, payload_len};
   end
   else if(C_DATA_WIDTH == 64) begin : len_calc_64
     assign packet_fmt  = m_axis_rx_tdata[30:29];
@@ -199,12 +201,14 @@ generate
       // 64-bit mode: no straddling, so always 2 DWORDs
       case({packet_fmt[0], packet_td})
         //                      Header +  TD  - Data currently on interface
-        2'b0_0: packet_overhead = 4'd3 + 4'd0 - 4'd2;
-        2'b0_1: packet_overhead = 4'd3 + 4'd1 - 4'd2;
-        2'b1_0: packet_overhead = 4'd4 + 4'd0 - 4'd2;
-        2'b1_1: packet_overhead = 4'd4 + 4'd1 - 4'd2;
+        2'b0_0: packet_overhead[1:0] = 2'b01 ;//4'd3 + 4'd0 - 4'd2; // 1
+        2'b0_1: packet_overhead[1:0] = 2'b10 ;//4'd3 + 4'd1 - 4'd2; // 2
+        2'b1_0: packet_overhead[1:0] = 2'b10 ;//4'd4 + 4'd0 - 4'd2; // 2 
+        2'b1_1: packet_overhead[1:0] = 2'b11 ;//4'd4 + 4'd1 - 4'd2; // 3
       endcase
     end
+assign new_pkt_len =
+         {{10{1'b0}}, packet_overhead[1:0]} + {2'b0, payload_len};
   end
   else begin : len_calc_32
     assign packet_fmt  = m_axis_rx_tdata[30:29];
@@ -221,6 +225,8 @@ generate
         2'b1_1: packet_overhead = 4'd4 + 4'd1 - 4'd1;
       endcase
     end
+assign new_pkt_len =
+         {{9{packet_overhead[3]}}, packet_overhead[2:0]} + {2'b0, payload_len};
   end
 endgenerate
 
@@ -228,8 +234,8 @@ endgenerate
 // payload length. This is signed math, so sign-extend packet_overhead.
 // NOTE: a payload length of zero means 1024 DW in the PCIe spec, but this
 //       behavior isn't supported in our block.
-assign new_pkt_len =
-         {{9{packet_overhead[3]}}, packet_overhead[2:0]} + {2'b0, payload_len};
+//assign new_pkt_len =
+//         {{9{packet_overhead[3]}}, packet_overhead[2:0]} + {2'b0, payload_len};
 
 
 // Math signals needed in the state machine below. These are seperate wires to
