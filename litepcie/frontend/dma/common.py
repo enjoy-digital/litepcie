@@ -39,8 +39,7 @@ class DMARequestTable(Module, AutoCSR):
         value = self._value.storage
         we = self._we.r & self._we.re
         loop_prog_n = self._loop_prog_n.storage
-        loop_index = self._loop_status.status[:log2_int(depth)]
-        loop_count = self._loop_status.status[16:]
+        loop_status = self._loop_status.status
         level = self._level.status
         flush = self._flush.r & self._flush.re
 
@@ -85,11 +84,18 @@ class DMARequestTable(Module, AutoCSR):
         # loop_index, loop_count
         # used by the software for synchronization in
         # "loop" mode
+
+        loop_index = Signal(log2_int(depth))
+        loop_count = Signal(16)
+
         self.sync += \
             If(flush,
                 loop_index.eq(0),
                 loop_count.eq(0),
+                loop_status.eq(0),
             ).Elif(source.stb & source.ack,
+			    loop_status[0:16].eq(loop_index),
+                loop_status[16:].eq(loop_count),
                 If(fifo.dout.start,
                     loop_index.eq(0),
                     loop_count.eq(loop_count+1)

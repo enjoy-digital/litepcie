@@ -86,4 +86,4 @@ class DMAWriter(Module, AutoCSR):
         # IRQ
         self.comb += self.irq.eq(splitter.source.stb &
 		                         splitter.source.ack &
-                                 splitter.source.eop)
+                                 splitter.source.sop)

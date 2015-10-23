@@ -87,6 +87,6 @@ class DMAReader(Module, AutoCSR):
         self.comb += request_ready.eq(splitter.source.stb & fifo_ready)
 
         # IRQ
-        self.comb += self.irq.eq(splitter.source.stb & 
+        self.comb += self.irq.eq(splitter.source.stb &
 		                         splitter.source.ack &
-                                 splitter.source.eop)
+                                 splitter.source.sop)
