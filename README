@@ -7,16 +7,17 @@
 
      A small footprint and configurable PCIe core
       with MMAP interface and scatter-gather DMA
+                powered by Migen
 
 [> Doc
----------
-XXX
+-------
+TODO
 
 [> Intro
 ---------
 LitePCIe provides a small footprint and configurable PCIe gen1/2 core.
 
-LitePCIe is part of MiSoC libraries whose aims are to lower entry level of
+LitePCIe is part of EnjoyDigital's libraries whose aims are to lower entry level of
 complex FPGA cores by providing simple, elegant and efficient implementations
 ofcomponents used in today's SoC such as Ethernet, SATA, PCIe, SDRAM Controller...
 
@@ -40,8 +41,13 @@ design flow by generating the verilog rtl that you will use as a standard core.
 - Wishbone bridge
 - Linux driver with DMA loopback demo and Sysfs
 
+[> FPGA Proven
+---------------
+LiteEth is already used in commercial and open-source designs:
+- PCIe SDR MIMO 2x2: http://www.amarisoft.com/document/SDR-MIMO-PCIe-Card.pdf
 
-[> Possibles improvements
+
+[> Possible improvements
 -------------------------
 - add standardized interfaces (AXI, Avalon-ST)
 - add support for PCIe Gen2 X4 and X8 on 7-Series
@@ -55,7 +61,7 @@ devel [AT] lists.m-labs.hk.
 
 
 [> Getting started
-------------------
+-------------------
 1. Install Python3 and your vendor's software
 
 2. Obtain Migen and install it:
@@ -67,31 +73,31 @@ devel [AT] lists.m-labs.hk.
 3. Obtain MiSoC:
   git clone https://github.com/m-labs/misoc --recursive
 
-4. Obtain LitePCIe:
-  git clone https://github.com/enjoy-digital/litepcie
-
-5. Build and load PCIe DMA loopback design (only for KC705 for now):
+4. Build and load PCIe DMA loopback design (only for KC705 for now):
   go to example_designs/
   run ./make.py all load-bitstream
 
-6. Build and load Linux Driver:
+5. Build and load Linux Driver:
   go to software/linux/kernel
   make all
   ./init.sh
 
-7. Build and load Linux utilities:
+9. Build and load Linux utilities:
   go to software/linux/user
   make all
   ./litepcie_util dma_loopback_test
 
-[> Simulations:
+[> Simulations
+---------------
   Simulations are available in test:
     - wishbone_tb
     - dma_tb
-  To run a simulation, move to test and run:
-    make simulation_name
+  To run a simulation:
+    go to ./test/
+    make <simulation_name>
 
-[> Tests :
+[> Tests
+---------
   A DMA loopback example with Wishbone over Sysfs is provided.
   Please go to Getting Started section to see how to run the tests.
 
