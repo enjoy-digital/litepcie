@@ -116,14 +116,15 @@ class DMARequestSplitter(Module, AutoCSR):
         self.submodules.user_id = user_id = Counter(8)
         self.comb += user_id.ce.eq(sink.stb & sink.ack)
 
-        self.submodules.length = length = FlipFlop(16)
-        self.comb += self.length.d.eq(sink.length)
+        length = Signal(16)
+        length_update = Signal()
+        self.sync += If(length_update, length.eq(sink.length))
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             offset.reset.eq(1),
             If(sink.stb,
-                length.ce.eq(1),
+                length_update.eq(1),
                 NextState("RUN")
             ).Else(
                 sink.ack.eq(1)
@@ -136,12 +137,12 @@ class DMARequestSplitter(Module, AutoCSR):
         fsm.act("RUN",
             source.stb.eq(1),
             source.sop.eq(offset.value == 0),
-            If((length.q - offset.value) > max_size,
+            If((length - offset.value) > max_size,
                 source.length.eq(max_size),
                 offset.ce.eq(source.ack)
             ).Else(
                 source.eop.eq(1),
-                source.length.eq(length.q - offset.value),
+                source.length.eq(length - offset.value),
                 If(source.ack,
                     NextState("ACK")
                 )

@@ -15,24 +15,25 @@ class HeaderExtracter(Module):
         if dw != 64:
             raise ValueError("Current module only supports dw of 64.")
 
-        sop = FlipFlop()
-        eop = FlipFlop()
-        self.submodules += sop, eop
-        self.comb += [
-            sop.d.eq(1),
-            eop.d.eq(1)
-        ]
+        sop = Signal()
+        sop_clr = Signal()
+        sop_set = Signal()
+        self.sync += If(sop_clr, sop.eq(0)).Elif(sop_set, sop.eq(1))
 
-        counter = Counter(2)
-        self.submodules += counter
+        eop = Signal()
+        eop_clr = Signal()
+        eop_set = Signal()
+        self.sync += If(eop_clr, eop.eq(0)).Elif(eop_set, eop.eq(1))
+
+        self.submodules.counter = counter = Counter(2)
 
         sink_dat_last = Signal(dw)
         sink_be_last = Signal(dw//8)
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            sop.ce.eq(1),
-            eop.reset.eq(1),
+            sop_set.eq(1),
+            eop_clr.eq(1),
             counter.reset.eq(1),
             If(sink.stb,
                 NextState("EXTRACT")
@@ -44,7 +45,7 @@ class HeaderExtracter(Module):
                 counter.ce.eq(1),
                 If(counter.value == tlp_common_header_length*8//dw-1,
                     If(sink.eop,
-                        eop.ce.eq(1)
+                        eop_set.eq(1)
                     ),
                     NextState("COPY")
                 )
@@ -67,12 +68,12 @@ class HeaderExtracter(Module):
                              freversed(sink.be[:4]))),
         ]
         fsm.act("COPY",
-            source.stb.eq(sink.stb | eop.q),
-            source.sop.eq(sop.q),
-            source.eop.eq(sink.eop | eop.q),
+            source.stb.eq(sink.stb | eop),
+            source.sop.eq(sop),
+            source.eop.eq(sink.eop | eop),
             If(source.stb & source.ack,
-                sop.reset.eq(1),
-                sink.ack.eq(1 & ~eop.q), # already acked when eop is 1
+                sop_clr.eq(1),
+                sink.ack.eq(1 & ~eop), # already acked when eop is 1
                 If(source.eop,
                     NextState("IDLE")
                 )
