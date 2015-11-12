@@ -1,12 +1,12 @@
-from migen.fhdl.std import *
-from migen.bank.description import *
-from migen.genlib.fifo import SyncFIFOBuffered as SyncFIFO
-from migen.genlib.fsm import FSM, NextState
-from migen.actorlib.misc import BufferizeEndpoints
+from migen import *
+
+from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 from litepcie.frontend.dma.common import *
+
+from migen.genlib.fifo import SyncFIFOBuffered as SyncFIFO
 
 
 class DMAWriter(Module, AutoCSR):
@@ -27,7 +27,7 @@ class DMAWriter(Module, AutoCSR):
         # store data until we have enough data to issue a
         # write request
         fifo = SyncFIFO(endpoint.phy.dw, fifo_depth)
-        self.submodules += InsertReset(fifo)
+        self.submodules += ResetInserter()(fifo)
         self.comb += [
             fifo.we.eq(sink.stb & enable),
             sink.ack.eq(fifo.writable & sink.stb & enable),
@@ -37,12 +37,12 @@ class DMAWriter(Module, AutoCSR):
 
         # Request generation
         request_ready = Signal()
-        self.submodules.counter = counter = Counter(max=(2**flen(endpoint.phy.max_payload_size))/8)
+        self.submodules.counter = counter = Counter(max=(2**len(endpoint.phy.max_payload_size))/8)
 
         # requests from table are splitted in chunks of "max_size"
         self.table = table = DMARequestTable(table_depth)
         splitter = DMARequestSplitter(endpoint.phy.max_payload_size)
-        self.submodules += table, BufferizeEndpoints("source")(InsertReset(splitter))
+        self.submodules += table, BufferizeEndpoints("source")(ResetInserter()(splitter))
         self.comb += [
             splitter.reset.eq(~enable),
             table.source.connect(splitter.sink)

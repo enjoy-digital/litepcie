@@ -1,6 +1,7 @@
 import os
-from migen.fhdl.std import *
-from migen.bank.description import *
+from migen import *
+
+from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 
@@ -134,10 +135,10 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_SHARED_QPLL_LOCK=self.shared_qpll_lock,
         )
 
-    # id
+        # id
         self.comb += self.id.eq(Cat(function_number, device_number, bus_number))
 
-    # config
+        # config
         def convert_size(command, size):
             cases = {}
             value = 128

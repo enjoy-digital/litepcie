@@ -1,6 +1,6 @@
-from migen.fhdl.std import *
-from migen.bank.description import *
-from migen.actorlib.fifo import SyncFIFO as FIFO
+from migen import *
+
+from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 from litepcie.frontend.dma.common import *
@@ -75,8 +75,8 @@ class DMASynchronizer(Module, AutoCSR):
 
 class DMABuffering(Module, AutoCSR):
     def __init__(self, dw, depth):
-        tx_fifo = FIFO(dma_layout(dw), depth//(dw//8), buffered=True)
-        rx_fifo = FIFO(dma_layout(dw), depth//(dw//8), buffered=True)
+        tx_fifo = SyncFIFO(dma_layout(dw), depth//(dw//8), buffered=True)
+        rx_fifo = SyncFIFO(dma_layout(dw), depth//(dw//8), buffered=True)
         self.submodules += tx_fifo, rx_fifo
 
         self.sink = tx_fifo.sink

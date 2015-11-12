@@ -1,6 +1,4 @@
-from migen.fhdl.std import *
-from migen.actorlib.structuring import *
-from migen.genlib.fsm import FSM, NextState
+from migen import *
 
 from litepcie.core.tlp.common import *
 
@@ -64,8 +62,8 @@ class HeaderExtracter(Module):
             # XXX add genericity
             source.dat.eq(Cat(reverse_bytes(sink_dat_last[32:]),
                               reverse_bytes(sink.dat[:32]))),
-            source.be.eq(Cat(freversed(sink_be_last[4:]),
-                             freversed(sink.be[:4]))),
+            source.be.eq(Cat(reverse_bits(sink_be_last[4:][::-1]),
+                             reverse_bits(sink.be[:4]))),
         ]
         fsm.act("COPY",
             source.stb.eq(sink.stb | eop),

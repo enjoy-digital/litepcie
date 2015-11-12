@@ -1,12 +1,12 @@
-from migen.fhdl.std import *
-from migen.actorlib.structuring import *
-from migen.genlib.fifo import SyncFIFO
-from migen.genlib.fsm import FSM, NextState
-from migen.actorlib.fifo import SyncFIFO as SyncFlowFIFO
+from migen import *
 
 from litepcie.common import *
 from litepcie.core.common import *
 from litepcie.core.tlp.common import *
+
+from litex.soc.interconnect.stream import SyncFIFO as SyncFlowFIFO
+
+from migen.genlib.fifo import SyncFIFO
 
 
 class Reordering(Module):

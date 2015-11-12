@@ -1,6 +1,6 @@
-from migen.fhdl.std import *
-from migen.genlib.fsm import FSM, NextState
-from migen.bus import wishbone
+from migen import *
+
+from litex.soc.interconnect import wishbone
 
 from litepcie.common import *
 

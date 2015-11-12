@@ -1,13 +1,13 @@
-from migen.fhdl.std import *
-from migen.bank.description import *
-from migen.bus import wishbone
+from migen import *
 from migen.genlib.io import CRG
 from migen.genlib.resetsync import AsyncResetSynchronizer
 from migen.genlib.misc import timeline
 
-from misoclib.soc import SoC
+from litex.soc.interconnect.csr import *
+from litex.soc.interconnect import wishbone
 
-from misoclib.com.uart.bridge import UARTWishboneBridge
+from litex.soc.integration.soc_core import SoCCore
+from litex.soc.cores.uart.bridge import UARTWishboneBridge
 
 from litepcie.phy.s7pciephy import S7PCIEPHY
 from litepcie.core import Endpoint
@@ -35,7 +35,7 @@ class _CRG(Module, AutoCSR):
         self.specials += AsyncResetSynchronizer(self.cd_sys, self.cd_clk125.rst | soft_rst)
 
 
-class PCIeDMASoC(SoC):
+class PCIeDMASoC(SoCCore):
     default_platform = "kc705"
     csr_map = {
         "crg":            16,
@@ -43,25 +43,25 @@ class PCIeDMASoC(SoC):
         "dma":            18,
         "irq_controller": 19
     }
-    csr_map.update(SoC.csr_map)
+    csr_map.update(SoCCore.csr_map)
     interrupt_map = {
         "dma_writer": 0,
         "dma_reader": 1
     }
-    interrupt_map.update(SoC.interrupt_map)
+    interrupt_map.update(SoCCore.interrupt_map)
     mem_map = {
         "csr": 0x00000000,  # (shadow @0x80000000)
     }
-    mem_map.update(SoC.csr_map)
+    mem_map.update(SoCCore.mem_map)
 
     def __init__(self, platform, with_uart_bridge=True):
         clk_freq = 125*1000000
-        SoC.__init__(self, platform, clk_freq,
-            cpu_type="none",
+        SoCCore.__init__(self, platform, clk_freq,
+            cpu_type=None,
             shadow_base=0x00000000,
-            with_csr=True, csr_data_width=32,
+            csr_data_width=32,
             with_uart=False,
-            with_identifier=True,
+            ident="LitePCIe example design",
             with_timer=False
         )
         self.submodules.crg = _CRG(platform)

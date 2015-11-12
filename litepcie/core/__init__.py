@@ -1,6 +1,6 @@
-from migen.fhdl.std import *
-from migen.bank.description import *
-from migen.genlib.record import *
+from migen import *
+
+from litex.soc.interconnect.csr import *
 
 from litepcie.core.tlp.depacketizer import Depacketizer
 from litepcie.core.tlp.packetizer import Packetizer

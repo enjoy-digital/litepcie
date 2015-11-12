@@ -1,8 +1,7 @@
-from migen.fhdl.std import *
-from migen.genlib.record import *
-from migen.genlib.misc import reverse_bytes
-from migen.flow.actor import *
-from migen.actorlib.packet import Arbiter, Dispatcher
+from migen import *
+
+from litex.soc.interconnect.stream import *
+from litex.soc.interconnect.packet import *
 
 KB = 1024
 MB = 1024*KB
@@ -10,10 +9,18 @@ GB = 1024*MB
 
 
 def reverse_bytes(signal):
-    n = (flen(signal)+7)//8
+    n = (len(signal)+7)//8
     r = []
     for i in reversed(range(n)):
-        r.append(signal[i*8:min((i+1)*8, flen(signal))])
+        r.append(signal[i*8:min((i+1)*8, len(signal))])
+    return Cat(*r)
+
+
+def reverse_bits(signal):
+    n = len(signal)
+    r = []
+    for i in reversed(range(n)):
+        r.append(signal[i])
     return Cat(*r)
 
 
@@ -22,7 +29,7 @@ def reverse_bytes(signal):
 class Counter(Module):
     def __init__(self, *args, increment=1, **kwargs):
         self.value = Signal(*args, **kwargs)
-        self.width = flen(self.value)
+        self.width = len(self.value)
         self.sync += self.value.eq(self.value+increment)
 
 

@@ -1,6 +1,4 @@
-from migen.fhdl.std import *
-from migen.actorlib.structuring import *
-from migen.genlib.fsm import FSM, NextState
+from migen import *
 from migen.genlib.misc import chooser
 
 from litepcie.core.tlp.common import *
@@ -45,7 +43,7 @@ class HeaderInserter(Module):
             source.dat.eq(Cat(sink.header[dw:96],
                               reverse_bytes(sink.dat[:32]))),
             source.be.eq(Cat(Signal(4, reset=0xf),
-                             freversed(sink.be[:4]))),
+                             reverse_bits(sink.be[:4]))),
             If(source.stb & source.ack,
                 sink.ack.eq(1),
                 If(source.eop,

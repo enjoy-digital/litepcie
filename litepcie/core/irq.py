@@ -1,5 +1,6 @@
-from migen.fhdl.std import *
-from migen.bank.description import *
+from migen import *
+
+from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 

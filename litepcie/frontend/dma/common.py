@@ -1,12 +1,9 @@
-from migen.fhdl.std import *
-from migen.bank.description import *
-from migen.genlib.fifo import SyncFIFOBuffered as SyncFIFO
-from migen.genlib.fsm import FSM, NextState
+from migen import *
 from migen.genlib.misc import chooser, displacer
-from migen.flow.plumbing import Buffer
+
+from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
-
 
 def descriptor_layout(with_user_id=False):
     layout = [
@@ -22,8 +19,8 @@ class DMARequestTable(Module, AutoCSR):
     def __init__(self, depth):
         self.source = source = Source(descriptor_layout())
 
-        aw = flen(source.address)
-        lw = flen(source.length)
+        aw = len(source.address)
+        lw = len(source.length)
 
         self._value = CSRStorage(aw+lw)
         self._we = CSR()
@@ -47,11 +44,11 @@ class DMARequestTable(Module, AutoCSR):
 
         # instance
         fifo_layout = [("address", aw), ("length", lw), ("start", 1)]
-        fifo = InsertReset(SyncFIFO(fifo_layout, depth))
+        fifo = ResetInserter()(SyncFIFO(fifo_layout, depth))
         self.submodules += fifo
         self.comb += [
             fifo.reset.eq(flush),
-            level.eq(fifo.level)
+            level.eq(fifo.fifo.level)
         ]
 
         # write part
@@ -59,26 +56,26 @@ class DMARequestTable(Module, AutoCSR):
             # in "loop" mode, each data output of the fifo is
             # written back
             If(loop_prog_n,
-                fifo.din.address.eq(fifo.dout.address),
-                fifo.din.length.eq(fifo.dout.length),
-                fifo.din.start.eq(fifo.dout.start),
-                fifo.we.eq(fifo.re)
+                fifo.sink.address.eq(fifo.source.address),
+                fifo.sink.length.eq(fifo.source.length),
+                fifo.sink.start.eq(fifo.source.start),
+                fifo.sink.stb.eq(fifo.source.ack)
             # in "program" mode, fifo input is connected
             # to registers
             ).Else(
-                fifo.din.address.eq(value[:aw]),
-                fifo.din.length.eq(value[aw:aw+lw]),
-                fifo.din.start.eq(~fifo.readable),
-                fifo.we.eq(we)
+                fifo.sink.address.eq(value[:aw]),
+                fifo.sink.length.eq(value[aw:aw+lw]),
+                fifo.sink.start.eq(~fifo.source.stb),
+                fifo.sink.stb.eq(we)
             )
         ]
 
         # read part
         self.comb += [
-            source.stb.eq(fifo.readable),
-            fifo.re.eq(source.stb & source.ack),
-            source.address.eq(fifo.dout.address),
-            source.length.eq(fifo.dout.length)
+            source.stb.eq(fifo.source.stb),
+            fifo.source.ack.eq(source.stb & source.ack),
+            source.address.eq(fifo.source.address),
+            source.length.eq(fifo.source.length)
         ]
 
         # loop_index, loop_count
@@ -96,7 +93,7 @@ class DMARequestTable(Module, AutoCSR):
             ).Elif(source.stb & source.ack,
 			    loop_status[0:16].eq(loop_index),
                 loop_status[16:].eq(loop_count),
-                If(fifo.dout.start,
+                If(fifo.source.start,
                     loop_index.eq(0),
                     loop_count.eq(loop_count+1)
                 ).Else(

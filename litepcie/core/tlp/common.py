@@ -1,7 +1,4 @@
-from migen.fhdl.std import *
-from migen.genlib.record import *
-from migen.flow.actor import EndpointDescription, Sink, Source
-from migen.actorlib.packet import HeaderField, Header
+from migen import *
 
 from litepcie.common import *
 

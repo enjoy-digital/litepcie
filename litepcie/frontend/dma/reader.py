@@ -1,8 +1,6 @@
-from migen.fhdl.std import *
-from migen.bank.description import *
-from migen.genlib.fsm import FSM, NextState
-from migen.actorlib.fifo import SyncFIFO as FIFO
-from migen.actorlib.misc import BufferizeEndpoints
+from migen import *
+
+from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 from litepcie.core.tlp.common import *
@@ -29,7 +27,7 @@ class DMAReader(Module, AutoCSR):
         # requests from table are splitted in chunks of "max_size"
         self.table = table = DMARequestTable(table_depth)
         splitter = DMARequestSplitter(endpoint.phy.max_request_size)
-        self.submodules += table, BufferizeEndpoints("source")(InsertReset(splitter))
+        self.submodules += table, BufferizeEndpoints("source")(ResetInserter()(splitter))
         self.comb += [
             splitter.reset.eq(~enable),
             table.source.connect(splitter.sink)
@@ -66,8 +64,8 @@ class DMAReader(Module, AutoCSR):
         # Data FIFO
 
         # issue read requests when enough space available in fifo
-        fifo = FIFO(dma_layout(endpoint.phy.dw), fifo_depth, buffered=True)
-        self.submodules += InsertReset(fifo)
+        fifo = SyncFIFO(dma_layout(endpoint.phy.dw), fifo_depth, buffered=True)
+        self.submodules += ResetInserter()(fifo)
         self.comb += fifo.reset.eq(~enable)
 
         last_user_id = Signal(8, reset=255)
