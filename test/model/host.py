@@ -1,7 +1,8 @@
+from litex.soc.interconnect.stream_sim import print_with_prefix
+
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 
-from test.common import *
 from test.model.phy import PHY
 from test.model.tlp import *
 from test.model.chipset import Chipset

@@ -2,6 +2,7 @@ import random
 
 from litex.gen import *
 from litex.soc.interconnect.stream import Converter
+from litex.soc.interconnect.stream_sim import *
 from litex.gen.sim.generic import run_simulation
 
 from litepcie.common import *
@@ -9,7 +10,6 @@ from litepcie.core import Endpoint
 from litepcie.core.irq import InterruptController
 from litepcie.frontend.dma import writer, reader
 
-from test.common import *
 from test.model.host import *
 
 DMA_READER_IRQ = 1

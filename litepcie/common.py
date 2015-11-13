@@ -1,7 +1,7 @@
 from litex.gen import *
 
 from litex.soc.interconnect.stream import *
-from litex.soc.interconnect.packet import *
+from litex.soc.interconnect.stream_packet import *
 
 KB = 1024
 MB = 1024*KB

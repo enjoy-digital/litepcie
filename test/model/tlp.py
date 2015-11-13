@@ -1,3 +1,5 @@
+from litex.soc.interconnect.stream_sim import print_with_prefix
+
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 

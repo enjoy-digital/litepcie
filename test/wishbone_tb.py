@@ -1,11 +1,11 @@
 from litex.gen import *
 from litex.soc.interconnect import wishbone
+from litex.soc.interconnect.stream_sim import seed_to_data, check
 from litex.gen.sim.generic import run_simulation
 
 from litepcie.core import Endpoint
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
-from test.common import *
 from test.model.host import *
 
 root_id = 0x100
