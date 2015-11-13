@@ -1,6 +1,6 @@
-from migen.fhdl.std import *
-from migen.bus import wishbone
-from migen.sim.generic import run_simulation
+from litex.gen import *
+from litex.soc.interconnect import wishbone
+from litex.gen.sim.generic import run_simulation
 
 from litepcie.core import Endpoint
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge

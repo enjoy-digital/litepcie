@@ -1,4 +1,4 @@
-from migen import *
+from litex.gen import *
 
 from litex.soc.interconnect.csr import *
 
@@ -6,7 +6,7 @@ from litepcie.common import *
 from litepcie.core.tlp.common import *
 from litepcie.frontend.dma.common import *
 
-from migen.genlib.fifo import SyncFIFOBuffered as SyncFIFO
+from litex.gen.genlib.fifo import SyncFIFOBuffered as SyncFIFO
 
 
 class DMAWriter(Module, AutoCSR):

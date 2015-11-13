@@ -1,7 +1,7 @@
 COREDIR = ../
 PYTHON = python3
 
-CMD = PYTHONPATH=$(PYTHONPATH):$(COREDIR) $(PYTHON)
+CMD = PYTHONPATH=$(COREDIR) $(PYTHON)
 
 wishbone_tb:
 	$(CMD) wishbone_tb.py

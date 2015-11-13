@@ -1,4 +1,4 @@
-from migen import *
+from litex.gen import *
 
 from litepcie.common import *
 from litepcie.core.common import *
@@ -6,7 +6,7 @@ from litepcie.core.tlp.common import *
 
 from litex.soc.interconnect.stream import SyncFIFO as SyncFlowFIFO
 
-from migen.genlib.fifo import SyncFIFO
+from litex.gen.genlib.fifo import SyncFIFO
 
 
 class Reordering(Module):

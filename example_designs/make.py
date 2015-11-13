@@ -7,8 +7,8 @@ import subprocess
 import struct
 import importlib
 
-from migen.fhdl import verilog
-from migen.fhdl.structure import _Fragment
+from litex.gen.fhdl import verilog
+from litex.gen.fhdl.structure import _Fragment
 
 from litex.build.tools import write_to_file
 from litex.build.xilinx.common import *

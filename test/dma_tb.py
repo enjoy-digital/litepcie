@@ -1,8 +1,8 @@
 import random
 
-from migen.fhdl.std import *
-from migen.sim.generic import run_simulation
-from migen.actorlib.structuring import Converter
+from litex.gen import *
+from litex.soc.interconnect.stream import Converter
+from litex.gen.sim.generic import run_simulation
 
 from litepcie.common import *
 from litepcie.core import Endpoint

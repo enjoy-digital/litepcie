@@ -1,5 +1,5 @@
-from migen import *
-from migen.genlib.misc import chooser
+from litex.gen import *
+from litex.gen.genlib.misc import chooser
 
 from litepcie.core.tlp.common import *
 

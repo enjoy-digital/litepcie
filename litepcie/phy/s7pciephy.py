@@ -1,5 +1,5 @@
 import os
-from migen import *
+from litex.gen import *
 
 from litex.soc.interconnect.csr import *
 
