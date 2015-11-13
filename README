@@ -17,7 +17,7 @@ TODO
 ---------
 LitePCIe provides a small footprint and configurable PCIe gen1/2 core.
 
-LitePCIe is part of EnjoyDigital's libraries whose aims are to lower entry level of
+LitePCIe is part of LiteX libraries whose aims are to lower entry level of
 complex FPGA cores by providing simple, elegant and efficient implementations
 ofcomponents used in today's SoC such as Ethernet, SATA, PCIe, SDRAM Controller...
 
@@ -27,11 +27,12 @@ adapters to use standardized AXI or Avalon-ST streaming buses.
 Since Python is used to describe the HDL, the core is highly and easily
 configurable.
 
-LitePCIe uses technologies developed in partnership with M-Labs Ltd:
+LitePCIe is built using LiteX and uses technologies developed in partnership with
+M-Labs Ltd:
  - Migen enables generating HDL with Python in an efficient way.
  - MiSoC provides the basic blocks to build a powerful and small footprint SoC.
 
-LitePCIe can be used as MiSoC library or can be integrated with your standard
+LitePCIe can be used as LiteX library or can be integrated with your standard
 design flow by generating the verilog rtl that you will use as a standard core.
 
 [> Features
@@ -64,25 +65,22 @@ devel [AT] lists.m-labs.hk.
 -------------------
 1. Install Python3 and your vendor's software
 
-2. Obtain Migen and install it:
-  git clone https://github.com/enjoy-digital/migen
-  cd migen
+2. Obtain LiteX and install it:
+  git clone https://github.com/enjoy-digital/litex --recursive
+  cd litex
   python3 setup.py install
   cd ..
 
-3. Obtain MiSoC:
-  git clone https://github.com/enjoy-digital/misoc --recursive
-
-4. Build and load PCIe DMA loopback design (only for KC705 for now):
+3. Build and load PCIe DMA loopback design (only for KC705 for now):
   go to example_designs/
   run ./make.py all load-bitstream
 
-5. Build and load Linux Driver:
+4. Build and load Linux Driver:
   go to software/linux/kernel
   make all
   ./init.sh
 
-9. Build and load Linux utilities:
+5. Build and load Linux utilities:
   go to software/linux/user
   make all
   ./litepcie_util dma_loopback_test
@@ -93,7 +91,7 @@ devel [AT] lists.m-labs.hk.
     - wishbone_tb
     - dma_tb
   To run a simulation:
-    go to ./test/
+    go to test/
     make <simulation_name>
 
 [> Tests
