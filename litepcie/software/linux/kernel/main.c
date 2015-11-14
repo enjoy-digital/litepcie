@@ -73,17 +73,17 @@ static inline void litepcie_writel(LitePCIeState *s, uint32_t addr, uint32_t val
 static void litepcie_enable_interrupt(LitePCIeState *s, int irq_num)
 {
     uint32_t v;
-    v = litepcie_readl(s, CSR_IRQ_CONTROLLER_ENABLE_ADDR);
+    v = litepcie_readl(s, CSR_MSI_ENABLE_ADDR);
     v |= (1 << irq_num);
-    litepcie_writel(s, CSR_IRQ_CONTROLLER_ENABLE_ADDR, v);
+    litepcie_writel(s, CSR_MSI_ENABLE_ADDR, v);
 }
 
 static void litepcie_disable_interrupt(LitePCIeState *s, int irq_num)
 {
     uint32_t v;
-    v = litepcie_readl(s, CSR_IRQ_CONTROLLER_ENABLE_ADDR);
+    v = litepcie_readl(s, CSR_MSI_ENABLE_ADDR);
     v &= ~(1 << irq_num);
-    litepcie_writel(s, CSR_IRQ_CONTROLLER_ENABLE_ADDR, v);
+    litepcie_writel(s, CSR_MSI_ENABLE_ADDR, v);
 }
 
 static int litepcie_open(struct inode *inode, struct file *file)
@@ -165,7 +165,7 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
     LitePCIeState *s = data;
     uint32_t clear_mask, irq_vector;
 
-    irq_vector = litepcie_readl(s, CSR_IRQ_CONTROLLER_VECTOR_ADDR);
+    irq_vector = litepcie_readl(s, CSR_MSI_VECTOR_ADDR);
     clear_mask = 0;
     if (irq_vector & (IRQ_MASK_DMA_READER | IRQ_MASK_DMA_WRITER)) {
         /* wake up processes waiting on dma_wait() */
@@ -173,7 +173,7 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
         clear_mask |= (IRQ_MASK_DMA_READER | IRQ_MASK_DMA_WRITER);
     }
 
-    litepcie_writel(s, CSR_IRQ_CONTROLLER_CLEAR_ADDR, clear_mask);
+    litepcie_writel(s, CSR_MSI_CLEAR_ADDR, clear_mask);
 
     return IRQ_HANDLED;
 }

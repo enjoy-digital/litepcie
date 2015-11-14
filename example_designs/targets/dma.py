@@ -11,7 +11,7 @@ from litex.soc.cores.uart.bridge import UARTWishboneBridge
 
 from litepcie.phy.s7pciephy import S7PCIEPHY
 from litepcie.core import Endpoint
-from litepcie.core.irq import InterruptController
+from litepcie.core.msi import MSI
 from litepcie.frontend.dma import DMA
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
@@ -38,10 +38,10 @@ class _CRG(Module, AutoCSR):
 class PCIeDMASoC(SoCCore):
     default_platform = "kc705"
     csr_map = {
-        "crg":            16,
-        "pcie_phy":       17,
-        "dma":            18,
-        "irq_controller": 19
+        "crg":      16,
+        "pcie_phy": 17,
+        "dma":      18,
+        "msi":      19
     }
     csr_map.update(SoCCore.csr_map)
     interrupt_map = {
@@ -83,14 +83,14 @@ class PCIeDMASoC(SoCCore):
             self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
             self.add_wb_master(self.uart_bridge.wishbone)
 
-        # IRQs
-        self.submodules.irq_controller = InterruptController()
-        self.comb += self.irq_controller.source.connect(self.pcie_phy.interrupt)
+        # MSI
+        self.submodules.msi = MSI()
+        self.comb += self.msi.source.connect(self.pcie_phy.interrupt)
         self.interrupts = {
             "dma_writer":    self.dma.writer.irq,
             "dma_reader":    self.dma.reader.irq
         }
         for k, v in sorted(self.interrupts.items()):
-            self.comb += self.irq_controller.irqs[self.interrupt_map[k]].eq(v)
+            self.comb += self.msi.irqs[self.interrupt_map[k]].eq(v)
 
 default_subtarget = PCIeDMASoC

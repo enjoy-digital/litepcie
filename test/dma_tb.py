@@ -7,7 +7,7 @@ from litex.gen.sim.generic import run_simulation
 
 from litepcie.common import *
 from litepcie.core import Endpoint
-from litepcie.core.irq import InterruptController
+from litepcie.core.msi import MSI
 from litepcie.frontend.dma import writer, reader
 
 from test.model.host import *
@@ -78,28 +78,28 @@ class InterruptHandler(Module):
 
     def do_simulation(self, selfp):
         tb_selfp = self.tb_selfp
-        tb_selfp.irq_controller._clear.r = 0
-        tb_selfp.irq_controller._clear.re = 0
+        tb_selfp.msi._clear.r = 0
+        tb_selfp.msi._clear.re = 0
         selfp.sink.ack = 1
         self.dma_writer_irq = 0
         if selfp.sink.stb and (selfp.simulator.cycle_counter%4 == 0):
             # get vector
-            irq_vector = tb_selfp.irq_controller._vector.status
+            irq_vector = tb_selfp.msi._vector.status
 
             # handle irq
             if irq_vector & DMA_READER_IRQ:
                 if self.debug:
                     print("DMA_READER IRQ : {}".format(tb_selfp.dma_reader.table._index.status))
-                # clear irq_controller
-                tb_selfp.irq_controller._clear.re = 1
-                tb_selfp.irq_controller._clear.r |= DMA_READER_IRQ
+                # clear msi
+                tb_selfp.msi._clear.re = 1
+                tb_selfp.msi._clear.r |= DMA_READER_IRQ
 
             if irq_vector & DMA_WRITER_IRQ:
                 if self.debug:
                     print("DMA_WRITER IRQ : {}".format(tb_selfp.dma_writer.table._index.status))
-                # clear irq_controller
-                tb_selfp.irq_controller._clear.re = 1
-                tb_selfp.irq_controller._clear.r |= DMA_WRITER_IRQ
+                # clear msi
+                tb_selfp.msi._clear.re = 1
+                tb_selfp.msi._clear.r |= DMA_WRITER_IRQ
                 self.dma_writer_irq = 1
 
 
@@ -128,13 +128,13 @@ class TB(Module):
         else:
             self.comb += self.dma_reader.source.connect(self.dma_writer.sink)
 
-        self.submodules.irq_controller = InterruptController(2)
+        self.submodules.msi = MSI(2)
         self.comb += [
-            self.irq_controller.irqs[log2_int(DMA_READER_IRQ)].eq(self.dma_reader.table.irq),
-            self.irq_controller.irqs[log2_int(DMA_WRITER_IRQ)].eq(self.dma_writer.table.irq)
+            self.msi.irqs[log2_int(DMA_READER_IRQ)].eq(self.dma_reader.table.irq),
+            self.msi.irqs[log2_int(DMA_WRITER_IRQ)].eq(self.dma_writer.table.irq)
         ]
         self.submodules.irq_handler = InterruptHandler()
-        self.comb += self.irq_controller.source.connect(self.irq_handler.sink)
+        self.comb += self.msi.source.connect(self.irq_handler.sink)
 
     def gen_simulation(self, selfp):
         self.host.malloc(0x00000000, test_size*2)
@@ -157,7 +157,7 @@ class TB(Module):
         for i in range(8):
             yield from dma_writer_driver.program_descriptor(test_size + (test_size//8)*i, test_size//8)
 
-        selfp.irq_controller._enable.storage = DMA_READER_IRQ | DMA_WRITER_IRQ
+        selfp.msi._enable.storage = DMA_READER_IRQ | DMA_WRITER_IRQ
 
         yield from dma_reader_driver.enable()
         yield from dma_writer_driver.enable()

@@ -5,7 +5,7 @@ from litex.soc.interconnect.csr import *
 from litepcie.common import *
 
 
-class InterruptController(Module, AutoCSR):
+class MSI(Module, AutoCSR):
     def __init__(self, n_irqs=32):
         self.irqs = Signal(n_irqs)
         self.source = Source(interrupt_layout())
@@ -24,4 +24,5 @@ class InterruptController(Module, AutoCSR):
         vector = self._vector.status
         self.sync += vector.eq(~clear & (vector | self.irqs))
 
+        # send irq
         self.comb += self.source.stb.eq((vector & enable) != 0)
