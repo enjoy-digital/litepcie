@@ -9,10 +9,6 @@
       with MMAP interface and scatter-gather DMA
                 powered by Migen
 
-[> Doc
--------
-TODO
-
 [> Intro
 ---------
 LitePCIe provides a small footprint and configurable PCIe gen1/2 core.
