@@ -153,8 +153,7 @@ class S7PCIEPHY(Module, AutoCSR):
             convert_size(dcommand[5:8], self.max_payload_size)
         ]
 
-        # XXX find a better way to do that
-        litepcie_phy_path = os.path.join(platform.litepcie_path, "litepcie", "phy")
+        litepcie_phy_path = os.path.abspath(os.path.dirname(__file__))
         platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common"))
         if device[:4] == "xc7k":
             platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "kintex7"))

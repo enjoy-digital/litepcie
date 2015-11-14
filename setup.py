@@ -1,37 +1,35 @@
 #!/usr/bin/env python3
 
-import sys, os
+import sys
 from setuptools import setup
 from setuptools import find_packages
 
-here = os.path.abspath(os.path.dirname(__file__))
-README = open(os.path.join(here, "README")).read()
 
-required_version = (3, 3)
-if sys.version_info < required_version:
-	raise SystemExit("LitePCIe requires python {0} or greater".format(
-		".".join(map(str, required_version))))
+if sys.version_info[:3] < (3, 3):
+    raise SystemExit("You need Python 3.3+")
+
 
 setup(
 	name="litepcie",
-	version="unknown",
+	version="1.0",
 	description="small footprint and configurable PCIe core",
-	long_description=README,
+	long_description=open("README").read(),
 	author="Florent Kermarrec",
 	author_email="florent@enjoy-digital.fr",
 	url="http://enjoy-digital.fr",
 	download_url="https://github.com/enjoy-digital/litepcie",
-	packages=find_packages(here),
-	license="GPL",
-	platforms=["Any"],
-	keywords="HDL ASIC FPGA hardware design",
+    license="BSD",
+    platforms=["Any"],
+    keywords="HDL ASIC FPGA hardware design",
 	classifiers=[
 		"Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
 		"Environment :: Console",
 		"Development Status :: Alpha",
 		"Intended Audience :: Developers",
-		"License :: OSI Approved :: GNU General Public License (GPL)",
+        "License :: OSI Approved :: BSD License",
 		"Operating System :: OS Independent",
 		"Programming Language :: Python",
-	],
+    ],
+    packages=find_packages(),
+    include_package_data=True,
 )
