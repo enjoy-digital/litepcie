@@ -19,10 +19,10 @@ class DMARequestTable(Module, AutoCSR):
     def __init__(self, depth):
         self.source = source = Source(descriptor_layout())
 
-        aw = len(source.address)
-        lw = len(source.length)
+        address_bits = len(source.address)
+        length_bits = len(source.length)
 
-        self._value = CSRStorage(aw+lw)
+        self._value = CSRStorage(address_bits + length_bits)
         self._we = CSR()
         self._loop_prog_n = CSRStorage()
         self._loop_status = CSRStatus(32)
@@ -43,7 +43,9 @@ class DMARequestTable(Module, AutoCSR):
         # FIFO
 
         # instance
-        fifo_layout = [("address", aw), ("length", lw), ("start", 1)]
+        fifo_layout = [("address", address_bits),
+                       ("length", length_bits),
+                       ("start", 1)]
         fifo = ResetInserter()(SyncFIFO(fifo_layout, depth))
         self.submodules += fifo
         self.comb += [
@@ -63,8 +65,8 @@ class DMARequestTable(Module, AutoCSR):
             # in "program" mode, fifo input is connected
             # to registers
             ).Else(
-                fifo.sink.address.eq(value[:aw]),
-                fifo.sink.length.eq(value[aw:aw+lw]),
+                fifo.sink.address.eq(value[:address_bits]),
+                fifo.sink.length.eq(value[address_bits:address_bits + length_bits]),
                 fifo.sink.start.eq(~fifo.source.stb),
                 fifo.sink.stb.eq(we)
             )
@@ -95,9 +97,9 @@ class DMARequestTable(Module, AutoCSR):
                 loop_status[16:].eq(loop_count),
                 If(fifo.source.start,
                     loop_index.eq(0),
-                    loop_count.eq(loop_count+1)
+                    loop_count.eq(loop_count + 1)
                 ).Else(
-                    loop_index.eq(loop_index+1)
+                    loop_index.eq(loop_index + 1)
                 )
             )
 

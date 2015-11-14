@@ -1,20 +1,18 @@
 from litex.gen import *
 
-from litex.soc.interconnect.csr import *
-
 from litepcie.common import *
 from litepcie.core.common import *
 from litepcie.core.tlp.controller import Controller
 
 
-class Crossbar(Module, AutoCSR):
-    def __init__(self, dw, max_pending_requests, with_reordering=False):
-        self.dw = dw
+class Crossbar(Module):
+    def __init__(self, data_width, max_pending_requests, with_reordering=False):
+        self.data_width = data_width
         self.max_pending_requests = max_pending_requests
         self.with_reordering = with_reordering
 
-        self.master = MasterInternalPort(dw)
-        self.slave = SlaveInternalPort(dw)
+        self.master = MasterInternalPort(data_width)
+        self.slave = SlaveInternalPort(data_width)
         self.phy_master = MasterPort(self.master)
         self.phy_slave = SlavePort(self.slave)
 
@@ -23,12 +21,13 @@ class Crossbar(Module, AutoCSR):
         self.user_slaves = []
 
     def get_slave_port(self, address_decoder):
-        s = SlaveInternalPort(self.dw, address_decoder)
+        s = SlaveInternalPort(self.data_width, address_decoder)
         self.user_slaves.append(s)
         return SlavePort(s)
 
     def get_master_port(self, write_only=False, read_only=False):
-        m = MasterInternalPort(self.dw, self.user_masters_channel, write_only, read_only)
+        m = MasterInternalPort(self.data_width, self.user_masters_channel,
+                               write_only, read_only)
         self.user_masters_channel += 1
         self.user_masters.append(m)
         return MasterPort(m)
@@ -104,8 +103,10 @@ class Crossbar(Module, AutoCSR):
             rd_rw_masters = self.filter_masters(False, True)
             rd_rw_masters += self.filter_masters(False, False)
             if rd_rw_masters != []:
-                rd_rw_master = MasterInternalPort(self.dw)
-                controller = Controller(self.dw, self.max_pending_requests, self.with_reordering)
+                rd_rw_master = MasterInternalPort(self.data_width)
+                controller = Controller(self.data_width,
+                                        self.max_pending_requests,
+                                        self.with_reordering)
                 self.submodules += controller
                 self.master_arbitrate_dispatch(rd_rw_masters, controller.master_in)
                 masters.append(controller.master_out)
@@ -113,7 +114,7 @@ class Crossbar(Module, AutoCSR):
             # Arbitrate / dispatch write_only ports
             wr_masters = self.filter_masters(True, False)
             if wr_masters != []:
-                wr_master = MasterInternalPort(self.dw)
+                wr_master = MasterInternalPort(self.data_width)
                 self.master_arbitrate_dispatch(wr_masters, wr_master)
                 masters.append(wr_master)
 

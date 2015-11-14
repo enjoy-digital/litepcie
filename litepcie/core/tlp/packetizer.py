@@ -5,16 +5,16 @@ from litepcie.core.tlp.common import *
 
 
 class HeaderInserter(Module):
-    def __init__(self, dw):
-        self.sink = sink = Sink(tlp_raw_layout(dw))
-        self.source = source = Source(phy_layout(dw))
+    def __init__(self, data_width):
+        self.sink = sink = Sink(tlp_raw_layout(data_width))
+        self.source = source = Source(phy_layout(data_width))
 
         # # #
 
-        if dw != 64:
-            raise ValueError("Current module only supports dw of 64.")
+        if data_width != 64:
+            raise ValueError("Current module only supports data_width of 64.")
 
-        dat_last = Signal(dw)
+        dat_last = Signal(data_width)
         eop_last = Signal()
         self.sync += \
             If(sink.stb & sink.ack,
@@ -29,7 +29,7 @@ class HeaderInserter(Module):
                 sink.ack.eq(0),
                 source.stb.eq(1),
                 source.sop.eq(1),
-                source.dat.eq(sink.header[:dw]),
+                source.dat.eq(sink.header[:data_width]),
                 source.be.eq(0xff),
                 If(source.stb & source.ack,
                     NextState("INSERT"),
@@ -40,7 +40,7 @@ class HeaderInserter(Module):
             source.stb.eq(1),
             source.eop.eq(sink.eop),
             # XXX add genericity
-            source.dat.eq(Cat(sink.header[dw:96],
+            source.dat.eq(Cat(sink.header[data_width:96],
                               reverse_bytes(sink.dat[:32]))),
             source.be.eq(Cat(Signal(4, reset=0xf),
                              reverse_bits(sink.be[:4]))),
@@ -74,16 +74,16 @@ class HeaderInserter(Module):
 
 
 class Packetizer(Module):
-    def __init__(self, dw):
-        self.req_sink = req_sink = Sink(request_layout(dw))
-        self.cmp_sink = cmp_sink = Sink(completion_layout(dw))
+    def __init__(self, data_width):
+        self.req_sink = req_sink = Sink(request_layout(data_width))
+        self.cmp_sink = cmp_sink = Sink(completion_layout(data_width))
 
-        self.source = Source(phy_layout(dw))
+        self.source = Source(phy_layout(data_width))
 
-        ###
+        # # #
 
         # format TLP request and encode it
-        tlp_req = Sink(tlp_request_layout(dw))
+        tlp_req = Sink(tlp_request_layout(data_width))
         self.comb += [
             tlp_req.stb.eq(req_sink.stb),
             req_sink.ack.eq(tlp_req.ack),
@@ -120,7 +120,7 @@ class Packetizer(Module):
             ),
         ]
 
-        tlp_raw_req = Sink(tlp_raw_layout(dw))
+        tlp_raw_req = Sink(tlp_raw_layout(data_width))
         self.comb += [
             tlp_raw_req.stb.eq(tlp_req.stb),
             tlp_req.ack.eq(tlp_raw_req.ack),
@@ -132,7 +132,7 @@ class Packetizer(Module):
         ]
 
         # format TLP completion and encode it
-        tlp_cmp = Sink(tlp_completion_layout(dw))
+        tlp_cmp = Sink(tlp_completion_layout(data_width))
         self.comb += [
             tlp_cmp.stb.eq(cmp_sink.stb),
             cmp_sink.ack.eq(tlp_cmp.ack),
@@ -164,7 +164,7 @@ class Packetizer(Module):
             tlp_cmp.be.eq(0xff)
         ]
 
-        tlp_raw_cmp = Sink(tlp_raw_layout(dw))
+        tlp_raw_cmp = Sink(tlp_raw_layout(data_width))
         self.comb += [
             tlp_raw_cmp.stb.eq(tlp_cmp.stb),
             tlp_cmp.ack.eq(tlp_raw_cmp.ack),
@@ -176,11 +176,11 @@ class Packetizer(Module):
         ]
 
         # arbitrate
-        tlp_raw = Sink(tlp_raw_layout(dw))
+        tlp_raw = Sink(tlp_raw_layout(data_width))
         self.submodules.arbitrer = Arbiter([tlp_raw_req, tlp_raw_cmp], tlp_raw)
 
         # insert header
-        header_inserter = HeaderInserter(dw)
+        header_inserter = HeaderInserter(data_width)
         self.submodules += header_inserter
         self.comb += [
             Record.connect(tlp_raw, header_inserter.sink),

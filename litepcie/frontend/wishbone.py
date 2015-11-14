@@ -14,6 +14,8 @@ class LitePCIeWishboneBridge(Module):
         port = endpoint.crossbar.get_slave_port(address_decoder)
         self.submodules.fsm = fsm = FSM()
 
+        update_dat = Signal()
+
         fsm.act("IDLE",
             If(port.sink.stb & port.sink.sop,
                 If(port.sink.we,
@@ -25,10 +27,12 @@ class LitePCIeWishboneBridge(Module):
                 port.sink.ack.eq(port.sink.stb)
             )
         )
-        fsm.act("WRITE",
-            self.wishbone.adr.eq(port.sink.adr[2:]),
-            self.wishbone.dat_w.eq(port.sink.dat[:32]),
+        self.comb += [
             self.wishbone.sel.eq(0xf),
+            self.wishbone.adr.eq(port.sink.adr[2:]),
+            self.wishbone.dat_w.eq(port.sink.dat[:32])
+        ]
+        fsm.act("WRITE",
             self.wishbone.stb.eq(1),
             self.wishbone.we.eq(1),
             self.wishbone.cyc.eq(1),
@@ -38,20 +42,19 @@ class LitePCIeWishboneBridge(Module):
             )
         )
         fsm.act("READ",
-            self.wishbone.adr.eq(port.sink.adr[2:]),
             self.wishbone.stb.eq(1),
             self.wishbone.we.eq(0),
             self.wishbone.cyc.eq(1),
             If(self.wishbone.ack,
+                update_dat.eq(1),
                 NextState("COMPLETION")
             )
         )
         self.sync += \
-            If(self.wishbone.stb & self.wishbone.ack,
+            If(update_dat,
                 port.source.dat.eq(self.wishbone.dat_r),
             )
-        fsm.act("COMPLETION",
-            port.source.stb.eq(1),
+        self.comb += [
             port.source.sop.eq(1),
             port.source.eop.eq(1),
             port.source.len.eq(1),
@@ -59,7 +62,10 @@ class LitePCIeWishboneBridge(Module):
             port.source.tag.eq(port.sink.tag),
             port.source.adr.eq(port.sink.adr),
             port.source.cmp_id.eq(endpoint.phy.id),
-            port.source.req_id.eq(port.sink.req_id),
+            port.source.req_id.eq(port.sink.req_id)
+        ]
+        fsm.act("COMPLETION",
+            port.source.stb.eq(1),
             If(port.source.ack,
                 port.sink.ack.eq(1),
                 NextState("IDLE")

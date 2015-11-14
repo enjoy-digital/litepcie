@@ -9,14 +9,14 @@ from litepcie.frontend.dma.reader import DMAReader
 
 
 class DMALoopback(Module, AutoCSR):
-    def __init__(self, dw):
+    def __init__(self, data_width):
         self._enable = CSRStorage()
 
-        self.sink = Sink(dma_layout(dw))
-        self.source = Source(dma_layout(dw))
+        self.sink = Sink(dma_layout(data_width))
+        self.source = Source(dma_layout(data_width))
 
-        self.next_source = Source(dma_layout(dw))
-        self.next_sink = Sink(dma_layout(dw))
+        self.next_source = Source(dma_layout(data_width))
+        self.next_sink = Sink(dma_layout(data_width))
 
         # # #
 
@@ -31,17 +31,17 @@ class DMALoopback(Module, AutoCSR):
 
 
 class DMASynchronizer(Module, AutoCSR):
-    def __init__(self, dw):
+    def __init__(self, data_width):
         self._bypass = CSRStorage()
         self._enable = CSRStorage()
         self.ready = Signal(reset=1)
         self.pps = Signal()
 
-        self.sink = Sink(dma_layout(dw))
-        self.source = Source(dma_layout(dw))
+        self.sink = Sink(dma_layout(data_width))
+        self.source = Source(dma_layout(data_width))
 
-        self.next_source = Source(dma_layout(dw))
-        self.next_sink = Sink(dma_layout(dw))
+        self.next_source = Source(dma_layout(data_width))
+        self.next_sink = Sink(dma_layout(data_width))
 
         # # #
 
@@ -74,9 +74,9 @@ class DMASynchronizer(Module, AutoCSR):
 
 
 class DMABuffering(Module, AutoCSR):
-    def __init__(self, dw, depth):
-        tx_fifo = SyncFIFO(dma_layout(dw), depth//(dw//8), buffered=True)
-        rx_fifo = SyncFIFO(dma_layout(dw), depth//(dw//8), buffered=True)
+    def __init__(self, data_width, depth):
+        tx_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
+        rx_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
         self.submodules += tx_fifo, rx_fifo
 
         self.sink = tx_fifo.sink
@@ -99,17 +99,17 @@ class DMA(Module, AutoCSR):
 
         # Loopback
         if with_loopback:
-            self.submodules.loopback = DMALoopback(phy.dw)
+            self.submodules.loopback = DMALoopback(phy.data_width)
             self.insert_optional_module(self.loopback)
 
         # Synchronizer
         if with_synchronizer:
-            self.submodules.synchronizer = DMASynchronizer(phy.dw)
+            self.submodules.synchronizer = DMASynchronizer(phy.data_width)
             self.insert_optional_module(self.synchronizer)
 
         # Buffering
         if with_buffering:
-            self.submodules.buffering = DMABuffering(phy.dw, buffering_depth)
+            self.submodules.buffering = DMABuffering(phy.data_width, buffering_depth)
             self.insert_optional_module(self.buffering)
 
 

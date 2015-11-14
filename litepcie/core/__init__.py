@@ -15,8 +15,8 @@ class Endpoint(Module):
         # # #
 
         # TLP Packetizer / Depacketizer
-        depacketizer = Depacketizer(phy.dw, phy.bar0_mask)
-        packetizer = Packetizer(phy.dw)
+        depacketizer = Depacketizer(phy.data_width, phy.bar0_mask)
+        packetizer = Packetizer(phy.data_width)
         self.submodules += depacketizer, packetizer
         self.comb += [
             phy.source.connect(depacketizer.sink),
@@ -24,7 +24,7 @@ class Endpoint(Module):
         ]
 
         # Crossbar
-        self.crossbar = crossbar = Crossbar(phy.dw, max_pending_requests, with_reordering)
+        self.crossbar = crossbar = Crossbar(phy.data_width, max_pending_requests, with_reordering)
         self.submodules += crossbar
 
         # (Slave) HOST initiates the transactions

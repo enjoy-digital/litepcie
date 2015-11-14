@@ -9,7 +9,7 @@ from litepcie.frontend.dma.common import *
 
 class DMAReader(Module, AutoCSR):
     def __init__(self, endpoint, port, table_depth=256):
-        self.source = Source(dma_layout(endpoint.phy.dw))
+        self.source = Source(dma_layout(endpoint.phy.data_width))
         self.irq = Signal()
         self._enable = CSRStorage()
 
@@ -17,7 +17,7 @@ class DMAReader(Module, AutoCSR):
 
         enable = self._enable.storage
 
-        max_words_per_request = max_request_size//(endpoint.phy.dw//8)
+        max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
         max_pending_words = endpoint.max_pending_requests*max_words_per_request
 
         fifo_depth = 2*max_pending_words
@@ -64,7 +64,7 @@ class DMAReader(Module, AutoCSR):
         # Data FIFO
 
         # issue read requests when enough space available in fifo
-        fifo = SyncFIFO(dma_layout(endpoint.phy.dw), fifo_depth, buffered=True)
+        fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), fifo_depth, buffered=True)
         self.submodules += ResetInserter()(fifo)
         self.comb += fifo.reset.eq(~enable)
 

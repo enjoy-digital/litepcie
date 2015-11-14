@@ -4,14 +4,14 @@ from litepcie.core.tlp.common import *
 
 
 class HeaderExtracter(Module):
-    def __init__(self, dw):
-        self.sink = sink = Sink(phy_layout(dw))
-        self.source = source = Source(tlp_raw_layout(dw))
+    def __init__(self, data_width):
+        self.sink = sink = Sink(phy_layout(data_width))
+        self.source = source = Source(tlp_raw_layout(data_width))
 
         # # #
 
-        if dw != 64:
-            raise ValueError("Current module only supports dw of 64.")
+        if data_width != 64:
+            raise ValueError("Current module only supports data_width of 64.")
 
         sop = Signal()
         sop_clr = Signal()
@@ -25,8 +25,8 @@ class HeaderExtracter(Module):
 
         self.submodules.counter = counter = Counter(2)
 
-        sink_dat_last = Signal(dw)
-        sink_be_last = Signal(dw//8)
+        sink_dat_last = Signal(data_width)
+        sink_be_last = Signal(data_width//8)
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
@@ -41,7 +41,7 @@ class HeaderExtracter(Module):
             sink.ack.eq(1),
             If(sink.stb,
                 counter.ce.eq(1),
-                If(counter.value == tlp_common_header_length*8//dw-1,
+                If(counter.value == tlp_common_header_length*8//data_width - 1,
                     If(sink.eop,
                         eop_set.eq(1)
                     ),
@@ -51,7 +51,7 @@ class HeaderExtracter(Module):
         )
         self.sync += [
             If(counter.ce,
-                self.source.header.eq(Cat(self.source.header[dw:], sink.dat))
+                self.source.header.eq(Cat(self.source.header[data_width:], sink.dat))
             ),
             If(sink.stb & sink.ack,
                 sink_dat_last.eq(sink.dat),
@@ -80,24 +80,24 @@ class HeaderExtracter(Module):
 
 
 class Depacketizer(Module):
-    def __init__(self, dw, address_mask=0):
-        self.sink = Sink(phy_layout(dw))
+    def __init__(self, data_width, address_mask=0):
+        self.sink = Sink(phy_layout(data_width))
 
-        self.req_source = Source(request_layout(dw))
-        self.cmp_source = Source(completion_layout(dw))
+        self.req_source = Source(request_layout(data_width))
+        self.cmp_source = Source(completion_layout(data_width))
 
-        ###
+        # # #
 
         # extract raw header
-        header_extracter = HeaderExtracter(dw)
+        header_extracter = HeaderExtracter(data_width)
         self.submodules += header_extracter
         self.comb += Record.connect(self.sink, header_extracter.sink)
         header = header_extracter.source.header
 
 
         # dispatch data according to fmt/type
-        dispatch_source = Source(tlp_common_layout(dw))
-        dispatch_sinks = [Sink(tlp_common_layout(dw)) for i in range(2)]
+        dispatch_source = Source(tlp_common_layout(data_width))
+        dispatch_sinks = [Sink(tlp_common_layout(data_width)) for i in range(2)]
 
         self.comb += [
             dispatch_source.stb.eq(header_extracter.source.stb),
@@ -113,21 +113,24 @@ class Depacketizer(Module):
 
         fmt_type = Cat(dispatch_source.type, dispatch_source.fmt)
         self.comb += \
-            If((fmt_type == fmt_type_dict["mem_rd32"]) | (fmt_type == fmt_type_dict["mem_wr32"]),
+            If((fmt_type == fmt_type_dict["mem_rd32"]) |
+               (fmt_type == fmt_type_dict["mem_wr32"]),
                 self.dispatcher.sel.eq(0),
-            ).Elif((fmt_type == fmt_type_dict["cpld"]) | (fmt_type == fmt_type_dict["cpl"]),
+            ).Elif((fmt_type == fmt_type_dict["cpld"]) |
+                   (fmt_type == fmt_type_dict["cpl"]),
                 self.dispatcher.sel.eq(1),
             )
 
         # decode TLP request and format local request
-        tlp_req = Source(tlp_request_layout(dw))
+        tlp_req = Source(tlp_request_layout(data_width))
         self.comb += Record.connect(dispatch_sinks[0], tlp_req)
         self.comb += tlp_request_header.decode(header, tlp_req)
 
         req_source = self.req_source
         self.comb += [
             req_source.stb.eq(tlp_req.stb),
-            req_source.we.eq(tlp_req.stb & (Cat(tlp_req.type, tlp_req.fmt) == fmt_type_dict["mem_wr32"])),
+            req_source.we.eq(tlp_req.stb & (Cat(tlp_req.type, tlp_req.fmt) ==
+                                            fmt_type_dict["mem_wr32"])),
             tlp_req.ack.eq(req_source.ack),
             req_source.sop.eq(tlp_req.sop),
             req_source.eop.eq(tlp_req.eop),
@@ -139,7 +142,7 @@ class Depacketizer(Module):
         ]
 
         # decode TLP completion and format local completion
-        tlp_cmp = Source(tlp_completion_layout(dw))
+        tlp_cmp = Source(tlp_completion_layout(data_width))
         self.comb += Record.connect(dispatch_sinks[1], tlp_cmp)
         self.comb += tlp_completion_header.decode(header, tlp_cmp)
 

@@ -16,14 +16,14 @@ def get_gt(device):
 
 
 class S7PCIEPHY(Module, AutoCSR):
-    def __init__(self, platform, dw=64, link_width=2, bar0_size=1*MB):
+    def __init__(self, platform, data_width=64, link_width=2, bar0_size=1*MB):
         pads = platform.request("pcie_x"+str(link_width))
         device = platform.device
-        self.dw = dw
+        self.data_width = data_width
         self.link_width = link_width
 
-        self.sink = Sink(phy_layout(dw))
-        self.source = Source(phy_layout(dw))
+        self.sink = Sink(phy_layout(data_width))
+        self.source = Source(phy_layout(data_width))
         self.interrupt = Sink(interrupt_layout())
 
         self.id = Signal(16)
@@ -76,7 +76,7 @@ class S7PCIEPHY(Module, AutoCSR):
         dcommand = Signal(16)
 
         self.specials += Instance("pcie_phy",
-                p_C_DATA_WIDTH=dw,
+                p_C_DATA_WIDTH=data_width,
                 p_C_PCIE_GT_DEVICE=get_gt(device),
                 p_C_BAR0=get_bar_mask(self.bar0_size),
 

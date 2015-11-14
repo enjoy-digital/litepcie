@@ -20,8 +20,8 @@ class PHYPacket():
 
 
 class PHYSource(Module):
-    def __init__(self, dw):
-        self.source = Source(phy_layout(dw))
+    def __init__(self, data_width):
+        self.source = Source(phy_layout(data_width))
         ###
         self.packets = []
         self.packet = PHYPacket()
@@ -57,8 +57,8 @@ class PHYSource(Module):
 
 
 class PHYSink(Module):
-    def __init__(self, dw):
-        self.sink = Sink(phy_layout(dw))
+    def __init__(self, data_width):
+        self.sink = Sink(phy_layout(data_width))
         ###
         self.packet = PHYPacket()
 
@@ -83,8 +83,8 @@ class PHYSink(Module):
 
 
 class PHY(Module):
-    def __init__(self, dw, id, bar0_size, debug):
-        self.dw = dw
+    def __init__(self, data_width, id, bar0_size, debug):
+        self.data_width = data_width
 
         self.id = id
 
@@ -94,14 +94,14 @@ class PHY(Module):
         self.max_request_size = Signal(10, reset=512)
         self.max_payload_size = Signal(8, reset=128)
 
-        self.submodules.phy_source = PHYSource(dw)
-        self.submodules.phy_sink = PHYSink(dw)
+        self.submodules.phy_source = PHYSource(data_width)
+        self.submodules.phy_sink = PHYSink(data_width)
 
         self.source = self.phy_source.source
         self.sink = self.phy_sink.sink
 
     def dwords2packet(self, dwords):
-            ratio = self.dw//32
+            ratio = self.data_width//32
             length = math.ceil(len(dwords)/ratio)
             dat = [0]*length
             be = [0]*length
@@ -127,7 +127,7 @@ class PHY(Module):
         yield from self.phy_source.send_blocking(packet)
 
     def packet2dwords(self, p_dat, p_be):
-            ratio = self.dw//32
+            ratio = self.data_width//32
             dwords = []
             for dat, be in zip(p_dat, p_be):
                 for i in range(ratio):

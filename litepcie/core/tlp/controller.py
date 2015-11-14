@@ -10,9 +10,9 @@ from litex.soc.interconnect.stream import SyncFIFO as SyncFlowFIFO
 from litex.gen.genlib.fifo import SyncFIFO
 
 class Controller(Module):
-    def __init__(self, dw, max_pending_requests, with_reordering=False):
-        self.master_in = MasterInternalPort(dw)
-        self.master_out = MasterInternalPort(dw)
+    def __init__(self, data_width, max_pending_requests, with_reordering=False):
+        self.master_in = MasterInternalPort(data_width)
+        self.master_out = MasterInternalPort(data_width)
 
         # # #
 
@@ -75,7 +75,7 @@ class Controller(Module):
 
         # Completions mgt
         if with_reordering:
-            self.submodules.reordering = Reordering(dw, max_pending_requests)
+            self.submodules.reordering = Reordering(data_width, max_pending_requests)
             self.comb += [
                 self.reordering.req_we.eq(info_mem_wr_port.we),
                 self.reordering.req_tag.eq(info_mem_wr_port.adr),
@@ -88,7 +88,7 @@ class Controller(Module):
         inc_tag_cnt = Signal()
         self.sync += \
             If(inc_tag_cnt,
-                tag_cnt.eq(tag_cnt+1)
+                tag_cnt.eq(tag_cnt + 1)
             )
 
         cmp_fsm.act("INIT",

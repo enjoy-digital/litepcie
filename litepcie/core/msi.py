@@ -6,18 +6,18 @@ from litepcie.common import *
 
 
 class MSI(Module, AutoCSR):
-    def __init__(self, n_irqs=32):
-        self.irqs = Signal(n_irqs)
+    def __init__(self, n=32):
+        self.irqs = Signal(n)
         self.source = Source(interrupt_layout())
 
-        self._enable = CSRStorage(n_irqs)
-        self._clear = CSR(n_irqs)
-        self._vector = CSRStatus(n_irqs)
+        self._enable = CSRStorage(n)
+        self._clear = CSR(n)
+        self._vector = CSRStatus(n)
 
         # # #
 
         enable = self._enable.storage
-        clear = Signal(n_irqs)
+        clear = Signal(n)
         self.comb += If(self._clear.re, clear.eq(self._clear.r))
 
         # memorize and clear irqs

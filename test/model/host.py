@@ -14,14 +14,14 @@ def print_host(s):
 
 # Host model
 class Host(Module):
-    def __init__(self, dw, root_id, endpoint_id, bar0_size=1*MB,
+    def __init__(self, data_width, root_id, endpoint_id, bar0_size=1*MB,
                  phy_debug=False,
                  chipset_debug=False, chipset_split=False, chipset_reordering=False,
                  host_debug=False):
         self.debug = host_debug
         self.chipset_split = chipset_split
         ###
-        self.submodules.phy = PHY(dw, endpoint_id, bar0_size, phy_debug)
+        self.submodules.phy = PHY(data_width, endpoint_id, bar0_size, phy_debug)
         self.submodules.chipset = Chipset(self.phy, root_id, chipset_debug, chipset_reordering)
         self.chipset.set_host_callback(self.callback)
 

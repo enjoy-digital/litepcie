@@ -44,29 +44,29 @@ def get_bar_mask(size):
                 size = size >> 1
             return mask
 
-def phy_layout(dw):
+def phy_layout(data_width):
     layout = [
-        ("dat", dw),
-        ("be",  dw//8)
+        ("dat", data_width),
+        ("be",  data_width//8)
     ]
     return EndpointDescription(layout, packetized=True)
 
 
-def request_layout(dw):
+def request_layout(data_width):
     layout = [
             ("we",       1),
             ("adr",     32),
             ("len",     10),
             ("req_id",  16),
             ("tag",      8),
-            ("dat",     dw),
+            ("dat",     data_width),
             ("channel",  8),  # for routing
             ("user_id",  8)   # for packet identification
     ]
     return EndpointDescription(layout, packetized=True)
 
 
-def completion_layout(dw):
+def completion_layout(data_width):
     layout = [
             ("adr",    32),
             ("len",    10),
@@ -75,7 +75,7 @@ def completion_layout(dw):
             ("cmp_id", 16),
             ("err",     1),
             ("tag",     8),
-            ("dat",     dw),
+            ("dat",     data_width),
             ("channel",  8),  # for routing
             ("user_id",  8)   # for packet identification
     ]
@@ -86,6 +86,6 @@ def interrupt_layout():
     return [("dat", 8)]
 
 
-def dma_layout(dw):
-    layout = [("data", dw)]
+def dma_layout(data_width):
+    layout = [("data", data_width)]
     return EndpointDescription(layout, packetized=True)

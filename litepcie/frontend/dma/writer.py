@@ -11,7 +11,7 @@ from litex.gen.genlib.fifo import SyncFIFOBuffered as SyncFIFO
 
 class DMAWriter(Module, AutoCSR):
     def __init__(self, endpoint, port, table_depth=256):
-        self.sink = sink = Sink(dma_layout(endpoint.phy.dw))
+        self.sink = sink = Sink(dma_layout(endpoint.phy.data_width))
         self.irq = Signal()
         self._enable = CSRStorage()
 
@@ -19,14 +19,14 @@ class DMAWriter(Module, AutoCSR):
 
         enable = self._enable.storage
 
-        max_words_per_request = max_request_size//(endpoint.phy.dw//8)
+        max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
         fifo_depth = 4*max_words_per_request
 
         # Data FIFO
 
         # store data until we have enough data to issue a
         # write request
-        fifo = SyncFIFO(endpoint.phy.dw, fifo_depth)
+        fifo = SyncFIFO(endpoint.phy.data_width, fifo_depth)
         self.submodules += ResetInserter()(fifo)
         self.comb += [
             fifo.we.eq(sink.stb & enable),
@@ -60,7 +60,7 @@ class DMAWriter(Module, AutoCSR):
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
             port.source.sop.eq(counter.value == 0),
-            port.source.eop.eq(counter.value == splitter.source.length[3:]-1),
+            port.source.eop.eq(counter.value == splitter.source.length[3:] - 1),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),

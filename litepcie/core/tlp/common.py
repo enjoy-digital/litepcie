@@ -81,34 +81,34 @@ tlp_completion_header = Header(tlp_completion_header_fields,
 
 
 # layouts
-def tlp_raw_layout(dw):
+def tlp_raw_layout(data_width):
     layout = [
         ("header", 4*32),
-        ("dat",    dw),
-        ("be",     dw//8)
+        ("dat",    data_width),
+        ("be",     data_width//8)
     ]
     return EndpointDescription(layout, packetized=True)
 
 
-def tlp_common_layout(dw):
+def tlp_common_layout(data_width):
     layout = tlp_common_header.get_layout() + [
-        ("dat", dw),
-        ("be",  dw//8)
+        ("dat", data_width),
+        ("be",  data_width//8)
     ]
     return EndpointDescription(layout, packetized=True)
 
 
-def tlp_request_layout(dw):
+def tlp_request_layout(data_width):
     layout = tlp_request_header.get_layout() + [
-        ("dat", dw),
-        ("be",  dw//8)
+        ("dat", data_width),
+        ("be",  data_width//8)
     ]
     return EndpointDescription(layout, packetized=True)
 
 
-def tlp_completion_layout(dw):
+def tlp_completion_layout(data_width):
     layout = tlp_completion_header.get_layout() + [
-        ("dat", dw),
-        ("be",  dw//8)
+        ("dat", data_width),
+        ("be",  data_width//8)
     ]
     return EndpointDescription(layout, packetized=True)
