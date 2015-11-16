@@ -50,7 +50,7 @@ class DMARequestTable(Module, AutoCSR):
         self.submodules += fifo
         self.comb += [
             fifo.reset.eq(flush),
-            level.eq(fifo.fifo.level)
+            level.eq(fifo.level)
         ]
 
         # write part

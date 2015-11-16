@@ -81,7 +81,7 @@ class DMAReader(Module, AutoCSR):
         ]
         self.comb += Record.connect(fifo.source, self.source)
 
-        fifo_ready = fifo.fifo.level < (fifo_depth//2)
+        fifo_ready = fifo.level < (fifo_depth//2)
         self.comb += request_ready.eq(splitter.source.stb & fifo_ready)
 
         # IRQ
