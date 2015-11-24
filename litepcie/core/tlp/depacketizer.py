@@ -23,7 +23,15 @@ class HeaderExtracter(Module):
         eop_set = Signal()
         self.sync += If(eop_clr, eop.eq(0)).Elif(eop_set, eop.eq(1))
 
-        self.submodules.counter = counter = Counter(2)
+        counter = Signal(2)
+        counter_reset = Signal()
+        counter_ce = Signal()
+        self.sync += \
+            If(counter_reset,
+                counter.eq(0)
+            ).Elif(counter_ce,
+                counter.eq(counter + 1)
+            )
 
         sink_dat_last = Signal(data_width)
         sink_be_last = Signal(data_width//8)
@@ -32,7 +40,7 @@ class HeaderExtracter(Module):
         fsm.act("IDLE",
             sop_set.eq(1),
             eop_clr.eq(1),
-            counter.reset.eq(1),
+            counter_reset.eq(1),
             If(sink.stb,
                 NextState("EXTRACT")
             )
@@ -40,8 +48,8 @@ class HeaderExtracter(Module):
         fsm.act("EXTRACT",
             sink.ack.eq(1),
             If(sink.stb,
-                counter.ce.eq(1),
-                If(counter.value == tlp_common_header_length*8//data_width - 1,
+                counter_ce.eq(1),
+                If(counter == tlp_common_header_length*8//data_width - 1,
                     If(sink.eop,
                         eop_set.eq(1)
                     ),
@@ -50,7 +58,7 @@ class HeaderExtracter(Module):
             )
         )
         self.sync += [
-            If(counter.ce,
+            If(counter_ce,
                 self.source.header.eq(Cat(self.source.header[data_width:], sink.dat))
             ),
             If(sink.stb & sink.ack,

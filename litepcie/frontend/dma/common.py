@@ -111,9 +111,20 @@ class DMARequestSplitter(Module, AutoCSR):
 
         # # #
 
-        self.submodules.offset = offset = Counter(32, increment=max_size)
-        self.submodules.user_id = user_id = Counter(8)
-        self.comb += user_id.ce.eq(sink.stb & sink.ack)
+        offset = Signal(32)
+        offset_reset = Signal()
+        offset_ce = Signal()
+        self.sync += \
+            If(offset_reset,
+                offset.eq(0)
+            ).Elif(offset_ce,
+                offset.eq(offset + max_size)
+            )
+
+        user_id = Signal(32)
+        user_id_ce = Signal()
+        self.sync += If(user_id_ce, user_id.eq(user_id + max_size))
+        self.comb += user_id_ce.eq(sink.stb & sink.ack)
 
         length = Signal(16)
         length_update = Signal()
@@ -121,7 +132,7 @@ class DMARequestSplitter(Module, AutoCSR):
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            offset.reset.eq(1),
+            offset_reset.eq(1),
             If(sink.stb,
                 length_update.eq(1),
                 NextState("RUN")
@@ -130,18 +141,18 @@ class DMARequestSplitter(Module, AutoCSR):
             )
         )
         self.comb += [
-            source.address.eq(sink.address + offset.value),
-            source.user_id.eq(user_id.value),
+            source.address.eq(sink.address + offset),
+            source.user_id.eq(user_id),
         ]
         fsm.act("RUN",
             source.stb.eq(1),
-            source.sop.eq(offset.value == 0),
-            If((length - offset.value) > max_size,
+            source.sop.eq(offset == 0),
+            If((length - offset) > max_size,
                 source.length.eq(max_size),
-                offset.ce.eq(source.ack)
+                offset_ce.eq(source.ack)
             ).Else(
                 source.eop.eq(1),
-                source.length.eq(length - offset.value),
+                source.length.eq(length - offset),
                 If(source.ack,
                     NextState("ACK")
                 )

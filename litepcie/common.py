@@ -23,16 +23,6 @@ def reverse_bits(signal):
         r.append(signal[i])
     return Cat(*r)
 
-
-@ResetInserter()
-@CEInserter()
-class Counter(Module):
-    def __init__(self, *args, increment=1, **kwargs):
-        self.value = Signal(*args, **kwargs)
-        self.width = len(self.value)
-        self.sync += self.value.eq(self.value+increment)
-
-
 def get_bar_mask(size):
             mask = 0
             found = 0

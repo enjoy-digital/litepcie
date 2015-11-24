@@ -37,7 +37,15 @@ class DMAWriter(Module, AutoCSR):
 
         # Request generation
         request_ready = Signal()
-        self.submodules.counter = counter = Counter(max=(2**len(endpoint.phy.max_payload_size))/8)
+        counter = Signal(max=(2**len(endpoint.phy.max_payload_size))/8)
+        counter_reset = Signal()
+        counter_ce = Signal()
+        self.sync += \
+            If(counter_reset,
+                counter.eq(0)
+            ).Elif(counter_ce,
+                counter.eq(counter + 1)
+            )
 
         # requests from table are splitted in chunks of "max_size"
         self.table = table = DMARequestTable(table_depth)
@@ -51,7 +59,7 @@ class DMAWriter(Module, AutoCSR):
         # Request FSM
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            counter.reset.eq(1),
+            counter_reset.eq(1),
             If(request_ready,
                 NextState("REQUEST"),
             )
@@ -59,8 +67,8 @@ class DMAWriter(Module, AutoCSR):
         self.comb += [
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
-            port.source.sop.eq(counter.value == 0),
-            port.source.eop.eq(counter.value == splitter.source.length[3:] - 1),
+            port.source.sop.eq(counter == 0),
+            port.source.eop.eq(counter == splitter.source.length[3:] - 1),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
@@ -69,7 +77,7 @@ class DMAWriter(Module, AutoCSR):
             port.source.dat.eq(fifo.dout)
         ]
         fsm.act("REQUEST",
-            counter.ce.eq(port.source.stb & port.source.ack),
+            counter_ce.eq(port.source.stb & port.source.ack),
             port.source.stb.eq(1),
             If(port.source.ack,
                 fifo.re.eq(1),
