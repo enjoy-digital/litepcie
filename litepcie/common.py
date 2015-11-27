@@ -7,7 +7,6 @@ KB = 1024
 MB = 1024*KB
 GB = 1024*MB
 
-
 def reverse_bytes(signal):
     n = (len(signal)+7)//8
     r = []
@@ -41,36 +40,33 @@ def phy_layout(data_width):
     ]
     return EndpointDescription(layout, packetized=True)
 
-
 def request_layout(data_width):
     layout = [
-            ("we",       1),
-            ("adr",     32),
-            ("len",     10),
-            ("req_id",  16),
-            ("tag",      8),
+            ("we",               1),
+            ("adr",             32),
+            ("len",             10),
+            ("req_id",          16),
+            ("tag",              8),
             ("dat",     data_width),
-            ("channel",  8),  # for routing
-            ("user_id",  8)   # for packet identification
+            ("channel",          8),  # for routing
+            ("user_id",          8)   # for packet identification
     ]
     return EndpointDescription(layout, packetized=True)
-
 
 def completion_layout(data_width):
     layout = [
-            ("adr",    32),
-            ("len",    10),
-            ("last",    1),
-            ("req_id", 16),
-            ("cmp_id", 16),
-            ("err",     1),
-            ("tag",     8),
+            ("adr",             32),
+            ("len",             10),
+            ("last",             1),
+            ("req_id",          16),
+            ("cmp_id",          16),
+            ("err",              1),
+            ("tag",              8),
             ("dat",     data_width),
-            ("channel",  8),  # for routing
-            ("user_id",  8)   # for packet identification
+            ("channel",          8),  # for routing
+            ("user_id",          8)   # for packet identification
     ]
     return EndpointDescription(layout, packetized=True)
-
 
 def interrupt_layout():
     return [("dat", 8)]
