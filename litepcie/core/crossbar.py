@@ -2,35 +2,35 @@ from litex.gen import *
 
 from litepcie.common import *
 from litepcie.core.common import *
-from litepcie.core.tlp.controller import Controller
+from litepcie.core.tlp.controller import LitePCIeTLPController
 
 
-class Crossbar(Module):
+class LitePCIeCrossbar(Module):
     def __init__(self, data_width, max_pending_requests, with_reordering=False):
         self.data_width = data_width
         self.max_pending_requests = max_pending_requests
         self.with_reordering = with_reordering
 
-        self.master = MasterInternalPort(data_width)
-        self.slave = SlaveInternalPort(data_width)
-        self.phy_master = MasterPort(self.master)
-        self.phy_slave = SlavePort(self.slave)
+        self.master = LitePCIeMasterInternalPort(data_width)
+        self.slave = LitePCIeSlaveInternalPort(data_width)
+        self.phy_master = LitePCIeMasterPort(self.master)
+        self.phy_slave = LitePCIeSlavePort(self.slave)
 
         self.user_masters = []
         self.user_masters_channel = 0
         self.user_slaves = []
 
     def get_slave_port(self, address_decoder):
-        s = SlaveInternalPort(self.data_width, address_decoder)
+        s = LitePCIeSlaveInternalPort(self.data_width, address_decoder)
         self.user_slaves.append(s)
-        return SlavePort(s)
+        return LitePCIeSlavePort(s)
 
     def get_master_port(self, write_only=False, read_only=False):
-        m = MasterInternalPort(self.data_width, self.user_masters_channel,
-                               write_only, read_only)
+        m = LitePCIeMasterInternalPort(self.data_width, self.user_masters_channel,
+                                       write_only, read_only)
         self.user_masters_channel += 1
         self.user_masters.append(m)
-        return MasterPort(m)
+        return LitePCIeMasterPort(m)
 
     def filter_masters(self, write_only, read_only):
         masters = []
@@ -103,8 +103,8 @@ class Crossbar(Module):
             rd_rw_masters = self.filter_masters(False, True)
             rd_rw_masters += self.filter_masters(False, False)
             if rd_rw_masters != []:
-                rd_rw_master = MasterInternalPort(self.data_width)
-                controller = Controller(self.data_width,
+                rd_rw_master = LitePCIeMasterInternalPort(self.data_width)
+                controller = LitePCIeTLPController(self.data_width,
                                         self.max_pending_requests,
                                         self.with_reordering)
                 self.submodules += controller
@@ -114,7 +114,7 @@ class Crossbar(Module):
             # Arbitrate / dispatch write_only ports
             wr_masters = self.filter_masters(True, False)
             if wr_masters != []:
-                wr_master = MasterInternalPort(self.data_width)
+                wr_master = LitePCIeMasterInternalPort(self.data_width)
                 self.master_arbitrate_dispatch(wr_masters, wr_master)
                 masters.append(wr_master)
 

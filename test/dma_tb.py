@@ -6,9 +6,9 @@ from litex.soc.interconnect.stream_sim import *
 from litex.gen.sim.generic import run_simulation
 
 from litepcie.common import *
-from litepcie.core import Endpoint
-from litepcie.core.msi import MSI
-from litepcie.frontend.dma import writer, reader
+from litepcie.core import LitePCIeEndpoint
+from litepcie.core.msi import LitePCIeMSI
+from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader
 
 from test.model.host import *
 
@@ -112,9 +112,9 @@ class TB(Module):
             phy_debug=False,
             chipset_debug=False, chipset_split=True, chipset_reordering=True,
             host_debug=True)
-        self.submodules.endpoint = Endpoint(self.host.phy, max_pending_requests=8, with_reordering=True)
-        self.submodules.dma_reader = reader.DMAReader(self.endpoint, self.endpoint.crossbar.get_master_port(read_only=True))
-        self.submodules.dma_writer = writer.DMAWriter(self.endpoint, self.endpoint.crossbar.get_master_port(write_only=True))
+        self.submodules.endpoint = LitePCIeEndpoint(self.host.phy, max_pending_requests=8, with_reordering=True)
+        self.submodules.dma_reader = LitePCIeDMAReader(self.endpoint, self.endpoint.crossbar.get_master_port(read_only=True))
+        self.submodules.dma_writer = LitePCIeDMAWriter(self.endpoint, self.endpoint.crossbar.get_master_port(write_only=True))
 
         if with_converter:
                 self.submodules.up_converter = Converter(dma_layout(16), dma_layout(64))
@@ -128,7 +128,7 @@ class TB(Module):
         else:
             self.comb += self.dma_reader.source.connect(self.dma_writer.sink)
 
-        self.submodules.msi = MSI(2)
+        self.submodules.msi = LitePCIeMSI(2)
         self.comb += [
             self.msi.irqs[log2_int(DMA_READER_IRQ)].eq(self.dma_reader.table.irq),
             self.msi.irqs[log2_int(DMA_WRITER_IRQ)].eq(self.dma_writer.table.irq)

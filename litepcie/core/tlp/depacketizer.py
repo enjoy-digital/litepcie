@@ -3,7 +3,7 @@ from litex.gen import *
 from litepcie.core.tlp.common import *
 
 
-class HeaderExtracter(Module):
+class LitePCIeTLPHeaderExtracter(Module):
     def __init__(self, data_width):
         self.sink = sink = Sink(phy_layout(data_width))
         self.source = source = Source(tlp_raw_layout(data_width))
@@ -87,7 +87,7 @@ class HeaderExtracter(Module):
         )
 
 
-class Depacketizer(Module):
+class LitePCIeTLPDepacketizer(Module):
     def __init__(self, data_width, address_mask=0):
         self.sink = Sink(phy_layout(data_width))
 
@@ -97,7 +97,7 @@ class Depacketizer(Module):
         # # #
 
         # extract raw header
-        header_extracter = HeaderExtracter(data_width)
+        header_extracter = LitePCIeTLPHeaderExtracter(data_width)
         self.submodules += header_extracter
         self.comb += Record.connect(self.sink, header_extracter.sink)
         header = header_extracter.source.header

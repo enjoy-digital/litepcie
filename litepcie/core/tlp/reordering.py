@@ -5,7 +5,7 @@ from litepcie.core.common import *
 from litepcie.core.tlp.common import *
 
 
-class Reordering(Module):
+class LitePCIeTLPReordering(Module):
     def __init__(self, data_width, max_pending_requests):
         self.sink = Sink(completion_layout(data_width))
         self.source = Source(completion_layout(data_width))

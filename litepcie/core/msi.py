@@ -5,7 +5,7 @@ from litex.soc.interconnect.csr import *
 from litepcie.common import *
 
 
-class MSI(Module, AutoCSR):
+class LitePCIeMSI(Module, AutoCSR):
     def __init__(self, n=32):
         self.irqs = Signal(n)
         self.source = Source(interrupt_layout())

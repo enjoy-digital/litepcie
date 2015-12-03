@@ -3,16 +3,16 @@ from litex.gen import *
 from litepcie.common import *
 from litepcie.core.common import *
 from litepcie.core.tlp.common import *
-from litepcie.core.tlp.reordering import Reordering
+from litepcie.core.tlp.reordering import LitePCIeTLPReordering
 
 from litex.soc.interconnect.stream import SyncFIFO as SyncFlowFIFO
 
 from litex.gen.genlib.fifo import SyncFIFO
 
-class Controller(Module):
+class LitePCIeTLPController(Module):
     def __init__(self, data_width, max_pending_requests, with_reordering=False):
-        self.master_in = MasterInternalPort(data_width)
-        self.master_out = MasterInternalPort(data_width)
+        self.master_in = LitePCIeMasterInternalPort(data_width)
+        self.master_out = LitePCIeMasterInternalPort(data_width)
 
         # # #
 
@@ -75,7 +75,7 @@ class Controller(Module):
 
         # Completions mgt
         if with_reordering:
-            self.submodules.reordering = Reordering(data_width, max_pending_requests)
+            self.submodules.reordering = LitePCIeTLPReordering(data_width, max_pending_requests)
             self.comb += [
                 self.reordering.req_we.eq(info_mem_wr_port.we),
                 self.reordering.req_tag.eq(info_mem_wr_port.adr),

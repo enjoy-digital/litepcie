@@ -3,7 +3,7 @@ from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.stream_sim import seed_to_data, check
 from litex.gen.sim.generic import run_simulation
 
-from litepcie.core import Endpoint
+from litepcie.core import LitePCIeEndpoint
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
 from test.model.host import *
@@ -18,7 +18,7 @@ class TB(Module):
             phy_debug=False,
             chipset_debug=False,
             host_debug=False)
-        self.submodules.endpoint = Endpoint(self.host.phy)
+        self.submodules.endpoint = LitePCIeEndpoint(self.host.phy)
 
         self.submodules.wishbone_bridge = LitePCIeWishboneBridge(self.endpoint, lambda a: 1)
         self.submodules.sram = wishbone.SRAM(1024, bus=self.wishbone_bridge.wishbone)

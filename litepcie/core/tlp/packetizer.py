@@ -4,7 +4,7 @@ from litex.gen.genlib.misc import chooser
 from litepcie.core.tlp.common import *
 
 
-class HeaderInserter(Module):
+class LitePCIeTLPHeaderInserter(Module):
     def __init__(self, data_width):
         self.sink = sink = Sink(tlp_raw_layout(data_width))
         self.source = source = Source(phy_layout(data_width))
@@ -73,7 +73,7 @@ class HeaderInserter(Module):
         )
 
 
-class Packetizer(Module):
+class LitePCIeTLPPacketizer(Module):
     def __init__(self, data_width):
         self.req_sink = req_sink = Sink(request_layout(data_width))
         self.cmp_sink = cmp_sink = Sink(completion_layout(data_width))
@@ -180,7 +180,7 @@ class Packetizer(Module):
         self.submodules.arbitrer = Arbiter([tlp_raw_req, tlp_raw_cmp], tlp_raw)
 
         # insert header
-        header_inserter = HeaderInserter(data_width)
+        header_inserter = LitePCIeTLPHeaderInserter(data_width)
         self.submodules += header_inserter
         self.comb += [
             Record.connect(tlp_raw, header_inserter.sink),

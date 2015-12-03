@@ -10,9 +10,8 @@ from litex.soc.integration.soc_core import SoCCore
 from litex.soc.cores.uart.bridge import UARTWishboneBridge
 
 from litepcie.phy.s7pciephy import S7PCIEPHY
-from litepcie.core import Endpoint
-from litepcie.core.msi import MSI
-from litepcie.frontend.dma import DMA
+from litepcie.core import LitePCIeEndpoint, LitePCIeMSI
+from litepcie.frontend.dma import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
 
@@ -65,18 +64,17 @@ class PCIeDMASoC(SoCCore):
             with_timer=False
         )
         self.submodules.crg = _CRG(platform)
-        platform.misoc_path = "../../../../"
 
         # PCIe endpoint
         self.submodules.pcie_phy = S7PCIEPHY(platform, link_width=2)
-        self.submodules.pcie_endpoint = Endpoint(self.pcie_phy, with_reordering=True)
+        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, with_reordering=True)
 
         # PCIe Wishbone bridge
         self.add_cpu_or_bridge(LitePCIeWishboneBridge(self.pcie_endpoint, lambda a: 1))
         self.add_wb_master(self.cpu_or_bridge.wishbone)
 
         # PCIe DMA
-        self.submodules.dma = DMA(self.pcie_phy, self.pcie_endpoint, with_loopback=True)
+        self.submodules.dma = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint, with_loopback=True)
         self.dma.source.connect(self.dma.sink)
 
         if with_uart_bridge:
@@ -84,7 +82,7 @@ class PCIeDMASoC(SoCCore):
             self.add_wb_master(self.uart_bridge.wishbone)
 
         # MSI
-        self.submodules.msi = MSI()
+        self.submodules.msi = LitePCIeMSI()
         self.comb += self.msi.source.connect(self.pcie_phy.interrupt)
         self.interrupts = {
             "dma_writer":    self.dma.writer.irq,
