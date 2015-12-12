@@ -87,7 +87,7 @@ if __name__ == "__main__":
     platform = platform_module.Platform(**platform_kwargs)
     platform.litepcie_path = litepcie_path
 
-    build_name = top_class.__name__.lower() + "-" + platform_name
+    build_name = top_class.__name__.lower() + "_" + platform_name
     top_kwargs = dict((k, autotype(v)) for k, v in args.target_option)
     soc = top_class(platform, **top_kwargs)
     soc.finalize()
