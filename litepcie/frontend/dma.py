@@ -240,7 +240,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
             fifo.sink.data.eq(port.sink.dat),
             port.sink.ack.eq(fifo.sink.ack | ~enable),
         ]
-        self.comb += Record.connect(fifo.source, self.source)
+        self.comb += fifo.source.connect(self.source)
 
         fifo_ready = fifo.level < (fifo_depth//2)
         self.comb += request_ready.eq(splitter.source.stb & fifo_ready)
@@ -354,10 +354,10 @@ class LitePCIeDMALoopback(Module, AutoCSR):
         enable = self._enable.storage
         self.comb += \
                 If(enable,
-                    Record.connect(self.sink, self.source)
+                    self.sink.connect(self.source)
                 ).Else(
-                    Record.connect(self.sink, self.next_source),
-                    Record.connect(self.next_sink, self.source)
+                    self.sink.connect(self.next_source),
+                    self.next_sink.connect(self.source)
                 )
 
 
@@ -391,8 +391,8 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
 
         self.comb += \
             If(synced,
-                Record.connect(self.sink, self.next_source),
-                Record.connect(self.next_sink, self.source),
+                self.sink.connect(self.next_source),
+                self.next_sink.connect(self.source),
             ).Else(
                 # Block sink
                 self.next_source.stb.eq(0),
@@ -446,7 +446,7 @@ class LitePCIeDMA(Module, AutoCSR):
 
     def insert_optional_module(self, m):
         self.comb += [
-            Record.connect(self.source, m.sink),
-            Record.connect(m.source, self.sink)
+            self.source.connect(m.sink),
+            m.source.connect(self.sink)
         ]
         self.sink, self.source = m.next_sink, m.next_source

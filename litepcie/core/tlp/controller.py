@@ -43,7 +43,7 @@ class LitePCIeTLPController(Module):
                 NextState("SEND_WRITE")
             )
         )
-        self.comb += Record.connect(req_sink, req_source, leave_out=set(["stb", "ack"]))
+        self.comb += req_sink.connect(req_source, leave_out=set(["stb", "ack"]))
         req_fsm.act("SEND_READ",
             req_source.stb.eq(req_sink.stb),
             req_source.tag.eq(req_tag),
@@ -79,7 +79,7 @@ class LitePCIeTLPController(Module):
             self.comb += [
                 self.reordering.req_we.eq(info_mem_wr_port.we),
                 self.reordering.req_tag.eq(info_mem_wr_port.adr),
-                Record.connect(self.reordering.source, cmp_source)
+                self.reordering.source.connect(cmp_source)
             ]
             cmp_source = self.reordering.sink
 
@@ -101,7 +101,7 @@ class LitePCIeTLPController(Module):
         )
         self.comb += [
             info_mem_rd_port.adr.eq(cmp_sink.tag),
-            Record.connect(cmp_sink, cmp_source, leave_out=set(["stb", "ack"])),
+            cmp_sink.connect(cmp_source, leave_out=set(["stb", "ack"])),
             cmp_source.channel.eq(info_mem_rd_port.dat_r[:8]),
             cmp_source.user_id.eq(info_mem_rd_port.dat_r[8:])
         ]

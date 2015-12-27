@@ -183,6 +183,6 @@ class LitePCIeTLPPacketizer(Module):
         header_inserter = LitePCIeTLPHeaderInserter(data_width)
         self.submodules += header_inserter
         self.comb += [
-            Record.connect(tlp_raw, header_inserter.sink),
-            Record.connect(header_inserter.source, self.source)
+            tlp_raw.connect(header_inserter.sink),
+            header_inserter.source.connect(self.source)
         ]

@@ -34,14 +34,14 @@ class LitePCIeTLPReordering(Module):
         # store incoming completion in "sink.tag" buffer
         cases = {}
         for i in range(max_pending_requests):
-            cases[i] = [Record.connect(self.sink, reorder_buffers[i].sink)]
+            cases[i] = [self.sink.connect(reorder_buffers[i].sink)]
         cases["default"] = [self.sink.ack.eq(1)]
         self.comb += Case(self.sink.tag, cases)
 
         # read buffer according to tag_buffer order
         cases = {}
         for i in range(max_pending_requests):
-            cases[i] = [Record.connect(reorder_buffers[i].source, self.source)]
+            cases[i] = [reorder_buffers[i].source.connect(self.source)]
         cases["default"] = []
         self.comb += [
             Case(tag_buffer.source.data, cases),

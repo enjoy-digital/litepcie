@@ -99,7 +99,7 @@ class LitePCIeTLPDepacketizer(Module):
         # extract raw header
         header_extracter = LitePCIeTLPHeaderExtracter(data_width)
         self.submodules += header_extracter
-        self.comb += Record.connect(self.sink, header_extracter.sink)
+        self.comb += self.sink.connect(header_extracter.sink)
         header = header_extracter.source.header
 
 
@@ -131,7 +131,7 @@ class LitePCIeTLPDepacketizer(Module):
 
         # decode TLP request and format local request
         tlp_req = Source(tlp_request_layout(data_width))
-        self.comb += Record.connect(dispatch_sinks[0], tlp_req)
+        self.comb += dispatch_sinks[0].connect(tlp_req)
         self.comb += tlp_request_header.decode(header, tlp_req)
 
         req_source = self.req_source
@@ -151,7 +151,7 @@ class LitePCIeTLPDepacketizer(Module):
 
         # decode TLP completion and format local completion
         tlp_cmp = Source(tlp_completion_layout(data_width))
-        self.comb += Record.connect(dispatch_sinks[1], tlp_cmp)
+        self.comb += dispatch_sinks[1].connect(tlp_cmp)
         self.comb += tlp_completion_header.decode(header, tlp_cmp)
 
         cmp_source = self.cmp_source

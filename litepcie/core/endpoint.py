@@ -14,7 +14,7 @@ class LitePCIeEndpoint(Module):
 
         # # #
 
-        # TLP Packetizer / LitePCIeTLPDepacketizer
+        # TLP Packetizer / Depacketizer
         depacketizer = LitePCIeTLPDepacketizer(phy.data_width, phy.bar0_mask)
         packetizer = LitePCIeTLPPacketizer(phy.data_width)
         self.submodules += depacketizer, packetizer
@@ -29,12 +29,12 @@ class LitePCIeEndpoint(Module):
 
         # (Slave) HOST initiates the transactions
         self.comb += [
-            Record.connect(depacketizer.req_source, crossbar.phy_slave.sink),
-            Record.connect(crossbar.phy_slave.source, packetizer.cmp_sink)
+            depacketizer.req_source.connect(crossbar.phy_slave.sink),
+            crossbar.phy_slave.source.connect(packetizer.cmp_sink)
         ]
 
         # (Master) FPGA initiates the transactions
         self.comb += [
-            Record.connect(crossbar.phy_master.source, packetizer.req_sink),
-            Record.connect(depacketizer.cmp_source, crossbar.phy_master.sink)
+            crossbar.phy_master.source.connect(packetizer.req_sink),
+            depacketizer.cmp_source.connect(crossbar.phy_master.sink)
         ]
