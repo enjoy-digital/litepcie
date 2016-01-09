@@ -127,7 +127,7 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
 
         user_id = Signal(32)
         user_id_ce = Signal()
-        self.sync += If(user_id_ce, user_id.eq(user_id + max_size))
+        self.sync += If(user_id_ce, user_id.eq(user_id + 1))
         self.comb += user_id_ce.eq(sink.stb & sink.ack)
 
         length = Signal(16)
