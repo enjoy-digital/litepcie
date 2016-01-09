@@ -16,7 +16,7 @@ class LitePCIeTLPReordering(Module):
         # # #
 
         tag_buffer = SyncFIFO([("data", log2_int(max_pending_requests))],
-                              2*max_pending_requests)
+                              4*max_pending_requests)
         self.submodules += tag_buffer
         self.comb += [
             tag_buffer.sink.stb.eq(self.req_we),
@@ -26,7 +26,7 @@ class LitePCIeTLPReordering(Module):
         reorder_buffers = []
         for i in range(max_pending_requests):
             reorder_buffer = SyncFIFO(completion_layout(data_width),
-                                      2*max_request_size//(data_width//8),
+                                      4*max_request_size//(data_width//8),
                                       buffered=True)
             reorder_buffers.append(reorder_buffer)
         self.submodules += iter(reorder_buffers)
