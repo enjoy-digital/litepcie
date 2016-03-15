@@ -17,7 +17,7 @@ class LitePCIeWishboneBridge(Module):
         update_dat = Signal()
 
         fsm.act("IDLE",
-            If(port.sink.stb & port.sink.sop,
+            If(port.sink.stb,
                 If(port.sink.we,
                     NextState("WRITE"),
                 ).Else(
@@ -55,7 +55,6 @@ class LitePCIeWishboneBridge(Module):
                 port.source.dat.eq(self.wishbone.dat_r),
             )
         self.comb += [
-            port.source.sop.eq(1),
             port.source.eop.eq(1),
             port.source.len.eq(1),
             port.source.err.eq(0),

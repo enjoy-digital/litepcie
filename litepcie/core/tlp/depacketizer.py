@@ -13,10 +13,6 @@ class LitePCIeTLPHeaderExtracter(Module):
         if data_width != 64:
             raise ValueError("Current module only supports data_width of 64.")
 
-        sop = Signal()
-        sop_clr = Signal()
-        sop_set = Signal()
-        self.sync += If(sop_clr, sop.eq(0)).Elif(sop_set, sop.eq(1))
 
         eop = Signal()
         eop_clr = Signal()
@@ -38,7 +34,6 @@ class LitePCIeTLPHeaderExtracter(Module):
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            sop_set.eq(1),
             eop_clr.eq(1),
             counter_reset.eq(1),
             If(sink.stb,
@@ -75,10 +70,8 @@ class LitePCIeTLPHeaderExtracter(Module):
         ]
         fsm.act("COPY",
             source.stb.eq(sink.stb | eop),
-            source.sop.eq(sop),
             source.eop.eq(sink.eop | eop),
             If(source.stb & source.ack,
-                sop_clr.eq(1),
                 sink.ack.eq(1 & ~eop), # already acked when eop is 1
                 If(source.eop,
                     NextState("IDLE")
@@ -110,7 +103,6 @@ class LitePCIeTLPDepacketizer(Module):
         self.comb += [
             dispatch_source.stb.eq(header_extracter.source.stb),
             header_extracter.source.ack.eq(dispatch_source.ack),
-            dispatch_source.sop.eq(header_extracter.source.sop),
             dispatch_source.eop.eq(header_extracter.source.eop),
             dispatch_source.dat.eq(header_extracter.source.dat),
             dispatch_source.be.eq(header_extracter.source.be),
@@ -140,7 +132,6 @@ class LitePCIeTLPDepacketizer(Module):
             req_source.we.eq(tlp_req.stb & (Cat(tlp_req.type, tlp_req.fmt) ==
                                             fmt_type_dict["mem_wr32"])),
             tlp_req.ack.eq(req_source.ack),
-            req_source.sop.eq(tlp_req.sop),
             req_source.eop.eq(tlp_req.eop),
             req_source.adr.eq(Cat(Signal(2), tlp_req.address & (~address_mask))),
             req_source.len.eq(tlp_req.length),
@@ -158,7 +149,6 @@ class LitePCIeTLPDepacketizer(Module):
         self.comb += [
             cmp_source.stb.eq(tlp_cmp.stb),
             tlp_cmp.ack.eq(cmp_source.ack),
-            cmp_source.sop.eq(tlp_cmp.sop),
             cmp_source.eop.eq(tlp_cmp.eop),
             cmp_source.len.eq(tlp_cmp.length),
             cmp_source.last.eq(tlp_cmp.length == (tlp_cmp.byte_count[2:])),

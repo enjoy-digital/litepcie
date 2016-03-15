@@ -150,7 +150,6 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
         ]
         fsm.act("RUN",
             source.stb.eq(1),
-            source.sop.eq(offset == 0),
             If((length - offset) > max_size,
                 source.length.eq(max_size),
                 offset_ce.eq(source.ack)
@@ -206,7 +205,6 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.comb += [
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
-            port.source.sop.eq(1),
             port.source.eop.eq(1),
             port.source.we.eq(0),
             port.source.adr.eq(splitter.source.address),
@@ -231,12 +229,12 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         last_user_id = Signal(8, reset=255)
         self.sync += \
-            If(port.sink.stb & port.sink.sop & port.sink.ack,
+            If(port.sink.stb & port.sink.ack,
                 last_user_id.eq(port.sink.user_id)
             )
         self.comb += [
             fifo.sink.stb.eq(port.sink.stb),
-            fifo.sink.sop.eq(port.sink.sop & (port.sink.user_id != last_user_id)),
+            fifo.sink.sop.eq(port.sink.sop & (port.sink.user_id != last_user_id)), # TODO: adapt sop
             fifo.sink.data.eq(port.sink.dat),
             port.sink.ack.eq(fifo.sink.ack | ~enable),
         ]
@@ -248,7 +246,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # IRQ
         self.comb += self.irq.eq(splitter.source.stb &
                                  splitter.source.ack &
-                                 splitter.source.sop)
+                                 splitter.source.sop) # TODO: adapt sop
 
 
 class LitePCIeDMAWriter(Module, AutoCSR):
@@ -309,7 +307,6 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.comb += [
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
-            port.source.sop.eq(counter == 0),
             port.source.eop.eq(counter == splitter.source.length[3:] - 1),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
@@ -336,7 +333,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         # IRQ
         self.comb += self.irq.eq(splitter.source.stb &
                                  splitter.source.ack &
-                                 splitter.source.sop)
+                                 splitter.source.sop) # TODO: adapt sop
 
 
 class LitePCIeDMALoopback(Module, AutoCSR):

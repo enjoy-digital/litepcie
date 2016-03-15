@@ -40,12 +40,12 @@ class PHYstream.Endpoint(Module):
             self.packet = self.packets.pop(0)
         if self.packet.start and not self.packet.done:
             selfp.source.stb = 1
-            selfp.source.sop = 1
+            selfp.source.sop = 1 # TODO: adapt sop
             selfp.source.dat = self.packet.dat.pop(0)
             selfp.source.be = self.packet.be.pop(0)
             self.packet.start = 0
         elif selfp.source.stb == 1 and selfp.source.ack == 1:
-            selfp.source.sop = 0
+            selfp.source.sop = 0 # TODO: adapt sop
             selfp.source.eop = (len(self.packet.dat) == 1)
             if len(self.packet.dat) > 0:
                 selfp.source.stb = 1
@@ -70,7 +70,7 @@ class PHYstream.Endpoint(Module):
     def do_simulation(self, selfp):
         self.packet.done = 0
         selfp.sink.ack = 1
-        if selfp.sink.stb == 1 and selfp.sink.sop == 1:
+        if selfp.sink.stb == 1 and selfp.sink.sop == 1: # TODO: adapt sop
             self.packet.start = 1
             self.packet.dat = [selfp.sink.dat]
             self.packet.be = [selfp.sink.be]

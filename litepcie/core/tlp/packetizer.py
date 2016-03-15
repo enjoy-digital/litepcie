@@ -25,10 +25,9 @@ class LitePCIeTLPHeaderInserter(Module):
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             sink.ack.eq(1),
-            If(sink.stb & sink.sop,
+            If(sink.stb,
                 sink.ack.eq(0),
                 source.stb.eq(1),
-                source.sop.eq(1),
                 source.dat.eq(sink.header[:data_width]),
                 source.be.eq(0xff),
                 If(source.stb & source.ack,
@@ -87,7 +86,6 @@ class LitePCIeTLPPacketizer(Module):
         self.comb += [
             tlp_req.stb.eq(req_sink.stb),
             req_sink.ack.eq(tlp_req.ack),
-            tlp_req.sop.eq(req_sink.sop),
             tlp_req.eop.eq(req_sink.eop),
 
             If(req_sink.we,
@@ -124,7 +122,6 @@ class LitePCIeTLPPacketizer(Module):
         self.comb += [
             tlp_raw_req.stb.eq(tlp_req.stb),
             tlp_req.ack.eq(tlp_raw_req.ack),
-            tlp_raw_req.sop.eq(tlp_req.sop),
             tlp_raw_req.eop.eq(tlp_req.eop),
             tlp_request_header.encode(tlp_req, tlp_raw_req.header),
             tlp_raw_req.dat.eq(tlp_req.dat),
@@ -136,7 +133,6 @@ class LitePCIeTLPPacketizer(Module):
         self.comb += [
             tlp_cmp.stb.eq(cmp_sink.stb),
             cmp_sink.ack.eq(tlp_cmp.ack),
-            tlp_cmp.sop.eq(cmp_sink.sop),
             tlp_cmp.eop.eq(cmp_sink.eop),
 
             tlp_cmp.tc.eq(0),
@@ -168,7 +164,6 @@ class LitePCIeTLPPacketizer(Module):
         self.comb += [
             tlp_raw_cmp.stb.eq(tlp_cmp.stb),
             tlp_cmp.ack.eq(tlp_raw_cmp.ack),
-            tlp_raw_cmp.sop.eq(tlp_cmp.sop),
             tlp_raw_cmp.eop.eq(tlp_cmp.eop),
             tlp_completion_header.encode(tlp_cmp, tlp_raw_cmp.header),
             tlp_raw_cmp.dat.eq(tlp_cmp.dat),
