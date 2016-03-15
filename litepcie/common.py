@@ -39,7 +39,7 @@ def phy_layout(data_width):
         ("dat", data_width),
         ("be",  data_width//8)
     ]
-    return EndpointDescription(layout, packetized=True)
+    return EndpointDescription(layout)
 
 def request_layout(data_width):
     layout = [
@@ -52,7 +52,7 @@ def request_layout(data_width):
             ("channel",          8),  # for routing
             ("user_id",          8)   # for packet identification
     ]
-    return EndpointDescription(layout, packetized=True)
+    return EndpointDescription(layout)
 
 def completion_layout(data_width):
     layout = [
@@ -67,7 +67,7 @@ def completion_layout(data_width):
             ("channel",          8),  # for routing
             ("user_id",          8)   # for packet identification
     ]
-    return EndpointDescription(layout, packetized=True)
+    return EndpointDescription(layout)
 
 def interrupt_layout():
     return [("dat", 8)]
@@ -75,4 +75,4 @@ def interrupt_layout():
 
 def dma_layout(data_width):
     layout = [("data", data_width)]
-    return EndpointDescription(layout, packetized=True)
+    return EndpointDescription(layout)

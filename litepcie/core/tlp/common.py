@@ -87,7 +87,7 @@ def tlp_raw_layout(data_width):
         ("dat",    data_width),
         ("be",     data_width//8)
     ]
-    return EndpointDescription(layout, packetized=True)
+    return EndpointDescription(layout)
 
 
 def tlp_common_layout(data_width):
@@ -95,7 +95,7 @@ def tlp_common_layout(data_width):
         ("dat", data_width),
         ("be",  data_width//8)
     ]
-    return EndpointDescription(layout, packetized=True)
+    return EndpointDescription(layout)
 
 
 def tlp_request_layout(data_width):
@@ -103,7 +103,7 @@ def tlp_request_layout(data_width):
         ("dat", data_width),
         ("be",  data_width//8)
     ]
-    return EndpointDescription(layout, packetized=True)
+    return EndpointDescription(layout)
 
 
 def tlp_completion_layout(data_width):
@@ -111,4 +111,4 @@ def tlp_completion_layout(data_width):
         ("dat", data_width),
         ("be",  data_width//8)
     ]
-    return EndpointDescription(layout, packetized=True)
+    return EndpointDescription(layout)

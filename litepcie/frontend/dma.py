@@ -16,7 +16,7 @@ def descriptor_layout(with_user_id=False):
     ]
     if with_user_id:
         layout += [("user_id", 8)]
-    return EndpointDescription(layout, packetized=True)
+    return EndpointDescription(layout)
 
 
 class LitePCIeDMARequestTable(Module, AutoCSR):
