@@ -22,9 +22,9 @@ class S7PCIEPHY(Module, AutoCSR):
         self.data_width = data_width
         self.link_width = link_width
 
-        self.sink = Sink(phy_layout(data_width))
-        self.source = Source(phy_layout(data_width))
-        self.interrupt = Sink(interrupt_layout())
+        self.sink = stream.Endpoint(phy_layout(data_width))
+        self.source = stream.Endpoint(phy_layout(data_width))
+        self.interrupt = stream.Endpoint(interrupt_layout())
 
         self.id = Signal(16)
 

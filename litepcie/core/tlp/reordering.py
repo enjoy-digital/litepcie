@@ -7,8 +7,8 @@ from litepcie.core.tlp.common import *
 
 class LitePCIeTLPReordering(Module):
     def __init__(self, data_width, max_pending_requests):
-        self.sink = Sink(completion_layout(data_width))
-        self.source = Source(completion_layout(data_width))
+        self.sink = stream.Endpoint(completion_layout(data_width))
+        self.source = stream.Endpoint(completion_layout(data_width))
 
         self.req_we = Signal()
         self.req_tag = Signal(log2_int(max_pending_requests))

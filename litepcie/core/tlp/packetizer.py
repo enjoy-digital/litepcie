@@ -6,8 +6,8 @@ from litepcie.core.tlp.common import *
 
 class LitePCIeTLPHeaderInserter(Module):
     def __init__(self, data_width):
-        self.sink = sink = Sink(tlp_raw_layout(data_width))
-        self.source = source = Source(phy_layout(data_width))
+        self.sink = sink = stream.Endpoint(tlp_raw_layout(data_width))
+        self.source = source = stream.Endpoint(phy_layout(data_width))
 
         # # #
 
@@ -75,15 +75,15 @@ class LitePCIeTLPHeaderInserter(Module):
 
 class LitePCIeTLPPacketizer(Module):
     def __init__(self, data_width):
-        self.req_sink = req_sink = Sink(request_layout(data_width))
-        self.cmp_sink = cmp_sink = Sink(completion_layout(data_width))
+        self.req_sink = req_sink = stream.Endpoint(request_layout(data_width))
+        self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
 
-        self.source = Source(phy_layout(data_width))
+        self.source = stream.Endpoint(phy_layout(data_width))
 
         # # #
 
         # format TLP request and encode it
-        tlp_req = Sink(tlp_request_layout(data_width))
+        tlp_req = stream.Endpoint(tlp_request_layout(data_width))
         self.comb += [
             tlp_req.stb.eq(req_sink.stb),
             req_sink.ack.eq(tlp_req.ack),
@@ -120,7 +120,7 @@ class LitePCIeTLPPacketizer(Module):
             ),
         ]
 
-        tlp_raw_req = Sink(tlp_raw_layout(data_width))
+        tlp_raw_req = stream.Endpoint(tlp_raw_layout(data_width))
         self.comb += [
             tlp_raw_req.stb.eq(tlp_req.stb),
             tlp_req.ack.eq(tlp_raw_req.ack),
@@ -132,7 +132,7 @@ class LitePCIeTLPPacketizer(Module):
         ]
 
         # format TLP completion and encode it
-        tlp_cmp = Sink(tlp_completion_layout(data_width))
+        tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
         self.comb += [
             tlp_cmp.stb.eq(cmp_sink.stb),
             cmp_sink.ack.eq(tlp_cmp.ack),
@@ -164,7 +164,7 @@ class LitePCIeTLPPacketizer(Module):
             tlp_cmp.be.eq(0xff)
         ]
 
-        tlp_raw_cmp = Sink(tlp_raw_layout(data_width))
+        tlp_raw_cmp = stream.Endpoint(tlp_raw_layout(data_width))
         self.comb += [
             tlp_raw_cmp.stb.eq(tlp_cmp.stb),
             tlp_cmp.ack.eq(tlp_raw_cmp.ack),
@@ -176,7 +176,7 @@ class LitePCIeTLPPacketizer(Module):
         ]
 
         # arbitrate
-        tlp_raw = Sink(tlp_raw_layout(data_width))
+        tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))
         self.submodules.arbitrer = Arbiter([tlp_raw_req, tlp_raw_cmp], tlp_raw)
 
         # insert header

@@ -21,7 +21,7 @@ def descriptor_layout(with_user_id=False):
 
 class LitePCIeDMARequestTable(Module, AutoCSR):
     def __init__(self, depth):
-        self.source = source = Source(descriptor_layout())
+        self.source = source = stream.Endpoint(descriptor_layout())
 
         address_bits = len(source.address)
         length_bits = len(source.length)
@@ -110,8 +110,8 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
 
 class LitePCIeDMARequestSplitter(Module, AutoCSR):
     def __init__(self, max_size):
-        self.sink = sink = Sink(descriptor_layout())
-        self.source = source = Source(descriptor_layout(True))
+        self.sink = sink = stream.Endpoint(descriptor_layout())
+        self.source = source = stream.Endpoint(descriptor_layout(True))
 
         # # #
 
@@ -170,7 +170,7 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
 
 class LitePCIeDMAReader(Module, AutoCSR):
     def __init__(self, endpoint, port, table_depth=256):
-        self.source = Source(dma_layout(endpoint.phy.data_width))
+        self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq = Signal()
         self._enable = CSRStorage()
 
@@ -253,7 +253,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
 class LitePCIeDMAWriter(Module, AutoCSR):
     def __init__(self, endpoint, port, table_depth=256):
-        self.sink = sink = Sink(dma_layout(endpoint.phy.data_width))
+        self.sink = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq = Signal()
         self._enable = CSRStorage()
 
@@ -343,11 +343,11 @@ class LitePCIeDMALoopback(Module, AutoCSR):
     def __init__(self, data_width):
         self._enable = CSRStorage()
 
-        self.sink = Sink(dma_layout(data_width))
-        self.source = Source(dma_layout(data_width))
+        self.sink = stream.Endpoint(dma_layout(data_width))
+        self.source = stream.Endpoint(dma_layout(data_width))
 
-        self.next_source = Source(dma_layout(data_width))
-        self.next_sink = Sink(dma_layout(data_width))
+        self.next_source = stream.Endpoint(dma_layout(data_width))
+        self.next_sink = stream.Endpoint(dma_layout(data_width))
 
         # # #
 
@@ -368,11 +368,11 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
         self.ready = Signal(reset=1)
         self.pps = Signal()
 
-        self.sink = Sink(dma_layout(data_width))
-        self.source = Source(dma_layout(data_width))
+        self.sink = stream.Endpoint(dma_layout(data_width))
+        self.source = stream.Endpoint(dma_layout(data_width))
 
-        self.next_source = Source(dma_layout(data_width))
-        self.next_sink = Sink(dma_layout(data_width))
+        self.next_source = stream.Endpoint(dma_layout(data_width))
+        self.next_sink = stream.Endpoint(dma_layout(data_width))
 
         # # #
 

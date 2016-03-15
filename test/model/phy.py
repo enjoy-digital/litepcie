@@ -19,9 +19,9 @@ class PHYPacket():
         self.done = 0
 
 
-class PHYSource(Module):
+class PHYstream.Endpoint(Module):
     def __init__(self, data_width):
-        self.source = Source(phy_layout(data_width))
+        self.source = stream.Endpoint(phy_layout(data_width))
         ###
         self.packets = []
         self.packet = PHYPacket()
@@ -56,9 +56,9 @@ class PHYSource(Module):
                 selfp.source.stb = 0
 
 
-class PHYSink(Module):
+class PHYstream.Endpoint(Module):
     def __init__(self, data_width):
-        self.sink = Sink(phy_layout(data_width))
+        self.sink = stream.Endpoint(phy_layout(data_width))
         ###
         self.packet = PHYPacket()
 
@@ -94,8 +94,8 @@ class PHY(Module):
         self.max_request_size = Signal(10, reset=512)
         self.max_payload_size = Signal(8, reset=128)
 
-        self.submodules.phy_source = PHYSource(data_width)
-        self.submodules.phy_sink = PHYSink(data_width)
+        self.submodules.phy_source = PHYstream.Endpoint(data_width)
+        self.submodules.phy_sink = PHYstream.Endpoint(data_width)
 
         self.source = self.phy_source.source
         self.sink = self.phy_sink.sink

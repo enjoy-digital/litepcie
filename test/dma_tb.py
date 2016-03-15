@@ -70,7 +70,7 @@ class DMADriver():
 class InterruptHandler(Module):
     def __init__(self, debug=False):
         self.debug = debug
-        self.sink = Sink(interrupt_layout())
+        self.sink = stream.Endpoint(interrupt_layout())
         self.dma_writer_irq = 0
 
     def set_tb_selfp(self, tb_selfp):

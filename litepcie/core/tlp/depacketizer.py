@@ -5,8 +5,8 @@ from litepcie.core.tlp.common import *
 
 class LitePCIeTLPHeaderExtracter(Module):
     def __init__(self, data_width):
-        self.sink = sink = Sink(phy_layout(data_width))
-        self.source = source = Source(tlp_raw_layout(data_width))
+        self.sink = sink = stream.Endpoint(phy_layout(data_width))
+        self.source = source = stream.Endpoint(tlp_raw_layout(data_width))
 
         # # #
 
@@ -89,10 +89,10 @@ class LitePCIeTLPHeaderExtracter(Module):
 
 class LitePCIeTLPDepacketizer(Module):
     def __init__(self, data_width, address_mask=0):
-        self.sink = Sink(phy_layout(data_width))
+        self.sink = stream.Endpoint(phy_layout(data_width))
 
-        self.req_source = Source(request_layout(data_width))
-        self.cmp_source = Source(completion_layout(data_width))
+        self.req_source = stream.Endpoint(request_layout(data_width))
+        self.cmp_source = stream.Endpoint(completion_layout(data_width))
 
         # # #
 
@@ -104,8 +104,8 @@ class LitePCIeTLPDepacketizer(Module):
 
 
         # dispatch data according to fmt/type
-        dispatch_source = Source(tlp_common_layout(data_width))
-        dispatch_sinks = [Sink(tlp_common_layout(data_width)) for i in range(2)]
+        dispatch_source = stream.Endpoint(tlp_common_layout(data_width))
+        dispatch_sinks = [stream.Endpoint(tlp_common_layout(data_width)) for i in range(2)]
 
         self.comb += [
             dispatch_source.stb.eq(header_extracter.source.stb),
@@ -130,7 +130,7 @@ class LitePCIeTLPDepacketizer(Module):
             )
 
         # decode TLP request and format local request
-        tlp_req = Source(tlp_request_layout(data_width))
+        tlp_req = stream.Endpoint(tlp_request_layout(data_width))
         self.comb += dispatch_sinks[0].connect(tlp_req)
         self.comb += tlp_request_header.decode(header, tlp_req)
 
@@ -150,7 +150,7 @@ class LitePCIeTLPDepacketizer(Module):
         ]
 
         # decode TLP completion and format local completion
-        tlp_cmp = Source(tlp_completion_layout(data_width))
+        tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
         self.comb += dispatch_sinks[1].connect(tlp_cmp)
         self.comb += tlp_completion_header.decode(header, tlp_cmp)
 
