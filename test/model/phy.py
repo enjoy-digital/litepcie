@@ -19,10 +19,12 @@ class PHYPacket():
         self.done = 0
 
 
-class PHYstream.Endpoint(Module):
+class PHYSource(Module):
     def __init__(self, data_width):
         self.source = stream.Endpoint(phy_layout(data_width))
-        ###
+
+        # # #
+
         self.packets = []
         self.packet = PHYPacket()
         self.packet.done = 1
@@ -40,12 +42,10 @@ class PHYstream.Endpoint(Module):
             self.packet = self.packets.pop(0)
         if self.packet.start and not self.packet.done:
             selfp.source.stb = 1
-            selfp.source.sop = 1 # TODO: adapt sop
             selfp.source.dat = self.packet.dat.pop(0)
             selfp.source.be = self.packet.be.pop(0)
             self.packet.start = 0
         elif selfp.source.stb == 1 and selfp.source.ack == 1:
-            selfp.source.sop = 0 # TODO: adapt sop
             selfp.source.eop = (len(self.packet.dat) == 1)
             if len(self.packet.dat) > 0:
                 selfp.source.stb = 1
@@ -56,11 +56,13 @@ class PHYstream.Endpoint(Module):
                 selfp.source.stb = 0
 
 
-class PHYstream.Endpoint(Module):
+class PHYSink(Module):
     def __init__(self, data_width):
         self.sink = stream.Endpoint(phy_layout(data_width))
-        ###
+        # # #
+
         self.packet = PHYPacket()
+        self.first = True
 
     def receive(self):
         self.packet.done = 0
@@ -70,16 +72,18 @@ class PHYstream.Endpoint(Module):
     def do_simulation(self, selfp):
         self.packet.done = 0
         selfp.sink.ack = 1
-        if selfp.sink.stb == 1 and selfp.sink.sop == 1: # TODO: adapt sop
+        if selfp.sink.stb == 1 and self.first:
             self.packet.start = 1
             self.packet.dat = [selfp.sink.dat]
             self.packet.be = [selfp.sink.be]
+            self.first = False
         elif selfp.sink.stb:
             self.packet.start = 0
             self.packet.dat.append(selfp.sink.dat)
             self.packet.be.append(selfp.sink.be)
-        if (selfp.sink.stb == 1 and selfp.sink.eop == 1):
+        if selfp.sink.stb == 1 and selfp.sink.eop == 1:
             self.packet.done = 1
+            self.first = True
 
 
 class PHY(Module):
@@ -94,8 +98,8 @@ class PHY(Module):
         self.max_request_size = Signal(10, reset=512)
         self.max_payload_size = Signal(8, reset=128)
 
-        self.submodules.phy_source = PHYstream.Endpoint(data_width)
-        self.submodules.phy_sink = PHYstream.Endpoint(data_width)
+        self.submodules.phy_source = PHYSource(data_width)
+        self.submodules.phy_sink = PHYSink(data_width)
 
         self.source = self.phy_source.source
         self.sink = self.phy_sink.sink

@@ -130,8 +130,8 @@ class TB(Module):
 
         self.submodules.msi = LitePCIeMSI(2)
         self.comb += [
-            self.msi.irqs[log2_int(DMA_READER_IRQ)].eq(self.dma_reader.table.irq),
-            self.msi.irqs[log2_int(DMA_WRITER_IRQ)].eq(self.dma_writer.table.irq)
+            self.msi.irqs[log2_int(DMA_READER_IRQ)].eq(self.dma_reader.irq),
+            self.msi.irqs[log2_int(DMA_WRITER_IRQ)].eq(self.dma_writer.irq)
         ]
         self.submodules.irq_handler = InterruptHandler()
         self.comb += self.msi.source.connect(self.irq_handler.sink)
@@ -167,7 +167,7 @@ class TB(Module):
             i += self.irq_handler.dma_writer_irq
             yield
 
-        for i in range(100):
+        for i in range(1000):
             yield
         loopback_datas = self.host.read_mem(test_size, test_size)
 
@@ -175,4 +175,4 @@ class TB(Module):
         print("shift " + str(s) + " / length " + str(l) + " / errors " + str(e))
 
 if __name__ == "__main__":
-    run_simulation(TB(with_converter=False), ncycles=4000, vcd_name="my.vcd", keep_files=True)
+    run_simulation(TB(with_converter=False), ncycles=6000, vcd_name="my.vcd", keep_files=True)

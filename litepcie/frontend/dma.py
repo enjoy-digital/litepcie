@@ -32,7 +32,6 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
         self._loop_status = CSRStatus(32)
         self._level = CSRStatus(log2_int(depth))
         self._flush = CSR()
-        self.irq = Signal()
 
         # # #
 
@@ -234,7 +233,6 @@ class LitePCIeDMAReader(Module, AutoCSR):
             )
         self.comb += [
             fifo.sink.stb.eq(port.sink.stb),
-            fifo.sink.sop.eq(port.sink.sop & (port.sink.user_id != last_user_id)), # TODO: adapt sop
             fifo.sink.data.eq(port.sink.dat),
             port.sink.ack.eq(fifo.sink.ack | ~enable),
         ]
@@ -244,9 +242,18 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.comb += request_ready.eq(splitter.source.stb & fifo_ready)
 
         # IRQ
+        first = Signal(reset=1)
+        self.sync += \
+            If(splitter.source.stb & splitter.source.ack,
+                If(splitter.source.eop,
+                    first.eq(1)
+                ).Else(
+                    first.eq(0)
+                )
+            )
         self.comb += self.irq.eq(splitter.source.stb &
                                  splitter.source.ack &
-                                 splitter.source.sop) # TODO: adapt sop
+                                 first)
 
 
 class LitePCIeDMAWriter(Module, AutoCSR):
@@ -331,9 +338,18 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.sync += request_ready.eq(splitter.source.stb & fifo_ready)
 
         # IRQ
+        first = Signal(reset=1)
+        self.sync += \
+            If(splitter.source.stb & splitter.source.ack,
+                If(splitter.source.eop,
+                    first.eq(1)
+                ).Else(
+                    first.eq(0)
+                )
+            )
         self.comb += self.irq.eq(splitter.source.stb &
                                  splitter.source.ack &
-                                 splitter.source.sop) # TODO: adapt sop
+                                 first)
 
 
 class LitePCIeDMALoopback(Module, AutoCSR):

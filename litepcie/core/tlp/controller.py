@@ -36,10 +36,10 @@ class LitePCIeTLPController(Module):
         # Requests mgt
         self.submodules.req_fsm = req_fsm = FSM(reset_state="IDLE")
         req_fsm.act("IDLE",
-            If(req_sink.stb & req_sink.sop & ~req_sink.we & tag_fifo.readable, # TODO: adapt sop
+            If(req_sink.stb & ~req_sink.we & tag_fifo.readable,
                 tag_fifo.re.eq(1),
                 NextState("SEND_READ")
-            ).Elif(req_sink.stb & req_sink.sop & req_sink.we, # TODO: adapt sop
+            ).Elif(req_sink.stb & req_sink.we,
                 NextState("SEND_WRITE")
             )
         )
