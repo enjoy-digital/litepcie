@@ -98,9 +98,9 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_tx_cfg_req=self.tx_cfg_req,
                 i_tx_cfg_gnt=self.tx_cfg_gnt,
 
-                i_s_axis_tx_tvalid=self.sink.stb,
-                i_s_axis_tx_tlast=self.sink.eop,
-                o_s_axis_tx_tready=self.sink.ack,
+                i_s_axis_tx_tvalid=self.sink.valid,
+                i_s_axis_tx_tlast=self.sink.last,
+                o_s_axis_tx_tready=self.sink.ready,
                 i_s_axis_tx_tdata=self.sink.dat,
                 i_s_axis_tx_tkeep=self.sink.be,
                 i_s_axis_tx_tuser=0,
@@ -108,9 +108,9 @@ class S7PCIEPHY(Module, AutoCSR):
                 i_rx_np_ok=self.rx_np_ok,
                 i_rx_np_req=self.rx_np_req,
 
-                o_m_axis_rx_tvalid=self.source.stb,
-                o_m_axis_rx_tlast=self.source.eop,
-                i_m_axis_rx_tready=self.source.ack,
+                o_m_axis_rx_tvalid=self.source.valid,
+                o_m_axis_rx_tlast=self.source.last,
+                i_m_axis_rx_tready=self.source.ready,
                 o_m_axis_rx_tdata=self.source.dat,
                 o_m_axis_rx_tkeep=self.source.be,
                 o_m_axis_rx_tuser=Signal(4),
@@ -123,8 +123,8 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_cfg_dcommand=dcommand,
                 o_cfg_interrupt_msienable=self._msi_enable.status,
 
-                i_cfg_interrupt=self.interrupt.stb,
-                o_cfg_interrupt_rdy=self.interrupt.ack,
+                i_cfg_interrupt=self.interrupt.valid,
+                o_cfg_interrupt_rdy=self.interrupt.ready,
                 i_cfg_interrupt_di=self.interrupt.dat,
 
                 i_SHARED_QPLL_PD=self.shared_qpll_pd,

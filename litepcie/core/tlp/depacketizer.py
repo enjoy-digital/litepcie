@@ -14,10 +14,10 @@ class LitePCIeTLPHeaderExtracter(Module):
             raise ValueError("Current module only supports data_width of 64.")
 
 
-        eop = Signal()
-        eop_clr = Signal()
-        eop_set = Signal()
-        self.sync += If(eop_clr, eop.eq(0)).Elif(eop_set, eop.eq(1))
+        last = Signal()
+        last_clr = Signal()
+        last_set = Signal()
+        self.sync += If(last_clr, last.eq(0)).Elif(last_set, last.eq(1))
 
         counter = Signal(2)
         counter_reset = Signal()
@@ -34,19 +34,19 @@ class LitePCIeTLPHeaderExtracter(Module):
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            eop_clr.eq(1),
+            last_clr.eq(1),
             counter_reset.eq(1),
-            If(sink.stb,
+            If(sink.valid,
                 NextState("EXTRACT")
             )
         )
         fsm.act("EXTRACT",
-            sink.ack.eq(1),
-            If(sink.stb,
+            sink.ready.eq(1),
+            If(sink.valid,
                 counter_ce.eq(1),
                 If(counter == tlp_common_header_length*8//data_width - 1,
-                    If(sink.eop,
-                        eop_set.eq(1)
+                    If(sink.last,
+                        last_set.eq(1)
                     ),
                     NextState("COPY")
                 )
@@ -56,7 +56,7 @@ class LitePCIeTLPHeaderExtracter(Module):
             If(counter_ce,
                 self.source.header.eq(Cat(self.source.header[data_width:], sink.dat))
             ),
-            If(sink.stb & sink.ack,
+            If(sink.valid & sink.ready,
                 sink_dat_last.eq(sink.dat),
                 sink_be_last.eq(sink.be)
             )
@@ -69,11 +69,11 @@ class LitePCIeTLPHeaderExtracter(Module):
                              reverse_bits(sink.be[:4]))),
         ]
         fsm.act("COPY",
-            source.stb.eq(sink.stb | eop),
-            source.eop.eq(sink.eop | eop),
-            If(source.stb & source.ack,
-                sink.ack.eq(1 & ~eop), # already acked when eop is 1
-                If(source.eop,
+            source.valid.eq(sink.valid | last),
+            source.last.eq(sink.last | last),
+            If(source.valid & source.ready,
+                sink.ready.eq(1 & ~last), # already acked when last is 1
+                If(source.last,
                     NextState("IDLE")
                 )
             )
@@ -101,9 +101,9 @@ class LitePCIeTLPDepacketizer(Module):
         dispatch_sinks = [stream.Endpoint(tlp_common_layout(data_width)) for i in range(2)]
 
         self.comb += [
-            dispatch_source.stb.eq(header_extracter.source.stb),
-            header_extracter.source.ack.eq(dispatch_source.ack),
-            dispatch_source.eop.eq(header_extracter.source.eop),
+            dispatch_source.valid.eq(header_extracter.source.valid),
+            header_extracter.source.ready.eq(dispatch_source.ready),
+            dispatch_source.last.eq(header_extracter.source.last),
             dispatch_source.dat.eq(header_extracter.source.dat),
             dispatch_source.be.eq(header_extracter.source.be),
             tlp_common_header.decode(header, dispatch_source)
@@ -128,11 +128,11 @@ class LitePCIeTLPDepacketizer(Module):
 
         req_source = self.req_source
         self.comb += [
-            req_source.stb.eq(tlp_req.stb),
-            req_source.we.eq(tlp_req.stb & (Cat(tlp_req.type, tlp_req.fmt) ==
+            req_source.valid.eq(tlp_req.valid),
+            req_source.we.eq(tlp_req.valid & (Cat(tlp_req.type, tlp_req.fmt) ==
                                             fmt_type_dict["mem_wr32"])),
-            tlp_req.ack.eq(req_source.ack),
-            req_source.eop.eq(tlp_req.eop),
+            tlp_req.ready.eq(req_source.ready),
+            req_source.last.eq(tlp_req.last),
             req_source.adr.eq(Cat(Signal(2), tlp_req.address & (~address_mask))),
             req_source.len.eq(tlp_req.length),
             req_source.req_id.eq(tlp_req.requester_id),
@@ -147,11 +147,11 @@ class LitePCIeTLPDepacketizer(Module):
 
         cmp_source = self.cmp_source
         self.comb += [
-            cmp_source.stb.eq(tlp_cmp.stb),
-            tlp_cmp.ack.eq(cmp_source.ack),
-            cmp_source.eop.eq(tlp_cmp.eop),
+            cmp_source.valid.eq(tlp_cmp.valid),
+            tlp_cmp.ready.eq(cmp_source.ready),
+            cmp_source.last.eq(tlp_cmp.last),
             cmp_source.len.eq(tlp_cmp.length),
-            cmp_source.last.eq(tlp_cmp.length == (tlp_cmp.byte_count[2:])),
+            cmp_source.end.eq(tlp_cmp.length == (tlp_cmp.byte_count[2:])),
             cmp_source.adr.eq(tlp_cmp.lower_address),
             cmp_source.req_id.eq(tlp_cmp.requester_id),
             cmp_source.cmp_id.eq(tlp_cmp.completer_id),

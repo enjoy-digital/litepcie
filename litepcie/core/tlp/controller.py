@@ -36,28 +36,28 @@ class LitePCIeTLPController(Module):
         # Requests mgt
         self.submodules.req_fsm = req_fsm = FSM(reset_state="IDLE")
         req_fsm.act("IDLE",
-            If(req_sink.stb & ~req_sink.we & tag_fifo.readable,
+            If(req_sink.valid & ~req_sink.we & tag_fifo.readable,
                 tag_fifo.re.eq(1),
                 NextState("SEND_READ")
-            ).Elif(req_sink.stb & req_sink.we,
+            ).Elif(req_sink.valid & req_sink.we,
                 NextState("SEND_WRITE")
             )
         )
-        self.comb += req_sink.connect(req_source, leave_out=set(["stb", "ack"]))
+        self.comb += req_sink.connect(req_source, leave_out=set(["valid", "ready"]))
         req_fsm.act("SEND_READ",
-            req_source.stb.eq(req_sink.stb),
+            req_source.valid.eq(req_sink.valid),
             req_source.tag.eq(req_tag),
-            If(req_source.stb & req_source.eop & req_source.ack,
+            If(req_source.valid & req_source.last & req_source.ready,
                 NextState("UPDATE_INFO_MEM")
             ).Else(
-                req_sink.ack.eq(req_source.ack)
+                req_sink.ready.eq(req_source.ready)
             )
         )
         req_fsm.act("SEND_WRITE",
-            req_source.stb.eq(req_sink.stb),
-            req_sink.ack.eq(req_source.ack),
+            req_source.valid.eq(req_sink.valid),
+            req_sink.ready.eq(req_source.ready),
             req_source.tag.eq(32),
-            If(req_source.stb & req_source.eop & req_source.ack,
+            If(req_source.valid & req_source.last & req_source.ready,
                 NextState("IDLE")
             )
         )
@@ -68,7 +68,7 @@ class LitePCIeTLPController(Module):
         ]
         req_fsm.act("UPDATE_INFO_MEM",
             info_mem_wr_port.we.eq(1),
-            req_sink.ack.eq(1),
+            req_sink.ready.eq(1),
             NextState("IDLE")
         )
 
@@ -101,24 +101,24 @@ class LitePCIeTLPController(Module):
         )
         self.comb += [
             info_mem_rd_port.adr.eq(cmp_sink.tag),
-            cmp_sink.connect(cmp_source, leave_out=set(["stb", "ack"])),
+            cmp_sink.connect(cmp_source, leave_out=set(["valid", "ready"])),
             cmp_source.channel.eq(info_mem_rd_port.dat_r[:8]),
             cmp_source.user_id.eq(info_mem_rd_port.dat_r[8:])
         ]
         cmp_fsm.act("IDLE",
-            If(cmp_sink.stb,
+            If(cmp_sink.valid,
                 NextState("COPY"),
             ).Else(
-                cmp_sink.ack.eq(1)
+                cmp_sink.ready.eq(1)
             )
         )
         cmp_fsm.act("COPY",
-            If(cmp_sink.stb & cmp_sink.eop & cmp_sink.last,
+            If(cmp_sink.valid & cmp_sink.last & cmp_sink.end,
                 NextState("UPDATE_TAG_FIFO"),
             ).Else(
-                cmp_source.stb.eq(cmp_sink.stb),
-                cmp_sink.ack.eq(cmp_source.ack),
-                If(cmp_sink.stb & cmp_sink.eop & cmp_sink.ack,
+                cmp_source.valid.eq(cmp_sink.valid),
+                cmp_sink.ready.eq(cmp_source.ready),
+                If(cmp_sink.valid & cmp_sink.last & cmp_sink.ready,
                     NextState("IDLE")
                 )
             )
@@ -126,9 +126,9 @@ class LitePCIeTLPController(Module):
         cmp_fsm.act("UPDATE_TAG_FIFO",
             tag_fifo.we.eq(1),
             tag_fifo.din.eq(cmp_sink.tag),
-            cmp_source.stb.eq(cmp_sink.stb),
-            cmp_sink.ack.eq(cmp_source.ack),
-            If(cmp_sink.stb & cmp_sink.ack,
+            cmp_source.valid.eq(cmp_sink.valid),
+            cmp_sink.ready.eq(cmp_source.ready),
+            If(cmp_sink.valid & cmp_sink.ready,
                 NextState("IDLE")
             )
         )

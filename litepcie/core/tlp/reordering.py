@@ -19,7 +19,7 @@ class LitePCIeTLPReordering(Module):
                               4*max_pending_requests)
         self.submodules += tag_buffer
         self.comb += [
-            tag_buffer.sink.stb.eq(self.req_we),
+            tag_buffer.sink.valid.eq(self.req_we),
             tag_buffer.sink.data.eq(self.req_tag)
         ]
 
@@ -35,7 +35,7 @@ class LitePCIeTLPReordering(Module):
         cases = {}
         for i in range(max_pending_requests):
             cases[i] = [self.sink.connect(reorder_buffers[i].sink)]
-        cases["default"] = [self.sink.ack.eq(1)]
+        cases["default"] = [self.sink.ready.eq(1)]
         self.comb += Case(self.sink.tag, cases)
 
         # read buffer according to tag_buffer order
@@ -45,7 +45,7 @@ class LitePCIeTLPReordering(Module):
         cases["default"] = []
         self.comb += [
             Case(tag_buffer.source.data, cases),
-            If(self.source.stb & self.source.eop & self.source.last,
-                tag_buffer.source.ack.eq(self.source.ack)
+            If(self.source.valid & self.source.last & self.source.end,
+                tag_buffer.source.ready.eq(self.source.ready)
             )
         ]

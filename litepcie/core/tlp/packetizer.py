@@ -15,37 +15,37 @@ class LitePCIeTLPHeaderInserter(Module):
             raise ValueError("Current module only supports data_width of 64.")
 
         dat_last = Signal(data_width)
-        eop_last = Signal()
+        last_last = Signal()
         self.sync += \
-            If(sink.stb & sink.ack,
+            If(sink.valid & sink.ready,
                 dat_last.eq(sink.dat),
-                eop_last.eq(sink.eop)
+                last_last.eq(sink.last)
             )
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            sink.ack.eq(1),
-            If(sink.stb,
-                sink.ack.eq(0),
-                source.stb.eq(1),
+            sink.ready.eq(1),
+            If(sink.valid,
+                sink.ready.eq(0),
+                source.valid.eq(1),
                 source.dat.eq(sink.header[:data_width]),
                 source.be.eq(0xff),
-                If(source.stb & source.ack,
+                If(source.valid & source.ready,
                     NextState("INSERT"),
                 )
             )
         )
         fsm.act("INSERT",
-            source.stb.eq(1),
-            source.eop.eq(sink.eop),
+            source.valid.eq(1),
+            source.last.eq(sink.last),
             # XXX add genericity
             source.dat.eq(Cat(sink.header[data_width:96],
                               reverse_bytes(sink.dat[:32]))),
             source.be.eq(Cat(Signal(4, reset=0xf),
                              reverse_bits(sink.be[:4]))),
-            If(source.stb & source.ack,
-                sink.ack.eq(1),
-                If(source.eop,
+            If(source.valid & source.ready,
+                sink.ready.eq(1),
+                If(source.last,
                     NextState("IDLE")
                 ).Else(
                     NextState("COPY")
@@ -53,19 +53,19 @@ class LitePCIeTLPHeaderInserter(Module):
             )
         )
         fsm.act("COPY",
-            source.stb.eq(sink.stb | eop_last),
-            source.eop.eq(eop_last),
+            source.valid.eq(sink.valid | last_last),
+            source.last.eq(last_last),
             # XXX add genericity
             source.dat.eq(Cat(reverse_bytes(dat_last[32:64]),
                               reverse_bytes(sink.dat[:32]))),
-            If(eop_last,
+            If(last_last,
                 source.be.eq(0x0f)
             ).Else(
                 source.be.eq(0xff)
             ),
-            If(source.stb & source.ack,
-                sink.ack.eq(~eop_last),
-                If(source.eop,
+            If(source.valid & source.ready,
+                sink.ready.eq(~last_last),
+                If(source.last,
                     NextState("IDLE")
                 )
             )
@@ -84,9 +84,9 @@ class LitePCIeTLPPacketizer(Module):
         # format TLP request and encode it
         tlp_req = stream.Endpoint(tlp_request_layout(data_width))
         self.comb += [
-            tlp_req.stb.eq(req_sink.stb),
-            req_sink.ack.eq(tlp_req.ack),
-            tlp_req.eop.eq(req_sink.eop),
+            tlp_req.valid.eq(req_sink.valid),
+            req_sink.ready.eq(tlp_req.ready),
+            tlp_req.last.eq(req_sink.last),
 
             If(req_sink.we,
                 Cat(tlp_req.type, tlp_req.fmt).eq(fmt_type_dict["mem_wr32"])
@@ -120,9 +120,9 @@ class LitePCIeTLPPacketizer(Module):
 
         tlp_raw_req = stream.Endpoint(tlp_raw_layout(data_width))
         self.comb += [
-            tlp_raw_req.stb.eq(tlp_req.stb),
-            tlp_req.ack.eq(tlp_raw_req.ack),
-            tlp_raw_req.eop.eq(tlp_req.eop),
+            tlp_raw_req.valid.eq(tlp_req.valid),
+            tlp_req.ready.eq(tlp_raw_req.ready),
+            tlp_raw_req.last.eq(tlp_req.last),
             tlp_request_header.encode(tlp_req, tlp_raw_req.header),
             tlp_raw_req.dat.eq(tlp_req.dat),
             tlp_raw_req.be.eq(tlp_req.be),
@@ -131,9 +131,9 @@ class LitePCIeTLPPacketizer(Module):
         # format TLP completion and encode it
         tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
         self.comb += [
-            tlp_cmp.stb.eq(cmp_sink.stb),
-            cmp_sink.ack.eq(tlp_cmp.ack),
-            tlp_cmp.eop.eq(cmp_sink.eop),
+            tlp_cmp.valid.eq(cmp_sink.valid),
+            cmp_sink.ready.eq(tlp_cmp.ready),
+            tlp_cmp.last.eq(cmp_sink.last),
 
             tlp_cmp.tc.eq(0),
             tlp_cmp.td.eq(0),
@@ -162,9 +162,9 @@ class LitePCIeTLPPacketizer(Module):
 
         tlp_raw_cmp = stream.Endpoint(tlp_raw_layout(data_width))
         self.comb += [
-            tlp_raw_cmp.stb.eq(tlp_cmp.stb),
-            tlp_cmp.ack.eq(tlp_raw_cmp.ack),
-            tlp_raw_cmp.eop.eq(tlp_cmp.eop),
+            tlp_raw_cmp.valid.eq(tlp_cmp.valid),
+            tlp_cmp.ready.eq(tlp_raw_cmp.ready),
+            tlp_raw_cmp.last.eq(tlp_cmp.last),
             tlp_completion_header.encode(tlp_cmp, tlp_raw_cmp.header),
             tlp_raw_cmp.dat.eq(tlp_cmp.dat),
             tlp_raw_cmp.be.eq(tlp_cmp.be),

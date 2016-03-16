@@ -25,4 +25,4 @@ class LitePCIeMSI(Module, AutoCSR):
         self.sync += vector.eq(~clear & (vector | self.irqs))
 
         # send irq
-        self.comb += self.source.stb.eq((vector & enable) != 0)
+        self.comb += self.source.valid.eq((vector & enable) != 0)

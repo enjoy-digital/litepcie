@@ -80,9 +80,9 @@ class InterruptHandler(Module):
         tb_selfp = self.tb_selfp
         tb_selfp.msi._clear.r = 0
         tb_selfp.msi._clear.re = 0
-        selfp.sink.ack = 1
+        selfp.sink.ready = 1
         self.dma_writer_irq = 0
-        if selfp.sink.stb and (selfp.simulator.cycle_counter%4 == 0):
+        if selfp.sink.valid and (selfp.simulator.cycle_counter%4 == 0):
             # get vector
             irq_vector = tb_selfp.msi._vector.status
 

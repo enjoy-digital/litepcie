@@ -41,19 +41,19 @@ class PHYSource(Module):
         if len(self.packets) and self.packet.done:
             self.packet = self.packets.pop(0)
         if self.packet.start and not self.packet.done:
-            selfp.source.stb = 1
+            selfp.source.valid = 1
             selfp.source.dat = self.packet.dat.pop(0)
             selfp.source.be = self.packet.be.pop(0)
             self.packet.start = 0
-        elif selfp.source.stb == 1 and selfp.source.ack == 1:
-            selfp.source.eop = (len(self.packet.dat) == 1)
+        elif selfp.source.valid == 1 and selfp.source.ready == 1:
+            selfp.source.last = (len(self.packet.dat) == 1)
             if len(self.packet.dat) > 0:
-                selfp.source.stb = 1
+                selfp.source.valid = 1
                 selfp.source.dat = self.packet.dat.pop(0)
                 selfp.source.be = self.packet.be.pop(0)
             else:
                 self.packet.done = 1
-                selfp.source.stb = 0
+                selfp.source.valid = 0
 
 
 class PHYSink(Module):
@@ -71,17 +71,17 @@ class PHYSink(Module):
 
     def do_simulation(self, selfp):
         self.packet.done = 0
-        selfp.sink.ack = 1
-        if selfp.sink.stb == 1 and self.first:
+        selfp.sink.ready = 1
+        if selfp.sink.valid == 1 and self.first:
             self.packet.start = 1
             self.packet.dat = [selfp.sink.dat]
             self.packet.be = [selfp.sink.be]
             self.first = False
-        elif selfp.sink.stb:
+        elif selfp.sink.valid:
             self.packet.start = 0
             self.packet.dat.append(selfp.sink.dat)
             self.packet.be.append(selfp.sink.be)
-        if selfp.sink.stb == 1 and selfp.sink.eop == 1:
+        if selfp.sink.valid == 1 and selfp.sink.last == 1:
             self.packet.done = 1
             self.first = True
 

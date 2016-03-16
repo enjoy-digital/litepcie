@@ -58,7 +58,7 @@ def completion_layout(data_width):
     layout = [
             ("adr",             32),
             ("len",             10),
-            ("last",             1),
+            ("end",              1),
             ("req_id",          16),
             ("cmp_id",          16),
             ("err",              1),
