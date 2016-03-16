@@ -1,6 +1,7 @@
 from litex.gen import *
 from litex.gen.genlib.misc import chooser, displacer
 
+from litex.soc.interconnect.stream import *
 from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
@@ -186,7 +187,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # requests from table are splitted in chunks of "max_size"
         self.table = table = LitePCIeDMARequestTable(table_depth)
         splitter = LitePCIeDMARequestSplitter(endpoint.phy.max_request_size)
-        self.submodules += table, BufferizeEndpoints("source")(ResetInserter()(splitter))
+        self.submodules += table, BufferizeEndpoints({"source": DIR_SOURCE})(ResetInserter()(splitter))
         self.comb += [
             splitter.reset.eq(~enable),
             table.source.connect(splitter.sink)
@@ -297,7 +298,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         # requests from table are splitted in chunks of "max_size"
         self.table = table = LitePCIeDMARequestTable(table_depth)
         splitter = LitePCIeDMARequestSplitter(endpoint.phy.max_payload_size)
-        self.submodules += table, BufferizeEndpoints("source")(ResetInserter()(splitter))
+        self.submodules += table, BufferizeEndpoints({"source": DIR_SOURCE})(ResetInserter()(splitter))
         self.comb += [
             splitter.reset.eq(~enable),
             table.source.connect(splitter.sink)
