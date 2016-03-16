@@ -1,7 +1,7 @@
 import random
 
 from litex.gen import *
-from litex.soc.interconnect.stream import Converter
+from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream_sim import *
 from litex.gen.sim.generic import run_simulation
 
@@ -117,8 +117,8 @@ class TB(Module):
         self.submodules.dma_writer = LitePCIeDMAWriter(self.endpoint, self.endpoint.crossbar.get_master_port(write_only=True))
 
         if with_converter:
-                self.submodules.up_converter = Converter(dma_layout(16), dma_layout(64))
-                self.submodules.down_converter = Converter(dma_layout(64), dma_layout(16))
+                self.submodules.up_converter = stream.StrideConverter(dma_layout(16), dma_layout(64))
+                self.submodules.down_converter = stream.StrideConverter(dma_layout(64), dma_layout(16))
 
                 self.comb += [
                     self.dma_reader.source.connect(self.down_converter.sink),
