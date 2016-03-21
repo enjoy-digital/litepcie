@@ -33,7 +33,9 @@ class Chipset(Module):
         self.root_id = root_id
         self.debug = debug
         self.with_reordering = with_reordering
-        ###
+        
+        # # #
+        
         self.rd32_data = []
         self.cmp_queue = []
         self.en = False
@@ -50,8 +52,8 @@ class Chipset(Module):
     def wr32(self, adr, data):
         wr32 = WR32()
         wr32.fmt             = 0b10
-        wr32.type             = 0b00000
-        wr32.length         = len(data)
+        wr32.type            = 0b00000
+        wr32.length          = len(data)
         wr32.first_be        = 0xf
         wr32.address         = adr
         wr32.requester_id    = self.root_id

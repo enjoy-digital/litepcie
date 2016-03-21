@@ -37,28 +37,30 @@ class PHYSource(Module):
         while packet.done == 0:
             yield
 
-    def do_simulation(self, selfp):
-        if len(self.packets) and self.packet.done:
-            self.packet = self.packets.pop(0)
-        if self.packet.start and not self.packet.done:
-            selfp.source.valid = 1
-            selfp.source.dat = self.packet.dat.pop(0)
-            selfp.source.be = self.packet.be.pop(0)
-            self.packet.start = 0
-        elif selfp.source.valid == 1 and selfp.source.ready == 1:
-            selfp.source.last = (len(self.packet.dat) == 1)
-            if len(self.packet.dat) > 0:
-                selfp.source.valid = 1
-                selfp.source.dat = self.packet.dat.pop(0)
-                selfp.source.be = self.packet.be.pop(0)
-            else:
-                self.packet.done = 1
-                selfp.source.valid = 0
-
+    def generator(self):
+        while True:
+            if len(self.packets) and self.packet.done:
+                self.packet = self.packets.pop(0)
+            if self.packet.start and not self.packet.done:
+                yield self.source.valid.eq(1)
+                yield self.source.dat.eq(self.packet.dat.pop(0))
+                yield self.source.be.eq(self.packet.be.pop(0))
+                self.packet.start = 0
+            elif (yield self.source.valid) == 1 and (yield self.source.ready) == 1:
+                self.source.last = (len(self.packet.dat) == 1)
+                if len(self.packet.dat) > 0:
+                    yield self.source.valid.eq(1)
+                    yield self.source.dat.eq(self.packet.dat.pop(0))
+                    yield self.source.be.eq(self.packet.be.pop(0))
+                else:
+                    self.packet.done = 1
+                    yield self.source.valid.eq(0)
+            yield
 
 class PHYSink(Module):
     def __init__(self, data_width):
         self.sink = stream.Endpoint(phy_layout(data_width))
+
         # # #
 
         self.packet = PHYPacket()
@@ -69,21 +71,23 @@ class PHYSink(Module):
         while self.packet.done == 0:
             yield
 
-    def do_simulation(self, selfp):
-        self.packet.done = 0
-        selfp.sink.ready = 1
-        if selfp.sink.valid == 1 and self.first:
-            self.packet.start = 1
-            self.packet.dat = [selfp.sink.dat]
-            self.packet.be = [selfp.sink.be]
-            self.first = False
-        elif selfp.sink.valid:
-            self.packet.start = 0
-            self.packet.dat.append(selfp.sink.dat)
-            self.packet.be.append(selfp.sink.be)
-        if selfp.sink.valid == 1 and selfp.sink.last == 1:
-            self.packet.done = 1
-            self.first = True
+    def generator(self):
+        while True:
+            self.packet.done = 0
+            yield self.sink.ready.eq(1)
+            if (yield self.sink.valid) == 1 and self.first:
+                self.packet.start = 1
+                self.packet.dat = [(yield self.sink.dat)]
+                self.packet.be = [(yield self.sink.be)]
+                self.first = False
+            elif (yield self.sink.valid):
+                self.packet.start = 0
+                self.packet.dat.append((yield self.sink.dat))
+                self.packet.be.append((yield self.sink.be))
+            if (yield self.sink.valid) == 1 and (yield self.sink.last) == 1:
+                self.packet.done = 1
+                self.first = True
+            yield
 
 
 class PHY(Module):
