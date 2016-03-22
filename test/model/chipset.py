@@ -5,7 +5,7 @@ from litex.soc.interconnect.stream_sim import print_with_prefix
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 
-from test.model.tlp import *
+from model.tlp import *
 
 
 def print_chipset(s):
@@ -33,9 +33,9 @@ class Chipset(Module):
         self.root_id = root_id
         self.debug = debug
         self.with_reordering = with_reordering
-        
+
         # # #
-        
+
         self.rd32_data = []
         self.cmp_queue = []
         self.en = False

@@ -5,7 +5,7 @@ from litex.soc.interconnect.stream_sim import seed_to_data, check
 from litepcie.core import LitePCIeEndpoint
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
-from test.model.host import *
+from model.host import *
 
 root_id = 0x100
 endpoint_id = 0x400

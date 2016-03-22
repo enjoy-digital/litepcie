@@ -10,7 +10,7 @@ from litepcie.core import LitePCIeEndpoint
 from litepcie.core.msi import LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader
 
-from test.model.host import *
+from model.host import *
 
 DMA_READER_IRQ = 1
 DMA_WRITER_IRQ = 2
