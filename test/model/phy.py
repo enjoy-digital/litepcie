@@ -47,7 +47,7 @@ class PHYSource(Module):
                 yield self.source.be.eq(self.packet.be.pop(0))
                 self.packet.start = 0
             elif (yield self.source.valid) == 1 and (yield self.source.ready) == 1:
-                self.source.last = (len(self.packet.dat) == 1)
+                yield self.source.last.eq(len(self.packet.dat) == 1)
                 if len(self.packet.dat) > 0:
                     yield self.source.valid.eq(1)
                     yield self.source.dat.eq(self.packet.dat.pop(0))

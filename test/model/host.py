@@ -54,7 +54,7 @@ class Host(Module):
         elif isinstance(msg, RD32):
             self.rd32_queue.append(msg)
 
-    def gen_simulation(self, selfp):
+    def generator(self):
         while True:
             if len(self.rd32_queue):
                 msg = self.rd32_queue.pop(0)
@@ -62,5 +62,4 @@ class Host(Module):
                 length = msg.length*4
                 data = self.read_mem(address, length)
                 self.chipset.cmp(msg.requester_id, data, byte_count=length, tag=msg.tag, with_split=self.chipset_split)
-            else:
-                yield
+            yield

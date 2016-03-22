@@ -134,7 +134,7 @@ class Chipset(Module):
                 print_chipset(parse_dwords(dwords))
             self.phy.send(dwords)
 
-    def gen_simulation(self, selfp):
+    def generator(self):
         while True:
             if self.en:
                 dwords = self.phy.receive()
