@@ -54,6 +54,7 @@ class Host(Module):
         elif isinstance(msg, RD32):
             self.rd32_queue.append(msg)
 
+    @passive
     def generator(self):
         while True:
             if len(self.rd32_queue):

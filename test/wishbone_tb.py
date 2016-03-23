@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from litex.gen import *
 from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.stream_sim import seed_to_data, check
@@ -34,7 +35,6 @@ def main_generator(dut):
 
     s, l, e = check(wr_datas, rd_datas)
     print("shift " + str(s) + " / length " + str(l) + " / errors " + str(e))
-
 
 if __name__ == "__main__":
     tb = TB()

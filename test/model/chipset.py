@@ -134,6 +134,7 @@ class Chipset(Module):
                 print_chipset(parse_dwords(dwords))
             self.phy.send(dwords)
 
+    @passive
     def generator(self):
         while True:
             if self.en:

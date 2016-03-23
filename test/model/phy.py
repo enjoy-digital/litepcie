@@ -37,6 +37,7 @@ class PHYSource(Module):
         while packet.done == 0:
             yield
 
+    @passive
     def generator(self):
         while True:
             if len(self.packets) and self.packet.done:
@@ -71,6 +72,7 @@ class PHYSink(Module):
         while self.packet.done == 0:
             yield
 
+    @passive
     def generator(self):
         while True:
             self.packet.done = 0

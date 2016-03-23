@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import random
 
 from litex.gen import *
@@ -73,6 +74,7 @@ class InterruptHandler(Module):
     def clear_dma_writer_irq_count(self):
         self.dma_writer_irq_count = 0
 
+    @passive
     def generator(self, dut):
         last_valid = 0
         while True:
@@ -168,10 +170,6 @@ def main_generator(dut):
 
     s, l, e = check(host_datas, loopback_datas)
     print("shift " + str(s) + " / length " + str(l) + " / errors " + str(e))
-
-    # XXX: find a way to exit properly
-    import sys
-    sys.exit()
 
 if __name__ == "__main__":
     tb = TB()
