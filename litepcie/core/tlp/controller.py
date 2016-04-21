@@ -43,7 +43,7 @@ class LitePCIeTLPController(Module):
                 NextState("SEND_WRITE")
             )
         )
-        self.comb += req_sink.connect(req_source, leave_out=set(["valid", "ready"]))
+        self.comb += req_sink.connect(req_source, omit=set(["valid", "ready"]))
         req_fsm.act("SEND_READ",
             req_source.valid.eq(req_sink.valid),
             req_source.tag.eq(req_tag),
@@ -101,7 +101,7 @@ class LitePCIeTLPController(Module):
         )
         self.comb += [
             info_mem_rd_port.adr.eq(cmp_sink.tag),
-            cmp_sink.connect(cmp_source, leave_out=set(["valid", "ready"])),
+            cmp_sink.connect(cmp_source, omit=set(["valid", "ready"])),
             cmp_source.channel.eq(info_mem_rd_port.dat_r[:8]),
             cmp_source.user_id.eq(info_mem_rd_port.dat_r[8:])
         ]
