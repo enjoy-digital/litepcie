@@ -48,10 +48,8 @@ class PCIeDMASoC(SoCCore):
         "dma_reader": 1
     }
     interrupt_map.update(SoCCore.interrupt_map)
-    mem_map = {
-        "csr": 0x00000000,  # (shadow @0x80000000)
-    }
-    mem_map.update(SoCCore.mem_map)
+    mem_map = SoCCore.mem_map
+    mem_map["csr"] = 0x00000000
 
     def __init__(self, platform, with_uart_bridge=True):
         clk_freq = 125*1000000
