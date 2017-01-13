@@ -285,7 +285,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # Request generation
         request_ready = Signal()
-        counter = Signal(max=(2**len(endpoint.phy.max_payload_size))/8)
+        counter = Signal(max=(2**len(endpoint.phy.max_payload_size))//8)
         counter_reset = Signal()
         counter_ce = Signal()
         self.sync += \
