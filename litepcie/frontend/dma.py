@@ -27,22 +27,22 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
         address_bits = len(source.address)
         length_bits = len(source.length)
 
-        self._value = CSRStorage(address_bits + length_bits)
-        self._we = CSR()
-        self._loop_prog_n = CSRStorage()
-        self._loop_status = CSRStatus(32)
-        self._level = CSRStatus(log2_int(depth))
-        self._flush = CSR()
+        self.value = CSRStorage(address_bits + length_bits)
+        self.we = CSR()
+        self.loop_prog_n = CSRStorage()
+        self.loop_status = CSRStatus(32)
+        self.level = CSRStatus(log2_int(depth))
+        self.flush = CSR()
 
         # # #
 
         # CSR signals
-        value = self._value.storage
-        we = self._we.r & self._we.re
-        loop_prog_n = self._loop_prog_n.storage
-        loop_status = self._loop_status.status
-        level = self._level.status
-        flush = self._flush.r & self._flush.re
+        value = self.value.storage
+        we = self.we.r & self.we.re
+        loop_prog_n = self.loop_prog_n.storage
+        loop_status = self.loop_status.status
+        level = self.level.status
+        flush = self.flush.r & self.flush.re
 
         # FIFO
 
@@ -171,11 +171,11 @@ class LitePCIeDMAReader(Module, AutoCSR):
     def __init__(self, endpoint, port, table_depth=256):
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq = Signal()
-        self._enable = CSRStorage()
+        self.enable = CSRStorage()
 
         # # #
 
-        enable = self._enable.storage
+        enable = self.enable.storage
 
         max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
         max_pending_words = endpoint.max_pending_requests*max_words_per_request
@@ -261,11 +261,11 @@ class LitePCIeDMAWriter(Module, AutoCSR):
     def __init__(self, endpoint, port, table_depth=256):
         self.sink = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq = Signal()
-        self._enable = CSRStorage()
+        self.enable = CSRStorage()
 
         # # #
 
-        enable = self._enable.storage
+        enable = self.enable.storage
 
         max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
         fifo_depth = 4*max_words_per_request
@@ -355,7 +355,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
 class LitePCIeDMALoopback(Module, AutoCSR):
     def __init__(self, data_width):
-        self._enable = CSRStorage()
+        self.enable = CSRStorage()
 
         self.sink = stream.Endpoint(dma_layout(data_width))
         self.source = stream.Endpoint(dma_layout(data_width))
@@ -365,7 +365,7 @@ class LitePCIeDMALoopback(Module, AutoCSR):
 
         # # #
 
-        enable = self._enable.storage
+        enable = self.enable.storage
         self.comb += \
                 If(enable,
                     self.sink.connect(self.source)
@@ -377,8 +377,8 @@ class LitePCIeDMALoopback(Module, AutoCSR):
 
 class LitePCIeDMASynchronizer(Module, AutoCSR):
     def __init__(self, data_width):
-        self._bypass = CSRStorage()
-        self._enable = CSRStorage()
+        self.bypass = CSRStorage()
+        self.enable = CSRStorage()
         self.ready = Signal(reset=1)
         self.pps = Signal()
 
@@ -390,8 +390,8 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
 
         # # #
 
-        bypass = self._bypass.storage
-        enable = self._enable.storage
+        bypass = self.bypass.storage
+        enable = self.enable.storage
         synced = Signal()
 
         self.sync += \

@@ -10,18 +10,18 @@ class LitePCIeMSI(Module, AutoCSR):
         self.irqs = Signal(n)
         self.source = stream.Endpoint(interrupt_layout())
 
-        self._enable = CSRStorage(n)
-        self._clear = CSR(n)
-        self._vector = CSRStatus(n)
+        self.enable = CSRStorage(n)
+        self.clear = CSR(n)
+        self.vector = CSRStatus(n)
 
         # # #
 
-        enable = self._enable.storage
+        enable = self.enable.storage
         clear = Signal(n)
-        self.comb += If(self._clear.re, clear.eq(self._clear.r))
+        self.comb += If(self.clear.re, clear.eq(self.clear.r))
 
         # memorize and clear irqs
-        vector = self._vector.status
+        vector = self.vector.status
         self.sync += vector.eq(~clear & (vector | self.irqs))
 
         # send irq

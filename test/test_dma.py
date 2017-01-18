@@ -8,7 +8,8 @@ from litex.soc.interconnect.stream_sim import *
 from litepcie.common import *
 from litepcie.core import LitePCIeEndpoint
 from litepcie.core.msi import LitePCIeMSI
-from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader
+from litepcie.frontend.dma import (LitePCIeDMAWriter,
+                                   LitePCIeDMAReader)
 
 from test.model.host import *
 
@@ -27,36 +28,36 @@ class DMADriver:
         self.dut = dut
 
     def set_prog_mode(self):
-        yield self.dma.table._loop_prog_n.storage.eq(0)
+        yield self.dma.table.loop_prog_n.storage.eq(0)
         yield
 
     def set_loop_mode(self):
-        yield self.dma.table._loop_prog_n.storage.eq(1)
+        yield self.dma.table.loop_prog_n.storage.eq(1)
         yield
 
     def flush(self):
-        yield self.dma.table._flush.re.eq(1)
+        yield self.dma.table.flush.re.eq(1)
         yield
-        yield self.dma.table._flush.re.eq(0)
+        yield self.dma.table.flush.re.eq(0)
         yield
 
     def program_descriptor(self, address, length):
         value = address
         value |= (length << 32)
 
-        yield self.dma.table._value.storage.eq(value)
-        yield self.dma.table._we.r.eq(1)
-        yield self.dma.table._we.re.eq(1)
+        yield self.dma.table.value.storage.eq(value)
+        yield self.dma.table.we.r.eq(1)
+        yield self.dma.table.we.re.eq(1)
         yield
-        yield self.dma.table._we.re.eq(0)
+        yield self.dma.table.we.re.eq(0)
         yield
 
     def enable(self):
-        yield self.dma._enable.storage.eq(1)
+        yield self.dma.enable.storage.eq(1)
         yield
 
     def disable(self):
-        yield self.dma._enable.storage.eq(0)
+        yield self.dma.enable.storage.eq(0)
         yield
 
 
@@ -78,12 +79,12 @@ class InterruptHandler(Module):
     def generator(self, dut):
         last_valid = 0
         while True:
-            yield dut.msi._clear.r.eq(0)
-            yield dut.msi._clear.re.eq(0)
+            yield dut.msi.clear.r.eq(0)
+            yield dut.msi.clear.re.eq(0)
             yield self.sink.ready.eq(1)
             if (yield self.sink.valid) and not last_valid:
                 # get vector
-                irq_vector = (yield dut.msi._vector.status)
+                irq_vector = (yield dut.msi.vector.status)
 
                 # handle irq
                 if irq_vector & DMA_READER_IRQ:
@@ -91,16 +92,16 @@ class InterruptHandler(Module):
                     if self.debug:
                         print("DMA_READER IRQ, count: {:d}".format(self.dma_reader_irq_count))
                     # clear msi
-                    yield dut.msi._clear.re.eq(1)
-                    yield dut.msi._clear.r.eq((yield dut.msi._clear.r) | DMA_READER_IRQ)
+                    yield dut.msi.clear.re.eq(1)
+                    yield dut.msi.clear.r.eq((yield dut.msi.clear.r) | DMA_READER_IRQ)
 
                 if irq_vector & DMA_WRITER_IRQ:
                     self.dma_writer_irq_count += 1
                     if self.debug:
                         print("DMA_WRITER IRQ, count: {:d}".format(self.dma_writer_irq_count))
                     # clear msi
-                    yield dut.msi._clear.re.eq(1)
-                    yield dut.msi._clear.r.eq((yield dut.msi._clear.r) | DMA_WRITER_IRQ)
+                    yield dut.msi.clear.re.eq(1)
+                    yield dut.msi.clear.r.eq((yield dut.msi.clear.r) | DMA_WRITER_IRQ)
             last_valid = (yield self.sink.valid)
             yield
 
@@ -159,7 +160,7 @@ def main_generator(dut):
     for i in range(8):
         yield from dma_writer_driver.program_descriptor(test_size + (test_size//8)*i, test_size//8)
 
-    yield dut.msi._enable.storage.eq(DMA_READER_IRQ | DMA_WRITER_IRQ)
+    yield dut.msi.enable.storage.eq(DMA_READER_IRQ | DMA_WRITER_IRQ)
 
     yield from dma_reader_driver.enable()
     yield from dma_writer_driver.enable()
