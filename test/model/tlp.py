@@ -16,7 +16,7 @@ tlp_headers_dict = {
 }
 
 
-class TLP():
+class TLP:
     def __init__(self, name, dwords=[0, 0, 0]):
         self.name = name
         self.header = dwords[:3]
@@ -69,7 +69,7 @@ class CPL():
         TLP.__init__(self, "CPL", dwords)
 
 
-class Unknown():
+class Unknown:
     def __repr__(self):
         r = "UNKNOWN\n"
         return r

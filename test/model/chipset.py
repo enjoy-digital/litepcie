@@ -5,7 +5,7 @@ from litex.soc.interconnect.stream_sim import print_with_prefix
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 
-from model.tlp import *
+from test.model.tlp import *
 
 
 def print_chipset(s):
@@ -142,7 +142,7 @@ class Chipset(Module):
                 if dwords is not None:
                     msg = parse_dwords(dwords)
                     if self.debug:
-                        print_chipset(" <<<<<<<< (Callback)")
+                        print_chipset("<<<<<<<< (Callback)")
                         print_chipset(msg)
                     self.host_callback(msg)
                 self.cmp_callback()

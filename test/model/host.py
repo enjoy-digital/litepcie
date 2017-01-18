@@ -3,9 +3,9 @@ from litex.soc.interconnect.stream_sim import print_with_prefix
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 
-from model.phy import PHY
-from model.tlp import *
-from model.chipset import Chipset
+from test.model.phy import PHY
+from test.model.tlp import *
+from test.model.chipset import Chipset
 
 
 def print_host(s):
@@ -33,14 +33,14 @@ class Host(Module):
 
     def write_mem(self, adr, data):
         if self.debug:
-            print_host("Writing {} bytes at 0x{:08x}".format(len(data)*4, adr))
+            print_host("Writing {} bytes @0x{:08x}".format(len(data)*4, adr))
         current_adr = (adr-self.base)//4
         for i in range(len(data)):
             self.buffer[current_adr+i] = data[i]
 
     def read_mem(self, adr, length=1):
         if self.debug:
-            print_host("Reading {} bytes at 0x{:08x}".format(length, adr))
+            print_host("Reading {} bytes @0x{:08x}".format(length, adr))
         current_adr = (adr-self.base)//4
         data = []
         for i in range(length//4):

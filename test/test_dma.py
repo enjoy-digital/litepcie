@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+import unittest
 import random
 
 from litex.gen import *
@@ -10,7 +10,7 @@ from litepcie.core import LitePCIeEndpoint
 from litepcie.core.msi import LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader
 
-from model.host import *
+from test.model.host import *
 
 DMA_READER_IRQ = 1
 DMA_WRITER_IRQ = 2
@@ -21,7 +21,7 @@ max_length = Signal(8, reset=128)
 dma_size = 1024
 
 
-class DMADriver():
+class DMADriver:
     def __init__(self, dma, dut):
         self.dma = getattr(dut, dma)
         self.dut = dut
@@ -105,10 +105,10 @@ class InterruptHandler(Module):
             yield
 
 
-test_size = 4*1024
+test_size = 1024
 
 
-class TB(Module):
+class DUT(Module):
     def __init__(self, with_converter=False):
         self.submodules.host = Host(64, root_id, endpoint_id,
             phy_debug=False,
@@ -136,10 +136,14 @@ class TB(Module):
         self.submodules.irq_handler = InterruptHandler(debug=False)
         self.comb += self.msi.source.connect(self.irq_handler.sink)
 
+
+host_datas = [seed_to_data(i, True) for i in range(test_size//4)]
+loopback_datas = []
+
 def main_generator(dut):
     dut.host.malloc(0x00000000, test_size*2)
     dut.host.chipset.enable()
-    host_datas = [seed_to_data(i, True) for i in range(test_size//4)]
+    
     dut.host.write_mem(0x00000000, host_datas)
 
     dma_reader_driver = DMADriver("dma_reader", dut)
@@ -166,20 +170,23 @@ def main_generator(dut):
     for i in range(1000):
         yield
 
-    loopback_datas = dut.host.read_mem(test_size, test_size)
+    for data in dut.host.read_mem(test_size, test_size):
+        loopback_datas.append(data)
 
-    s, l, e = check(host_datas, loopback_datas)
-    print("shift " + str(s) + " / length " + str(l) + " / errors " + str(e))
 
-if __name__ == "__main__":
-    tb = TB()
-    generators = {
-        "sys" :   [main_generator(tb),
-                   tb.irq_handler.generator(tb),
-                   tb.host.generator(),
-                   tb.host.chipset.generator(),
-                   tb.host.phy.phy_sink.generator(),
-                   tb.host.phy.phy_source.generator()]
-    }
-    clocks = {"sys": 10}
-    run_simulation(tb, generators, clocks, vcd_name="sim.vcd")
+class TestBIST(unittest.TestCase):
+    def test(self):
+        dut = DUT()
+        generators = {
+            "sys" : [
+                main_generator(dut),
+                dut.irq_handler.generator(dut),
+                dut.host.generator(),
+                dut.host.chipset.generator(),
+                dut.host.phy.phy_sink.generator(),
+                dut.host.phy.phy_source.generator()
+            ]
+        }
+        clocks = {"sys": 10}
+        run_simulation(dut, generators, clocks, vcd_name="sim.vcd")
+        self.assertEqual(host_datas, loopback_datas)

@@ -11,7 +11,7 @@ def print_chipset(s):
 
 
 # PHY Layer model
-class PHYPacket():
+class PHYPacket:
     def __init__(self, dat=[], be=[]):
         self.dat = dat
         self.be = be
