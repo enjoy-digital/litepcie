@@ -1,5 +1,3 @@
-from litex.soc.interconnect.stream_sim import print_with_prefix
-
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 
@@ -9,20 +7,29 @@ from test.model.chipset import Chipset
 
 
 def print_host(s):
-    print_with_prefix(s, "[HOST] ")
+    print("[HOST] {}".format(s))
 
 
 # Host model
 class Host(Module):
-    def __init__(self, data_width, root_id, endpoint_id, bar0_size=1*MB,
+    def __init__(self, data_width,
+                 root_id, endpoint_id,
+                 bar0_size=1*MB,
                  phy_debug=False,
-                 chipset_debug=False, chipset_split=False, chipset_reordering=False,
+                 chipset_debug=False,
+                 chipset_split=False,
+                 chipset_reordering=False,
                  host_debug=False):
         self.debug = host_debug
         self.chipset_split = chipset_split
-        ###
+
+        # # #
+
         self.submodules.phy = PHY(data_width, endpoint_id, bar0_size, phy_debug)
-        self.submodules.chipset = Chipset(self.phy, root_id, chipset_debug, chipset_reordering)
+        self.submodules.chipset = Chipset(self.phy,
+                                          root_id,
+                                          chipset_debug,
+                                          chipset_reordering)
         self.chipset.set_host_callback(self.callback)
 
         self.rd32_queue = []
@@ -62,5 +69,8 @@ class Host(Module):
                 address = msg.address*4
                 length = msg.length*4
                 data = self.read_mem(address, length)
-                self.chipset.cmp(msg.requester_id, data, byte_count=length, tag=msg.tag, with_split=self.chipset_split)
+                self.chipset.cmp(msg.requester_id, data,
+                                 byte_count=length,
+                                 tag=msg.tag,
+                                 with_split=self.chipset_split)
             yield

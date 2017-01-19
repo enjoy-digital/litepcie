@@ -77,7 +77,7 @@ class MSIHandler(Module):
                 if irq_vector & DMA_READER_IRQ:
                     self.dma_reader_irq_count += 1
                     if self.debug:
-                        print("DMA_READER IRQ, count: {:d}".format(self.dma_reader_irq_count))
+                        print("[MSI] dma_reader_irq (n: {:d})".format(self.dma_reader_irq_count))
                     # clear msi
                     yield from dut.msi.clear.write((yield from dut.msi.clear.read()) |
                                                    DMA_READER_IRQ)
@@ -85,7 +85,7 @@ class MSIHandler(Module):
                 if irq_vector & DMA_WRITER_IRQ:
                     self.dma_writer_irq_count += 1
                     if self.debug:
-                        print("DMA_WRITER IRQ, count: {:d}".format(self.dma_writer_irq_count))
+                        print("[MSI] dma_writer_irq (n: {:d})".format(self.dma_writer_irq_count))
                     # clear msi
                     yield from dut.msi.clear.write((yield from dut.msi.clear.read()) |
                                                    DMA_WRITER_IRQ)

@@ -1,7 +1,5 @@
 import random
 
-from litex.soc.interconnect.stream_sim import print_with_prefix
-
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 
@@ -9,7 +7,7 @@ from test.model.tlp import *
 
 
 def print_chipset(s):
-    print_with_prefix(s, "[CHIPSET] ")
+    print("[CHIPSET] {}".format(s))
 
 
 def find_cmp_tags(queue):
@@ -86,7 +84,8 @@ class Chipset(Module):
             print_chipset("<<<<<<<<")
             print_chipset(cpld)
 
-    def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0, with_split=False):
+    def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0,
+            with_split=False):
         if with_split:
             d = random.choice([64, 128, 256])
             n = byte_count//d
@@ -95,7 +94,8 @@ class Chipset(Module):
             else:
                 for i in range(n):
                     cmp_data = data[i*byte_count//(4*n):(i+1)*byte_count//(4*n)]
-                    self.cmp(req_id, cmp_data, byte_count=byte_count-i*byte_count//n, tag=tag)
+                    self.cmp(req_id, cmp_data,
+                        byte_count=byte_count-i*byte_count//n, tag=tag)
         else:
             if len(data) == 0:
                 fmt = 0b00

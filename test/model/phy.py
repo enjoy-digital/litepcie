@@ -1,13 +1,11 @@
 import math
 
-from litex.soc.interconnect.stream_sim import print_with_prefix
-
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 
 
-def print_chipset(s):
-    print_with_prefix(s, "[PHY] ")
+def print_phyy(s):
+    print("[PHY] {}".format(s))
 
 
 # PHY Layer model
@@ -47,7 +45,8 @@ class PHYSource(Module):
                 yield self.source.dat.eq(self.packet.dat.pop(0))
                 yield self.source.be.eq(self.packet.be.pop(0))
                 self.packet.start = 0
-            elif (yield self.source.valid) == 1 and (yield self.source.ready) == 1:
+            elif ((yield self.source.valid) == 1 and 
+                  (yield self.source.ready) == 1):
                 yield self.source.last.eq(len(self.packet.dat) == 1)
                 if len(self.packet.dat) > 0:
                     yield self.source.valid.eq(1)
@@ -150,7 +149,8 @@ class PHY(Module):
     def receive(self):
         if self.phy_sink.packet.done:
             self.phy_sink.packet.done = 0
-            return self.packet2dwords(self.phy_sink.packet.dat, self.phy_sink.packet.be)
+            return self.packet2dwords(self.phy_sink.packet.dat,
+                                      self.phy_sink.packet.be)
         else:
             return None
 

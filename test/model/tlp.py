@@ -1,5 +1,3 @@
-from litex.soc.interconnect.stream_sim import print_with_prefix
-
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 
@@ -78,7 +76,7 @@ fmt_type_dict = {
     fmt_type_dict["mem_rd32"]: (RD32, 3),
     fmt_type_dict["mem_wr32"]: (WR32, 4),
     fmt_type_dict["cpld"]:     (CPLD, 4),
-    fmt_type_dict["cpl"]:      (CPL, 3)
+    fmt_type_dict["cpl"]:      ( CPL, 3)
 }
 
 
