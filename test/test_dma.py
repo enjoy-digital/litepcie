@@ -3,7 +3,7 @@ import random
 
 from litex.gen import *
 from litex.soc.interconnect import stream
-from litex.soc.interconnect.stream_sim import *
+from litex.soc.interconnect.stream_sim import seed_to_data
 
 from litepcie.common import *
 from litepcie.core import LitePCIeEndpoint
@@ -28,40 +28,28 @@ class DMADriver:
         self.dut = dut
 
     def set_prog_mode(self):
-        yield self.dma.table.loop_prog_n.storage.eq(0)
-        yield
+        yield from self.dma.table.loop_prog_n.write(0)
 
     def set_loop_mode(self):
-        yield self.dma.table.loop_prog_n.storage.eq(1)
-        yield
+        yield from self.dma.table.loop_prog_n.write(1)
 
     def flush(self):
-        yield self.dma.table.flush.re.eq(1)
-        yield
-        yield self.dma.table.flush.re.eq(0)
-        yield
+        yield from self.dma.table.flush.write(1)
 
     def program_descriptor(self, address, length):
         value = address
         value |= (length << 32)
-
-        yield self.dma.table.value.storage.eq(value)
-        yield self.dma.table.we.r.eq(1)
-        yield self.dma.table.we.re.eq(1)
-        yield
-        yield self.dma.table.we.re.eq(0)
-        yield
+        yield from self.dma.table.value.write(value)
+        yield from self.dma.table.we.write(1)
 
     def enable(self):
-        yield self.dma.enable.storage.eq(1)
-        yield
+        yield from self.dma.enable.write(1)
 
     def disable(self):
-        yield self.dma.enable.storage.eq(0)
-        yield
+        yield from self.dma.enable.write(0)
 
 
-class InterruptHandler(Module):
+class MSIHandler(Module):
     def __init__(self, debug=False):
         self.debug = debug
         self.sink = stream.Endpoint(interrupt_layout())
@@ -79,8 +67,7 @@ class InterruptHandler(Module):
     def generator(self, dut):
         last_valid = 0
         while True:
-            yield dut.msi.clear.r.eq(0)
-            yield dut.msi.clear.re.eq(0)
+            yield from dut.msi.clear.write(0)
             yield self.sink.ready.eq(1)
             if (yield self.sink.valid) and not last_valid:
                 # get vector
@@ -92,16 +79,17 @@ class InterruptHandler(Module):
                     if self.debug:
                         print("DMA_READER IRQ, count: {:d}".format(self.dma_reader_irq_count))
                     # clear msi
-                    yield dut.msi.clear.re.eq(1)
-                    yield dut.msi.clear.r.eq((yield dut.msi.clear.r) | DMA_READER_IRQ)
+                    yield from dut.msi.clear.write((yield from dut.msi.clear.read()) |
+                                                   DMA_READER_IRQ)
 
                 if irq_vector & DMA_WRITER_IRQ:
                     self.dma_writer_irq_count += 1
                     if self.debug:
                         print("DMA_WRITER IRQ, count: {:d}".format(self.dma_writer_irq_count))
                     # clear msi
-                    yield dut.msi.clear.re.eq(1)
-                    yield dut.msi.clear.r.eq((yield dut.msi.clear.r) | DMA_WRITER_IRQ)
+                    yield from dut.msi.clear.write((yield from dut.msi.clear.read()) |
+                                                   DMA_WRITER_IRQ)
+
             last_valid = (yield self.sink.valid)
             yield
 
@@ -120,8 +108,11 @@ class DUT(Module):
         self.submodules.dma_writer = LitePCIeDMAWriter(self.endpoint, self.endpoint.crossbar.get_master_port(write_only=True))
 
         if with_converter:
-                self.submodules.up_converter = stream.StrideConverter(dma_layout(16), dma_layout(64))
-                self.submodules.down_converter = stream.StrideConverter(dma_layout(64), dma_layout(16))
+                up_converter = stream.StrideConverter(dma_layout(16),
+                                                      dma_layout(64))
+                down_converter = stream.StrideConverter(dma_layout(64),
+                                                        dma_layout(16))
+                self.submodules += up_converter, down_converter
                 self.submodules += stream.Pipeline(self.dma_reader,
                                                    self.down_converter,
                                                    self.up_converter,
@@ -134,8 +125,8 @@ class DUT(Module):
             self.msi.irqs[log2_int(DMA_READER_IRQ)].eq(self.dma_reader.irq),
             self.msi.irqs[log2_int(DMA_WRITER_IRQ)].eq(self.dma_writer.irq)
         ]
-        self.submodules.irq_handler = InterruptHandler(debug=False)
-        self.comb += self.msi.source.connect(self.irq_handler.sink)
+        self.submodules.msi_handler = MSIHandler(debug=False)
+        self.comb += self.msi.source.connect(self.msi_handler.sink)
 
 
 host_datas = [seed_to_data(i, True) for i in range(test_size//4)]
@@ -165,7 +156,7 @@ def main_generator(dut):
     yield from dma_reader_driver.enable()
     yield from dma_writer_driver.enable()
 
-    while dut.irq_handler.dma_writer_irq_count != 8:
+    while dut.msi_handler.dma_writer_irq_count != 8:
         yield
 
     for i in range(1000):
@@ -181,7 +172,7 @@ class TestBIST(unittest.TestCase):
         generators = {
             "sys" : [
                 main_generator(dut),
-                dut.irq_handler.generator(dut),
+                dut.msi_handler.generator(dut),
                 dut.host.generator(),
                 dut.host.chipset.generator(),
                 dut.host.phy.phy_sink.generator(),
