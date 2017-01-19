@@ -3,11 +3,11 @@
          / /__/ / __/ -_) ___/ /___/ // -_)
         /____/_/\__/\__/_/   \___/___/\__/
 
-        Copyright 2015-2016 / EnjoyDigital
+        Copyright 2015-2017 / EnjoyDigital
 
      A small footprint and configurable PCIe core
       with MMAP interface and scatter-gather DMA
-                powered by Migen
+                powered by LiteX
 
 [> Intro
 ---------
@@ -40,8 +40,9 @@ design flow by generating the verilog rtl that you will use as a standard core.
 
 [> FPGA Proven
 ---------------
-LiteEth is already used in commercial and open-source designs:
+LitePCIe is already used in commercial and open-source designs:
 - PCIe SDR MIMO 2x2: http://www.amarisoft.com/document/SDR-MIMO-PCIe-Card.pdf
+- PCIe TLP sniffer/injector: https://ramtin-amin.fr/#nvmedma
 
 
 [> Possible improvements
@@ -49,6 +50,7 @@ LiteEth is already used in commercial and open-source designs:
 - add standardized interfaces (AXI, Avalon-ST)
 - add support for PCIe Gen2 X4 and X8 on 7-Series
 - clean up 7-Series wrappers
+- add Ultrascale support
 - add Altera/Lattice support
 - ... See below Support and consulting :)
 
@@ -67,9 +69,9 @@ devel [AT] lists.m-labs.hk.
   python3 setup.py install
   cd ..
 
-3. Build and load PCIe DMA loopback design (only for KC705 for now):
+3. Build PCIe DMA loopback design (only for KC705 for now):
   go to example_designs/
-  run ./make.py all load-bitstream
+  run ./make.py all
 
 4. Build and load Linux Driver:
   go to software/linux/kernel
@@ -83,12 +85,11 @@ devel [AT] lists.m-labs.hk.
 
 [> Simulations
 ---------------
-  Simulations are available in test:
-    - wishbone_tb
-    - dma_tb
-  To run a simulation:
-    go to test/
-    make <simulation_name>
+  Unit tests are available in ./test/.
+  To run all the unit tests:
+    ./setup.py test
+  Tests can also be run individually:
+    python3 -m unittest test.test_name
 
 [> Tests
 ---------
