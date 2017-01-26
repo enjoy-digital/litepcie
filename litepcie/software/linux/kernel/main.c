@@ -273,7 +273,7 @@ static int litepcie_dma_wait(LitePCIeState *s, struct litepcie_ioctl_dma_wait *m
             m->tx_buf_num = 0;
         }
         if (s->rx_dma_started) {
-            m->rx_buf_num = (litepcie_readl(s, CSR_DMA_WRITER_TABLE_LOOP_STATUS_ADDR) & 0xfffff);
+            m->rx_buf_num = (litepcie_readl(s, CSR_DMA_WRITER_TABLE_LOOP_STATUS_ADDR) & 0xffff);
         } else {
             m->rx_buf_num = 0;
         }
