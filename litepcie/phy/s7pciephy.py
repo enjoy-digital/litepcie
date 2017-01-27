@@ -7,7 +7,7 @@ from litepcie.common import *
 
 
 class S7PCIEPHY(Module, AutoCSR):
-    def __init__(self, platform, data_width=64, link_width=2, bar0_size=1*MB):
+    def __init__(self, platform, data_width=64, link_width=2, bar0_size=1*MB, cd="clk125"):
         pads = platform.request("pcie_x"+str(link_width))
         self.data_width = data_width
         self.link_width = link_width
@@ -33,11 +33,11 @@ class S7PCIEPHY(Module, AutoCSR):
 
         clk100 = Signal()
         self.specials += Instance("IBUFDS_GTE2",
-                i_CEB=0,
-                i_I=pads.clk_p,
-                i_IB=pads.clk_n,
-                o_O=clk100,
-                o_ODIV2=Signal()
+            i_CEB=0,
+            i_I=pads.clk_p,
+            i_IB=pads.clk_n,
+            o_O=clk100,
+            o_ODIV2=Signal()
         )
 
         bus_number = Signal(8)
@@ -45,6 +45,37 @@ class S7PCIEPHY(Module, AutoCSR):
         function_number = Signal(3)
         command = Signal(16)
         dcommand = Signal(16)
+
+        # tx cdc
+        if cd == "clk125":
+            s_axis_tx = self.sink
+        else:
+            tx_cdc = stream.AsyncFIFO(phy_layout(data_width), 4)
+            tx_cdc = ClockDomainsRenamer({"write": cd, "read": "clk125"})(tx_cdc)
+            self.submodules += tx_cdc
+            self.comb += self.sink.connect(tx_cdc.sink)
+            s_axis_tx = tx_cdc.source
+
+        # rx cdc
+        if cd == "clk125":
+            m_axis_rx = self.sink
+        else:
+            rx_cdc = stream.AsyncFIFO(phy_layout(data_width), 4)
+            rx_cdc = ClockDomainsRenamer({"write": "clk125", "read": cd})(rx_cdc)
+            self.submodules += rx_cdc
+            self.comb += rx_cdc.source.connect(self.source)
+            m_axis_rx = rx_cdc.sink
+
+        # interrupt cdc
+        if cd == "clk125":
+            cfg_interrupt = self.interrupt
+        else:
+            interrupt_cdc = stream.AsyncFIFO(interrupt_layout(), 4)
+            interrupt_cdc = ClockDomainsRenamer({"write": cd, "read": "clk125"})(interrupt_cdc)
+            self.submodules += interrupt_cdc
+            self.comb += self.interrupt.connect(interrupt_cdc.sink)
+            cfg_interrupt = interrupt_cdc.source
+
 
         xc7_transceivers = {
             "xc7k": "GTX",
@@ -74,21 +105,21 @@ class S7PCIEPHY(Module, AutoCSR):
                 #o_tx_cfg_req=,
                 i_tx_cfg_gnt=1,
 
-                i_s_axis_tx_tvalid=self.sink.valid,
-                i_s_axis_tx_tlast=self.sink.last,
-                o_s_axis_tx_tready=self.sink.ready,
-                i_s_axis_tx_tdata=self.sink.dat,
-                i_s_axis_tx_tkeep=self.sink.be,
+                i_s_axis_tx_tvalid=s_axis_tx.valid,
+                i_s_axis_tx_tlast=s_axis_tx.last,
+                o_s_axis_tx_tready=s_axis_tx.ready,
+                i_s_axis_tx_tdata=s_axis_tx.dat,
+                i_s_axis_tx_tkeep=s_axis_tx.be,
                 i_s_axis_tx_tuser=0,
 
                 i_rx_np_ok=1,
                 i_rx_np_req=1,
 
-                o_m_axis_rx_tvalid=self.source.valid,
-                o_m_axis_rx_tlast=self.source.last,
-                i_m_axis_rx_tready=self.source.ready,
-                o_m_axis_rx_tdata=self.source.dat,
-                o_m_axis_rx_tkeep=self.source.be,
+                o_m_axis_rx_tvalid=m_axis_rx.valid,
+                o_m_axis_rx_tlast=m_axis_rx.last,
+                i_m_axis_rx_tready=m_axis_rx.ready,
+                o_m_axis_rx_tdata=m_axis_rx.dat,
+                o_m_axis_rx_tkeep=m_axis_rx.be,
                 o_m_axis_rx_tuser=Signal(4),
 
                 #o_cfg_to_turnoff=,
@@ -99,9 +130,9 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_cfg_dcommand=dcommand,
                 o_cfg_interrupt_msienable=self._msi_enable.status,
 
-                i_cfg_interrupt=self.interrupt.valid,
-                o_cfg_interrupt_rdy=self.interrupt.ready,
-                i_cfg_interrupt_di=self.interrupt.dat,
+                i_cfg_interrupt=cfg_interrupt.valid,
+                o_cfg_interrupt_rdy=cfg_interrupt.ready,
+                i_cfg_interrupt_di=cfg_interrupt.dat,
 
                 i_SHARED_QPLL_PD=0,
                 i_SHARED_QPLL_RST=0,
