@@ -6,19 +6,9 @@ from litex.soc.interconnect.csr import *
 from litepcie.common import *
 
 
-def get_gt(device):
-            if device[:4] == "xc7k":
-                return "GTX"
-            elif device[:4] == "xc7a":
-                return "GTP"
-            else:
-                raise ValueError("Unsupported device"+device)
-
-
 class S7PCIEPHY(Module, AutoCSR):
     def __init__(self, platform, data_width=64, link_width=2, bar0_size=1*MB):
         pads = platform.request("pcie_x"+str(link_width))
-        device = platform.device
         self.data_width = data_width
         self.link_width = link_width
 
@@ -27,16 +17,6 @@ class S7PCIEPHY(Module, AutoCSR):
         self.interrupt = stream.Endpoint(interrupt_layout())
 
         self.id = Signal(16)
-
-        self.tx_buf_av = Signal(8)
-        self.tx_terr_drop = Signal()
-        self.tx_cfg_req = Signal()
-        self.tx_cfg_gnt = Signal(reset=1)
-
-        self.rx_np_ok = Signal(reset=1)
-        self.rx_np_req = Signal(reset=1)
-
-        self.cfg_to_turnoff = Signal()
 
         self._lnk_up = CSRStatus()
         self._msi_enable = CSRStatus()
@@ -48,15 +28,6 @@ class S7PCIEPHY(Module, AutoCSR):
 
         self.bar0_size = bar0_size
         self.bar0_mask = get_bar_mask(bar0_size)
-
-        # SHARED clock
-        # In case we want to use the second QPLL of the quad
-        self.shared_qpll_pd = Signal(reset=1)
-        self.shared_qpll_rst = Signal(reset=1)
-        self.shared_qpll_refclk = Signal()
-        self.shared_qpll_outclk = Signal()
-        self.shared_qpll_outrefclk = Signal()
-        self.shared_qpll_lock = Signal()
 
         # # #
 
@@ -75,9 +46,14 @@ class S7PCIEPHY(Module, AutoCSR):
         command = Signal(16)
         dcommand = Signal(16)
 
+        xc7_transceivers = {
+            "xc7k": "GTX",
+            "xc7a": "GTP"
+        }
+
         self.specials += Instance("pcie_phy",
                 p_C_DATA_WIDTH=data_width,
-                p_C_PCIE_GT_DEVICE=get_gt(device),
+                p_C_PCIE_GT_DEVICE=xc7_transceivers[platform.device[:4]],
                 p_C_BAR0=get_bar_mask(self.bar0_size),
 
                 i_sys_clk=clk100,
@@ -93,10 +69,10 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_user_reset=ResetSignal("clk125"),
                 o_user_lnk_up=self._lnk_up.status,
 
-                o_tx_buf_av=self.tx_buf_av,
-                o_tx_terr_drop=self.tx_terr_drop,
-                o_tx_cfg_req=self.tx_cfg_req,
-                i_tx_cfg_gnt=self.tx_cfg_gnt,
+                #o_tx_buf_av=,
+                #o_tx_terr_drop=,
+                #o_tx_cfg_req=,
+                i_tx_cfg_gnt=1,
 
                 i_s_axis_tx_tvalid=self.sink.valid,
                 i_s_axis_tx_tlast=self.sink.last,
@@ -105,8 +81,8 @@ class S7PCIEPHY(Module, AutoCSR):
                 i_s_axis_tx_tkeep=self.sink.be,
                 i_s_axis_tx_tuser=0,
 
-                i_rx_np_ok=self.rx_np_ok,
-                i_rx_np_req=self.rx_np_req,
+                i_rx_np_ok=1,
+                i_rx_np_req=1,
 
                 o_m_axis_rx_tvalid=self.source.valid,
                 o_m_axis_rx_tlast=self.source.last,
@@ -115,7 +91,7 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_m_axis_rx_tkeep=self.source.be,
                 o_m_axis_rx_tuser=Signal(4),
 
-                o_cfg_to_turnoff=self.cfg_to_turnoff,
+                #o_cfg_to_turnoff=,
                 o_cfg_bus_number=bus_number,
                 o_cfg_device_number=device_number,
                 o_cfg_function_number=function_number,
@@ -127,12 +103,12 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_cfg_interrupt_rdy=self.interrupt.ready,
                 i_cfg_interrupt_di=self.interrupt.dat,
 
-                i_SHARED_QPLL_PD=self.shared_qpll_pd,
-                i_SHARED_QPLL_RST=self.shared_qpll_rst,
-                i_SHARED_QPLL_REFCLK=self.shared_qpll_refclk,
-                o_SHARED_QPLL_OUTCLK=self.shared_qpll_outclk,
-                o_SHARED_QPLL_OUTREFCLK=self.shared_qpll_outrefclk,
-                o_SHARED_QPLL_LOCK=self.shared_qpll_lock,
+                i_SHARED_QPLL_PD=0,
+                i_SHARED_QPLL_RST=0,
+                i_SHARED_QPLL_REFCLK=0,
+                #o_SHARED_QPLL_OUTCLK=,
+                #o_SHARED_QPLL_OUTREFCLK=,
+                #o_SHARED_QPLL_LOCK=,
         )
 
         # id
@@ -155,7 +131,7 @@ class S7PCIEPHY(Module, AutoCSR):
 
         litepcie_phy_path = os.path.abspath(os.path.dirname(__file__))
         platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common"))
-        if device[:4] == "xc7k":
+        if platform.device[:4] == "xc7k":
             platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "kintex7"))
-        elif device[:4] == "xc7a":
+        elif platform.device[:4] == "xc7a":
             platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "artix7"))
