@@ -134,8 +134,8 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_cfg_interrupt_rdy=cfg_interrupt.ready,
                 i_cfg_interrupt_di=cfg_interrupt.dat,
 
-                i_SHARED_QPLL_PD=0,
-                i_SHARED_QPLL_RST=0,
+                i_SHARED_QPLL_PD=1,
+                i_SHARED_QPLL_RST=1,
                 i_SHARED_QPLL_REFCLK=0,
                 #o_SHARED_QPLL_OUTCLK=,
                 #o_SHARED_QPLL_OUTREFCLK=,
