@@ -41,7 +41,7 @@ design flow by generating the verilog rtl that you will use as a standard core.
 [> FPGA Proven
 ---------------
 LitePCIe is already used in commercial and open-source designs:
-- PCIe SDR MIMO 2x2: http://www.amarisoft.com/document/SDR-MIMO-PCIe-Card.pdf
+- PCIe SDR MIMO 2x2: https://www.amarisoft.com/products-lte-ue-ots-sdr-pcie/#sdr
 - PCIe TLP sniffer/injector: https://ramtin-amin.fr/#nvmedma
 
 
