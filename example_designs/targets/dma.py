@@ -7,7 +7,7 @@ from litex.soc.interconnect.csr import *
 from litex.soc.interconnect import wishbone
 
 from litex.soc.integration.soc_core import SoCCore
-from litex.soc.cores.uart.bridge import UARTWishboneBridge
+from litex.soc.cores.uart import UARTWishboneBridge
 
 from litepcie.phy.s7pciephy import S7PCIEPHY
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI
