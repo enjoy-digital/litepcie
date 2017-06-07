@@ -31,14 +31,15 @@ class S7PCIEPHY(Module, AutoCSR):
 
         # # #
 
-        clk100 = Signal()
+        pcie_clk100 = Signal()
         self.specials += Instance("IBUFDS_GTE2",
             i_CEB=0,
             i_I=pads.clk_p,
             i_IB=pads.clk_n,
-            o_O=clk100,
-            o_ODIV2=Signal()
+            o_O=pcie_clk100
         )
+        pcie_clk100.attr.add("keep")
+        platform.add_period_constraint(pcie_clk100, 10.0)
 
         self.clock_domains.cd_pcie = ClockDomain()
         self.cd_pcie.clk.attr.add("keep")
@@ -91,7 +92,7 @@ class S7PCIEPHY(Module, AutoCSR):
                 p_C_PCIE_GT_DEVICE=xc7_transceivers[platform.device[:4]],
                 p_C_BAR0=get_bar_mask(self.bar0_size),
 
-                i_sys_clk=clk100,
+                i_sys_clk=pcie_clk100,
                 i_sys_rst_n=pads.rst_n,
 
                 o_pci_exp_txp=pads.tx_p,
