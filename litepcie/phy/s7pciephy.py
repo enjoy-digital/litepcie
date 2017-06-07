@@ -7,7 +7,7 @@ from litepcie.common import *
 
 
 class S7PCIEPHY(Module, AutoCSR):
-    def __init__(self, platform, data_width=64, link_width=2, bar0_size=1*MB, cd="clk125"):
+    def __init__(self, platform, data_width=64, link_width=2, bar0_size=1*MB, cd="sys"):
         pads = platform.request("pcie_x"+str(link_width))
         self.data_width = data_width
         self.link_width = link_width
@@ -40,6 +40,10 @@ class S7PCIEPHY(Module, AutoCSR):
             o_ODIV2=Signal()
         )
 
+        self.clock_domains.cd_pcie = ClockDomain()
+        self.cd_pcie.clk.attr.add("keep")
+        platform.add_period_constraint(self.cd_pcie.clk, 8.0)
+
         bus_number = Signal(8)
         device_number = Signal(5)
         function_number = Signal(3)
@@ -47,31 +51,31 @@ class S7PCIEPHY(Module, AutoCSR):
         dcommand = Signal(16)
 
         # tx cdc
-        if cd == "clk125":
+        if cd == "pcie":
             s_axis_tx = self.sink
         else:
             tx_cdc = stream.AsyncFIFO(phy_layout(data_width), 4)
-            tx_cdc = ClockDomainsRenamer({"write": cd, "read": "clk125"})(tx_cdc)
+            tx_cdc = ClockDomainsRenamer({"write": cd, "read": "pcie"})(tx_cdc)
             self.submodules += tx_cdc
             self.comb += self.sink.connect(tx_cdc.sink)
             s_axis_tx = tx_cdc.source
 
         # rx cdc
-        if cd == "clk125":
+        if cd == "pcie":
             m_axis_rx = self.sink
         else:
             rx_cdc = stream.AsyncFIFO(phy_layout(data_width), 4)
-            rx_cdc = ClockDomainsRenamer({"write": "clk125", "read": cd})(rx_cdc)
+            rx_cdc = ClockDomainsRenamer({"write": "pcie", "read": cd})(rx_cdc)
             self.submodules += rx_cdc
             self.comb += rx_cdc.source.connect(self.source)
             m_axis_rx = rx_cdc.sink
 
         # interrupt cdc
-        if cd == "clk125":
+        if cd == "pcie":
             cfg_interrupt = self.interrupt
         else:
             interrupt_cdc = stream.AsyncFIFO(interrupt_layout(), 4)
-            interrupt_cdc = ClockDomainsRenamer({"write": cd, "read": "clk125"})(interrupt_cdc)
+            interrupt_cdc = ClockDomainsRenamer({"write": cd, "read": "pcie"})(interrupt_cdc)
             self.submodules += interrupt_cdc
             self.comb += self.interrupt.connect(interrupt_cdc.sink)
             cfg_interrupt = interrupt_cdc.source
@@ -96,8 +100,8 @@ class S7PCIEPHY(Module, AutoCSR):
                 i_pci_exp_rxp=pads.rx_p,
                 i_pci_exp_rxn=pads.rx_n,
 
-                o_user_clk=ClockSignal("clk125"),
-                o_user_reset=ResetSignal("clk125"),
+                o_user_clk=ClockSignal("pcie"),
+                o_user_reset=ResetSignal("pcie"),
                 o_user_lnk_up=self._lnk_up.status,
 
                 #o_tx_buf_av=,

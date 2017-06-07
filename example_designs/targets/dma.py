@@ -18,7 +18,6 @@ from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 class _CRG(Module, AutoCSR):
     def __init__(self, platform):
         self.clock_domains.cd_sys = ClockDomain("sys")
-        self.clock_domains.cd_clk125 = ClockDomain("clk125")
 
         # soft reset generaton
         self._soft_rst = CSR()
@@ -30,8 +29,8 @@ class _CRG(Module, AutoCSR):
         ]
 
         # sys_clk / sys_rst (from PCIe)
-        self.comb += self.cd_sys.clk.eq(self.cd_clk125.clk)
-        self.specials += AsyncResetSynchronizer(self.cd_sys, self.cd_clk125.rst | soft_rst)
+        self.comb += self.cd_sys.clk.eq(ClockSignal("pcie"))
+        self.specials += AsyncResetSynchronizer(self.cd_sys, ResetSignal("pcie") | soft_rst)
 
 
 class PCIeDMASoC(SoCCore):
