@@ -8,7 +8,7 @@ from litepcie.common import *
 class LitePCIeMSI(Module, AutoCSR):
     def __init__(self, n=32):
         self.irqs = Signal(n)
-        self.source = stream.Endpoint(interrupt_layout())
+        self.source = stream.Endpoint(msi_layout())
 
         self.enable = CSRStorage(n)
         self.clear = CSR(n)

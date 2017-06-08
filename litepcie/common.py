@@ -69,7 +69,7 @@ def completion_layout(data_width):
     ]
     return EndpointDescription(layout)
 
-def interrupt_layout():
+def msi_layout():
     return [("dat", 8)]
 
 

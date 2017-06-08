@@ -7,51 +7,43 @@ from litepcie.common import *
 
 
 class S7PCIEPHY(Module, AutoCSR):
-    def __init__(self, platform, data_width=64, link_width=2, bar0_size=1*MB, cd="sys"):
-        pads = platform.request("pcie_x"+str(link_width))
-        self.data_width = data_width
-        self.link_width = link_width
-
+    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys"):
         self.sink = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
-        self.interrupt = stream.Endpoint(interrupt_layout())
-
-        self.id = Signal(16)
+        self.msi = stream.Endpoint(msi_layout())
 
         self._lnk_up = CSRStatus()
         self._msi_enable = CSRStatus()
         self._bus_master_enable = CSRStatus()
         self._max_request_size = CSRStatus(16)
         self._max_payload_size = CSRStatus(16)
+
+        self.data_width = data_width
+
+        self.id = Signal(16)
+        self.bar0_size = bar0_size
+        self.bar0_mask = get_bar_mask(bar0_size)
         self.max_request_size = self._max_request_size.status
         self.max_payload_size = self._max_payload_size.status
 
-        self.bar0_size = bar0_size
-        self.bar0_mask = get_bar_mask(bar0_size)
-
         # # #
 
-        pcie_clk100 = Signal()
+        # clocking
+        pcie_refclk = Signal()
         self.specials += Instance("IBUFDS_GTE2",
             i_CEB=0,
             i_I=pads.clk_p,
             i_IB=pads.clk_n,
-            o_O=pcie_clk100
+            o_O=pcie_refclk
         )
-        pcie_clk100.attr.add("keep")
-        platform.add_period_constraint(pcie_clk100, 10.0)
+        pcie_refclk.attr.add("keep")
+        platform.add_period_constraint(pcie_refclk, 10.0)
 
         self.clock_domains.cd_pcie = ClockDomain()
         self.cd_pcie.clk.attr.add("keep")
         platform.add_period_constraint(self.cd_pcie.clk, 8.0)
 
-        bus_number = Signal(8)
-        device_number = Signal(5)
-        function_number = Signal(3)
-        command = Signal(16)
-        dcommand = Signal(16)
-
-        # tx cdc
+        # tx cdc (fpga --> host)
         if cd == "pcie":
             s_axis_tx = self.sink
         else:
@@ -61,7 +53,7 @@ class S7PCIEPHY(Module, AutoCSR):
             self.comb += self.sink.connect(tx_cdc.sink)
             s_axis_tx = tx_cdc.source
 
-        # rx cdc
+        # rx cdc (host --> fpga)
         if cd == "pcie":
             m_axis_rx = self.sink
         else:
@@ -71,28 +63,47 @@ class S7PCIEPHY(Module, AutoCSR):
             self.comb += rx_cdc.source.connect(self.source)
             m_axis_rx = rx_cdc.sink
 
-        # interrupt cdc
+        # msi cdc
         if cd == "pcie":
-            cfg_interrupt = self.interrupt
+            cfg_msi = self.msi
         else:
-            interrupt_cdc = stream.AsyncFIFO(interrupt_layout(), 4)
-            interrupt_cdc = ClockDomainsRenamer({"write": cd, "read": "pcie"})(interrupt_cdc)
-            self.submodules += interrupt_cdc
-            self.comb += self.interrupt.connect(interrupt_cdc.sink)
-            cfg_interrupt = interrupt_cdc.source
+            msi_cdc = stream.AsyncFIFO(msi_layout(), 4)
+            msi_cdc = ClockDomainsRenamer({"write": cd, "read": "pcie"})(msi_cdc)
+            self.submodules += msi_cdc
+            self.comb += self.msi.connect(msi_cdc.sink)
+            cfg_msi = msi_cdc.source
 
 
-        xc7_transceivers = {
-            "xc7k": "GTX",
-            "xc7a": "GTP"
-        }
+        # config
+        def convert_size(command, size):
+            cases = {}
+            value = 128
+            for i in range(6):
+                cases[i] = size.eq(value)
+                value = value*2
+            return Case(command, cases)
 
+        bus_number = Signal(8)
+        device_number = Signal(5)
+        function_number = Signal(3)
+        command = Signal(16)
+        dcommand = Signal(16)
+        self.sync += [
+            self._bus_master_enable.status.eq(command[2]),
+            convert_size(dcommand[12:15], self.max_request_size),
+            convert_size(dcommand[5:8], self.max_payload_size),
+			self.id.eq(Cat(function_number, device_number, bus_number))
+        ]
+
+        # hard ip
         self.specials += Instance("pcie_phy",
                 p_C_DATA_WIDTH=data_width,
-                p_C_PCIE_GT_DEVICE=xc7_transceivers[platform.device[:4]],
+                p_C_PCIE_GT_DEVICE={
+                    "xc7k": "GTX",
+                    "xc7a": "GTP"}[platform.device[:4]],
                 p_C_BAR0=get_bar_mask(self.bar0_size),
 
-                i_sys_clk=pcie_clk100,
+                i_sys_clk=pcie_refclk,
                 i_sys_rst_n=pads.rst_n,
 
                 o_pci_exp_txp=pads.tx_p,
@@ -125,7 +136,7 @@ class S7PCIEPHY(Module, AutoCSR):
                 i_m_axis_rx_tready=m_axis_rx.ready,
                 o_m_axis_rx_tdata=m_axis_rx.dat,
                 o_m_axis_rx_tkeep=m_axis_rx.be,
-                o_m_axis_rx_tuser=Signal(4),
+                #o_m_axis_rx_tuser=,
 
                 #o_cfg_to_turnoff=,
                 o_cfg_bus_number=bus_number,
@@ -135,9 +146,9 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_cfg_dcommand=dcommand,
                 o_cfg_interrupt_msienable=self._msi_enable.status,
 
-                i_cfg_interrupt=cfg_interrupt.valid,
-                o_cfg_interrupt_rdy=cfg_interrupt.ready,
-                i_cfg_interrupt_di=cfg_interrupt.dat,
+                i_cfg_interrupt=cfg_msi.valid,
+                o_cfg_interrupt_rdy=cfg_msi.ready,
+                i_cfg_interrupt_di=cfg_msi.dat,
 
                 i_SHARED_QPLL_PD=1,
                 i_SHARED_QPLL_RST=1,
@@ -146,25 +157,6 @@ class S7PCIEPHY(Module, AutoCSR):
                 #o_SHARED_QPLL_OUTREFCLK=,
                 #o_SHARED_QPLL_LOCK=,
         )
-
-        # id
-        self.comb += self.id.eq(Cat(function_number, device_number, bus_number))
-
-        # config
-        def convert_size(command, size):
-            cases = {}
-            value = 128
-            for i in range(6):
-                cases[i] = size.eq(value)
-                value = value*2
-            return Case(command, cases)
-
-        self.sync += [
-            self._bus_master_enable.status.eq(command[2]),
-            convert_size(dcommand[12:15], self.max_request_size),
-            convert_size(dcommand[5:8], self.max_payload_size)
-        ]
-
         litepcie_phy_path = os.path.abspath(os.path.dirname(__file__))
         platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common"))
         if platform.device[:4] == "xc7k":
