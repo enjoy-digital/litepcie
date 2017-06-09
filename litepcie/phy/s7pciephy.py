@@ -55,7 +55,7 @@ class S7PCIEPHY(Module, AutoCSR):
 
         # rx cdc (host --> fpga)
         if cd == "pcie":
-            m_axis_rx = self.sink
+            m_axis_rx = self.source
         else:
             rx_cdc = stream.AsyncFIFO(phy_layout(data_width), 4)
             rx_cdc = ClockDomainsRenamer({"write": "pcie", "read": cd})(rx_cdc)
@@ -63,7 +63,7 @@ class S7PCIEPHY(Module, AutoCSR):
             self.comb += rx_cdc.source.connect(self.source)
             m_axis_rx = rx_cdc.sink
 
-        # msi cdc
+        # msi cdc (fpga --> host)
         if cd == "pcie":
             cfg_msi = self.msi
         else:
