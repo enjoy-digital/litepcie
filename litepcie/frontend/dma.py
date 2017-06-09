@@ -150,6 +150,7 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
         ]
         fsm.act("RUN",
             source.valid.eq(1),
+            source.first.eq(offset == 0),
             If((length - offset) > max_size,
                 source.length.eq(max_size),
                 offset_ce.eq(source.ready)
@@ -205,6 +206,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.comb += [
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
+            port.source.first.eq(1),
             port.source.last.eq(1),
             port.source.we.eq(0),
             port.source.adr.eq(splitter.source.address),
@@ -229,11 +231,12 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         last_user_id = Signal(8, reset=255)
         self.sync += \
-            If(port.sink.valid & port.sink.ready,
+            If(port.sink.valid & port.sink.first & port.sink.ready,
                 last_user_id.eq(port.sink.user_id)
             )
         self.comb += [
             fifo.sink.valid.eq(port.sink.valid),
+            fifo.sink.first.eq(port.sink.first & (port.sink.user_id != last_user_id)),
             fifo.sink.data.eq(port.sink.dat),
             port.sink.ready.eq(fifo.sink.ready | ~enable),
         ]
@@ -243,18 +246,9 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.comb += request_ready.eq(splitter.source.valid & fifo_ready)
 
         # IRQ
-        first = Signal(reset=1)
-        self.sync += \
-            If(splitter.source.valid & splitter.source.ready,
-                If(splitter.source.last,
-                    first.eq(1)
-                ).Else(
-                    first.eq(0)
-                )
-            )
         self.comb += self.irq.eq(splitter.source.valid &
                                  splitter.source.ready &
-                                 first)
+                                 splitter.source.first)
 
 
 class LitePCIeDMAWriter(Module, AutoCSR):
@@ -315,6 +309,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.comb += [
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
+            port.source.first.eq(counter == 0),
             port.source.last.eq(counter == splitter.source.length[3:] - 1),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
@@ -339,18 +334,9 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.sync += request_ready.eq(splitter.source.valid & fifo_ready)
 
         # IRQ
-        first = Signal(reset=1)
-        self.sync += \
-            If(splitter.source.valid & splitter.source.ready,
-                If(splitter.source.last,
-                    first.eq(1)
-                ).Else(
-                    first.eq(0)
-                )
-            )
         self.comb += self.irq.eq(splitter.source.valid &
                                  splitter.source.ready &
-                                 first)
+                                 splitter.source.first)
 
 
 class LitePCIeDMALoopback(Module, AutoCSR):

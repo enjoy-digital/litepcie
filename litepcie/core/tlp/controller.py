@@ -36,10 +36,10 @@ class LitePCIeTLPController(Module):
         # Requests mgt
         self.submodules.req_fsm = req_fsm = FSM(reset_state="IDLE")
         req_fsm.act("IDLE",
-            If(req_sink.valid & ~req_sink.we & tag_fifo.readable,
+            If(req_sink.valid & req_sink.first & ~req_sink.we & tag_fifo.readable,
                 tag_fifo.re.eq(1),
                 NextState("SEND_READ")
-            ).Elif(req_sink.valid & req_sink.we,
+            ).Elif(req_sink.valid & req_sink.first & req_sink.we,
                 NextState("SEND_WRITE")
             )
         )
@@ -106,7 +106,7 @@ class LitePCIeTLPController(Module):
             cmp_source.user_id.eq(info_mem_rd_port.dat_r[8:])
         ]
         cmp_fsm.act("IDLE",
-            If(cmp_sink.valid,
+            If(cmp_sink.valid & req_sink.first,
                 NextState("COPY"),
             ).Else(
                 cmp_sink.ready.eq(1)
