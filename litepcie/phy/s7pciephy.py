@@ -27,6 +27,13 @@ class S7PCIEPHY(Module, AutoCSR):
         self.max_request_size = Signal(16)
         self.max_payload_size = Signal(16)
 
+        self.shared_qpll_pd = Signal(reset=1)
+        self.shared_qpll_rst = Signal(reset=1)
+        self.shared_qpll_refclk = Signal()
+        self.shared_qpll_outclk = Signal()
+        self.shared_qpll_outrefclk = Signal()
+        self.shared_qpll_lock = Signal()
+
         # # #
 
         # clocking
@@ -160,12 +167,12 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_cfg_interrupt_rdy=cfg_msi.ready,
                 i_cfg_interrupt_di=cfg_msi.dat,
 
-                i_SHARED_QPLL_PD=1,
-                i_SHARED_QPLL_RST=1,
-                i_SHARED_QPLL_REFCLK=0,
-                #o_SHARED_QPLL_OUTCLK=,
-                #o_SHARED_QPLL_OUTREFCLK=,
-                #o_SHARED_QPLL_LOCK=,
+                i_SHARED_QPLL_PD=self.shared_qpll_pd,
+                i_SHARED_QPLL_RST=self.shared_qpll_rst,
+                i_SHARED_QPLL_REFCLK=self.shared_qpll_refclk,
+                o_SHARED_QPLL_OUTCLK=self.shared_qpll_outclk,
+                o_SHARED_QPLL_OUTREFCLK=self.shared_qpll_outrefclk,
+                o_SHARED_QPLL_LOCK=self.shared_qpll_lock,
         )
         litepcie_phy_path = os.path.abspath(os.path.dirname(__file__))
         platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common"))
