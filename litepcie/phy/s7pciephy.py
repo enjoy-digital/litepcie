@@ -1,5 +1,6 @@
 import os
 from litex.gen import *
+from litex.gen.genlib.cdc import MultiReg
 
 from litex.soc.interconnect.csr import *
 
@@ -23,8 +24,8 @@ class S7PCIEPHY(Module, AutoCSR):
         self.id = Signal(16)
         self.bar0_size = bar0_size
         self.bar0_mask = get_bar_mask(bar0_size)
-        self.max_request_size = self._max_request_size.status
-        self.max_payload_size = self._max_payload_size.status
+        self.max_request_size = Signal(16)
+        self.max_payload_size = Signal(16)
 
         # # #
 
@@ -83,17 +84,26 @@ class S7PCIEPHY(Module, AutoCSR):
                 value = value*2
             return Case(command, cases)
 
+        lnk_up = Signal()
+        msienable = Signal()
         bus_number = Signal(8)
         device_number = Signal(5)
         function_number = Signal(3)
         command = Signal(16)
         dcommand = Signal(16)
-        self.sync += [
-            self._bus_master_enable.status.eq(command[2]),
+        self.sync.pcie += [
             convert_size(dcommand[12:15], self.max_request_size),
             convert_size(dcommand[5:8], self.max_payload_size),
 			self.id.eq(Cat(function_number, device_number, bus_number))
         ]
+        self.specials += [
+            MultiReg(lnk_up, self._lnk_up.status),
+            MultiReg(command[2], self._bus_master_enable.status),
+            MultiReg(msienable, self._msi_enable.status),
+            MultiReg(self.max_request_size, self._max_request_size.status),
+            MultiReg(self.max_payload_size, self._max_payload_size.status)
+        ]
+
 
         # hard ip
         self.specials += Instance("pcie_phy",
@@ -101,7 +111,7 @@ class S7PCIEPHY(Module, AutoCSR):
                 p_C_PCIE_GT_DEVICE={
                     "xc7k": "GTX",
                     "xc7a": "GTP"}[platform.device[:4]],
-                p_C_BAR0=get_bar_mask(self.bar0_size),
+                p_C_BAR0=get_bar_mask(bar0_size),
 
                 i_sys_clk=pcie_refclk,
                 i_sys_rst_n=pads.rst_n,
@@ -114,7 +124,7 @@ class S7PCIEPHY(Module, AutoCSR):
 
                 o_user_clk=ClockSignal("pcie"),
                 o_user_reset=ResetSignal("pcie"),
-                o_user_lnk_up=self._lnk_up.status,
+                o_user_lnk_up=lnk_up,
 
                 #o_tx_buf_av=,
                 #o_tx_terr_drop=,
@@ -144,7 +154,7 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_cfg_function_number=function_number,
                 o_cfg_command=command,
                 o_cfg_dcommand=dcommand,
-                o_cfg_interrupt_msienable=self._msi_enable.status,
+                o_cfg_interrupt_msienable=msienable,
 
                 i_cfg_interrupt=cfg_msi.valid,
                 o_cfg_interrupt_rdy=cfg_msi.ready,
