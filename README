@@ -10,7 +10,7 @@
                 powered by LiteX
 
 [> Intro
----------
+--------
 LitePCIe provides a small footprint and configurable PCIe gen1/2 core.
 
 LitePCIe is part of LiteX libraries whose aims are to lower entry level of
@@ -46,7 +46,7 @@ LitePCIe is already used in commercial and open-source designs:
 
 
 [> Possible improvements
--------------------------
+------------------------
 - add standardized interfaces (AXI, Avalon-ST)
 - add support for PCIe Gen2 X4 and X8 on 7-Series
 - clean up 7-Series wrappers
@@ -60,7 +60,7 @@ devel [AT] lists.m-labs.hk.
 
 
 [> Getting started
--------------------
+------------------
 1. Install Python3 and your vendor's software
 
 2. Obtain LiteX and install it:
@@ -92,12 +92,12 @@ devel [AT] lists.m-labs.hk.
     python3 -m unittest test.test_name
 
 [> Tests
----------
+--------
   A DMA loopback example with Wishbone over Sysfs is provided.
   Please go to Getting Started section to see how to run the tests.
 
 [> License
------------
+----------
 LitePCIe is released under the very permissive two-clause BSD license. Under
 the terms of this license, you are authorized to use LiteEth for closed-source
 proprietary designs.
@@ -110,7 +110,7 @@ do them if possible:
  - send us the modifications and improvements you have done to LitePCIe.
 
 [> Support and consulting
---------------------------
+-------------------------
 We love open-source hardware and like sharing our designs with others.
 
 LitePCIe is mainly developed and maintained by EnjoyDigital.
@@ -123,4 +123,5 @@ So feel free to contact us, we'd love to work with you! (and eventually shorten
 the list of the possible improvements :)
 
 [> Contact
+----------
 E-mail: florent [AT] enjoy-digital.fr
