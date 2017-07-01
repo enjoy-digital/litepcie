@@ -87,7 +87,12 @@ module pcie_gt_top #
    parameter               TX_MARGIN_LOW_4         = 7'b1000000,
 
    parameter               PCIE_CHAN_BOND          = 0,
-   parameter               TCQ                     = 1           //synthesis warning solved: parameter declaration becomes local
+   parameter               TCQ                     = 1,           //synthesis warning solved: parameter declaration becomes local
+   
+   //---------- QPLL1 Parameters -----------------------
+   parameter QPLL_PLL1_FBDIV = 4,
+   parameter QPLL_PLL1_FBDIV_45 = 4,
+   parameter QPLL_PLL1_REFCLK_DIV = 1
 )
 (
    //-----------------------------------------------------------------------------------------------------------------//
@@ -350,13 +355,16 @@ module pcie_gt_top #
 
   output  wire                      phy_rdy_n,
 
-  //---------- SHARED Ports ----------------------------
-  input   SHARED_QPLL_PD,
-  input   SHARED_QPLL_RST,
-  input   SHARED_QPLL_REFCLK,
-  output  SHARED_QPLL_OUTCLK,
-  output  SHARED_QPLL_OUTREFCLK,
-  output  SHARED_QPLL_LOCK
+  //---------- QPLL1 Ports ----------------------------
+  input               QPLL_GTGREFCLK1,
+  input               QPLL_GTREFCLK1,
+  input               QPLL_PLL1LOCKEN,
+  input               QPLL_PLL1PD,
+  input       [ 2:0]  QPLL_PLL1REFCLKSEL,
+  input               QPLL_PLL1RESET,
+  output              QPLL_PLL1LOCK,
+  output              QPLL_PLL1OUTCLK,
+  output              QPLL_PLL1OUTREFCLK
 );
 
 
@@ -493,7 +501,10 @@ pcie_pipe_wrapper #
     .PCIE_OOBCLK_MODE               ( PCIE_OOBCLK_MODE_ENABLE ),
     .PCIE_REFCLK_FREQ               ( REF_CLK_FREQ ),
     .PCIE_USERCLK1_FREQ             ( USER_CLK_FREQ +1 ),
-    .PCIE_USERCLK2_FREQ             ( USERCLK2_FREQ +1 )
+    .PCIE_USERCLK2_FREQ             ( USERCLK2_FREQ +1 ),
+    .QPLL_PLL1_FBDIV                (QPLL_PLL1_FBDIV),     
+    .QPLL_PLL1_FBDIV_45             (QPLL_PLL1_FBDIV_45),
+    .QPLL_PLL1_REFCLK_DIV           (QPLL_PLL1_REFCLK_DIV)
 
   ) pipe_wrapper_i (
 
@@ -679,13 +690,16 @@ pcie_pipe_wrapper #
     .PIPE_DEBUG_9             ( PIPE_DEBUG_9  ),
     .PIPE_DEBUG               ( PIPE_DEBUG    ),
     .PIPE_DMONITOROUT         ( PIPE_DMONITOROUT ),
-    //---------- SHARED Ports ----------------
-    .SHARED_QPLL_PD           (SHARED_QPLL_PD),
-    .SHARED_QPLL_RST          (SHARED_QPLL_RST),
-    .SHARED_QPLL_REFCLK       (SHARED_QPLL_REFCLK),
-    .SHARED_QPLL_OUTCLK       (SHARED_QPLL_OUTCLK),
-    .SHARED_QPLL_OUTREFCLK    (SHARED_QPLL_OUTREFCLK),
-    .SHARED_QPLL_LOCK         (SHARED_QPLL_LOCK)
+    //---------- QPLL1 Ports ----------------
+    .QPLL_GTGREFCLK1          (QPLL_GTGREFCLK1),
+    .QPLL_GTREFCLK1           (QPLL_GTREFCLK1),
+    .QPLL_PLL1LOCKEN          (QPLL_PLL1LOCKEN),
+    .QPLL_PLL1PD              (QPLL_PLL1PD),
+    .QPLL_PLL1REFCLKSEL       (QPLL_PLL1REFCLKSEL),
+    .QPLL_PLL1RESET           (QPLL_PLL1RESET),
+    .QPLL_PLL1LOCK            (QPLL_PLL1LOCK),
+    .QPLL_PLL1OUTCLK          (QPLL_PLL1OUTCLK),
+    .QPLL_PLL1OUTREFCLK       (QPLL_PLL1OUTREFCLK)
 );
 
 assign PIPE_RXSTATUS = gt_rx_status_wire_filter;

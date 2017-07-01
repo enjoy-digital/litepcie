@@ -71,8 +71,12 @@ module pcie_qpll_wrapper #
     parameter PCIE_GT_DEVICE   = "GTX",                     // PCIe GT device
     parameter PCIE_USE_MODE    = "3.0",                     // PCIe use mode
     parameter PCIE_PLL_SEL     = "CPLL",                    // PCIe PLL select for Gen1/Gen2 only
-    parameter PCIE_REFCLK_FREQ = 0                          // PCIe reference clock frequency
+    parameter PCIE_REFCLK_FREQ = 0,                         // PCIe reference clock frequency,
 
+    //---------- QPLL1 Parameters -----------------------
+    parameter QPLL_PLL1_FBDIV = 4,
+    parameter QPLL_PLL1_FBDIV_45 = 4,
+    parameter QPLL_PLL1_REFCLK_DIV = 1
 )
 
 (
@@ -99,16 +103,17 @@ module pcie_qpll_wrapper #
     output      [15:0]  QPLL_DRPDO,
     output              QPLL_DRPRDY,
 
-    //---------- SHARED Ports ----------------------------
-    input   SHARED_QPLL_PD,
-    input   SHARED_QPLL_RST,
-    input   SHARED_QPLL_REFCLK,
-    output  SHARED_QPLL_OUTCLK,
-    output  SHARED_QPLL_OUTREFCLK,
-    output  SHARED_QPLL_LOCK
+    //---------- QPLL1 Ports ----------------------------
+    input               QPLL_GTGREFCLK1,
+    input               QPLL_GTREFCLK1,
+    input               QPLL_PLL1LOCKEN,
+    input               QPLL_PLL1PD,
+    input       [ 2:0]  QPLL_PLL1REFCLKSEL,
+    input               QPLL_PLL1RESET,
+    output              QPLL_PLL1LOCK,
+    output              QPLL_PLL1OUTCLK,
+    output              QPLL_PLL1OUTREFCLK
 );
-
-
 
     //---------- Select QPLL Feedback Divider --------------
     //  N = 100 for 100 MHz ref clk and 10Gb/s line rate
@@ -156,20 +161,20 @@ generate if (PCIE_GT_DEVICE == "GTP")
 
         //---------- Clock Attributes ------------------------------------------
         .PLL0_CFG                       (27'h01F024C),                          // Optimized for IES
-        .PLL1_CFG                       (27'h01F03DC),                          // SHARED <= 2457.6Mbps
+        .PLL1_CFG                       (27'h01F024C),                          // 
         .PLL_CLKOUT_CFG                 (8'd0),                                 // Optimized for IES
-        .PLL0_DMON_CFG                  (1'b0),                                 // SHARED <= 2457.6Mbps
+        .PLL0_DMON_CFG                  (1'b0),                                 // 
         .PLL1_DMON_CFG                  (1'b0),                                 // Optimized for IES
         .PLL0_FBDIV                     (GTP_QPLL_FBDIV),                       // Optimized for IES
-        .PLL1_FBDIV                     (4),                                    // SHARED <= 2457.6Mbps
+        .PLL1_FBDIV                     (QPLL_PLL1_FBDIV),                      //
         .PLL0_FBDIV_45                  (5),                                    // Optimized for IES
-        .PLL1_FBDIV_45                  (4),                                    // SHARED <= 2457.6Mbps
+        .PLL1_FBDIV_45                  (QPLL_PLL1_FBDIV_45),                   //
         .PLL0_INIT_CFG                  (24'h00001E),                           // Optimized for IES
         .PLL1_INIT_CFG                  (24'h00001E),                           // Optimized for IES
         .PLL0_LOCK_CFG                  ( 9'h1E8),                              // Optimized for IES
         .PLL1_LOCK_CFG                  ( 9'h1E8),                              // Optimized for IES
         .PLL0_REFCLK_DIV                (1),                                    // Optimized for IES
-        .PLL1_REFCLK_DIV                (1),                                    // SHARED <= 2457.6Mbps
+        .PLL1_REFCLK_DIV                (QPLL_PLL1_REFCLK_DIV),                 //
 
         //---------- MISC ------------------------------------------------------
         .BIAS_CFG                       (64'h0000000000050001),                 // Optimized for GES
@@ -183,9 +188,9 @@ generate if (PCIE_GT_DEVICE == "GTP")
 
         //---------- Clock -----------------------------------------------------
         .GTGREFCLK0                     ( 1'd0),                                //
-        .GTGREFCLK1                     ( 1'd0),                                //
+        .GTGREFCLK1                     (QPLL_GTGREFCLK1),                      //
         .GTREFCLK0                      (QPLL_GTGREFCLK),                       //
-        .GTREFCLK1                      (SHARED_QPLL_REFCLK),                     //
+        .GTREFCLK1                      (QPLL_GTREFCLK1),                       //
         .GTEASTREFCLK0                  ( 1'd0),                                //
         .GTEASTREFCLK1                  ( 1'd0),                                //
         .GTWESTREFCLK0                  ( 1'd0),                                //
@@ -193,18 +198,18 @@ generate if (PCIE_GT_DEVICE == "GTP")
         .PLL0LOCKDETCLK                 (QPLL_QPLLLOCKDETCLK),                  //
         .PLL1LOCKDETCLK                 (QPLL_QPLLLOCKDETCLK),                  //
         .PLL0LOCKEN                     ( 1'd1),                                //
-        .PLL1LOCKEN                     ( 1'd1),                                //
+        .PLL1LOCKEN                     ( QPLL_PLL1LOCKEN ),                    //
         .PLL0REFCLKSEL                  ( 3'd1),                                // Optimized for IES
-        .PLL1REFCLKSEL                  ( 3'd10),                                // Optimized for IES
+        .PLL1REFCLKSEL                  ( QPLL_PLL1REFCLKSEL),                  // 
         .PLLRSVD1                       (16'd0),                                // Optimized for IES
         .PLLRSVD2                       ( 5'd0),                                // Optimized for IES
 
         .PLL0OUTCLK                     (QPLL_QPLLOUTCLK),                      //
-        .PLL1OUTCLK                     (SHARED_QPLL_OUTCLK),                     //
+        .PLL1OUTCLK                     (QPLL_PLL1OUTCLK),                      //
         .PLL0OUTREFCLK                  (QPLL_QPLLOUTREFCLK),                   //
-        .PLL1OUTREFCLK                  (SHARED_QPLL_OUTREFCLK),                  //
+        .PLL1OUTREFCLK                  (QPLL_PLL1OUTREFCLK),                   //
         .PLL0LOCK                       (QPLL_QPLLLOCK),                        //
-        .PLL1LOCK                       (SHARED_QPLL_LOCK),                       //
+        .PLL1LOCK                       (QPLL_PLL1LOCK),                        //
         .PLL0FBCLKLOST                  (),                                     //
         .PLL1FBCLKLOST                  (),                                     //
         .PLL0REFCLKLOST                 (),                                     //
@@ -213,9 +218,9 @@ generate if (PCIE_GT_DEVICE == "GTP")
 
         //---------- Reset -----------------------------------------------------
         .PLL0PD                         (cpllpd | QPLL_QPLLPD),                 //
-        .PLL1PD                         (SHARED_QPLL_PD),                         //
+        .PLL1PD                         (QPLL_PLL1PD),                          //
         .PLL0RESET                      (cpllrst | QPLL_QPLLRESET),             //
-        .PLL1RESET                      (SHARED_QPLL_RST),                        //
+        .PLL1RESET                      (QPLL_PLL1RESET),                       //
 
         //---------- DRP -------------------------------------------------------
         .DRPCLK                         (QPLL_DRPCLK),                          //

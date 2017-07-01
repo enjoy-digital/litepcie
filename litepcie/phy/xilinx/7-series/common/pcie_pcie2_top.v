@@ -271,7 +271,12 @@ parameter     EXT_PIPE_INTERFACE = "FALSE",
 parameter     EXT_STARTUP_PRIMITIVE = "FALSE",
 parameter  integer   LINK_CAP_MAX_LINK_WIDTH = 6'h8,
 parameter  integer   C_DATA_WIDTH = 64,
-parameter  integer   KEEP_WIDTH = C_DATA_WIDTH / 8
+parameter  integer   KEEP_WIDTH = C_DATA_WIDTH, // 8
+
+//---------- QPLL1 Parameters -----------------------
+parameter QPLL_PLL1_FBDIV = 4,
+parameter QPLL_PLL1_FBDIV_45 = 4,
+parameter QPLL_PLL1_REFCLK_DIV = 1
 
 )
 (
@@ -691,19 +696,25 @@ parameter  integer   KEEP_WIDTH = C_DATA_WIDTH / 8
   input wire                                      sys_clk,
   input wire                                      sys_rst_n,
 
-  //---------- SHARED Ports ----------------------------
-  input   SHARED_QPLL_PD,
-  input   SHARED_QPLL_RST,
-  input   SHARED_QPLL_REFCLK,
-  output  SHARED_QPLL_OUTCLK,
-  output  SHARED_QPLL_OUTREFCLK,
-  output  SHARED_QPLL_LOCK
+  //---------- QPLL1 Ports ----------------------------
+  input               QPLL_GTGREFCLK1,
+  input               QPLL_GTREFCLK1,
+  input               QPLL_PLL1LOCKEN,
+  input               QPLL_PLL1PD,
+  input       [ 2:0]  QPLL_PLL1REFCLKSEL,
+  input               QPLL_PLL1RESET,
+  output              QPLL_PLL1LOCK,
+  output              QPLL_PLL1OUTCLK,
+  output              QPLL_PLL1OUTREFCLK
 );
 
 pcie_core_top  # (
     .C_DATA_WIDTH (C_DATA_WIDTH),
     .KEEP_WIDTH (KEEP_WIDTH),
-    .BAR0(bar_0)
+    .BAR0(bar_0),
+    .QPLL_PLL1_FBDIV      (QPLL_PLL1_FBDIV),     
+    .QPLL_PLL1_FBDIV_45   (QPLL_PLL1_FBDIV_45),
+    .QPLL_PLL1_REFCLK_DIV (QPLL_PLL1_REFCLK_DIV)
     ) inst
     (
     .pci_exp_txn(pci_exp_txn),
@@ -1014,13 +1025,16 @@ pcie_core_top  # (
     .sys_clk                                    (sys_clk),
     .sys_rst_n                                  (sys_rst_n),
 
-    //---------- SHARED Ports ----------------
-    .SHARED_QPLL_PD           (SHARED_QPLL_PD),
-    .SHARED_QPLL_RST          (SHARED_QPLL_RST),
-    .SHARED_QPLL_REFCLK       (SHARED_QPLL_REFCLK),
-    .SHARED_QPLL_OUTCLK       (SHARED_QPLL_OUTCLK),
-    .SHARED_QPLL_OUTREFCLK    (SHARED_QPLL_OUTREFCLK),
-    .SHARED_QPLL_LOCK         (SHARED_QPLL_LOCK)
+    //---------- QPLL1 Ports ----------------
+    .QPLL_GTGREFCLK1          (QPLL_GTGREFCLK1),
+    .QPLL_GTREFCLK1           (QPLL_GTREFCLK1),
+    .QPLL_PLL1LOCKEN          (QPLL_PLL1LOCKEN),
+    .QPLL_PLL1PD              (QPLL_PLL1PD),
+    .QPLL_PLL1REFCLKSEL       (QPLL_PLL1REFCLKSEL),
+    .QPLL_PLL1RESET           (QPLL_PLL1RESET),
+    .QPLL_PLL1LOCK            (QPLL_PLL1LOCK),
+    .QPLL_PLL1OUTCLK          (QPLL_PLL1OUTCLK),
+    .QPLL_PLL1OUTREFCLK       (QPLL_PLL1OUTREFCLK)
   );
 
 endmodule

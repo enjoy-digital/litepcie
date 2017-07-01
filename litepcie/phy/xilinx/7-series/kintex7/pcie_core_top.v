@@ -431,8 +431,12 @@ module pcie_core_top # (
   parameter         TX_MARGIN_LOW_1   = 7'b1000110,
   parameter         TX_MARGIN_LOW_2   = 7'b1000011,
   parameter         TX_MARGIN_LOW_3   = 7'b1000010,
-  parameter         TX_MARGIN_LOW_4   = 7'b1000000
+  parameter         TX_MARGIN_LOW_4   = 7'b1000000,
 
+  //---------- QPLL1 Parameters -----------------------
+  parameter QPLL_PLL1_FBDIV = 4,
+  parameter QPLL_PLL1_FBDIV_45 = 4,
+  parameter QPLL_PLL1_REFCLK_DIV = 1
 )
 (
 
@@ -862,13 +866,16 @@ module pcie_core_top # (
   input wire           sys_clk,
   input wire           sys_rst_n,
 
-  //---------- SHARED Ports ----------------------------
-  input   SHARED_QPLL_PD,
-  input   SHARED_QPLL_RST,
-  input   SHARED_QPLL_REFCLK,
-  output  SHARED_QPLL_OUTCLK,
-  output  SHARED_QPLL_OUTREFCLK,
-  output  SHARED_QPLL_LOCK
+  //---------- QPLL1 Ports ----------------------------
+  input               QPLL_GTGREFCLK1,
+  input               QPLL_GTREFCLK1,
+  input               QPLL_PLL1LOCKEN,
+  input               QPLL_PLL1PD,
+  input       [ 2:0]  QPLL_PLL1REFCLKSEL,
+  input               QPLL_PLL1RESET,
+  output              QPLL_PLL1LOCK,
+  output              QPLL_PLL1OUTCLK,
+  output              QPLL_PLL1OUTREFCLK
 );
 
   wire                 user_clk;
@@ -1819,7 +1826,10 @@ pcie_gt_top #(
     .TX_MARGIN_LOW_2               ( TX_MARGIN_LOW_2 ),
     .TX_MARGIN_LOW_3               ( TX_MARGIN_LOW_3 ),
     .TX_MARGIN_LOW_4               ( TX_MARGIN_LOW_4 ),
-    .PCIE_CHAN_BOND                ( PCIE_CHAN_BOND )
+    .PCIE_CHAN_BOND                ( PCIE_CHAN_BOND ),
+    .QPLL_PLL1_FBDIV               (QPLL_PLL1_FBDIV),     
+    .QPLL_PLL1_FBDIV_45            (QPLL_PLL1_FBDIV_45),
+    .QPLL_PLL1_REFCLK_DIV          (QPLL_PLL1_REFCLK_DIV)
 
   ) gt_top_i (
     // pl ltssm
@@ -2086,13 +2096,16 @@ pcie_gt_top #(
     .PIPE_DEBUG_9                  ( pipe_debug_9 ),
     .PIPE_DEBUG                    ( pipe_debug ),
 
-   //---------- SHARED Ports ----------------
-   .SHARED_QPLL_PD           (SHARED_QPLL_PD),
-   .SHARED_QPLL_RST          (SHARED_QPLL_RST),
-   .SHARED_QPLL_REFCLK       (SHARED_QPLL_REFCLK),
-   .SHARED_QPLL_OUTCLK       (SHARED_QPLL_OUTCLK),
-   .SHARED_QPLL_OUTREFCLK    (SHARED_QPLL_OUTREFCLK),
-   .SHARED_QPLL_LOCK         (SHARED_QPLL_LOCK)
+    //---------- QPLL1 Ports ----------------
+    .QPLL_GTGREFCLK1          (QPLL_GTGREFCLK1),
+    .QPLL_GTREFCLK1           (QPLL_GTREFCLK1),
+    .QPLL_PLL1LOCKEN          (QPLL_PLL1LOCKEN),
+    .QPLL_PLL1PD              (QPLL_PLL1PD),
+    .QPLL_PLL1REFCLKSEL       (QPLL_PLL1REFCLKSEL),
+    .QPLL_PLL1RESET           (QPLL_PLL1RESET),
+    .QPLL_PLL1LOCK            (QPLL_PLL1LOCK),
+    .QPLL_PLL1OUTCLK          (QPLL_PLL1OUTCLK),
+    .QPLL_PLL1OUTREFCLK       (QPLL_PLL1OUTREFCLK)
   );
 
   assign  common_commands_out = 12'b0;

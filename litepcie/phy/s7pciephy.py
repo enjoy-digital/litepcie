@@ -8,7 +8,7 @@ from litepcie.common import *
 
 
 class S7PCIEPHY(Module, AutoCSR):
-    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys"):
+    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pll1=None):
         self.sink = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
         self.msi = stream.Endpoint(msi_layout())
@@ -26,13 +26,6 @@ class S7PCIEPHY(Module, AutoCSR):
         self.bar0_mask = get_bar_mask(bar0_size)
         self.max_request_size = Signal(16)
         self.max_payload_size = Signal(16)
-
-        self.shared_qpll_pd = Signal(reset=1)
-        self.shared_qpll_rst = Signal(reset=1)
-        self.shared_qpll_refclk = Signal()
-        self.shared_qpll_outclk = Signal()
-        self.shared_qpll_outrefclk = Signal()
-        self.shared_qpll_lock = Signal()
 
         # # #
 
@@ -167,12 +160,19 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_cfg_interrupt_rdy=cfg_msi.ready,
                 i_cfg_interrupt_di=cfg_msi.dat,
 
-                i_SHARED_QPLL_PD=self.shared_qpll_pd,
-                i_SHARED_QPLL_RST=self.shared_qpll_rst,
-                i_SHARED_QPLL_REFCLK=self.shared_qpll_refclk,
-                o_SHARED_QPLL_OUTCLK=self.shared_qpll_outclk,
-                o_SHARED_QPLL_OUTREFCLK=self.shared_qpll_outrefclk,
-                o_SHARED_QPLL_LOCK=self.shared_qpll_lock,
+                p_QPLL_PLL1_FBDIV=4 if pll1 is None else pll1.config["n2"],     
+                p_QPLL_PLL1_FBDIV_45=4 if pll1 is None else pll1.config["n1"], 
+                p_QPLL_PLL1_REFCLK_DIV=1 if pll1 is None else pll1.config["m"],
+   
+                i_QPLL_GTGREFCLK1=0 if pll1 is None else pll1.gtgrefclk,
+                i_QPLL_GTREFCLK1=0 if pll1 is None else pll1.gtrefclk,
+                i_QPLL_PLL1LOCKEN=1,
+                i_QPLL_PLL1PD=1 if pll1 is None else 0,
+                i_QPLL_PLL1REFCLKSEL=0b001 if pll1 is None else pll1.refclksel,
+                i_QPLL_PLL1RESET=1 if pll1 is None else pll1.reset,
+                o_QPLL_PLL1LOCK=Signal() if pll1 is None else pll1.lock,
+                o_QPLL_PLL1OUTCLK=Signal() if pll1 is None else pll1.clk,
+                o_QPLL_PLL1OUTREFCLK=Signal() if pll1 is None else pll1.refclk
         )
         litepcie_phy_path = os.path.abspath(os.path.dirname(__file__))
         platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common"))

@@ -197,8 +197,13 @@ module pcie_pipe_wrapper #
     parameter PCIE_RXEQ_MODE_GEN3           = 1,            // PCIe RX equalization mode
     parameter PCIE_OOBCLK_MODE              = 1,            // PCIe OOB clock mode
     parameter PCIE_JTAG_MODE                = 0,            // PCIe JTAG mode
-    parameter PCIE_DEBUG_MODE               = 0             // PCIe debug mode
+    parameter PCIE_DEBUG_MODE               = 0,            // PCIe debug mode
 
+
+    //---------- QPLL1 Parameters -----------------------
+    parameter QPLL_PLL1_FBDIV = 4,
+    parameter QPLL_PLL1_FBDIV_45 = 4,
+    parameter QPLL_PLL1_REFCLK_DIV = 1
 )
                                                             //--------------------------------------
 (                                                           // Gen1/Gen2  | Gen3
@@ -399,13 +404,16 @@ module pcie_pipe_wrapper #
 
     output      [(PCIE_LANE*15)-1:0] PIPE_DMONITOROUT,       // DMONITORCLK
 
-    //---------- SHARED Ports ----------------------------
-    input   SHARED_QPLL_PD,
-    input   SHARED_QPLL_RST,
-    input   SHARED_QPLL_REFCLK,
-    output  SHARED_QPLL_OUTCLK,
-    output  SHARED_QPLL_OUTREFCLK,
-    output  SHARED_QPLL_LOCK
+    //---------- QPLL1 Ports ----------------------------
+    input               QPLL_GTGREFCLK1,
+    input               QPLL_GTREFCLK1,
+    input               QPLL_PLL1LOCKEN,
+    input               QPLL_PLL1PD,
+    input       [ 2:0]  QPLL_PLL1REFCLKSEL,
+    input               QPLL_PLL1RESET,
+    output              QPLL_PLL1LOCK,
+    output              QPLL_PLL1OUTCLK,
+    output              QPLL_PLL1OUTREFCLK
 );
 
     //---------- Input Registers ---------------------------
@@ -1319,8 +1327,10 @@ pcie_gt_common #
                 .PCIE_GT_DEVICE                 (PCIE_GT_DEVICE),               // PCIe GT device
                 .PCIE_USE_MODE                  (PCIE_USE_MODE),                // PCIe use mode
                 .PCIE_PLL_SEL                   (PCIE_PLL_SEL),                 // PCIe PLL select for Gen1/Gen2 only
-                .PCIE_REFCLK_FREQ               (PCIE_REFCLK_FREQ)              // PCIe reference clock frequency
-
+                .PCIE_REFCLK_FREQ               (PCIE_REFCLK_FREQ),             // PCIe reference clock frequency
+                .QPLL_PLL1_FBDIV                (QPLL_PLL1_FBDIV),     
+                .QPLL_PLL1_FBDIV_45             (QPLL_PLL1_FBDIV_45),
+                .QPLL_PLL1_REFCLK_DIV           (QPLL_PLL1_REFCLK_DIV)
             )
             gt_common_i
             (
@@ -1342,13 +1352,16 @@ pcie_gt_common #
                 .QPLL_QPLLOUTCLK                     (qpll_qplloutclk[i>>2]),
                 .QPLL_QPLLOUTREFCLK                  (qpll_qplloutrefclk[i>>2]),
                 .QPLL_QPLLLOCK                       (qpll_qplllock[i>>2]),
-                //---------- SHARED Ports ----------------
-                .SHARED_QPLL_PD           (SHARED_QPLL_PD),
-                .SHARED_QPLL_RST          (SHARED_QPLL_RST),
-                .SHARED_QPLL_REFCLK       (SHARED_QPLL_REFCLK),
-                .SHARED_QPLL_OUTCLK       (SHARED_QPLL_OUTCLK),
-                .SHARED_QPLL_OUTREFCLK    (SHARED_QPLL_OUTREFCLK),
-                .SHARED_QPLL_LOCK         (SHARED_QPLL_LOCK)
+                //---------- QPLL1 Ports ----------------
+                .QPLL_GTGREFCLK1          (QPLL_GTGREFCLK1),
+                .QPLL_GTREFCLK1           (QPLL_GTREFCLK1),
+                .QPLL_PLL1LOCKEN          (QPLL_PLL1LOCKEN),
+                .QPLL_PLL1PD              (QPLL_PLL1PD),
+                .QPLL_PLL1REFCLKSEL       (QPLL_PLL1REFCLKSEL),
+                .QPLL_PLL1RESET           (QPLL_PLL1RESET),
+                .QPLL_PLL1LOCK            (QPLL_PLL1LOCK),
+                .QPLL_PLL1OUTCLK          (QPLL_PLL1OUTCLK),
+                .QPLL_PLL1OUTREFCLK       (QPLL_PLL1OUTREFCLK)
             );
               assign QPLL_QPLLPD                           =  1'b0;
               assign QPLL_QPLLRESET[i>>2]                  =  1'b0;
