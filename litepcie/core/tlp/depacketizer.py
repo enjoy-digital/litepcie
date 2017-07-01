@@ -33,8 +33,8 @@ class LitePCIeTLPHeaderExtracter(Module):
                 counter.eq(counter + 1)
             )
 
-        sink_dat_last = Signal(data_width)
-        sink_be_last = Signal(data_width//8)
+        sink_dat_last = Signal(data_width, reset_less=True)
+        sink_be_last = Signal(data_width//8, reset_less=True)
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",

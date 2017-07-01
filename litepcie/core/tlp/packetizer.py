@@ -14,8 +14,8 @@ class LitePCIeTLPHeaderInserter(Module):
         if data_width != 64:
             raise ValueError("Current module only supports data_width of 64.")
 
-        dat_last = Signal(data_width)
-        last_last = Signal()
+        dat_last = Signal(data_width, reset_less=True)
+        last_last = Signal(reset_less=True)
         self.sync += \
             If(sink.valid & sink.ready,
                 dat_last.eq(sink.dat),
