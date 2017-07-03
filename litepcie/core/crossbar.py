@@ -52,17 +52,23 @@ class LitePCIeCrossbar(Module):
         s_arbiter = Arbiter(s_sinks, slave.sink)
         self.submodules += s_arbiter
 
-    def master_arbitrate_dispatch(self, masters, master):
+    def master_arbitrate_dispatch(self, masters, master, dispatch=True):
         # arbitrate
         m_sinks = [m.sink for m in masters]
         m_arbiter = Arbiter(m_sinks, master.sink)
         self.submodules += m_arbiter
 
         # dispatch
-        m_sources = [m.source for m in masters]
-        m_dispatcher = Dispatcher(master.source, m_sources)
-        self.submodules += m_dispatcher
-        self.comb += m_dispatcher.sel.eq(master.source.channel)
+        if dispatch:
+            m_sources = [m.source for m in masters]
+            m_dispatcher = Dispatcher(master.source, m_sources, one_hot=True)
+            self.submodules += m_dispatcher
+            for i, m in enumerate(masters):
+                if m.channel is not None:
+                    self.comb += m_dispatcher.sel[i].eq(master.source.channel == m.channel)
+        else:
+            # connect to first master
+            self.comb += master.source.connect(masters[0].source)
 
     def do_finalize(self):
         # Slave path
@@ -119,4 +125,4 @@ class LitePCIeCrossbar(Module):
                 masters.append(wr_master)
 
             # Final Arbitrate / dispatch stage
-            self.master_arbitrate_dispatch(masters, self.master)
+            self.master_arbitrate_dispatch(masters, self.master, False)
