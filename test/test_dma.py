@@ -52,7 +52,7 @@ class DMADriver:
 class MSIHandler(Module):
     def __init__(self, debug=False):
         self.debug = debug
-        self.sink = stream.Endpoint(interrupt_layout())
+        self.sink = stream.Endpoint(msi_layout())
 
         self.dma_reader_irq_count = 0
         self.dma_writer_irq_count = 0
