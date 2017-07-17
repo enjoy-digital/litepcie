@@ -27,7 +27,7 @@ class LitePCIeWishboneBridge(Module):
                 port.sink.ready.eq(port.sink.valid)
             )
         )
-        self.comb += [
+        self.sync += [
             self.wishbone.sel.eq(0xf),
             self.wishbone.adr.eq(port.sink.adr[2:]),
             self.wishbone.dat_w.eq(port.sink.dat[:32])
