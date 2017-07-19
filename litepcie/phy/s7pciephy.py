@@ -48,10 +48,15 @@ class S7PCIEPHY(Module, AutoCSR):
         if cd == "pcie":
             s_axis_tx = self.sink
         else:
+            tx_buffer = stream.Buffer(phy_layout(data_width))
+            tx_buffer = ClockDomainsRenamer(cd)(tx_buffer)
             tx_cdc = stream.AsyncFIFO(phy_layout(data_width), 4)
             tx_cdc = ClockDomainsRenamer({"write": cd, "read": "pcie"})(tx_cdc)
-            self.submodules += tx_cdc
-            self.comb += self.sink.connect(tx_cdc.sink)
+            self.submodules += tx_buffer, tx_cdc
+            self.comb += [
+                self.sink.connect(tx_buffer.sink),
+                tx_buffer.source.connect(tx_cdc.sink)
+            ]
             s_axis_tx = tx_cdc.source
 
         # rx cdc (host --> fpga)
@@ -60,8 +65,13 @@ class S7PCIEPHY(Module, AutoCSR):
         else:
             rx_cdc = stream.AsyncFIFO(phy_layout(data_width), 4)
             rx_cdc = ClockDomainsRenamer({"write": "pcie", "read": cd})(rx_cdc)
-            self.submodules += rx_cdc
-            self.comb += rx_cdc.source.connect(self.source)
+            rx_buffer = stream.Buffer(phy_layout(data_width))
+            rx_buffer = ClockDomainsRenamer(cd)(rx_buffer)
+            self.submodules += rx_buffer, rx_cdc
+            self.comb += [
+                rx_cdc.source.connect(rx_buffer.sink),
+                rx_buffer.source.connect(self.source)
+            ]
             m_axis_rx = rx_cdc.sink
 
         # msi cdc (fpga --> host)
