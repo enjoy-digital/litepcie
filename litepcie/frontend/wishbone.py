@@ -37,8 +37,7 @@ class LitePCIeWishboneBridge(Module):
             self.wishbone.we.eq(1),
             self.wishbone.cyc.eq(1),
             If(self.wishbone.ack,
-                port.sink.ready.eq(1),
-                NextState("IDLE")
+                NextState("TERMINATE")
             )
         )
         fsm.act("READ",
@@ -50,24 +49,27 @@ class LitePCIeWishboneBridge(Module):
                 NextState("COMPLETION")
             )
         )
-        self.sync += \
-            If(update_dat,
-                port.source.dat.eq(self.wishbone.dat_r),
-            )
-        self.comb += [
-		    port.source.first.eq(1),
+        self.sync += [
+            port.source.first.eq(1),
             port.source.last.eq(1),
             port.source.len.eq(1),
             port.source.err.eq(0),
             port.source.tag.eq(port.sink.tag),
             port.source.adr.eq(port.sink.adr),
             port.source.cmp_id.eq(endpoint.phy.id),
-            port.source.req_id.eq(port.sink.req_id)
+            port.source.req_id.eq(port.sink.req_id),
+            If(update_dat,
+                port.source.dat.eq(self.wishbone.dat_r),
+            )
         ]
         fsm.act("COMPLETION",
             port.source.valid.eq(1),
             If(port.source.ready,
-                port.sink.ready.eq(1),
-                NextState("IDLE")
+                NextState("TERMINATE")
             )
         )
+        fsm.act("TERMINATE",
+            port.sink.ready.eq(1),
+            NextState("IDLE")
+        )
+
