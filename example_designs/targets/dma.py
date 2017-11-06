@@ -43,8 +43,8 @@ class PCIeDMASoC(SoCCore):
     }
     csr_map.update(SoCCore.csr_map)
     interrupt_map = {
-        "dma_writer": 0,
-        "dma_reader": 1
+        "dma_writer": 1,
+        "dma_reader": 2
     }
     interrupt_map.update(SoCCore.interrupt_map)
     mem_map = SoCCore.mem_map
