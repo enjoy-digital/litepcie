@@ -110,7 +110,7 @@ class LitePCIeTLPDepacketizer(Module):
         self.comb += [
             dispatch_source.valid.eq(header_extracter.source.valid),
             header_extracter.source.ready.eq(dispatch_source.ready),
-			dispatch_source.first.eq(header_extracter.source.first),
+            dispatch_source.first.eq(header_extracter.source.first),
             dispatch_source.last.eq(header_extracter.source.last),
             dispatch_source.dat.eq(header_extracter.source.dat),
             dispatch_source.be.eq(header_extracter.source.be),
@@ -140,7 +140,7 @@ class LitePCIeTLPDepacketizer(Module):
             req_source.we.eq(tlp_req.valid & (Cat(tlp_req.type, tlp_req.fmt) ==
                                             fmt_type_dict["mem_wr32"])),
             tlp_req.ready.eq(req_source.ready),
-			req_source.first.eq(tlp_req.first),
+            req_source.first.eq(tlp_req.first),
             req_source.last.eq(tlp_req.last),
             req_source.adr.eq(Cat(Signal(2), tlp_req.address & (~address_mask))),
             req_source.len.eq(tlp_req.length),
@@ -158,7 +158,7 @@ class LitePCIeTLPDepacketizer(Module):
         self.comb += [
             cmp_source.valid.eq(tlp_cmp.valid),
             tlp_cmp.ready.eq(cmp_source.ready),
-			cmp_source.first.eq(tlp_cmp.first),
+            cmp_source.first.eq(tlp_cmp.first),
             cmp_source.last.eq(tlp_cmp.last),
             cmp_source.len.eq(tlp_cmp.length),
             cmp_source.end.eq(tlp_cmp.length == (tlp_cmp.byte_count[2:])),

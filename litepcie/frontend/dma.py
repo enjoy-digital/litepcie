@@ -97,7 +97,7 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
                 loop_count.eq(0),
                 loop_status.eq(0),
             ).Elif(source.valid & source.ready,
-			    loop_status[0:16].eq(loop_index),
+                loop_status[0:16].eq(loop_index),
                 loop_status[16:].eq(loop_count),
                 If(fifo.source.start,
                     loop_index.eq(0),
