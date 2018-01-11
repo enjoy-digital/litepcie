@@ -122,7 +122,7 @@ class S7PCIEPHY(Module, AutoCSR):
         self.sync.pcie += [
             convert_size(dcommand[12:15], self.max_request_size),
             convert_size(dcommand[5:8], self.max_payload_size),
-			self.id.eq(Cat(function_number, device_number, bus_number))
+            self.id.eq(Cat(function_number, device_number, bus_number))
         ]
         self.specials += [
             MultiReg(lnk_up, self._lnk_up.status),
