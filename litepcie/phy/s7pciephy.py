@@ -141,7 +141,7 @@ class S7PCIEPHY(Module, AutoCSR):
                 p_C_BAR0=get_bar_mask(bar0_size),
 
                 i_sys_clk=pcie_refclk,
-                i_sys_rst_n=pads.rst_n,
+                i_sys_rst_n=1 if not hasattr(pads, "rst_n") else pads.rst_n,
 
                 o_pci_exp_txp=pads.tx_p,
                 o_pci_exp_txn=pads.tx_n,
@@ -187,10 +187,10 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_cfg_interrupt_rdy=cfg_msi.ready,
                 i_cfg_interrupt_di=cfg_msi.dat,
 
-                p_QPLL_PLL1_FBDIV=4 if pll1 is None else pll1.config["n2"],     
-                p_QPLL_PLL1_FBDIV_45=4 if pll1 is None else pll1.config["n1"], 
+                p_QPLL_PLL1_FBDIV=4 if pll1 is None else pll1.config["n2"],
+                p_QPLL_PLL1_FBDIV_45=4 if pll1 is None else pll1.config["n1"],
                 p_QPLL_PLL1_REFCLK_DIV=1 if pll1 is None else pll1.config["m"],
-   
+
                 i_QPLL_GTGREFCLK1=0 if pll1 is None else pll1.gtgrefclk,
                 i_QPLL_GTREFCLK1=0 if pll1 is None else pll1.gtrefclk,
                 i_QPLL_PLL1LOCKEN=1,
