@@ -32,11 +32,11 @@ class LitePCIeTLPHeaderInserter(Module):
                 source.dat.eq(sink.header[:data_width]),
                 source.be.eq(0xff),
                 If(source.valid & source.ready,
-                    NextState("INSERT"),
+                    NextState("HEADER"),
                 )
             )
         )
-        fsm.act("INSERT",
+        fsm.act("HEADER",
             source.valid.eq(1),
             source.last.eq(sink.last),
             # XXX add genericity

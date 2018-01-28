@@ -14,53 +14,35 @@ class LitePCIeTLPHeaderExtracter(Module):
             raise ValueError("Current module only supports data_width of 64.")
 
         first = Signal()
-        first_clr = Signal()
-        first_set = Signal()
-        self.sync += If(first_clr, first.eq(0)).Elif(first_set, first.eq(1))
-
         last = Signal()
-        last_clr = Signal()
-        last_set = Signal()
-        self.sync += If(last_clr, last.eq(0)).Elif(last_set, last.eq(1))
-
-        counter = Signal(2)
-        counter_reset = Signal()
-        counter_ce = Signal()
-        self.sync += \
-            If(counter_reset,
-                counter.eq(0)
-            ).Elif(counter_ce,
-                counter.eq(counter + 1)
-            )
+        count = Signal(2)
 
         sink_dat_last = Signal(data_width, reset_less=True)
         sink_be_last = Signal(data_width//8, reset_less=True)
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            first_set.eq(1),
-            last_clr.eq(1),
-            counter_reset.eq(1),
+            NextValue(first, 1),
+            NextValue(last, 0),
+            NextValue(count, 0),
             If(sink.valid,
-                NextState("EXTRACT")
+                NextState("HEADER")
             )
         )
-        fsm.act("EXTRACT",
+        fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid,
-                counter_ce.eq(1),
-                If(counter == tlp_common_header_length*8//data_width - 1,
+                NextValue(count, count + 1),
+                NextValue(self.source.header, Cat(self.source.header[data_width:], sink.dat)),
+                If(count == tlp_common_header_length*8//data_width - 1,
                     If(sink.last,
-                        last_set.eq(1)
+                        NextValue(last, 1)
                     ),
                     NextState("COPY")
                 )
             )
         )
         self.sync += [
-            If(counter_ce,
-                self.source.header.eq(Cat(self.source.header[data_width:], sink.dat))
-            ),
             If(sink.valid & sink.ready,
                 sink_dat_last.eq(sink.dat),
                 sink_be_last.eq(sink.be)
@@ -78,7 +60,7 @@ class LitePCIeTLPHeaderExtracter(Module):
             source.first.eq(first),
             source.last.eq(sink.last | last),
             If(source.valid & source.ready,
-                first_clr.eq(1),
+                NextValue(first, 0),
                 sink.ready.eq(1 & ~last), # already acked when last is 1
                 If(source.last,
                     NextState("IDLE")
