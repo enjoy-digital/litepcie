@@ -42,11 +42,7 @@ class PCIeDMASoC(SoCCore):
         "msi":      19
     }
     csr_map.update(SoCCore.csr_map)
-    interrupt_map = {
-        "dma_writer": 1,
-        "dma_reader": 2
-    }
-    interrupt_map.update(SoCCore.interrupt_map)
+
     mem_map = SoCCore.mem_map
     mem_map["csr"] = 0x00000000
 
@@ -82,10 +78,11 @@ class PCIeDMASoC(SoCCore):
         self.submodules.msi = LitePCIeMSI()
         self.comb += self.msi.source.connect(self.pcie_phy.msi)
         self.interrupts = {
-            "dma_writer":    self.dma.writer.irq,
-            "dma_reader":    self.dma.reader.irq
+            "DMA_WRITER":    self.dma.writer.irq,
+            "DMA_READER":    self.dma.reader.irq
         }
-        for k, v in sorted(self.interrupts.items()):
-            self.comb += self.msi.irqs[self.interrupt_map[k]].eq(v)
+        for i, (k, v) in enumerate(sorted(self.interrupts.items())):
+            self.comb += self.msi.irqs[i].eq(v)
+            self.add_constant(k + "_INTERRUPT", i)
 
 default_subtarget = PCIeDMASoC
