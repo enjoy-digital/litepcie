@@ -166,7 +166,7 @@ def main_generator(dut):
         loopback_datas.append(data)
 
 
-class TestBIST(unittest.TestCase):
+class TestDMA(unittest.TestCase):
     def test(self):
         dut = DUT()
         generators = {
