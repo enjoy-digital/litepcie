@@ -111,7 +111,7 @@ class LitePCIeTLPHeaderInserter128b(Module):
                 # 32 h lsbs
                 source.dat[32*2:32*3].eq(sink.header[32*2:32*3]),
                 source.be[4*2:4*3].eq(0xf),
-                # 32 l msbs
+                # 32 h msbs
                 source.dat[32*3:32*4].eq(reverse_bytes(sink.dat[32*0:32*1])),
                 source.be[4*3:4*4].eq(reverse_bits(sink.be[:4])),
                 If(source.valid & source.ready,
@@ -132,7 +132,7 @@ class LitePCIeTLPHeaderInserter128b(Module):
             # 32 h lsbs
             source.dat[32*2:32*3].eq(reverse_bytes(dat[32*3:2*32*4])),
             source.be[4*2:4*3].eq(0xf),
-            # 32 l msbs
+            # 32 h msbs
             source.dat[32*3:32*4].eq(reverse_bytes(sink.dat[32*0:32*1])),
             If(last,
                 source.be[4*3:4*4].eq(0x0)
