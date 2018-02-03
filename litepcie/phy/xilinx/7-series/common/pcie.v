@@ -56,6 +56,8 @@
 (* DowngradeIPIdentifiedWarnings = "yes" *)
 module pcie # (
   parameter C_BAR0 = 32'hF0000000,
+  parameter LINK_CAP_MAX_LINK_WIDTH = 8,
+  parameter C_DATA_WIDTH = 256,
   parameter QPLL_PLL1_FBDIV = 4,
   parameter QPLL_PLL1_FBDIV_45 = 4,
   parameter QPLL_PLL1_REFCLK_DIV = 1
@@ -248,19 +250,19 @@ module pcie # (
 );
 
 (* X_INTERFACE_INFO = "xilinx.com:interface:pcie_7x_mgt:1.0 pcie_7x_mgt txp" *)
-output wire [1 : 0] pci_exp_txp;
+output wire [LINK_CAP_MAX_LINK_WIDTH-1 : 0] pci_exp_txp;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pcie_7x_mgt:1.0 pcie_7x_mgt txn" *)
-output wire [1 : 0] pci_exp_txn;
+output wire [LINK_CAP_MAX_LINK_WIDTH-1 : 0] pci_exp_txn;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pcie_7x_mgt:1.0 pcie_7x_mgt rxp" *)
-input wire [1 : 0] pci_exp_rxp;
+input wire [LINK_CAP_MAX_LINK_WIDTH-1 : 0] pci_exp_rxp;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pcie_7x_mgt:1.0 pcie_7x_mgt rxn" *)
-input wire [1 : 0] pci_exp_rxn;
+input wire [LINK_CAP_MAX_LINK_WIDTH-1 : 0] pci_exp_rxn;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pipe_clock:1.0 pipe_clock pclk_in" *)
 input wire pipe_pclk_in;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pipe_clock:1.0 pipe_clock rxusrclk_in" *)
 input wire pipe_rxusrclk_in;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pipe_clock:1.0 pipe_clock rxoutclk_in" *)
-input wire [1 : 0] pipe_rxoutclk_in;
+input wire [LINK_CAP_MAX_LINK_WIDTH-1 : 0] pipe_rxoutclk_in;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pipe_clock:1.0 pipe_clock dclk_in" *)
 input wire pipe_dclk_in;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pipe_clock:1.0 pipe_clock userclk1_in" *)
@@ -274,9 +276,9 @@ input wire pipe_mmcm_lock_in;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pipe_clock:1.0 pipe_clock txoutclk_out" *)
 output wire pipe_txoutclk_out;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pipe_clock:1.0 pipe_clock rxoutclk_out" *)
-output wire [1 : 0] pipe_rxoutclk_out;
+output wire [LINK_CAP_MAX_LINK_WIDTH-1 : 0] pipe_rxoutclk_out;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pipe_clock:1.0 pipe_clock pclk_sel_out" *)
-output wire [1 : 0] pipe_pclk_sel_out;
+output wire [LINK_CAP_MAX_LINK_WIDTH-1 : 0] pipe_pclk_sel_out;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pipe_clock:1.0 pipe_clock gen3_out" *)
 output wire pipe_gen3_out;
 (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 CLK.user_clk_out CLK" *)
@@ -294,9 +296,9 @@ output wire tx_err_drop;
 (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 s_axis_tx TREADY" *)
 output wire s_axis_tx_tready;
 (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 s_axis_tx TDATA" *)
-input wire [63 : 0] s_axis_tx_tdata;
+input wire [C_DATA_WIDTH-1 : 0] s_axis_tx_tdata;
 (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 s_axis_tx TKEEP" *)
-input wire [7 : 0] s_axis_tx_tkeep;
+input wire [C_DATA_WIDTH/8-1 : 0] s_axis_tx_tkeep;
 (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 s_axis_tx TLAST" *)
 input wire s_axis_tx_tlast;
 (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 s_axis_tx TVALID" *)
@@ -306,9 +308,9 @@ input wire [3 : 0] s_axis_tx_tuser;
 (* X_INTERFACE_INFO = "xilinx.com:interface:pcie2_cfg_control:1.0 pcie2_cfg_control tx_cfg_gnt" *)
 input wire tx_cfg_gnt;
 (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 m_axis_rx TDATA" *)
-output wire [63 : 0] m_axis_rx_tdata;
+output wire [C_DATA_WIDTH-1 : 0] m_axis_rx_tdata;
 (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 m_axis_rx TKEEP" *)
-output wire [7 : 0] m_axis_rx_tkeep;
+output wire [C_DATA_WIDTH/8-1 : 0] m_axis_rx_tkeep;
 (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 m_axis_rx TLAST" *)
 output wire m_axis_rx_tlast;
 (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 m_axis_rx TVALID" *)
@@ -800,8 +802,8 @@ output              QPLL_PLL1OUTREFCLK;
     .c_ur_prs_response("TRUE"),
     .c_silicon_rev("2"),
     .c_aer_cap_optional_err_support("000000"),
-    .LINK_CAP_MAX_LINK_WIDTH(2),
-    .C_DATA_WIDTH(64),
+    .LINK_CAP_MAX_LINK_WIDTH(LINK_CAP_MAX_LINK_WIDTH),
+    .C_DATA_WIDTH(C_DATA_WIDTH),
     .PIPE_SIM("FALSE"),
     .PCIE_EXT_CLK("TRUE"),
     .PCIE_EXT_GT_COMMON("FALSE"),
@@ -817,7 +819,7 @@ output              QPLL_PLL1OUTREFCLK;
     .CFG_FC_IF("TRUE"),
     .EXT_PIPE_INTERFACE("FALSE"),
     .EXT_STARTUP_PRIMITIVE("FALSE"),
-    .KEEP_WIDTH(8),
+    .KEEP_WIDTH(C_DATA_WIDTH/8),
     .QPLL_PLL1_FBDIV      (QPLL_PLL1_FBDIV),     
     .QPLL_PLL1_FBDIV_45   (QPLL_PLL1_FBDIV_45),
     .QPLL_PLL1_REFCLK_DIV (QPLL_PLL1_REFCLK_DIV)

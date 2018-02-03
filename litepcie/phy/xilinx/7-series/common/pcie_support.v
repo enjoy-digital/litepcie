@@ -414,6 +414,8 @@ pcie_pipe_clock #
 
 pcie #(
     .C_BAR0(C_BAR0),
+    .LINK_CAP_MAX_LINK_WIDTH   (LINK_CAP_MAX_LINK_WIDTH),
+    .C_DATA_WIDTH              (C_DATA_WIDTH),
     .QPLL_PLL1_FBDIV           (QPLL_PLL1_FBDIV),     
     .QPLL_PLL1_FBDIV_45        (QPLL_PLL1_FBDIV_45),
     .QPLL_PLL1_REFCLK_DIV      (QPLL_PLL1_REFCLK_DIV)

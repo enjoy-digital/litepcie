@@ -135,6 +135,7 @@ class S7PCIEPHY(Module, AutoCSR):
         # hard ip
         self.specials += Instance("pcie_phy",
                 p_C_DATA_WIDTH=data_width,
+                p_LINK_CAP_MAX_LINK_WIDTH=len(pads.tx_p),
                 p_C_PCIE_GT_DEVICE={
                     "xc7k": "GTX",
                     "xc7a": "GTP"}[platform.device[:4]],

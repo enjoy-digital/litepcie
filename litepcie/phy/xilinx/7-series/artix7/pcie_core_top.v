@@ -128,7 +128,7 @@ module pcie_core_top # (
   parameter         LINK_CAP_DLL_LINK_ACTIVE_REPORTING_CAP = "FALSE",
   parameter         LINK_CAP_LINK_BANDWIDTH_NOTIFICATION_CAP = "FALSE",
   parameter [3:0]   LINK_CAP_MAX_LINK_SPEED = 4'h2,
-  parameter [5:0]   LINK_CAP_MAX_LINK_WIDTH = 6'h2,
+  parameter [5:0]   LINK_CAP_MAX_LINK_WIDTH = 6'h4,
 
   parameter         LINK_CTRL2_DEEMPHASIS = "FALSE",
   parameter         LINK_CTRL2_HW_AUTONOMOUS_SPEED_DISABLE = "FALSE",
