@@ -4,7 +4,7 @@ from litepcie.common import *
 from litepcie.core.tlp.common import *
 
 
-def print_phyy(s):
+def print_phy(s):
     print("[PHY] {}".format(s))
 
 
