@@ -98,7 +98,7 @@ test_size = 1024
 
 
 class DUT(Module):
-    def __init__(self, with_converter=False):
+    def __init__(self):
         self.submodules.host = Host(64, root_id, endpoint_id,
             phy_debug=False,
             chipset_debug=False, chipset_split=True, chipset_reordering=True,
@@ -106,19 +106,7 @@ class DUT(Module):
         self.submodules.endpoint = LitePCIeEndpoint(self.host.phy, max_pending_requests=8, with_reordering=True)
         self.submodules.dma_reader = LitePCIeDMAReader(self.endpoint, self.endpoint.crossbar.get_master_port(read_only=True))
         self.submodules.dma_writer = LitePCIeDMAWriter(self.endpoint, self.endpoint.crossbar.get_master_port(write_only=True))
-
-        if with_converter:
-                up_converter = stream.StrideConverter(dma_layout(16),
-                                                      dma_layout(64))
-                down_converter = stream.StrideConverter(dma_layout(64),
-                                                        dma_layout(16))
-                self.submodules += up_converter, down_converter
-                self.submodules += stream.Pipeline(self.dma_reader,
-                                                   self.down_converter,
-                                                   self.up_converter,
-                                                   self.dma_writer)
-        else:
-            self.comb += self.dma_reader.source.connect(self.dma_writer.sink)
+        self.comb += self.dma_reader.source.connect(self.dma_writer.sink)
 
         self.submodules.msi = LitePCIeMSI(2)
         self.comb += [
