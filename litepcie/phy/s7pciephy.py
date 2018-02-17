@@ -204,6 +204,7 @@ class S7PCIEPHY(Module, AutoCSR):
         )
         litepcie_phy_path = os.path.abspath(os.path.dirname(__file__))
         platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common"))
+        platform.add_source(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common", "xpm_cdc.sv"))
         if platform.device[:4] == "xc7k":
             platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "kintex7"))
         elif platform.device[:4] == "xc7a":

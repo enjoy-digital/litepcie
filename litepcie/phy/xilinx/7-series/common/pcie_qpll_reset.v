@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_qpll_reset.v
-// Version    : 3.0
+// Version    : 3.3
 //------------------------------------------------------------------------------
 //  Filename     :  qpll_reset.v
 //  Description  :  QPLL Reset Module for 7 Series Transceiver

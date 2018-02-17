@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_axi_basic_rx_null_gen.v
-// Version    : 3.1
+// Version    : 3.3
 //                                                                            //
 //  Description:                                                              //
 //  TRN to AXI RX null generator. Generates null packets for use in           //

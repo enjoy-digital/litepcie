@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_pcie_top.v
-// Version    : 3.0
+// Version    : 3.3
 // Description: Solution wrapper for Virtex7 Hard Block for PCI Express
 //
 //
@@ -348,7 +348,8 @@ module pcie_pcie_top # (
   parameter        VSEC_CAP_IS_LINK_VISIBLE = "TRUE",
   parameter [11:0] VSEC_CAP_NEXTPTR = 12'h140,
   parameter        VSEC_CAP_ON = "FALSE",
-  parameter [3:0]  VSEC_CAP_VERSION = 4'h1
+  parameter [3:0]  VSEC_CAP_VERSION = 4'h1,
+  parameter        ENABLE_JTAG_DBG = "FALSE"
 )
 (
 
@@ -612,6 +613,12 @@ module pcie_pcie_top # (
   output wire   [1:0]  trn_rdllp_src_rdy,
   output wire  [11:0]  pl_dbg_vec,
 
+
+  input wire                sys_clk,
+  input wire       [4:0]    pipe_rst_fsm,
+  input wire [((LINK_CAP_MAX_LINK_WIDTH*3)-1):0] pipe_rxstatus,
+
+
   input                       phy_rdy_n,
   input                       pipe_clk,
   input                       user_clk,
@@ -735,6 +742,7 @@ module pcie_pcie_top # (
   wire                     trn_tsof;
   wire                     trn_teof;
   wire                     trn_tsrc_rdy;
+  wire                     trn_tdst_rdy;
   wire                     trn_tsrc_dsc;
   wire                     trn_terrfwd;
   wire                     trn_tecrc_gen;
@@ -750,6 +758,7 @@ module pcie_pcie_top # (
   wire                     trn_rsrc_rdy;
   wire                     trn_rsrc_dsc;
   wire                     trn_rerrfwd;
+  wire                     trn_recrc_err;
   wire [7:0]               trn_rbar_hit;
 
   wire                 sys_reset_n_d;
@@ -813,6 +822,7 @@ module pcie_pcie_top # (
 
 
   wire                 pipe_tx_reset;
+  wire                 pipe_tx_rcvr_det;
   wire                 pipe_tx_rate;
   wire                 pipe_tx_deemph;
   wire [2:0]           pipe_tx_margin;
@@ -871,6 +881,7 @@ module pcie_pcie_top # (
   reg [7:0]            cfg_bus_number_d;
   reg [4:0]            cfg_device_number_d;
   reg [2:0]            cfg_function_number_d;
+  wire                 cfg_turnoff_ok_w;
 
   wire                 cfg_mgmt_rd_wr_done_n;
   wire                 pl_phy_lnk_up_n;
@@ -1379,7 +1390,8 @@ pcie_pcie_7x # (
     .VSEC_CAP_IS_LINK_VISIBLE( VSEC_CAP_IS_LINK_VISIBLE ),
     .VSEC_CAP_NEXTPTR( VSEC_CAP_NEXTPTR ),
     .VSEC_CAP_ON     ( VSEC_CAP_ON ),
-    .VSEC_CAP_VERSION( VSEC_CAP_VERSION )
+    .VSEC_CAP_VERSION( VSEC_CAP_VERSION ),
+    .ENABLE_JTAG_DBG ( ENABLE_JTAG_DBG )
   ) pcie_7x_i (
     .trn_lnk_up                                ( trn_lnk_up ),
     .trn_clk                                   ( user_clk_out ),
@@ -1680,6 +1692,11 @@ pcie_pcie_7x # (
 
     .trn_rdllp_data                            (trn_rdllp_data ),
     .trn_rdllp_src_rdy                         (trn_rdllp_src_rdy ),
+
+
+    .sys_clk                                    ( sys_clk ),
+    .pipe_rst_fsm                               ( pipe_rst_fsm ),
+    .pipe_rxstatus                              ( pipe_rxstatus ),
 
     .pipe_clk                                  ( pipe_clk ),
     .user_clk2                                 ( user_clk2 ),

@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_pipe_reset.v
-// Version    : 3.1
+// Version    : 3.3
 //------------------------------------------------------------------------------
 //  Filename     :  pipe_reset.v
 //  Description  :  PIPE Reset Module for 7 Series Transceiver

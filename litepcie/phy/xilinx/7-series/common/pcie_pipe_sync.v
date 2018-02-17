@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_pipe_sync.v
-// Version    : 3.0
+// Version    : 3.3
 //------------------------------------------------------------------------------
 //  Filename     :  pipe_sync.v
 //  Description  :  PIPE Sync Module for 7 Series Transceiver

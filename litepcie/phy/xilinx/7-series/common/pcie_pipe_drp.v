@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_pipe_drp.v
-// Version    : 3.0
+// Version    : 3.3
 //------------------------------------------------------------------------------
 //  Filename     :  pipe_drp.v
 //  Description  :  PIPE DRP Module for 7 Series Transceiver

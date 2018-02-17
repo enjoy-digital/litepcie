@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_gtp_pipe_reset.v
-// Version    : 3.0
+// Version    : 3.3
 //------------------------------------------------------------------------------
 //  Filename     :  gtp_pipe_reset.v
 //  Description  :  GTP PIPE Reset Module for 7 Series Transceiver

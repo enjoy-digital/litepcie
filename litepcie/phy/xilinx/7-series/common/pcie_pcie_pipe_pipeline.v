@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_pcie_pipe_pipeline.v
-// Version    : 3.0
+// Version    : 3.3
 //
 // Description: PIPE module for Virtex7 PCIe Block
 //
