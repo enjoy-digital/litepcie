@@ -3,22 +3,18 @@
          / /__/ / __/ -_) ___/ /___/ // -_)
         /____/_/\__/\__/_/   \___/___/\__/
 
-        Copyright 2015-2017 / EnjoyDigital
+        Copyright 2015-2018 / EnjoyDigital
 
      A small footprint and configurable PCIe core
-      with MMAP interface and scatter-gather DMA
-                powered by LiteX
+                powered by LiteX & Migen
 
 [> Intro
 --------
-LitePCIe provides a small footprint and configurable PCIe gen1/2 core.
+LitePCIe provides a small footprint and configurable PCIe core.
 
 LitePCIe is part of LiteX libraries whose aims are to lower entry level of
 complex FPGA cores by providing simple, elegant and efficient implementations
 of components used in today's SoC such as Ethernet, SATA, PCIe, SDRAM Controller...
-
-The core uses simple and specific streaming buses and will provides in the future
-adapters to use standardized AXI or Avalon-ST streaming buses.
 
 Since Python is used to describe the HDL, the core is highly and easily
 configurable.
@@ -33,31 +29,35 @@ design flow by generating the verilog rtl that you will use as a standard core.
 
 [> Features
 -----------
-- 7-Series Artix7/Kintex7 PHY (up to PCIe Gen2 X2)
-- Scatter-gather DMA
-- Wishbone bridge
-- Linux driver with DMA loopback demo and Sysfs
+PHY:
+  - Artix7/Kinte7 PHY (up to PCIe Gen X2)
+Core:
+  - TLP layer
+  - Reordering
+Frontend:
+  - DMA (with Scatter-Gather)
+  - Wishbone bridge
+Software:
+  - Linux Driver (DMA and Sysfs)
 
 [> FPGA Proven
 ---------------
 LitePCIe is already used in commercial and open-source designs:
 - PCIe SDR MIMO 2x2: https://www.amarisoft.com/products-lte-ue-ots-sdr-pcie/#sdr
 - PCIe TLP sniffer/injector: https://ramtin-amin.fr/#nvmedma
-
+- and others commercial designs...
 
 [> Possible improvements
 ------------------------
 - add standardized interfaces (AXI, Avalon-ST)
-- add support for PCIe Gen2 X4 and X8 on 7-Series
-- clean up 7-Series wrappers
+- add support for PCIe Gen2 X8 on 7-Series
 - add Ultrascale support
 - add Altera/Lattice support
+- add more documentation
 - ... See below Support and consulting :)
 
 If you want to support these features, please contact us at florent [AT]
-enjoy-digital.fr. You can also contact our partner on the public mailing list
-devel [AT] lists.m-labs.hk.
-
+enjoy-digital.fr.
 
 [> Getting started
 ------------------
@@ -66,35 +66,18 @@ devel [AT] lists.m-labs.hk.
 2. Obtain LiteX and install it:
   git clone https://github.com/enjoy-digital/litex --recursive
   cd litex
-  python3 setup.py install
+  python3 setup.py develop
   cd ..
 
-3. Build PCIe DMA loopback design (only for KC705 for now):
-  go to example_designs/
-  run ./make.py all
-
-4. Build and load Linux Driver:
-  go to software/linux/kernel
-  make all
-  ./init.sh
-
-5. Build and load Linux utilities:
-  go to software/linux/user
-  make all
-  ./litepcie_util dma_loopback_test
-
-[> Simulations
----------------
-  Unit tests are available in ./test/.
-  To run all the unit tests:
-    ./setup.py test
-  Tests can also be run individually:
-    python3 -m unittest test.test_name
+3. TODO: add/describe example design(s)
 
 [> Tests
 --------
-  A DMA loopback example with Wishbone over Sysfs is provided.
-  Please go to Getting Started section to see how to run the tests.
+Unit tests are available in ./test/.
+To run all the unit tests:
+  ./setup.py test
+Tests can also be run individually:
+  python3 -m unittest test.test_name
 
 [> License
 ----------
@@ -113,7 +96,7 @@ do them if possible:
 -------------------------
 We love open-source hardware and like sharing our designs with others.
 
-LitePCIe is mainly developed and maintained by EnjoyDigital.
+LitePCIe is developed and maintained by EnjoyDigital.
 
 If you would like to know more about LitePCIe or if you are already a happy
 user and would like to extend it for your needs, EnjoyDigital can provide standard

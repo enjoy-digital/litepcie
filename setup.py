@@ -5,13 +5,13 @@ from setuptools import setup
 from setuptools import find_packages
 
 
-if sys.version_info[:3] < (3, 3):
-    raise SystemExit("You need Python 3.3+")
+if sys.version_info[:3] < (3, 5):
+    raise SystemExit("You need Python 3.5+")
 
 
 setup(
     name="litepcie",
-    version="1.0",
+    version="0.1",
     description="small footprint and configurable PCIe core",
     long_description=open("README").read(),
     author="Florent Kermarrec",
