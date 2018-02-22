@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_gt_common.v
-// Version    : 3.3
+// Version    : 3.0
 `timescale 1ns / 1ps
 
 (* DowngradeIPIdentifiedWarnings = "yes" *)
@@ -68,7 +68,6 @@ parameter QPLL_PLL1_REFCLK_DIV = 1
 )
 
 (
-input                   CPLLPDREFCLK,
 input               	PIPE_CLK,
 input               	QPLL_QPLLPD,
 input               	QPLL_QPLLRESET,
@@ -127,7 +126,7 @@ pcie_qpll_drp #
         (
 
         //---------- Input -------------------------
-	    .DRP_CLK                        (QPLL_DRP_CLK),
+	        .DRP_CLK                        (QPLL_DRP_CLK),
             .DRP_RST_N                      (!QPLL_DRP_RST_N),
             .DRP_OVRD                       (QPLL_DRP_OVRD),
             .DRP_GEN3                       (&QPLL_DRP_GEN3),
@@ -135,7 +134,7 @@ pcie_qpll_drp #
             .DRP_START                      (QPLL_DRP_START),
             .DRP_DO                         (qpll_drp_do),
             .DRP_RDY                        (qpll_drp_rdy),
-																													     
+
         //----------           Output ------------------------
             .DRP_ADDR                       (qpll_drp_addr),
             .DRP_EN                         (qpll_drp_en),
@@ -163,7 +162,6 @@ pcie_qpll_wrapper #
         qpll_wrapper_i
         (
         //---------- QPLL Clock Ports --------------
-            .QPLL_CPLLPDREFCLK              (CPLLPDREFCLK),
             .QPLL_GTGREFCLK                 (PIPE_CLK),
             .QPLL_QPLLLOCKDETCLK            (1'd0),
             .QPLL_QPLLOUTCLK                (QPLL_QPLLOUTCLK),

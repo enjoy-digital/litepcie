@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : xilinx_pcie_2_1_ep_7x.v
-// Version    : 3.3
+// Version    : 3.0
 //--
 //-- Description:  PCI Express Endpoint example FPGA design
 //--
@@ -62,12 +62,10 @@
 
 module pcie_phy # (
   parameter PL_FAST_TRAIN       = "FALSE", // Simulation Speedup
-  parameter EXT_PIPE_SIM        = "FALSE",  // This Parameter has effect on selecting Enable External PIPE Interface in GUI.	
-  parameter PCIE_EXT_CLK        = "TRUE",           // Use External Clocking Module
+  parameter PCIE_EXT_CLK        = "TRUE",    // Use External Clocking Module
   parameter PCIE_EXT_GT_COMMON  = "FALSE",
-  parameter REF_CLK_FREQ        = 0,                // 0 - 100 MHz, 1 - 125 MHz, 2 - 250 MHz
-  parameter LINK_CAP_MAX_LINK_WIDTH = 4,            // PCIe Lane Width
-  parameter C_DATA_WIDTH        = 128,              // RX/TX interface data width
+  parameter REF_CLK_FREQ        = 0,     // 0 - 100 MHz, 1 - 125 MHz, 2 - 250 MHz
+  parameter C_DATA_WIDTH        = 64, // RX/TX interface data width
   parameter KEEP_WIDTH          = C_DATA_WIDTH / 8, // TSTRB width
   parameter C_PCIE_GT_DEVICE  = "GTX",
   parameter C_BAR0 = 32'hF0000000,
@@ -83,10 +81,10 @@ module pcie_phy # (
   input           sys_rst_n,
 
   // Lanes
-  output  [LINK_CAP_MAX_LINK_WIDTH-1:0]    pci_exp_txp,
-  output  [LINK_CAP_MAX_LINK_WIDTH-1:0]    pci_exp_txn,
-  input   [LINK_CAP_MAX_LINK_WIDTH-1:0]    pci_exp_rxp,
-  input   [LINK_CAP_MAX_LINK_WIDTH-1:0]    pci_exp_rxn,
+  output  [1:0]    pci_exp_txp,
+  output  [1:0]    pci_exp_txn,
+  input   [1:0]    pci_exp_rxp,
+  input   [1:0]    pci_exp_rxn,
 
   //--- USER INTERFACE------------------------------------------------------
   // Clk / rst
@@ -101,7 +99,7 @@ module pcie_phy # (
   input                          tx_cfg_gnt,
   output                         s_axis_tx_tready,
   input  [C_DATA_WIDTH-1:0]      s_axis_tx_tdata,
-  input  [KEEP_WIDTH-1:0]    s_axis_tx_tkeep,
+  input  [C_DATA_WIDTH/8-1:0]    s_axis_tx_tkeep,
   input  [3:0]                   s_axis_tx_tuser,
   input                          s_axis_tx_tlast,
   input                          s_axis_tx_tvalid,
@@ -110,7 +108,7 @@ module pcie_phy # (
   input                          rx_np_ok,
   input                          rx_np_req,
   output  [C_DATA_WIDTH-1:0]     m_axis_rx_tdata,
-  output  [KEEP_WIDTH-1:0]   m_axis_rx_tkeep,
+  output  [C_DATA_WIDTH/8-1:0]   m_axis_rx_tkeep,
   output                         m_axis_rx_tlast,
   output                         m_axis_rx_tvalid,
   input                          m_axis_rx_tready,
@@ -201,14 +199,14 @@ module pcie_phy # (
   reg                                         user_reset_q;
   reg                                         user_lnk_up_q;
 
-// Local Parameters
-  localparam TCQ               = 1;
-  localparam USER_CLK_FREQ     = 3;
-  localparam USER_CLK2_DIV2    = "TRUE";
-  localparam USERCLK2_FREQ     = (USER_CLK2_DIV2 == "TRUE") ? (USER_CLK_FREQ == 4) ? 3 : (USER_CLK_FREQ == 3) ? 2 : USER_CLK_FREQ: USER_CLK_FREQ;
 
-
- //-----------------------------I/O BUFFERS------------------------//
+  localparam USER_CLK_FREQ = 2;
+  localparam USER_CLK2_DIV2 = "FALSE";
+  localparam USERCLK2_FREQ = (USER_CLK2_DIV2 == "TRUE") ?
+                             (USER_CLK_FREQ == 4) ? 3 :
+                             (USER_CLK_FREQ == 3) ? 2 : USER_CLK_FREQ :
+                             USER_CLK_FREQ;
+  //-------------------------------------------------------
 
   IBUF   sys_reset_n_ibuf (.O(sys_rst_n_c), .I(sys_rst_n));
 
@@ -221,7 +219,7 @@ module pcie_phy # (
 
 pcie_support #
    (
-    .LINK_CAP_MAX_LINK_WIDTH        ( LINK_CAP_MAX_LINK_WIDTH ), // PCIe Lane Width
+    .LINK_CAP_MAX_LINK_WIDTH        ( 2 ),  // PCIe Lane Width
     .C_DATA_WIDTH                   ( C_DATA_WIDTH ),                       // RX/TX interface data width
     .KEEP_WIDTH                     ( KEEP_WIDTH ),                         // TSTRB width
     .PCIE_REFCLK_FREQ               ( REF_CLK_FREQ ),                       // PCIe reference clock frequency
@@ -259,7 +257,7 @@ pcie_support_i
   .pipe_oobclk_out                            ( ),
   .pipe_userclk2_out                          ( ),
   .pipe_mmcm_lock_out                         ( ),
-  .pipe_pclk_sel_slave                        ( 4'b0),
+  .pipe_pclk_sel_slave                        ( 2'b0),
   .pipe_mmcm_rst_n                            ( pipe_mmcm_rst_n ),        // Async      | Async
 
 

@@ -135,7 +135,6 @@ class S7PCIEPHY(Module, AutoCSR):
         # hard ip
         self.specials += Instance("pcie_phy",
                 p_C_DATA_WIDTH=data_width,
-                p_LINK_CAP_MAX_LINK_WIDTH=len(pads.tx_p),
                 p_C_PCIE_GT_DEVICE={
                     "xc7k": "GTX",
                     "xc7a": "GTP"}[platform.device[:4]],
@@ -204,7 +203,6 @@ class S7PCIEPHY(Module, AutoCSR):
         )
         litepcie_phy_path = os.path.abspath(os.path.dirname(__file__))
         platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common"))
-        platform.add_source(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common", "xpm_cdc.sv"))
         if platform.device[:4] == "xc7k":
             platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "kintex7"))
         elif platform.device[:4] == "xc7a":

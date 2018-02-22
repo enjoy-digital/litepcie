@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_qpll_drp.v
-// Version    : 3.3
+// Version    : 3.0
 //------------------------------------------------------------------------------
 //  Filename     :  qpll_drp.v
 //  Description  :  QPLL DRP Module for 7 Series Transceiver
