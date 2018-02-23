@@ -1,4 +1,4 @@
-from litex.gen import *
+from migen import *
 
 from litepcie.common import *
 from litepcie.core.common import *

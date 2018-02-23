@@ -1,7 +1,8 @@
 import os
-from litex.gen import *
-from litex.gen.genlib.cdc import MultiReg
-from litex.gen.genlib.misc import WaitTimer
+
+from migen import *
+from migen.genlib.cdc import MultiReg
+from migen.genlib.misc import WaitTimer
 
 from litex.soc.interconnect.csr import *
 

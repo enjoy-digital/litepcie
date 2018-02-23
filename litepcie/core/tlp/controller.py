@@ -1,13 +1,12 @@
-from litex.gen import *
+from migen import *
 
 from litepcie.common import *
 from litepcie.core.common import *
 from litepcie.core.tlp.common import *
 from litepcie.core.tlp.reordering import LitePCIeTLPReordering
 
-from litex.soc.interconnect.stream import SyncFIFO as SyncFlowFIFO
+from migen.genlib.fifo import SyncFIFO
 
-from litex.gen.genlib.fifo import SyncFIFO
 
 class LitePCIeTLPController(Module):
     def __init__(self, data_width, max_pending_requests, with_reordering=False):

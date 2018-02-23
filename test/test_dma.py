@@ -1,7 +1,8 @@
 import unittest
 import random
 
-from litex.gen import *
+from migen import *
+
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream_sim import seed_to_data
 
@@ -123,7 +124,7 @@ loopback_datas = []
 def main_generator(dut):
     dut.host.malloc(0x00000000, test_size*2)
     dut.host.chipset.enable()
-    
+
     dut.host.write_mem(0x00000000, host_datas)
 
     dma_reader_driver = DMADriver("dma_reader", dut)

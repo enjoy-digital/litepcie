@@ -1,13 +1,12 @@
-from litex.gen import *
-from litex.gen.genlib.misc import chooser, displacer
+from migen import *
+from migen.genlib.misc import chooser, displacer
+from migen.genlib.fifo import SyncFIFOBuffered
 
 from litex.soc.interconnect.stream import *
 from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 from litepcie.core.tlp.common import *
-
-from litex.gen.genlib.fifo import SyncFIFOBuffered
 
 
 def descriptor_layout(with_user_id=False):

@@ -1,7 +1,7 @@
-from litex.gen import *
-from litex.gen.genlib.io import CRG
-from litex.gen.genlib.resetsync import AsyncResetSynchronizer
-from litex.gen.genlib.misc import timeline
+from migen import *
+from migen.genlib.io import CRG
+from migen.genlib.resetsync import AsyncResetSynchronizer
+from migen.genlib.misc import timeline
 
 from litex.soc.interconnect.csr import *
 from litex.soc.interconnect import wishbone
