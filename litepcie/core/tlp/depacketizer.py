@@ -3,22 +3,81 @@ from migen import *
 from litepcie.core.tlp.common import *
 
 
-class LitePCIeTLPHeaderExtracter(Module):
-    def __init__(self, data_width):
-        self.sink = sink = stream.Endpoint(phy_layout(data_width))
-        self.source = source = stream.Endpoint(tlp_raw_layout(data_width))
+class LitePCIeTLPHeaderExtracter64b(Module):
+    def __init__(self):
+        self.sink = sink = stream.Endpoint(phy_layout(64))
+        self.source = source = stream.Endpoint(tlp_raw_layout(64))
 
         # # #
 
-        if data_width != 64:
-            raise ValueError("Current module only supports data_width of 64.")
+        first = Signal()
+        last = Signal()
+        count = Signal()
+
+        dat = Signal(64, reset_less=True)
+        be = Signal(64//8, reset_less=True)
+        self.sync += \
+            If(sink.valid & sink.ready,
+                dat.eq(sink.dat),
+                be.eq(sink.be)
+            )
+
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        fsm.act("IDLE",
+            NextValue(first, 1),
+            NextValue(last, 0),
+            NextValue(count, 0),
+            If(sink.valid, NextState("HEADER"))
+        )
+        fsm.act("HEADER",
+            sink.ready.eq(1),
+            If(sink.valid,
+                NextValue(count, count + 1),
+                NextValue(self.source.header[32*0:32*1], self.source.header[32*2:32*3]),
+                NextValue(self.source.header[32*1:32*2], self.source.header[32*3:32*4]),
+                NextValue(self.source.header[32*2:32*3], sink.dat[32*0:32*1]),
+                NextValue(self.source.header[32*3:32*4], sink.dat[32*1:32*2]),
+                If(count,
+                    If(sink.last, NextValue(last, 1)),
+                    NextState("COPY")
+                )
+            )
+        )
+        fsm.act("COPY",
+            source.valid.eq(sink.valid | last),
+            source.first.eq(first),
+            source.last.eq(sink.last | last),
+            If(source.valid & source.ready,
+                NextValue(first, 0),
+                sink.ready.eq(1 & ~last), # already acked when last is 1
+                If(source.last, NextState("IDLE"))
+            )
+        )
+        self.comb += [
+            source.dat[32*0:32*1].eq(reverse_bytes(dat[32*1:32*2])),
+            source.dat[32*1:32*2].eq(reverse_bytes(sink.dat[32*0:32*1])),
+            source.be[4*0:4*1].eq(reverse_bits(be[4*1:4*2])),
+            source.be[4*1:4*2].eq(reverse_bits(sink.be[4*0:4*1]))
+        ]
+
+
+class LitePCIeTLPHeaderExtracter128b(Module):
+    def __init__(self):
+        self.sink = sink = stream.Endpoint(phy_layout(128))
+        self.source = source = stream.Endpoint(tlp_raw_layout(128))
+
+        # # #
 
         first = Signal()
         last = Signal()
-        count = Signal(2)
 
-        sink_dat_last = Signal(data_width, reset_less=True)
-        sink_be_last = Signal(data_width//8, reset_less=True)
+        dat = Signal(128, reset_less=True)
+        be = Signal(128//8, reset_less=True)
+        self.sync += \
+            If(sink.valid & sink.ready,
+                dat.eq(sink.dat),
+                be.eq(sink.be)
+            )
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
@@ -32,29 +91,14 @@ class LitePCIeTLPHeaderExtracter(Module):
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid,
-                NextValue(count, count + 1),
-                NextValue(self.source.header, Cat(self.source.header[data_width:], sink.dat)),
-                If(count == tlp_common_header_length*8//data_width - 1,
-                    If(sink.last,
-                        NextValue(last, 1)
-                    ),
-                    NextState("COPY")
-                )
+                NextValue(self.source.header[32*0:32*1], sink.dat[32*0:32*1]),
+                NextValue(self.source.header[32*1:32*2], sink.dat[32*1:32*2]),
+                NextValue(self.source.header[32*2:32*3], sink.dat[32*2:32*3]),
+                NextValue(self.source.header[32*3:32*4], sink.dat[32*3:32*4]),
+                If(sink.last, NextValue(last, 1)),
+                NextState("COPY")
             )
         )
-        self.sync += [
-            If(sink.valid & sink.ready,
-                sink_dat_last.eq(sink.dat),
-                sink_be_last.eq(sink.be)
-            )
-        ]
-        self.comb += [
-            # XXX add genericity
-            source.dat.eq(Cat(reverse_bytes(sink_dat_last[32:]),
-                              reverse_bytes(sink.dat[:32]))),
-            source.be.eq(Cat(reverse_bits(sink_be_last[4:][::-1]),
-                             reverse_bits(sink.be[:4]))),
-        ]
         fsm.act("COPY",
             source.valid.eq(sink.valid | last),
             source.first.eq(first),
@@ -67,6 +111,16 @@ class LitePCIeTLPHeaderExtracter(Module):
                 )
             )
         )
+        self.comb += [
+            source.dat[32*0:32*1].eq(reverse_bytes(dat[32*1:32*2])),
+            source.dat[32*1:32*2].eq(reverse_bytes(dat[32*2:32*3])),
+            source.dat[32*2:32*3].eq(reverse_bytes(dat[32*3:32*4])),
+            source.dat[32*3:32*4].eq(reverse_bytes(sink.dat[32*0:32*1])),
+            source.be[4*0:4*1].eq(reverse_bits(be[4*1:4*2])),
+            source.be[4*1:4*2].eq(reverse_bits(be[4*2:4*3])),
+            source.be[4*2:4*3].eq(reverse_bits(be[4*3:4*4])),
+            source.be[4*1:4*2].eq(reverse_bits(sink.be[4*0:4*1]))
+        ]
 
 
 class LitePCIeTLPDepacketizer(Module):
@@ -79,7 +133,11 @@ class LitePCIeTLPDepacketizer(Module):
         # # #
 
         # extract raw header
-        header_extracter = LitePCIeTLPHeaderExtracter(data_width)
+        header_extracter_cls = {
+             64 : LitePCIeTLPHeaderExtracter64b,
+            128 : LitePCIeTLPHeaderExtracter128b,
+        }
+        header_extracter = header_extracter_cls[data_width]()
         self.submodules += header_extracter
         self.comb += self.sink.connect(header_extracter.sink)
         header = header_extracter.source.header
