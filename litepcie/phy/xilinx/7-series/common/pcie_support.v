@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_support.v
-// Version    : 3.0
+// Version    : 3.3
 //--
 //-- Description:  PCI Express Endpoint Shared Logic Wrapper
 //--
@@ -288,7 +288,7 @@ module pcie_support # (
   input                                       pl_directed_link_speed,
   input                                       pl_directed_link_auton,
   input                                       pl_upstream_prefer_deemph,
-
+ 
   output                                      pl_sel_lnk_rate,
   output   [1:0]                              pl_sel_lnk_width,
   output   [5:0]                              pl_ltssm_state,
@@ -382,7 +382,7 @@ pcie_pipe_clock #
           .CLK_CLK                        ( sys_clk ),
           .CLK_TXOUTCLK                   ( pipe_txoutclk_in ),     // Reference clock from lane 0
           .CLK_RXOUTCLK_IN                ( pipe_rxoutclk_in ),
-          .CLK_RST_N                      ( pipe_mmcm_rst_n ),      // Allow system reset for error_recovery
+          .CLK_RST_N                      ( pipe_mmcm_rst_n ),      // Allow system reset for error_recovery             
           .CLK_PCLK_SEL                   ( pipe_pclk_sel_in ),
           .CLK_PCLK_SEL_SLAVE             ( pipe_pclk_sel_slave),
           .CLK_GEN3                       ( pipe_gen3_in ),
@@ -400,9 +400,16 @@ pcie_pipe_clock #
 
       );
 
+
+
+
     //---------- GT COMMON Internal Mode---------------------------------------
 
-            assign qpll_drp_done                         =  2'd0;
+            wire [1:0]                          qpll_qplllock;
+            wire [1:0]                          qpll_qplloutclk;
+            wire [1:0]                          qpll_qplloutrefclk;
+            
+	    assign qpll_drp_done                         =  2'd0;
             assign qpll_drp_reset                        =  2'd0;
             assign qpll_drp_crscode                      =  12'd0;
             assign qpll_drp_fsm                          =  18'd0;

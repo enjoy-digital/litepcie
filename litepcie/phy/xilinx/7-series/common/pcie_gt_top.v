@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_gt_top.v
-// Version    : 3.0
+// Version    : 3.3
 //-- Description: GTX module for 7-series Integrated PCIe Block
 //--
 //--
@@ -73,8 +73,8 @@ module pcie_gt_top #
    parameter               PCIE_PLL_SEL            = "CPLL",     // Select the PLL (CPLL or QPLL)
    parameter               PCIE_ASYNC_EN           = "FALSE",    // Asynchronous Clocking Enable
    parameter               PCIE_TXBUF_EN           = "FALSE",    // Use the Tansmit Buffer
-   parameter               PCIE_EXT_GT_COMMON      = "FALSE",
-   parameter               EXT_CH_GT_DRP           = "FALSE",
+   parameter               PCIE_EXT_GT_COMMON      = "FALSE", 
+   parameter               EXT_CH_GT_DRP           = "FALSE",  
    parameter               TX_MARGIN_FULL_0        = 7'b1001111, // 1000 mV
    parameter               TX_MARGIN_FULL_1        = 7'b1001110, // 950 mV
    parameter               TX_MARGIN_FULL_2        = 7'b1001101, // 900 mV
@@ -84,7 +84,7 @@ module pcie_gt_top #
    parameter               TX_MARGIN_LOW_1         = 7'b1000110, // 450 mV
    parameter               TX_MARGIN_LOW_2         = 7'b1000011, // 400 mV
    parameter               TX_MARGIN_LOW_3         = 7'b1000010, // 350 mV
-   parameter               TX_MARGIN_LOW_4         = 7'b1000000,
+   parameter               TX_MARGIN_LOW_4         = 7'b1000000,   
 
    parameter               PCIE_CHAN_BOND          = 0,
    parameter               TCQ                     = 1,           //synthesis warning solved: parameter declaration becomes local
@@ -311,17 +311,17 @@ module pcie_gt_top #
   //---------- Debug Ports -------------------------------
   output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_CPLL_LOCK,
   output     [(LINK_CAP_MAX_LINK_WIDTH-1)>>2:0] PIPE_QPLL_LOCK,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_RXPMARESETDONE,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*3)-1:0]  PIPE_RXBUFSTATUS,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_TXPHALIGNDONE,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_TXPHINITDONE,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_TXDLYSRESETDONE,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_RXPHALIGNDONE,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_RXDLYSRESETDONE,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_RXSYNCDONE,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  PIPE_RXDISPERR,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  PIPE_RXNOTINTABLE,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_RXCOMMADET,
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_RXPMARESETDONE,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*3)-1:0]  PIPE_RXBUFSTATUS,         
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_TXPHALIGNDONE,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_TXPHINITDONE,        
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_TXDLYSRESETDONE,    
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_RXPHALIGNDONE,      
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_RXDLYSRESETDONE,     
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_RXSYNCDONE,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  PIPE_RXDISPERR,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  PIPE_RXNOTINTABLE,      
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    PIPE_RXCOMMADET,        
 
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     PIPE_DEBUG_0,
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     PIPE_DEBUG_1,
@@ -342,6 +342,7 @@ module pcie_gt_top #
   input                                         PIPE_RXPRBSCNTRESET,
   input       [ 2:0]                            PIPE_LOOPBACK,
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     PIPE_RXPRBSERR,
+  input       [LINK_CAP_MAX_LINK_WIDTH-1:0]     PIPE_TXINHIBIT,
 
   //-----------Channel DRP----------------------------------------
   output                                          ext_ch_gt_drpclk,
@@ -377,8 +378,8 @@ module pcie_gt_top #
   localparam                         PCIE_LINK_SPEED = (PL_FAST_TRAIN == "TRUE") ? 2 : 3;
 
   // The parameter PCIE_OOBCLK_MODE_ENABLE value should be "0" for simulation and for synthesis it should be 1
-  //localparam                         PCIE_OOBCLK_MODE_ENABLE = (PL_FAST_TRAIN == "TRUE") ? 0 : 1;
-  localparam                         PCIE_OOBCLK_MODE_ENABLE = 1;
+  //localparam                         PCIE_OOBCLK_MODE_ENABLE = (PL_FAST_TRAIN == "TRUE") ? 0 : 1;  
+  localparam                         PCIE_OOBCLK_MODE_ENABLE = 1;  
 
   localparam              PCIE_TX_EIDLE_ASSERT_DELAY = (PL_FAST_TRAIN == "TRUE") ? 3'd4 : 3'd2;
 
@@ -470,7 +471,7 @@ endgenerate
 pcie_pipe_wrapper #
   (
     .PCIE_SIM_MODE                  ( PL_FAST_TRAIN ),
-
+ 
     // synthesis translate_off
     .PCIE_SIM_SPEEDUP               ( "TRUE" ),
     // synthesis translate_on
@@ -479,15 +480,15 @@ pcie_pipe_wrapper #
     .PCIE_TXBUF_EN                  ( PCIE_TXBUF_EN ),
     .PCIE_EXT_GT_COMMON             ( PCIE_EXT_GT_COMMON ),
     .EXT_CH_GT_DRP                  ( EXT_CH_GT_DRP ),
-    .TX_MARGIN_FULL_0               (TX_MARGIN_FULL_0),
-    .TX_MARGIN_FULL_1               (TX_MARGIN_FULL_1),
-    .TX_MARGIN_FULL_2               (TX_MARGIN_FULL_2),
-    .TX_MARGIN_FULL_3               (TX_MARGIN_FULL_3),
-    .TX_MARGIN_FULL_4               (TX_MARGIN_FULL_4),
-    .TX_MARGIN_LOW_0                (TX_MARGIN_LOW_0),
-    .TX_MARGIN_LOW_1                (TX_MARGIN_LOW_1),
-    .TX_MARGIN_LOW_2                (TX_MARGIN_LOW_2),
-    .TX_MARGIN_LOW_3                (TX_MARGIN_LOW_3),
+    .TX_MARGIN_FULL_0               (TX_MARGIN_FULL_0),                          
+    .TX_MARGIN_FULL_1               (TX_MARGIN_FULL_1),                          
+    .TX_MARGIN_FULL_2               (TX_MARGIN_FULL_2),                          
+    .TX_MARGIN_FULL_3               (TX_MARGIN_FULL_3),                          
+    .TX_MARGIN_FULL_4               (TX_MARGIN_FULL_4),                          
+    .TX_MARGIN_LOW_0                (TX_MARGIN_LOW_0),                          
+    .TX_MARGIN_LOW_1                (TX_MARGIN_LOW_1),                          
+    .TX_MARGIN_LOW_2                (TX_MARGIN_LOW_2),                          
+    .TX_MARGIN_LOW_3                (TX_MARGIN_LOW_3),                          
     .TX_MARGIN_LOW_4                (TX_MARGIN_LOW_4),
     .PCIE_ASYNC_EN                  ( PCIE_ASYNC_EN ),
     .PCIE_CHAN_BOND                 ( PCIE_CHAN_BOND ),
@@ -569,18 +570,18 @@ pcie_pipe_wrapper #
     .PIPE_EYESCANDATAERROR          ( gt_eyescandataerror[((LINK_CAP_MAX_LINK_WIDTH)-1):0] ),
     .PIPE_RXSTATUS                  ( gt_rx_status_wire_filter[((3*LINK_CAP_MAX_LINK_WIDTH)-1):0] ),
 
-    .INT_PCLK_OUT_SLAVE             (INT_PCLK_OUT_SLAVE   ),
-    .INT_RXUSRCLK_OUT               (INT_RXUSRCLK_OUT     ),
-    .INT_RXOUTCLK_OUT               (INT_RXOUTCLK_OUT     ),
-    .INT_DCLK_OUT                   (INT_DCLK_OUT         ),
-    .INT_USERCLK1_OUT               (INT_USERCLK1_OUT     ),
-    .INT_USERCLK2_OUT               (INT_USERCLK2_OUT     ),
-    .INT_OOBCLK_OUT                 (INT_OOBCLK_OUT       ),
-    .INT_MMCM_LOCK_OUT              (INT_MMCM_LOCK_OUT    ),
-    .INT_QPLLLOCK_OUT               (INT_QPLLLOCK_OUT     ),
-    .INT_QPLLOUTCLK_OUT             (INT_QPLLOUTCLK_OUT   ),
-    .INT_QPLLOUTREFCLK_OUT          (INT_QPLLOUTREFCLK_OUT),
-    .INT_PCLK_SEL_SLAVE             (INT_PCLK_SEL_SLAVE   ),
+    .INT_PCLK_OUT_SLAVE             (INT_PCLK_OUT_SLAVE   ),           
+    .INT_RXUSRCLK_OUT               (INT_RXUSRCLK_OUT     ),    
+    .INT_RXOUTCLK_OUT               (INT_RXOUTCLK_OUT     ),         
+    .INT_DCLK_OUT                   (INT_DCLK_OUT         ),           
+    .INT_USERCLK1_OUT               (INT_USERCLK1_OUT     ),      
+    .INT_USERCLK2_OUT               (INT_USERCLK2_OUT     ),       
+    .INT_OOBCLK_OUT                 (INT_OOBCLK_OUT       ),     
+    .INT_MMCM_LOCK_OUT              (INT_MMCM_LOCK_OUT    ),        
+    .INT_QPLLLOCK_OUT               (INT_QPLLLOCK_OUT     ),        
+    .INT_QPLLOUTCLK_OUT             (INT_QPLLOUTCLK_OUT   ),        
+    .INT_QPLLOUTREFCLK_OUT          (INT_QPLLOUTREFCLK_OUT),         
+    .INT_PCLK_SEL_SLAVE             (INT_PCLK_SEL_SLAVE   ),    
     //---------- PIPE User Ports ---------------------------
     .PIPE_MMCM_RST_N                ( PIPE_MMCM_RST_N ),        // Async      | Async
 
@@ -647,8 +648,8 @@ pcie_pipe_wrapper #
     .PIPE_TXPRBSFORCEERR      ( PIPE_TXPRBSFORCEERR ),
     .PIPE_RXPRBSCNTRESET      ( PIPE_RXPRBSCNTRESET ),
     .PIPE_LOOPBACK            ( PIPE_LOOPBACK ),
-
     .PIPE_RXPRBSERR           ( PIPE_RXPRBSERR ),
+    .PIPE_TXINHIBIT           ( PIPE_TXINHIBIT ),
 
     .PIPE_RST_FSM             ( PIPE_RST_FSM ),
     .PIPE_QRST_FSM            ( PIPE_QRST_FSM ),
@@ -666,17 +667,17 @@ pcie_pipe_wrapper #
 
     .PIPE_CPLL_LOCK           ( PIPE_CPLL_LOCK ),
     .PIPE_QPLL_LOCK           ( PIPE_QPLL_LOCK ),
-    .PIPE_RXPMARESETDONE      ( PIPE_RXPMARESETDONE ),
-    .PIPE_RXBUFSTATUS         ( PIPE_RXBUFSTATUS    ),
-    .PIPE_TXPHALIGNDONE       ( PIPE_TXPHALIGNDONE  ),
-    .PIPE_TXPHINITDONE        ( PIPE_TXPHINITDONE   ),
-    .PIPE_TXDLYSRESETDONE     ( PIPE_TXDLYSRESETDONE),
-    .PIPE_RXPHALIGNDONE       ( PIPE_RXPHALIGNDONE  ),
-    .PIPE_RXDLYSRESETDONE     ( PIPE_RXDLYSRESETDONE),
-    .PIPE_RXSYNCDONE          ( PIPE_RXSYNCDONE     ),
-    .PIPE_RXDISPERR           ( PIPE_RXDISPERR      ),
-    .PIPE_RXNOTINTABLE        ( PIPE_RXNOTINTABLE   ),
-    .PIPE_RXCOMMADET          ( PIPE_RXCOMMADET     ),
+    .PIPE_RXPMARESETDONE      ( PIPE_RXPMARESETDONE ),       
+    .PIPE_RXBUFSTATUS         ( PIPE_RXBUFSTATUS    ),         
+    .PIPE_TXPHALIGNDONE       ( PIPE_TXPHALIGNDONE  ),       
+    .PIPE_TXPHINITDONE        ( PIPE_TXPHINITDONE   ),        
+    .PIPE_TXDLYSRESETDONE     ( PIPE_TXDLYSRESETDONE),    
+    .PIPE_RXPHALIGNDONE       ( PIPE_RXPHALIGNDONE  ),      
+    .PIPE_RXDLYSRESETDONE     ( PIPE_RXDLYSRESETDONE),     
+    .PIPE_RXSYNCDONE          ( PIPE_RXSYNCDONE     ),       
+    .PIPE_RXDISPERR           ( PIPE_RXDISPERR      ),       
+    .PIPE_RXNOTINTABLE        ( PIPE_RXNOTINTABLE   ),      
+    .PIPE_RXCOMMADET          ( PIPE_RXCOMMADET     ),        
     //---------- Debug Ports -------------------------------
     .PIPE_DEBUG_0             ( PIPE_DEBUG_0  ),
     .PIPE_DEBUG_1             ( PIPE_DEBUG_1  ),
@@ -740,21 +741,21 @@ generate
      assign pipe_rx7_char_is_k =  2'b0 ;
 
      //synthesis warning solved: for nets below does not have driver; --assigned remaining bits of net gt_rx_data_wire to '0'
-     assign gt_rx_data_k_wire[3:2]   = 2'b0;
-     assign gt_rx_data_k_wire[5:4]   = 2'b0;
-     assign gt_rx_data_k_wire[7:6]   = 2'b0;
-     assign gt_rx_data_k_wire[9:8]   = 2'b0;
-     assign gt_rx_data_k_wire[11:10] = 2'b0;
-     assign gt_rx_data_k_wire[13:12] = 2'b0;
-     assign gt_rx_data_k_wire[15:14] = 2'b0;
-     assign gt_rx_data_k_wire[17:16] = 2'b0;
-     assign gt_rx_data_k_wire[19:18] = 2'b0;
-     assign gt_rx_data_k_wire[21:20] = 2'b0;
-     assign gt_rx_data_k_wire[23:22] = 2'b0;
-     assign gt_rx_data_k_wire[25:24] = 2'b0;
-     assign gt_rx_data_k_wire[27:26] = 2'b0;
-     assign gt_rx_data_k_wire[29:28] = 2'b0;
-     assign gt_rx_data_k_wire[31:30] = 2'b0;
+     assign gt_rx_data_k_wire[3:2]   = 2'b0; 
+     assign gt_rx_data_k_wire[5:4]   = 2'b0; 
+     assign gt_rx_data_k_wire[7:6]   = 2'b0; 
+     assign gt_rx_data_k_wire[9:8]   = 2'b0; 
+     assign gt_rx_data_k_wire[11:10] = 2'b0; 
+     assign gt_rx_data_k_wire[13:12] = 2'b0; 
+     assign gt_rx_data_k_wire[15:14] = 2'b0; 
+     assign gt_rx_data_k_wire[17:16] = 2'b0; 
+     assign gt_rx_data_k_wire[19:18] = 2'b0; 
+     assign gt_rx_data_k_wire[21:20] = 2'b0; 
+     assign gt_rx_data_k_wire[23:22] = 2'b0; 
+     assign gt_rx_data_k_wire[25:24] = 2'b0; 
+     assign gt_rx_data_k_wire[27:26] = 2'b0; 
+     assign gt_rx_data_k_wire[29:28] = 2'b0; 
+     assign gt_rx_data_k_wire[31:30] = 2'b0; 
 
      assign pipe_rx0_data = {gt_rx_data_wire[ 15: 8], gt_rx_data_wire[ 7: 0]};
      assign pipe_rx1_data = 16'h0 ;
@@ -766,21 +767,21 @@ generate
      assign pipe_rx7_data = 16'h0 ;
 
      //synthesis warning solved: for nets below does not have driver; --assigned remaining bits of net gt_rx_data_wire to '0'
-     assign gt_rx_data_wire[31:16]   = 16'b0;
-     assign gt_rx_data_wire[47:32]   = 16'b0;
-     assign gt_rx_data_wire[63:48]   = 16'b0;
-     assign gt_rx_data_wire[79:64]   = 16'b0;
-     assign gt_rx_data_wire[95:80]   = 16'b0;
-     assign gt_rx_data_wire[111:96]  = 16'b0;
-     assign gt_rx_data_wire[127:112] = 16'b0;
-     assign gt_rx_data_wire[143:128] = 16'b0;
-     assign gt_rx_data_wire[159:144] = 16'b0;
-     assign gt_rx_data_wire[175:160] = 16'b0;
-     assign gt_rx_data_wire[191:176] = 16'b0;
-     assign gt_rx_data_wire[207:192] = 16'b0;
-     assign gt_rx_data_wire[223:208] = 16'b0;
-     assign gt_rx_data_wire[239:224] = 16'b0;
-     assign gt_rx_data_wire[255:240] = 16'b0;
+     assign gt_rx_data_wire[31:16]   = 16'b0; 
+     assign gt_rx_data_wire[47:32]   = 16'b0; 
+     assign gt_rx_data_wire[63:48]   = 16'b0;   
+     assign gt_rx_data_wire[79:64]   = 16'b0;   
+     assign gt_rx_data_wire[95:80]   = 16'b0;   
+     assign gt_rx_data_wire[111:96]  = 16'b0;   
+     assign gt_rx_data_wire[127:112] = 16'b0; 
+     assign gt_rx_data_wire[143:128] = 16'b0; 
+     assign gt_rx_data_wire[159:144] = 16'b0; 
+     assign gt_rx_data_wire[175:160] = 16'b0; 
+     assign gt_rx_data_wire[191:176] = 16'b0; 
+     assign gt_rx_data_wire[207:192] = 16'b0; 
+     assign gt_rx_data_wire[223:208] = 16'b0; 
+     assign gt_rx_data_wire[239:224] = 16'b0; 
+     assign gt_rx_data_wire[255:240] = 16'b0; 
 
    end // rx_link_width_x1
   else if (LINK_CAP_MAX_LINK_WIDTH == 2)
@@ -796,20 +797,20 @@ generate
      assign pipe_rx7_char_is_k =  2'b0 ;
 
      //synthesis warning solved: for nets below does not have driver; --assigned remaining bits of net gt_rx_data_wire to '0'
-     assign gt_rx_data_k_wire[3:2]   = 2'b0;
-     assign gt_rx_data_k_wire[7:6]   = 2'b0;
-     assign gt_rx_data_k_wire[9:8]   = 2'b0;
-     assign gt_rx_data_k_wire[11:10] = 2'b0;
-     assign gt_rx_data_k_wire[13:12] = 2'b0;
-     assign gt_rx_data_k_wire[15:14] = 2'b0;
-     assign gt_rx_data_k_wire[17:16] = 2'b0;
-     assign gt_rx_data_k_wire[19:18] = 2'b0;
-     assign gt_rx_data_k_wire[21:20] = 2'b0;
-     assign gt_rx_data_k_wire[23:22] = 2'b0;
-     assign gt_rx_data_k_wire[25:24] = 2'b0;
-     assign gt_rx_data_k_wire[27:26] = 2'b0;
-     assign gt_rx_data_k_wire[29:28] = 2'b0;
-     assign gt_rx_data_k_wire[31:30] = 2'b0;
+     assign gt_rx_data_k_wire[3:2]   = 2'b0; 
+     assign gt_rx_data_k_wire[7:6]   = 2'b0; 
+     assign gt_rx_data_k_wire[9:8]   = 2'b0; 
+     assign gt_rx_data_k_wire[11:10] = 2'b0; 
+     assign gt_rx_data_k_wire[13:12] = 2'b0; 
+     assign gt_rx_data_k_wire[15:14] = 2'b0; 
+     assign gt_rx_data_k_wire[17:16] = 2'b0; 
+     assign gt_rx_data_k_wire[19:18] = 2'b0; 
+     assign gt_rx_data_k_wire[21:20] = 2'b0; 
+     assign gt_rx_data_k_wire[23:22] = 2'b0; 
+     assign gt_rx_data_k_wire[25:24] = 2'b0; 
+     assign gt_rx_data_k_wire[27:26] = 2'b0; 
+     assign gt_rx_data_k_wire[29:28] = 2'b0; 
+     assign gt_rx_data_k_wire[31:30] = 2'b0; 
 
      assign pipe_rx0_data = {gt_rx_data_wire[15: 8], gt_rx_data_wire[ 7: 0]};
      assign pipe_rx1_data = {gt_rx_data_wire[47:40], gt_rx_data_wire[39:32]} ;
@@ -821,20 +822,20 @@ generate
      assign pipe_rx7_data = 16'h0 ;
 
      //synthesis warning solved: for nets below does not have driver; --assigned remaining bits of net gt_rx_data_wire to '0'
-     assign gt_rx_data_wire[31:16]   = 16'b0;
-     assign gt_rx_data_wire[63:48]   = 16'b0;
-     assign gt_rx_data_wire[79:64]   = 16'b0;
-     assign gt_rx_data_wire[95:80]   = 16'b0;
-     assign gt_rx_data_wire[111:96]  = 16'b0;
-     assign gt_rx_data_wire[127:112] = 16'b0;
-     assign gt_rx_data_wire[143:128] = 16'b0;
-     assign gt_rx_data_wire[159:144] = 16'b0;
-     assign gt_rx_data_wire[175:160] = 16'b0;
-     assign gt_rx_data_wire[191:176] = 16'b0;
-     assign gt_rx_data_wire[207:192] = 16'b0;
-     assign gt_rx_data_wire[223:208] = 16'b0;
-     assign gt_rx_data_wire[239:224] = 16'b0;
-     assign gt_rx_data_wire[255:240] = 16'b0;
+     assign gt_rx_data_wire[31:16]   = 16'b0; 
+     assign gt_rx_data_wire[63:48]   = 16'b0;   
+     assign gt_rx_data_wire[79:64]   = 16'b0;   
+     assign gt_rx_data_wire[95:80]   = 16'b0;   
+     assign gt_rx_data_wire[111:96]  = 16'b0;   
+     assign gt_rx_data_wire[127:112] = 16'b0; 
+     assign gt_rx_data_wire[143:128] = 16'b0; 
+     assign gt_rx_data_wire[159:144] = 16'b0; 
+     assign gt_rx_data_wire[175:160] = 16'b0; 
+     assign gt_rx_data_wire[191:176] = 16'b0; 
+     assign gt_rx_data_wire[207:192] = 16'b0; 
+     assign gt_rx_data_wire[223:208] = 16'b0; 
+     assign gt_rx_data_wire[239:224] = 16'b0; 
+     assign gt_rx_data_wire[255:240] = 16'b0; 
 
    end // rx_link_width_x2
   else if (LINK_CAP_MAX_LINK_WIDTH == 4)
@@ -850,18 +851,18 @@ generate
      assign pipe_rx7_char_is_k =  2'b0 ;
 
      //synthesis warning solved: for nets below does not have driver; --assigned remaining bits of net gt_rx_data_wire to '0'
-     assign gt_rx_data_k_wire[3:2]   = 2'b0;
-     assign gt_rx_data_k_wire[7:6]   = 2'b0;
-     assign gt_rx_data_k_wire[11:10] = 2'b0;
-     assign gt_rx_data_k_wire[15:14] = 2'b0;
-     assign gt_rx_data_k_wire[17:16] = 2'b0;
-     assign gt_rx_data_k_wire[19:18] = 2'b0;
-     assign gt_rx_data_k_wire[21:20] = 2'b0;
-     assign gt_rx_data_k_wire[23:22] = 2'b0;
-     assign gt_rx_data_k_wire[25:24] = 2'b0;
-     assign gt_rx_data_k_wire[27:26] = 2'b0;
-     assign gt_rx_data_k_wire[29:28] = 2'b0;
-     assign gt_rx_data_k_wire[31:30] = 2'b0;
+     assign gt_rx_data_k_wire[3:2]   = 2'b0; 
+     assign gt_rx_data_k_wire[7:6]   = 2'b0; 
+     assign gt_rx_data_k_wire[11:10] = 2'b0; 
+     assign gt_rx_data_k_wire[15:14] = 2'b0; 
+     assign gt_rx_data_k_wire[17:16] = 2'b0; 
+     assign gt_rx_data_k_wire[19:18] = 2'b0; 
+     assign gt_rx_data_k_wire[21:20] = 2'b0; 
+     assign gt_rx_data_k_wire[23:22] = 2'b0; 
+     assign gt_rx_data_k_wire[25:24] = 2'b0; 
+     assign gt_rx_data_k_wire[27:26] = 2'b0; 
+     assign gt_rx_data_k_wire[29:28] = 2'b0; 
+     assign gt_rx_data_k_wire[31:30] = 2'b0; 
 
      assign pipe_rx0_data = {gt_rx_data_wire[15: 8], gt_rx_data_wire[ 7: 0]};
      assign pipe_rx1_data = {gt_rx_data_wire[47:40], gt_rx_data_wire[39:32]};
@@ -873,21 +874,21 @@ generate
      assign pipe_rx7_data = 16'h0 ;
 
      //synthesis warning solved: for nets below does not have driver; --assigned remaining bits of net gt_rx_data_wire to '0'
-     assign gt_rx_data_wire[31:16]   = 16'b0;
-     assign gt_rx_data_wire[63:48]   = 16'b0;
-     assign gt_rx_data_wire[95:80]   = 16'b0;
-     assign gt_rx_data_wire[127:112] = 16'b0;
-     assign gt_rx_data_wire[143:128] = 16'b0;
-     assign gt_rx_data_wire[159:144] = 16'b0;
-     assign gt_rx_data_wire[175:160] = 16'b0;
-     assign gt_rx_data_wire[191:176] = 16'b0;
-     assign gt_rx_data_wire[207:192] = 16'b0;
-     assign gt_rx_data_wire[223:208] = 16'b0;
-     assign gt_rx_data_wire[239:224] = 16'b0;
-     assign gt_rx_data_wire[255:240] = 16'b0;
+     assign gt_rx_data_wire[31:16]   = 16'b0; 
+     assign gt_rx_data_wire[63:48]   = 16'b0;   
+     assign gt_rx_data_wire[95:80]   = 16'b0;   
+     assign gt_rx_data_wire[127:112] = 16'b0; 
+     assign gt_rx_data_wire[143:128] = 16'b0; 
+     assign gt_rx_data_wire[159:144] = 16'b0; 
+     assign gt_rx_data_wire[175:160] = 16'b0; 
+     assign gt_rx_data_wire[191:176] = 16'b0; 
+     assign gt_rx_data_wire[207:192] = 16'b0; 
+     assign gt_rx_data_wire[223:208] = 16'b0; 
+     assign gt_rx_data_wire[239:224] = 16'b0; 
+     assign gt_rx_data_wire[255:240] = 16'b0; 
 
   end // rx_link_width_x4
-  else
+  else 
    begin : rx_link_width_x8
 
      assign pipe_rx0_char_is_k =  {gt_rx_data_k_wire[1], gt_rx_data_k_wire[0]};
@@ -900,14 +901,14 @@ generate
      assign pipe_rx7_char_is_k =  {gt_rx_data_k_wire[29], gt_rx_data_k_wire[28]};
 
      //synthesis warning solved: for nets below does not have driver; --assigned remaining bits of net gt_rx_data_wire to '0'
-     assign gt_rx_data_k_wire[3:2]   = 2'b0;
-     assign gt_rx_data_k_wire[7:6]   = 2'b0;
-     assign gt_rx_data_k_wire[11:10] = 2'b0;
-     assign gt_rx_data_k_wire[15:14] = 2'b0;
-     assign gt_rx_data_k_wire[19:18] = 2'b0;
-     assign gt_rx_data_k_wire[23:22] = 2'b0;
-     assign gt_rx_data_k_wire[27:26] = 2'b0;
-     assign gt_rx_data_k_wire[31:30] = 2'b0;
+     assign gt_rx_data_k_wire[3:2]   = 2'b0; 
+     assign gt_rx_data_k_wire[7:6]   = 2'b0; 
+     assign gt_rx_data_k_wire[11:10] = 2'b0; 
+     assign gt_rx_data_k_wire[15:14] = 2'b0; 
+     assign gt_rx_data_k_wire[19:18] = 2'b0; 
+     assign gt_rx_data_k_wire[23:22] = 2'b0; 
+     assign gt_rx_data_k_wire[27:26] = 2'b0; 
+     assign gt_rx_data_k_wire[31:30] = 2'b0; 
 
      assign pipe_rx0_data = {gt_rx_data_wire[15: 8], gt_rx_data_wire[ 7: 0]};
      assign pipe_rx1_data = {gt_rx_data_wire[47:40], gt_rx_data_wire[39:32]};
@@ -919,14 +920,14 @@ generate
      assign pipe_rx7_data = {gt_rx_data_wire[239:232], gt_rx_data_wire[231:224]};
 
      //synthesis warning solved: for nets below does not have driver; --assigned remaining bits of net gt_rx_data_wire to '0'
-     assign gt_rx_data_wire[31:16]   = 16'b0;
-     assign gt_rx_data_wire[63:48]   = 16'b0;
-     assign gt_rx_data_wire[95:80]   = 16'b0;
-     assign gt_rx_data_wire[127:112] = 16'b0;
-     assign gt_rx_data_wire[159:144] = 16'b0;
-     assign gt_rx_data_wire[191:176] = 16'b0;
-     assign gt_rx_data_wire[223:208] = 16'b0;
-     assign gt_rx_data_wire[255:240] = 16'b0;
+     assign gt_rx_data_wire[31:16]   = 16'b0; 
+     assign gt_rx_data_wire[63:48]   = 16'b0;   
+     assign gt_rx_data_wire[95:80]   = 16'b0;   
+     assign gt_rx_data_wire[127:112] = 16'b0; 
+     assign gt_rx_data_wire[159:144] = 16'b0; 
+     assign gt_rx_data_wire[191:176] = 16'b0; 
+     assign gt_rx_data_wire[223:208] = 16'b0; 
+     assign gt_rx_data_wire[255:240] = 16'b0; 
 
   end // rx_link_width_x8
 endgenerate

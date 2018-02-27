@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_axi_basic_tx_thrtl_ctl.v
-// Version    : 3.0
+// Version    : 3.3
 //                                                                            //
 //  Description:                                                              //
 //  TX throttle controller. Anticipates back-pressure from PCIe block and     //
@@ -152,6 +152,7 @@ wire       tbuf_av_gap_trig;
 wire       tbuf_av_gap_exit;
 wire       gap_trig_tlast;
 wire       gap_trig_decr;
+wire       gap_trig_tcfg;
 reg  [5:0] tbuf_av_d;
 
 reg        tcfg_req_thrtl;

@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_gtx_cpllpd_ovrd.v
-// Version    : 3.0
+// Version    : 3.3
 `timescale 1ns / 1ps
 module pcie_gtx_cpllpd_ovrd (                                                                                        
     input   i_ibufds_gte2,                                                                                     

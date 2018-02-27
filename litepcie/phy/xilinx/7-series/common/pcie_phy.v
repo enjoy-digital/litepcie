@@ -49,19 +49,16 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : xilinx_pcie_2_1_ep_7x.v
-// Version    : 3.0
+// Version    : 3.3
 //--
 //-- Description:  PCI Express Endpoint example FPGA design
 //--
 //------------------------------------------------------------------------------
-// changes (florent Kermarrec):
-// ----------------------------
-// - simplify and change filename
-//------------------------------------------------------------------------------
 
-
+`timescale 1ns / 1ps
 module pcie_phy # (
   parameter PL_FAST_TRAIN       = "FALSE", // Simulation Speedup
+  parameter EXT_PIPE_SIM        = "FALSE",  // This Parameter has effect on selecting Enable External PIPE Interface in GUI.	
   parameter PCIE_EXT_CLK        = "TRUE",    // Use External Clocking Module
   parameter PCIE_EXT_GT_COMMON  = "FALSE",
   parameter REF_CLK_FREQ        = 0,     // 0 - 100 MHz, 1 - 125 MHz, 2 - 250 MHz
@@ -199,14 +196,14 @@ module pcie_phy # (
   reg                                         user_reset_q;
   reg                                         user_lnk_up_q;
 
+// Local Parameters
+  localparam TCQ               = 1;
+  localparam USER_CLK_FREQ     = 2;
+  localparam USER_CLK2_DIV2    = "FALSE";
+  localparam USERCLK2_FREQ     = (USER_CLK2_DIV2 == "TRUE") ? (USER_CLK_FREQ == 4) ? 3 : (USER_CLK_FREQ == 3) ? 2 : USER_CLK_FREQ: USER_CLK_FREQ;
 
-  localparam USER_CLK_FREQ = 2;
-  localparam USER_CLK2_DIV2 = "FALSE";
-  localparam USERCLK2_FREQ = (USER_CLK2_DIV2 == "TRUE") ?
-                             (USER_CLK_FREQ == 4) ? 3 :
-                             (USER_CLK_FREQ == 3) ? 2 : USER_CLK_FREQ :
-                             USER_CLK_FREQ;
-  //-------------------------------------------------------
+
+ //-----------------------------I/O BUFFERS------------------------//
 
   IBUF   sys_reset_n_ibuf (.O(sys_rst_n_c), .I(sys_rst_n));
 
@@ -215,7 +212,11 @@ module pcie_phy # (
     user_lnk_up_q <= user_lnk_up;
   end
 
-  assign pipe_mmcm_rst_n                        = 1'b1;
+
+
+      assign pipe_mmcm_rst_n                        = 1'b1;
+
+
 
 pcie_support #
    (

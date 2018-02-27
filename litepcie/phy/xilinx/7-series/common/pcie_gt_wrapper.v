@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_gt_wrapper.v
-// Version    : 3.0
+// Version    : 3.3
 //------------------------------------------------------------------------------
 //  Filename     :  gt_wrapper.v
 //  Description  :  GT Wrapper Module for 7 Series Transceiver
@@ -114,7 +114,7 @@ module pcie_gt_wrapper #
     input               GT_OOBCLK,
     input       [ 1:0]  GT_TXSYSCLKSEL,
     input       [ 1:0]  GT_RXSYSCLKSEL,                
-                         
+    input               GT_CPLLPDREFCLK,                   
     output              GT_TXOUTCLK,
     output              GT_RXOUTCLK,
     output              GT_CPLLLOCK,
@@ -171,6 +171,7 @@ module pcie_gt_wrapper #
     input       [ 2:0]  GT_TXMARGIN,
     input               GT_TXSWING,
     input               GT_TXDEEMPH,
+    input               GT_TXINHIBIT,
     input       [ 4:0]  GT_TXPRECURSOR,
     input       [ 6:0]  GT_TXMAINCURSOR,
     input       [ 4:0]  GT_TXPOSTCURSOR,
@@ -447,14 +448,9 @@ else
     
 endgenerate
 
-wire gt_refclk;
-
-BUFG gInst (
-   .I (GT_GTREFCLK0), 
-   .O (gt_refclk));
    
 pcie_gtx_cpllpd_ovrd cpllPDInst (
-   .i_ibufds_gte2(gt_refclk),
+   .i_ibufds_gte2(GT_CPLLPDREFCLK),
    .o_cpllpd_ovrd(cpllpd),
    .o_cpllreset_ovrd(cpllrst));
  
@@ -836,7 +832,7 @@ generate if (PCIE_GT_DEVICE == "GTP")
         .TXMARGIN                       (GT_TXMARGIN),                          //
         .TXSWING                        (GT_TXSWING),                           //
         .TXDEEMPH                       (GT_TXDEEMPH),                          //
-        .TXINHIBIT                      (1'd0),                                 // 
+        .TXINHIBIT                      (GT_TXINHIBIT),                         // 
         .TXBUFDIFFCTRL                  (3'b100),                               // 
         .TXDIFFCTRL                     (4'b1100),                              // Select 850mV 
         .TXPRECURSOR                    (GT_TXPRECURSOR),                       // 
@@ -1502,7 +1498,7 @@ else if (PCIE_GT_DEVICE == "GTH")
         .TXMARGIN                       (GT_TXMARGIN),                          //
         .TXSWING                        (GT_TXSWING),                           //
         .TXDEEMPH                       (GT_TXDEEMPH),                          //
-        .TXINHIBIT                      (1'd0),                                 // 
+        .TXINHIBIT                      (GT_TXINHIBIT),                         // 
         .TXBUFDIFFCTRL                  (3'b100),                               // 
         .TXDIFFCTRL                     (4'b1111),                              // Select 850mV 
         .TXPRECURSOR                    (GT_TXPRECURSOR),                       // 
@@ -2131,7 +2127,7 @@ else
         .TXMARGIN                       (GT_TXMARGIN),                          //
         .TXSWING                        (GT_TXSWING),                           //
         .TXDEEMPH                       (GT_TXDEEMPH),                          //
-        .TXINHIBIT                      (1'd0),                                 // 
+        .TXINHIBIT                      (GT_TXINHIBIT),                         // 
         .TXBUFDIFFCTRL                  (3'b100),                               // 
         .TXDIFFCTRL                     (4'b1100),                              //   
         .TXPRECURSOR                    (GT_TXPRECURSOR),                       // 

@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_core_top.v
-// Version    : 3.0
+// Version    : 3.3
 //
 // Description: 7-series solution wrapper : Endpoint for PCI Express
 //
@@ -59,7 +59,8 @@
 
 `timescale 1ps/1ps
 
-(* CORE_GENERATION_INFO = "pcie,pcie_7x_v3_0,{LINK_CAP_MAX_LINK_SPEED=2,LINK_CAP_MAX_LINK_WIDTH=2,PCIE_CAP_DEVICE_PORT_TYPE=0000,DEV_CAP_MAX_PAYLOAD_SUPPORTED=2,USER_CLK_FREQ=2,REF_CLK_FREQ=0,MSI_CAP_ON=TRUE,MSI_CAP_MULTIMSGCAP=0,MSI_CAP_MULTIMSG_EXTENSION=0,MSIX_CAP_ON=FALSE,TL_TX_RAM_RADDR_LATENCY=0,TL_TX_RAM_RDATA_LATENCY=2,TL_RX_RAM_RADDR_LATENCY=0,TL_RX_RAM_RDATA_LATENCY=2,TL_RX_RAM_WRITE_LATENCY=0,VC0_TX_LASTPACKET=29,VC0_RX_RAM_LIMIT=7FF,VC0_TOTAL_CREDITS_PH=32,VC0_TOTAL_CREDITS_PD=437,VC0_TOTAL_CREDITS_NPH=12,VC0_TOTAL_CREDITS_NPD=24,VC0_TOTAL_CREDITS_CH=36,VC0_TOTAL_CREDITS_CD=461,VC0_CPL_INFINITE=TRUE,DEV_CAP_PHANTOM_FUNCTIONS_SUPPORT=0,DEV_CAP_EXT_TAG_SUPPORTED=FALSE,LINK_STATUS_SLOT_CLOCK_CONFIG=TRUE,DISABLE_LANE_REVERSAL=TRUE,DISABLE_SCRAMBLING=FALSE,DSN_CAP_ON=TRUE,REVISION_ID=00,VC_CAP_ON=FALSE}" *)
+(* CORE_GENERATION_INFO = "pcie,pcie_7x_v3_3_6,{LINK_CAP_MAX_LINK_SPEED=2,LINK_CAP_MAX_LINK_WIDTH=2,PCIE_CAP_DEVICE_PORT_TYPE=0000,DEV_CAP_MAX_PAYLOAD_SUPPORTED=2,USER_CLK_FREQ=2,REF_CLK_FREQ=0,MSI_CAP_ON=TRUE,MSI_CAP_MULTIMSGCAP=0,MSI_CAP_MULTIMSG_EXTENSION=0,MSIX_CAP_ON=FALSE,TL_TX_RAM_RADDR_LATENCY=0,TL_TX_RAM_RDATA_LATENCY=2,TL_RX_RAM_RADDR_LATENCY=0,TL_RX_RAM_RDATA_LATENCY=2,TL_RX_RAM_WRITE_LATENCY=0,\
+VC0_TX_LASTPACKET=29,VC0_RX_RAM_LIMIT=7FF,VC0_TOTAL_CREDITS_PH=32,VC0_TOTAL_CREDITS_PD=437,VC0_TOTAL_CREDITS_NPH=12,VC0_TOTAL_CREDITS_NPD=24,VC0_TOTAL_CREDITS_CH=36,VC0_TOTAL_CREDITS_CD=461,VC0_CPL_INFINITE=TRUE,DEV_CAP_PHANTOM_FUNCTIONS_SUPPORT=0,DEV_CAP_EXT_TAG_SUPPORTED=FALSE,LINK_STATUS_SLOT_CLOCK_CONFIG=TRUE,DISABLE_LANE_REVERSAL=TRUE,DISABLE_SCRAMBLING=FALSE,DSN_CAP_ON=TRUE,REVISION_ID=00,VC_CAP_ON=FALSE}" *)
 (* DowngradeIPIdentifiedWarnings = "yes" *)
 module pcie_core_top # (
   parameter         CFG_VEND_ID        = 16'h10EE,
@@ -68,6 +69,7 @@ module pcie_core_top # (
   parameter         CFG_SUBSYS_VEND_ID = 16'h10EE,
   parameter         CFG_SUBSYS_ID      = 16'h0007,
 
+  parameter         EXT_PIPE_SIM = "FALSE",
 
   parameter         ALLOW_X8_GEN2 = "FALSE",
   parameter         PIPE_PIPELINE_STAGES = 1,
@@ -235,14 +237,14 @@ module pcie_core_top # (
   parameter         VC_CAP_REJECT_SNOOP_TRANSACTIONS = "FALSE",
 
   parameter         VC0_CPL_INFINITE = "TRUE",
-  parameter [12:0]  VC0_RX_RAM_LIMIT = 13'h3FF,
-  parameter         VC0_TOTAL_CREDITS_CD = 205,
+  parameter [12:0]  VC0_RX_RAM_LIMIT = 13'h7FF,
+  parameter         VC0_TOTAL_CREDITS_CD = 461,
   parameter         VC0_TOTAL_CREDITS_CH = 36,
   parameter         VC0_TOTAL_CREDITS_NPH = 12,
   parameter         VC0_TOTAL_CREDITS_NPD = 24,
-  parameter         VC0_TOTAL_CREDITS_PD = 181,
+  parameter         VC0_TOTAL_CREDITS_PD = 437,
   parameter         VC0_TOTAL_CREDITS_PH = 32,
-  parameter         VC0_TX_LASTPACKET = 14,
+  parameter         VC0_TX_LASTPACKET = 29,
 
   parameter [11:0]  VSEC_BASE_PTR = 12'h000,
   parameter [11:0]  VSEC_CAP_NEXTPTR = 12'h000,
@@ -299,7 +301,7 @@ module pcie_core_top # (
 
   parameter         PCIE_EXT_GT_COMMON = "FALSE",
   parameter         EXT_CH_GT_DRP      = "FALSE",
-  parameter         TRANSCEIVER_CTRL_STATUS_PORTS = "FALSE",
+  parameter         TRANSCEIVER_CTRL_STATUS_PORTS = "FALSE", 
   parameter         SHARED_LOGIC_IN_CORE = "FALSE",
 
   parameter [7:0]   PM_BASE_PTR = 8'h40,
@@ -431,6 +433,7 @@ module pcie_core_top # (
   parameter         TX_MARGIN_LOW_2   = 7'b1000011,
   parameter         TX_MARGIN_LOW_3   = 7'b1000010,
   parameter         TX_MARGIN_LOW_4   = 7'b1000000,
+  parameter         ENABLE_JTAG_DBG = "FALSE",
 
   //---------- QPLL1 Parameters -----------------------
   parameter QPLL_PLL1_FBDIV = 4,
@@ -484,7 +487,7 @@ module pcie_core_top # (
   output [(LINK_CAP_MAX_LINK_WIDTH - 1) : 0] pipe_pclk_sel_out,
   output                                     pipe_gen3_out,
 
-  // Shared Logic External - GT COMMON
+  // Shared Logic External - GT COMMON  
 
   input  [11:0]                               qpll_drp_crscode,
   input  [17:0]                               qpll_drp_fsm,
@@ -749,6 +752,7 @@ module pcie_core_top # (
   input       [ 2:0]  pipe_loopback,
 
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_rxprbserr,
+  input       [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_txinhibit,
 
 
   output      [4:0]                             pipe_rst_fsm,
@@ -767,17 +771,17 @@ module pcie_core_top # (
 
   output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_cpll_lock,
   output     [(LINK_CAP_MAX_LINK_WIDTH-1)>>2:0] pipe_qpll_lock,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxpmaresetdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*3)-1:0]  pipe_rxbufstatus,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphaligndone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphinitdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txdlysresetdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxphaligndone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxdlysresetdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxsyncdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxdisperr,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxnotintable,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxcommadet,
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxpmaresetdone,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*3)-1:0]  pipe_rxbufstatus,         
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphaligndone,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphinitdone,        
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txdlysresetdone,    
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxphaligndone,      
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxdlysresetdone,     
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxsyncdone,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxdisperr,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxnotintable,      
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxcommadet,        
 
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     gt_ch_drp_rdy,
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_debug_0,
@@ -822,7 +826,7 @@ module pcie_core_top # (
   input            startup_usrcclko,   // 1-bit input: User CCLK input
   input            startup_usrcclkts,  // 1-bit input: User CCLK 3-state enable input
   input            startup_usrdoneo,   // 1-bit input: User DONE pin output control
-  input            startup_usrdonets,  // 1-bit input: User DONE 3-state enable output
+  input            startup_usrdonets,  // 1-bit input: User DONE 3-state enable output 
 
   //----------------------------------------------------------------------------------------------------------------//
   // 8. PCIe DRP (PCIe DRP) Interface                                                                               //
@@ -838,7 +842,7 @@ module pcie_core_top # (
   //----------------------------------------------------------------------------------------------------------------//
   // PIPE PORTS to TOP Level For PIPE SIMULATION with 3rd Party IP/BFM/Xilinx BFM
   //----------------------------------------------------------------------------------------------------------------//
-  input wire   [ 3:0]  common_commands_in,
+  input wire   [11:0]  common_commands_in,
   input wire   [24:0]  pipe_rx_0_sigs,
   input wire   [24:0]  pipe_rx_1_sigs,
   input wire   [24:0]  pipe_rx_2_sigs,
@@ -849,14 +853,14 @@ module pcie_core_top # (
   input wire   [24:0]  pipe_rx_7_sigs,
 
   output wire  [11:0]  common_commands_out,
-  output wire  [22:0]  pipe_tx_0_sigs,
-  output wire  [22:0]  pipe_tx_1_sigs,
-  output wire  [22:0]  pipe_tx_2_sigs,
-  output wire  [22:0]  pipe_tx_3_sigs,
-  output wire  [22:0]  pipe_tx_4_sigs,
-  output wire  [22:0]  pipe_tx_5_sigs,
-  output wire  [22:0]  pipe_tx_6_sigs,
-  output wire  [22:0]  pipe_tx_7_sigs,
+  output wire  [24:0]  pipe_tx_0_sigs,
+  output wire  [24:0]  pipe_tx_1_sigs,
+  output wire  [24:0]  pipe_tx_2_sigs,
+  output wire  [24:0]  pipe_tx_3_sigs,
+  output wire  [24:0]  pipe_tx_4_sigs,
+  output wire  [24:0]  pipe_tx_5_sigs,
+  output wire  [24:0]  pipe_tx_6_sigs,
+  output wire  [24:0]  pipe_tx_7_sigs,
   //----------------------------------------------------------------------------------------------------------------//
   // 9. System(SYS) Interface                                                                                       //
   //----------------------------------------------------------------------------------------------------------------//
@@ -997,23 +1001,28 @@ module pcie_core_top # (
   wire                 pipe_rx7_phy_status_gt;
   wire  [2:0]          pipe_rx7_status_gt;
   wire                 pipe_rx7_valid_gt;
+  wire  [3:0]          cfg_link_status_negotiated_width;
+  wire  [1:0]          cfg_link_status_current_speed;
 
-  reg                  user_lnk_up_int;
-  reg                  user_reset_int;
+
+  (* ASYNC_REG = "TRUE" *) reg user_lnk_up_mux;
+  (* KEEP = "TRUE", ASYNC_REG = "TRUE" *) reg user_lnk_up_int;
+  reg user_reset_int;
 
   reg                  bridge_reset_int;
   reg                  bridge_reset_d;
   wire                 user_rst_n;
   reg                  pl_received_hot_rst_q;
   wire                 pl_received_hot_rst_wire;
+  wire                 pl_received_hot_rst_sync;
   reg                  pl_phy_lnk_up_q;
   wire                 pl_phy_lnk_up_wire;
+  wire                 pl_phy_lnk_up_sync;
   wire                 sys_or_hot_rst;
   wire                 trn_lnk_up;
 
   wire [5:0]           pl_ltssm_state_int;
   wire                 user_app_rdy_req;
-  reg                  user_lnk_up_mux;
 
   localparam        TCQ = 100;
   localparam        ENABLE_FAST_SIM_TRAINING   = "TRUE";
@@ -1026,6 +1035,27 @@ module pcie_core_top # (
   assign pl_phy_lnk_up = pl_phy_lnk_up_q;
   assign pl_received_hot_rst = pl_received_hot_rst_q;
 
+  // CDC on PCIe block outputs The source clock of these pins is in
+  // the pipe_clk domain.
+  xpm_cdc_single #(
+    .DEST_SYNC_FF   (2),
+    .SRC_INPUT_REG  (0)
+  ) phy_lnk_up_cdc (
+    .src_clk         (pipe_clk),
+    .src_in          (pl_phy_lnk_up_wire),
+    .dest_clk        (user_clk_out),
+    .dest_out        (pl_phy_lnk_up_sync)
+  );
+  xpm_cdc_single #(
+    .DEST_SYNC_FF   (2),
+    .SRC_INPUT_REG  (0)
+  ) pl_received_hot_rst_cdc (
+    .src_clk         (pipe_clk),
+    .src_in          (pl_received_hot_rst_wire),
+    .dest_clk        (user_clk_out),
+    .dest_out        (pl_received_hot_rst_sync)
+  );
+
   // Register block outputs pl_received_hot_rst and phy_lnk_up to ease timing on block output
   assign sys_or_hot_rst = !sys_rst_n || pl_received_hot_rst_q;
   always @(posedge user_clk_out)
@@ -1034,8 +1064,8 @@ module pcie_core_top # (
       pl_received_hot_rst_q <= #TCQ 1'b0;
       pl_phy_lnk_up_q       <= #TCQ 1'b0;
     end else begin
-      pl_received_hot_rst_q <= #TCQ pl_received_hot_rst_wire;
-      pl_phy_lnk_up_q       <= #TCQ pl_phy_lnk_up_wire;
+      pl_received_hot_rst_q <= #TCQ pl_received_hot_rst_sync;
+      pl_phy_lnk_up_q       <= #TCQ pl_phy_lnk_up_sync;
     end
   end
   // Generate user_lnk_up_mux
@@ -1502,10 +1532,10 @@ pcie_pcie_top # (
     .cfg_link_control_retrain_link              ( ),
     .cfg_link_status_auto_bandwidth_status      ( ),
     .cfg_link_status_bandwidth_status           ( ),
-    .cfg_link_status_current_speed              ( ),
+    .cfg_link_status_current_speed              ( cfg_link_status_current_speed  ),
     .cfg_link_status_dll_active                 ( ),
     .cfg_link_status_link_training              ( ),
-    .cfg_link_status_negotiated_width           ( ),
+    .cfg_link_status_negotiated_width           ( cfg_link_status_negotiated_width ),
     .cfg_msg_data                               ( cfg_msg_data ),
     .cfg_msg_received                           ( cfg_msg_received ),
     .cfg_msg_received_assert_int_a              ( cfg_msg_received_assert_int_a ),
@@ -1779,6 +1809,16 @@ pcie_pcie_top # (
     .pipe_rx7_valid_gt                          ( pipe_rx7_valid_gt          )
 
   );
+  assign  common_commands_out = 12'b0;  
+  assign  pipe_tx_0_sigs      = 25'b0;   
+  assign  pipe_tx_1_sigs      = 25'b0; 
+  assign  pipe_tx_2_sigs      = 25'b0; 
+  assign  pipe_tx_3_sigs      = 25'b0; 
+  assign  pipe_tx_4_sigs      = 25'b0; 
+  assign  pipe_tx_5_sigs      = 25'b0; 
+  assign  pipe_tx_6_sigs      = 25'b0; 
+  assign  pipe_tx_7_sigs      = 25'b0; 
+
 
   //------------------------------------------------------------------------------------------------------------------//
   // **** V7/K7/A7 GTX Wrapper ****                                                                                   //
@@ -1983,14 +2023,14 @@ pcie_gt_top #(
     .INT_USERCLK1_OUT              ( int_userclk1_out ),
     .INT_USERCLK2_OUT              ( int_userclk2_out),
     .INT_OOBCLK_OUT                ( int_oobclk_out),
-    .INT_MMCM_LOCK_OUT             ( int_mmcm_lock_out ),
+    .INT_MMCM_LOCK_OUT             ( int_mmcm_lock_out ),        
     .INT_QPLLLOCK_OUT              ( int_qplllock_out ),
     .INT_QPLLOUTCLK_OUT            ( int_qplloutclk_out ),
     .INT_QPLLOUTREFCLK_OUT         ( int_qplloutrefclk_out ),
     .INT_PCLK_SEL_SLAVE            ( int_pclk_sel_slave ),
 
     // ---------- Shared Logic External------------------
-    //External Clock Ports
+    //External Clock Ports 
     .PIPE_PCLK_IN                  ( pipe_pclk_in ),
     .PIPE_RXUSRCLK_IN              ( pipe_rxusrclk_in ),
     .PIPE_RXOUTCLK_IN              ( pipe_rxoutclk_in ),
@@ -2039,6 +2079,7 @@ pcie_gt_top #(
     .PIPE_LOOPBACK                 ( pipe_loopback ),
 
     .PIPE_RXPRBSERR                ( pipe_rxprbserr ),
+    .PIPE_TXINHIBIT                ( pipe_txinhibit ),
 
 //---------- Transceiver Debug FSM Ports ---------------------------------
     .PIPE_RST_FSM                  ( pipe_rst_fsm ),
@@ -2057,17 +2098,17 @@ pcie_gt_top #(
 
     .PIPE_CPLL_LOCK                ( pipe_cpll_lock ),
     .PIPE_QPLL_LOCK                ( pipe_qpll_lock ),
-    .PIPE_RXPMARESETDONE           ( pipe_rxpmaresetdone ),
-    .PIPE_RXBUFSTATUS              ( pipe_rxbufstatus ),
-    .PIPE_TXPHALIGNDONE            ( pipe_txphaligndone ),
-    .PIPE_TXPHINITDONE             ( pipe_txphinitdone ),
-    .PIPE_TXDLYSRESETDONE          ( pipe_txdlysresetdone ),
-    .PIPE_RXPHALIGNDONE            ( pipe_rxphaligndone ),
-    .PIPE_RXDLYSRESETDONE          ( pipe_rxdlysresetdone ),
-    .PIPE_RXSYNCDONE               ( pipe_rxsyncdone ),
-    .PIPE_RXDISPERR                ( pipe_rxdisperr ),
-    .PIPE_RXNOTINTABLE             ( pipe_rxnotintable ),
-    .PIPE_RXCOMMADET               ( pipe_rxcommadet ),
+    .PIPE_RXPMARESETDONE           ( pipe_rxpmaresetdone ),       
+    .PIPE_RXBUFSTATUS              ( pipe_rxbufstatus ),         
+    .PIPE_TXPHALIGNDONE            ( pipe_txphaligndone ),       
+    .PIPE_TXPHINITDONE             ( pipe_txphinitdone ),        
+    .PIPE_TXDLYSRESETDONE          ( pipe_txdlysresetdone ),    
+    .PIPE_RXPHALIGNDONE            ( pipe_rxphaligndone ),      
+    .PIPE_RXDLYSRESETDONE          ( pipe_rxdlysresetdone ),     
+    .PIPE_RXSYNCDONE               ( pipe_rxsyncdone ),       
+    .PIPE_RXDISPERR                ( pipe_rxdisperr ),       
+    .PIPE_RXNOTINTABLE             ( pipe_rxnotintable ),      
+    .PIPE_RXCOMMADET               ( pipe_rxcommadet ),        
     //---------- JTAG Ports --------------------------------
     .PIPE_JTAG_RDY                 (gt_ch_drp_rdy ),
 
@@ -2097,15 +2138,15 @@ pcie_gt_top #(
     .QPLL_PLL1OUTREFCLK       (QPLL_PLL1OUTREFCLK)
   );
 
-  assign  common_commands_out = 12'b0;
-  assign  pipe_tx_0_sigs      = 23'b0;
-  assign  pipe_tx_1_sigs      = 23'b0;
-  assign  pipe_tx_2_sigs      = 23'b0;
-  assign  pipe_tx_3_sigs      = 23'b0;
-  assign  pipe_tx_4_sigs      = 23'b0;
-  assign  pipe_tx_5_sigs      = 23'b0;
-  assign  pipe_tx_6_sigs      = 23'b0;
-  assign  pipe_tx_7_sigs      = 23'b0;
+  assign  common_commands_out = 12'b0;  
+  assign  pipe_tx_0_sigs      = 25'b0;   
+  assign  pipe_tx_1_sigs      = 25'b0; 
+  assign  pipe_tx_2_sigs      = 25'b0; 
+  assign  pipe_tx_3_sigs      = 25'b0; 
+  assign  pipe_tx_4_sigs      = 25'b0; 
+  assign  pipe_tx_5_sigs      = 25'b0; 
+  assign  pipe_tx_6_sigs      = 25'b0; 
+  assign  pipe_tx_7_sigs      = 25'b0; 
   //------------------------------------------------------------------------------------------------------------------//
 
   // Tie-Off Unused Tandem Outputs
@@ -2114,6 +2155,25 @@ pcie_gt_top #(
   assign startup_cfgmclk = 1'b0;
   assign startup_eos = 1'b0;
   assign startup_preq = 1'b0;
+
+//////////////////////////////////////////////STORE_LTSSM//////////////////////////////////////////////////
+
+  (* dont_touch = "true" *) wire store_ltssm;
+  reg   [5:0] ltssm_reg0 = 6'b0;
+  reg   [5:0] ltssm_reg1 = 6'b0;
+  reg   [5:0] ltssm_reg2 = 6'b0; 
+
+  always@ (posedge pipe_clk)
+  begin
+    ltssm_reg0          <= pl_ltssm_state;
+    ltssm_reg1          <= ltssm_reg0;
+    ltssm_reg2          <= ltssm_reg1;
+  end
+
+  assign store_ltssm     = (ltssm_reg2 != pl_ltssm_state) ? 1'b1 : 1'b0; 
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+//enable_jtag_dbg = FALSE 
 
 
 endmodule

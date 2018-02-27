@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_pcie_7x.v
-// Version    : 3.0
+// Version    : 3.3
 //
 // Description: Solution wrapper for Virtex7 Hard Block for PCI Express
 //
@@ -348,7 +348,8 @@ module pcie_pcie_7x # (
   parameter        VSEC_CAP_IS_LINK_VISIBLE = "TRUE",
   parameter [11:0] VSEC_CAP_NEXTPTR = 12'h140,
   parameter        VSEC_CAP_ON = "FALSE",
-  parameter [3:0]  VSEC_CAP_VERSION = 4'h1
+  parameter [3:0]  VSEC_CAP_VERSION = 4'h1,
+  parameter         ENABLE_JTAG_DBG = "FALSE"
 )
 (
   input wire [C_DATA_WIDTH-1:0]         trn_td,
@@ -539,6 +540,11 @@ module pcie_pcie_7x # (
   input wire        [1:0]   dbg_mode,
   input wire                dbg_sub_mode,
   input wire        [2:0]   pl_dbg_mode,
+
+  input wire                sys_clk,
+  input wire       [4:0]    pipe_rst_fsm,
+  input wire [(( 2 *3)-1):0] pipe_rxstatus,
+
 
   output wire               trn_clk,
 
@@ -1624,6 +1630,10 @@ pcie_pcie_bram_top_7x #(
     .PLDBGVEC                            (pl_dbg_vec                                 )
     //.XILUNCONNOUT                      (xil_unconn_out                             )
   );
+
+
+
+
 endmodule
 
 `endif // PCIE_2LM

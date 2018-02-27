@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_pcie_pipe_lane.v
-// Version    : 3.0
+// Version    : 3.3
 //
 // Description: PIPE per lane module for 7-Series PCIe Block
 //

@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_pcie2_top.v
-// Version    : 3.0
+// Version    : 3.3
 
 //--------------------------------------------------------------------------------
 
@@ -57,7 +57,7 @@
 `timescale 1ns/1ps
 (* DowngradeIPIdentifiedWarnings = "yes" *)
 module pcie_pcie2_top # (
-parameter     c_component_name ="pcie_7x_v3_0",
+parameter     c_component_name ="pcie_7x_v3_3_6",
 parameter     dev_port_type ="0000",
 parameter     c_dev_port_type ="0",
 parameter     c_header_type ="00",
@@ -270,8 +270,10 @@ parameter     c_aer_cap_ecrc_gen_capable = "FALSE",
 parameter     EXT_PIPE_INTERFACE = "FALSE",
 parameter     EXT_STARTUP_PRIMITIVE = "FALSE",
 parameter  integer   LINK_CAP_MAX_LINK_WIDTH = 6'h8,
-parameter  integer   C_DATA_WIDTH = 64,
-parameter  integer   KEEP_WIDTH = C_DATA_WIDTH, // 8
+parameter  integer   C_DATA_WIDTH = 64, 
+parameter  integer   KEEP_WIDTH = C_DATA_WIDTH / 8,
+parameter  PCIE_ASYNC_EN = "FALSE",
+parameter  ENABLE_JTAG_DBG = "FALSE",
 
 //---------- QPLL1 Parameters -----------------------
 parameter QPLL_PLL1_FBDIV = 4,
@@ -325,7 +327,7 @@ parameter QPLL_PLL1_REFCLK_DIV = 1
   output [(LINK_CAP_MAX_LINK_WIDTH - 1) : 0] pipe_pclk_sel_out,
   output                                     pipe_gen3_out,
 
-  // Shared Logic External - GT COMMON
+  // Shared Logic External - GT COMMON  
 
   input  [11:0]                               qpll_drp_crscode,
   input  [17:0]                               qpll_drp_fsm,
@@ -618,6 +620,7 @@ parameter QPLL_PLL1_REFCLK_DIV = 1
   input       [ 2:0]   pipe_loopback,
 
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_rxprbserr,
+  input       [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_txinhibit,
 
   output      [4:0]                             pipe_rst_fsm,
   output      [11:0]                            pipe_qrst_fsm,
@@ -632,20 +635,20 @@ parameter QPLL_PLL1_REFCLK_DIV = 1
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_eyescandataerror,
   output      [(LINK_CAP_MAX_LINK_WIDTH*3)-1:0] pipe_rxstatus,
   output     [(LINK_CAP_MAX_LINK_WIDTH*15)-1:0] pipe_dmonitorout,
-
+                                               
   output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_cpll_lock,
   output     [(LINK_CAP_MAX_LINK_WIDTH-1)>>2:0] pipe_qpll_lock,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxpmaresetdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*3)-1:0]  pipe_rxbufstatus,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphaligndone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphinitdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txdlysresetdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxphaligndone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxdlysresetdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxsyncdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxdisperr,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxnotintable,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxcommadet,
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxpmaresetdone,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*3)-1:0]  pipe_rxbufstatus,         
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphaligndone,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphinitdone,        
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txdlysresetdone,    
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxphaligndone,      
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxdlysresetdone,     
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxsyncdone,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxdisperr,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxnotintable,      
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxcommadet,        
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     gt_ch_drp_rdy,
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_debug_0,
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_debug_1,
@@ -672,7 +675,7 @@ parameter QPLL_PLL1_REFCLK_DIV = 1
   //----------------------------------------------------------------------------------------------------------------//
   // PIPE PORTS to TOP Level For PIPE SIMULATION with 3rd Party IP/BFM/Xilinx BFM
   //----------------------------------------------------------------------------------------------------------------//
-  input  wire   [ 3:0]  common_commands_in,
+  input  wire   [11:0]  common_commands_in,
   input  wire   [24:0]  pipe_rx_0_sigs,
   input  wire   [24:0]  pipe_rx_1_sigs,
   input  wire   [24:0]  pipe_rx_2_sigs,
@@ -683,18 +686,18 @@ parameter QPLL_PLL1_REFCLK_DIV = 1
   input  wire   [24:0]  pipe_rx_7_sigs,
 
   output wire  [11:0]  common_commands_out,
-  output wire  [22:0]  pipe_tx_0_sigs,
-  output wire  [22:0]  pipe_tx_1_sigs,
-  output wire  [22:0]  pipe_tx_2_sigs,
-  output wire  [22:0]  pipe_tx_3_sigs,
-  output wire  [22:0]  pipe_tx_4_sigs,
-  output wire  [22:0]  pipe_tx_5_sigs,
-  output wire  [22:0]  pipe_tx_6_sigs,
-  output wire  [22:0]  pipe_tx_7_sigs,
+  output wire  [24:0]  pipe_tx_0_sigs,
+  output wire  [24:0]  pipe_tx_1_sigs,
+  output wire  [24:0]  pipe_tx_2_sigs,
+  output wire  [24:0]  pipe_tx_3_sigs,
+  output wire  [24:0]  pipe_tx_4_sigs,
+  output wire  [24:0]  pipe_tx_5_sigs,
+  output wire  [24:0]  pipe_tx_6_sigs,
+  output wire  [24:0]  pipe_tx_7_sigs,
   //----------------------------------------------------------------------------------------------------------------//
-  input wire                                      pipe_mmcm_rst_n,        // Async      | Async
-  input wire                                      sys_clk,
-  input wire                                      sys_rst_n,
+  input wire           pipe_mmcm_rst_n,        // Async      | Async
+  input wire           sys_clk,
+  input wire           sys_rst_n,
 
   //---------- QPLL1 Ports ----------------------------
   input               QPLL_GTGREFCLK1,
@@ -709,6 +712,7 @@ parameter QPLL_PLL1_REFCLK_DIV = 1
 );
 
 pcie_core_top  # (
+    .LINK_CAP_MAX_LINK_WIDTH (LINK_CAP_MAX_LINK_WIDTH),
     .C_DATA_WIDTH (C_DATA_WIDTH),
     .KEEP_WIDTH (KEEP_WIDTH),
     .BAR0(bar_0),
@@ -954,13 +958,14 @@ pcie_core_top  # (
     .ext_ch_gt_drpwe                            (ext_ch_gt_drpwe),
     .ext_ch_gt_drpdo                            (ext_ch_gt_drpdo),
     .ext_ch_gt_drprdy                           (ext_ch_gt_drprdy ),
-
+  
     .pipe_txprbssel                             (pipe_txprbssel),
     .pipe_rxprbssel                             (pipe_rxprbssel),
     .pipe_txprbsforceerr                        (pipe_txprbsforceerr),
     .pipe_rxprbscntreset                        (pipe_rxprbscntreset),
     .pipe_loopback                              (pipe_loopback ),
     .pipe_rxprbserr                             (pipe_rxprbserr),
+    .pipe_txinhibit                             (pipe_txinhibit),
     .pipe_rst_fsm                               (pipe_rst_fsm),
     .pipe_qrst_fsm                              (pipe_qrst_fsm),
     .pipe_rate_fsm                              (pipe_rate_fsm),
@@ -975,17 +980,17 @@ pcie_core_top  # (
     .pipe_dmonitorout                           (pipe_dmonitorout),
     .pipe_cpll_lock                             ( pipe_cpll_lock ),
     .pipe_qpll_lock                             ( pipe_qpll_lock ),
-    .pipe_rxpmaresetdone                        ( pipe_rxpmaresetdone ),
-    .pipe_rxbufstatus                           ( pipe_rxbufstatus ),
-    .pipe_txphaligndone                         ( pipe_txphaligndone ),
-    .pipe_txphinitdone                          ( pipe_txphinitdone ),
-    .pipe_txdlysresetdone                       ( pipe_txdlysresetdone ),
-    .pipe_rxphaligndone                         ( pipe_rxphaligndone ),
-    .pipe_rxdlysresetdone                       ( pipe_rxdlysresetdone ),
-    .pipe_rxsyncdone                            ( pipe_rxsyncdone ),
-    .pipe_rxdisperr                             ( pipe_rxdisperr ),
-    .pipe_rxnotintable                          ( pipe_rxnotintable ),
-    .pipe_rxcommadet                            ( pipe_rxcommadet ),
+    .pipe_rxpmaresetdone                        ( pipe_rxpmaresetdone ),       
+    .pipe_rxbufstatus                           ( pipe_rxbufstatus ),         
+    .pipe_txphaligndone                         ( pipe_txphaligndone ),       
+    .pipe_txphinitdone                          ( pipe_txphinitdone ),        
+    .pipe_txdlysresetdone                       ( pipe_txdlysresetdone ),    
+    .pipe_rxphaligndone                         ( pipe_rxphaligndone ),      
+    .pipe_rxdlysresetdone                       ( pipe_rxdlysresetdone ),     
+    .pipe_rxsyncdone                            ( pipe_rxsyncdone ),       
+    .pipe_rxdisperr                             ( pipe_rxdisperr ),       
+    .pipe_rxnotintable                          ( pipe_rxnotintable ),      
+    .pipe_rxcommadet                            ( pipe_rxcommadet ),        
 
    //---------- CHANNEL DRP  --------------------------------
     .gt_ch_drp_rdy                              (gt_ch_drp_rdy),
@@ -1001,25 +1006,25 @@ pcie_core_top  # (
     .pipe_debug_9                               (pipe_debug_9),
     .pipe_debug                                 (pipe_debug),
 
-    .common_commands_in                         ( common_commands_in  ),
-    .pipe_rx_0_sigs                             ( pipe_rx_0_sigs      ),
-    .pipe_rx_1_sigs                             ( pipe_rx_1_sigs      ),
-    .pipe_rx_2_sigs                             ( pipe_rx_2_sigs      ),
-    .pipe_rx_3_sigs                             ( pipe_rx_3_sigs      ),
-    .pipe_rx_4_sigs                             ( pipe_rx_4_sigs      ),
-    .pipe_rx_5_sigs                             ( pipe_rx_5_sigs      ),
-    .pipe_rx_6_sigs                             ( pipe_rx_6_sigs      ),
-    .pipe_rx_7_sigs                             ( pipe_rx_7_sigs      ),
-
-    .common_commands_out                        ( common_commands_out ),
-    .pipe_tx_0_sigs                             ( pipe_tx_0_sigs      ),
-    .pipe_tx_1_sigs                             ( pipe_tx_1_sigs      ),
-    .pipe_tx_2_sigs                             ( pipe_tx_2_sigs      ),
-    .pipe_tx_3_sigs                             ( pipe_tx_3_sigs      ),
-    .pipe_tx_4_sigs                             ( pipe_tx_4_sigs      ),
-    .pipe_tx_5_sigs                             ( pipe_tx_5_sigs      ),
-    .pipe_tx_6_sigs                             ( pipe_tx_6_sigs      ),
-    .pipe_tx_7_sigs                             ( pipe_tx_7_sigs      ),
+    .common_commands_in                         ( common_commands_in  ), 
+    .pipe_rx_0_sigs                             ( pipe_rx_0_sigs      ), 
+    .pipe_rx_1_sigs                             ( pipe_rx_1_sigs      ), 
+    .pipe_rx_2_sigs                             ( pipe_rx_2_sigs      ), 
+    .pipe_rx_3_sigs                             ( pipe_rx_3_sigs      ), 
+    .pipe_rx_4_sigs                             ( pipe_rx_4_sigs      ), 
+    .pipe_rx_5_sigs                             ( pipe_rx_5_sigs      ), 
+    .pipe_rx_6_sigs                             ( pipe_rx_6_sigs      ), 
+    .pipe_rx_7_sigs                             ( pipe_rx_7_sigs      ), 
+                                                                     
+    .common_commands_out                        ( common_commands_out ), 
+    .pipe_tx_0_sigs                             ( pipe_tx_0_sigs      ), 
+    .pipe_tx_1_sigs                             ( pipe_tx_1_sigs      ), 
+    .pipe_tx_2_sigs                             ( pipe_tx_2_sigs      ), 
+    .pipe_tx_3_sigs                             ( pipe_tx_3_sigs      ), 
+    .pipe_tx_4_sigs                             ( pipe_tx_4_sigs      ), 
+    .pipe_tx_5_sigs                             ( pipe_tx_5_sigs      ), 
+    .pipe_tx_6_sigs                             ( pipe_tx_6_sigs      ), 
+    .pipe_tx_7_sigs                             ( pipe_tx_7_sigs      ), 
 
     .pipe_mmcm_rst_n                            (pipe_mmcm_rst_n),        // Async      | Async
     .sys_clk                                    (sys_clk),

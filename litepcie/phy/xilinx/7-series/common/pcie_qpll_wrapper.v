@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_qpll_wrapper.v
-// Version    : 3.0
+// Version    : 3.3
 //------------------------------------------------------------------------------
 //  Filename     :  qpll_wrapper.v
 //  Description  :  QPLL Wrapper Module for 7 Series Transceiver
@@ -66,29 +66,30 @@
 (* DowngradeIPIdentifiedWarnings = "yes" *)
 module pcie_qpll_wrapper #
 (
-
+    
     parameter PCIE_SIM_MODE    = "FALSE",                   // PCIe sim mode
     parameter PCIE_GT_DEVICE   = "GTX",                     // PCIe GT device
     parameter PCIE_USE_MODE    = "3.0",                     // PCIe use mode
     parameter PCIE_PLL_SEL     = "CPLL",                    // PCIe PLL select for Gen1/Gen2 only
-    parameter PCIE_REFCLK_FREQ = 0,                         // PCIe reference clock frequency,
-
+    parameter PCIE_REFCLK_FREQ = 0,                         // PCIe reference clock frequency
+ 
     //---------- QPLL1 Parameters -----------------------
     parameter QPLL_PLL1_FBDIV = 4,
     parameter QPLL_PLL1_FBDIV_45 = 4,
     parameter QPLL_PLL1_REFCLK_DIV = 1
 )
 
-(
-
+(    
+    
     //---------- QPLL Clock Ports --------------------------
+    input               QPLL_CPLLPDREFCLK,
     input               QPLL_GTGREFCLK,
     input               QPLL_QPLLLOCKDETCLK,
-
+    
     output              QPLL_QPLLOUTCLK,
     output              QPLL_QPLLOUTREFCLK,
     output              QPLL_QPLLLOCK,
-
+    
     //---------- QPLL Reset Ports --------------------------
     input               QPLL_QPLLPD,
     input               QPLL_QPLLRESET,
@@ -99,7 +100,7 @@ module pcie_qpll_wrapper #
     input               QPLL_DRPEN,
     input       [15:0]  QPLL_DRPDI,
     input               QPLL_DRPWE,
-
+    
     output      [15:0]  QPLL_DRPDO,
     output              QPLL_DRPRDY,
 
@@ -115,6 +116,8 @@ module pcie_qpll_wrapper #
     output              QPLL_PLL1OUTREFCLK
 );
 
+
+
     //---------- Select QPLL Feedback Divider --------------
     //  N = 100 for 100 MHz ref clk and 10Gb/s line rate
     //  N =  80 for 125 MHz ref clk and 10Gb/s line rate
@@ -124,13 +127,13 @@ module pcie_qpll_wrapper #
     //  N =  64 for 125 MHz ref clk and  8Gb/s line rate
     //  N =  32 for 250 MHz ref clk and  8Gb/s line rate
     //------------------------------------------------------
-    localparam QPLL_FBDIV = (PCIE_REFCLK_FREQ == 2) && (PCIE_PLL_SEL == "QPLL") ? 10'b0010000000 :
-                            (PCIE_REFCLK_FREQ == 1) && (PCIE_PLL_SEL == "QPLL") ? 10'b0100100000 :
-                            (PCIE_REFCLK_FREQ == 0) && (PCIE_PLL_SEL == "QPLL") ? 10'b0101110000 :
-                            (PCIE_REFCLK_FREQ == 2) && (PCIE_PLL_SEL == "CPLL") ? 10'b0001100000 :
+    localparam QPLL_FBDIV = (PCIE_REFCLK_FREQ == 2) && (PCIE_PLL_SEL == "QPLL") ? 10'b0010000000 : 
+                            (PCIE_REFCLK_FREQ == 1) && (PCIE_PLL_SEL == "QPLL") ? 10'b0100100000 : 
+                            (PCIE_REFCLK_FREQ == 0) && (PCIE_PLL_SEL == "QPLL") ? 10'b0101110000 : 
+                            (PCIE_REFCLK_FREQ == 2) && (PCIE_PLL_SEL == "CPLL") ? 10'b0001100000 : 
                             (PCIE_REFCLK_FREQ == 1) && (PCIE_PLL_SEL == "CPLL") ? 10'b0011100000 : 10'b0100100000;
-
-    //---------- Select GTP QPLL Feedback Divider ----------
+    
+    //---------- Select GTP QPLL Feedback Divider ----------                     
     localparam GTP_QPLL_FBDIV  = (PCIE_REFCLK_FREQ == 2) ? 3'd2 :
                                  (PCIE_REFCLK_FREQ == 1) ? 3'd4 : 3'd5;
 
@@ -138,13 +141,13 @@ module pcie_qpll_wrapper #
     localparam BIAS_CFG = ((PCIE_USE_MODE == "1.0") && (PCIE_PLL_SEL == "CPLL")) ? 64'h0000042000001000 : 64'h0000040000001000;
 
 
-    wire cpllpd;
-    wire cpllrst;
+    wire cpllpd;        
+    wire cpllrst;       
 
 //---------- Select GTX or GTH or GTP ------------------------------------------
 //  Notes  :  Attributes that are commented out uses the GT default settings
 //------------------------------------------------------------------------------
-generate if (PCIE_GT_DEVICE == "GTP")
+generate if (PCIE_GT_DEVICE == "GTP") 
 
     //---------- GTP Common ----------------------------------------------------
     begin : gtp_common
@@ -251,50 +254,50 @@ generate if (PCIE_GT_DEVICE == "GTP")
 
     end
 
-else if (PCIE_GT_DEVICE == "GTH")
-
+else if (PCIE_GT_DEVICE == "GTH") 
+    
     //---------- GTH Common ----------------------------------------------------
     begin : gth_common
-
+    
     //---------- GTX Common Module ---------------------------------------------
     GTHE2_COMMON #
     (
-
+       
         //---------- Simulation Attributes -------------------------------------
         .SIM_QPLLREFCLK_SEL             (3'b001),                               //
         .SIM_RESET_SPEEDUP              (PCIE_SIM_MODE),                        //
-        .SIM_VERSION                    ("2.0"),                                //
-
+        .SIM_VERSION                    ("2.0"),                                // 
+        
         //---------- Clock Attributes ------------------------------------------
         .QPLL_CFG                       (27'h04801C7),                          // QPLL for Gen3, optimized for GES
         .QPLL_CLKOUT_CFG                ( 4'b1111),                             // Optimized for GES
-        .QPLL_COARSE_FREQ_OVRD          ( 6'b010000),                           //
-        .QPLL_COARSE_FREQ_OVRD_EN       ( 1'd0),                                //
-        .QPLL_CP                        (10'h0FF),                              // * Optimized for IES and PCIe PLL BW
+        .QPLL_COARSE_FREQ_OVRD          ( 6'b010000),                           // 
+        .QPLL_COARSE_FREQ_OVRD_EN       ( 1'd0),                                // 
+        .QPLL_CP                        (10'h0FF),                              // * Optimized for IES and PCIe PLL BW 
         .QPLL_CP_MONITOR_EN             ( 1'd0),                                //
         .QPLL_DMONITOR_SEL              ( 1'd0),                                //
-        .QPLL_FBDIV                     (QPLL_FBDIV),                           //
+        .QPLL_FBDIV                     (QPLL_FBDIV),                           // 
         .QPLL_FBDIV_MONITOR_EN          ( 1'd0),                                //
         .QPLL_FBDIV_RATIO               ( 1'd1),                                // Optimized
-        .QPLL_INIT_CFG	                (24'h000006),                           //
+        .QPLL_INIT_CFG	                (24'h000006),                           // 
         .QPLL_LOCK_CFG                  (16'h05E8),                             // Optimized for IES
         .QPLL_LPF                       ( 4'hD),                                // Optimized for IES, [1:0] = 2'b00 (13.3 KOhm), [1:0] = 2'b01 (57.0 KOhm)
-        .QPLL_REFCLK_DIV	              ( 1),                                   //
+        .QPLL_REFCLK_DIV	              ( 1),                                   // 
         .QPLL_RP_COMP                   ( 1'd0),                                // GTH new
         .QPLL_VTRL_RESET                ( 2'd0),                                // GTH new
-
+    
         //---------- MISC ------------------------------------------------------
         .BIAS_CFG	                      (64'h0000040000001050),                 // Optimized for GES
-        .COMMON_CFG	                    (32'd0),                                //
+        .COMMON_CFG	                    (32'd0),                                // 
         .RCAL_CFG                       ( 2'b00),                               // GTH new
         .RSVD_ATTR0                     (16'd0),                                // GTH
-        .RSVD_ATTR1                     (16'd0)                                 // GTH
+        .RSVD_ATTR1                     (16'd0)                                 // GTH    
     )
-    gthe2_common_i
+    gthe2_common_i 
     (
-
+           
         //---------- Clock -----------------------------------------------------
-        .GTGREFCLK                      ( 1'd0),                                //
+        .GTGREFCLK                      ( 1'd0),                                //    
         .GTREFCLK0                      (QPLL_GTGREFCLK),                       //
         .GTREFCLK1                      ( 1'd0),                                //
         .GTNORTHREFCLK0                 ( 1'd0),                                //
@@ -306,47 +309,47 @@ else if (PCIE_GT_DEVICE == "GTH")
         .QPLLREFCLKSEL                  ( 3'd1),                                //
         .QPLLRSVD1                      (16'd0),                                //
         .QPLLRSVD2                      ( 5'b11111),                            //
-
+                                                                               
         .QPLLOUTCLK                     (QPLL_QPLLOUTCLK),                      //
         .QPLLOUTREFCLK                  (QPLL_QPLLOUTREFCLK),                   //
         .QPLLLOCK                       (QPLL_QPLLLOCK),                        //
         .QPLLFBCLKLOST                  (),                                     //
         .QPLLREFCLKLOST                 (),                                     //
         .QPLLDMONITOR                   (),                                     //
-
+        
         //---------- Reset -----------------------------------------------------
-        .QPLLPD                         (QPLL_QPLLPD),                          //
+        .QPLLPD                         (QPLL_QPLLPD),                          // 
         .QPLLRESET                      (QPLL_QPLLRESET),                       //
         .QPLLOUTRESET                   ( 1'd0),                                //
-
+        
         //---------- DRP -------------------------------------------------------
         .DRPCLK                         (QPLL_DRPCLK),                          //
         .DRPADDR                        (QPLL_DRPADDR),                         //
         .DRPEN                          (QPLL_DRPEN),                           //
         .DRPDI                          (QPLL_DRPDI),                           //
         .DRPWE                          (QPLL_DRPWE),                           //
-
+                                                                              
         .DRPDO                          (QPLL_DRPDO),                           //
         .DRPRDY                         (QPLL_DRPRDY),                          //
-
-        //---------- Band Gap --------------------------------------------------
+                
+        //---------- Band Gap --------------------------------------------------    
         .BGBYPASSB                      ( 1'd1),                                // Optimized for IES
         .BGMONITORENB                   ( 1'd1),                                // Optimized for IES
         .BGPDB                          ( 1'd1),                                // Optimized for IES
         .BGRCALOVRD                     ( 5'd31),                               // Optimized for IES
         .BGRCALOVRDENB                  ( 1'd1),                                // GTH, Optimized for IES
-
+        
         //---------- MISC ------------------------------------------------------
         .PMARSVD                        ( 8'd0),                                //
         .RCALENB                        ( 1'd1),                                // Optimized for IES
-
+                                                                              
         .REFCLKOUTMONITOR               (),                                     //
         .PMARSVDOUT                     ()                                      // GTH
-
+    
     );
 
-    end
-
+    end    
+    
 else
 
     //---------- GTX Common ----------------------------------------------------
@@ -355,36 +358,36 @@ else
     //---------- GTX Common Module ---------------------------------------------
     GTXE2_COMMON #
     (
-
-        //---------- Simulation Attributes -------------------------------------
+       
+        //---------- Simulation Attributes ------------------------------------- 
         .SIM_QPLLREFCLK_SEL             ( 3'b001),                              //
         .SIM_RESET_SPEEDUP              (PCIE_SIM_MODE),                        //
-        .SIM_VERSION                    (PCIE_USE_MODE),                        //
-
+        .SIM_VERSION                    (PCIE_USE_MODE),                        // 
+        
         //---------- Clock Attributes ------------------------------------------
-        .QPLL_CFG                       (27'h06801C1),                          // QPLL for Gen3, Optimized for silicon,
+        .QPLL_CFG                       (27'h06801C1),                          // QPLL for Gen3, Optimized for silicon, 
       //.QPLL_CLKOUT_CFG                ( 4'd0),                                //
-        .QPLL_COARSE_FREQ_OVRD          ( 6'b010000),                           //
-        .QPLL_COARSE_FREQ_OVRD_EN       ( 1'd0),                                //
-        .QPLL_CP                        (10'h01F),                              // Optimized for Gen3 compliance (Gen1/Gen2 = 10'h1FF)
+        .QPLL_COARSE_FREQ_OVRD          ( 6'b010000),                           // 
+        .QPLL_COARSE_FREQ_OVRD_EN       ( 1'd0),                                // 
+        .QPLL_CP                        (10'h01F),                              // Optimized for Gen3 compliance (Gen1/Gen2 = 10'h1FF) 
         .QPLL_CP_MONITOR_EN             ( 1'd0),                                //
         .QPLL_DMONITOR_SEL              ( 1'd0),                                //
-        .QPLL_FBDIV                     (QPLL_FBDIV),                           //
+        .QPLL_FBDIV                     (QPLL_FBDIV),                           // 
         .QPLL_FBDIV_MONITOR_EN          ( 1'd0),                                //
         .QPLL_FBDIV_RATIO               ( 1'd1),                                // Optimized for silicon
-      //.QPLL_INIT_CFG	                (24'h000006),                           //
+      //.QPLL_INIT_CFG	                (24'h000006),                           // 
         .QPLL_LOCK_CFG                  (16'h21E8),                             // Optimized for silicon, IES = 16'h01D0, GES 16'h21D0
         .QPLL_LPF                       ( 4'hD),                                // Optimized for silicon, [1:0] = 2'b00 (13.3 KOhm), [1:0] = 2'b01 (57.0 KOhm)
-        .QPLL_REFCLK_DIV	              (1),                                    //
-
+        .QPLL_REFCLK_DIV	              (1),                                    // 
+    
         //---------- MISC ------------------------------------------------------
         .BIAS_CFG                       (BIAS_CFG)                              // Optimized for silicon
       //.COMMON_CFG                     (32'd0)                                 //
-
+    
     )
-    gtxe2_common_i
+    gtxe2_common_i 
     (
-
+           
         //---------- Clock -----------------------------------------------------
         .GTGREFCLK                      ( 1'd0),                                //
         .GTREFCLK0                      (QPLL_GTGREFCLK),                       //
@@ -398,59 +401,53 @@ else
         .QPLLREFCLKSEL                  ( 3'd1),                                //
         .QPLLRSVD1                      (16'd0),                                //
         .QPLLRSVD2                      ( 5'b11111),                            //
-
+                                                                               
         .QPLLOUTCLK                     (QPLL_QPLLOUTCLK),                      //
         .QPLLOUTREFCLK                  (QPLL_QPLLOUTREFCLK),                   //
         .QPLLLOCK                       (QPLL_QPLLLOCK),                        //
         .QPLLFBCLKLOST                  (),                                     //
         .QPLLREFCLKLOST                 (),                                     //
         .QPLLDMONITOR                   (),                                     //
-
+        
         //---------- Reset -----------------------------------------------------
-        .QPLLPD                         (QPLL_QPLLPD),                          //
+        .QPLLPD                         (QPLL_QPLLPD),                          // 
         .QPLLRESET                      (QPLL_QPLLRESET),                       //
         .QPLLOUTRESET                   ( 1'd0),                                //
-
+        
         //---------- DRP -------------------------------------------------------
         .DRPCLK                         (QPLL_DRPCLK),                          //
         .DRPADDR                        (QPLL_DRPADDR),                         //
         .DRPEN                          (QPLL_DRPEN),                           //
         .DRPDI                          (QPLL_DRPDI),                           //
         .DRPWE                          (QPLL_DRPWE),                           //
-
+                                                                               
         .DRPDO                          (QPLL_DRPDO),                           //
         .DRPRDY                         (QPLL_DRPRDY),                          //
-
-        //---------- Band Gap --------------------------------------------------
+                
+        //---------- Band Gap --------------------------------------------------    
         .BGBYPASSB                      ( 1'd1),                                //
         .BGMONITORENB                   ( 1'd1),                                //
         .BGPDB                          ( 1'd1),                                //
         .BGRCALOVRD                     ( 5'd31),                               //
-
+        
         //---------- MISC ------------------------------------------------------
         .PMARSVD                        ( 8'd0),                                //
         .RCALENB                        ( 1'd1),                                // Optimized for GES
-
+                                                                               
         .REFCLKOUTMONITOR               ()                                      //
-
+    
     );
-
+    
     end
-
+            
 endgenerate
 
-wire gt_refclk;
-
-BUFG gInst (
-   .I (QPLL_GTGREFCLK),
-   .O (gt_refclk));
-
-pcie_gtp_cpllpd_ovrd cpllPDInst (
-        .i_ibufds_gte2(gt_refclk),
-        .o_cpllpd_ovrd(cpllpd),
-        .o_cpllreset_ovrd(cpllrst));
+pcie_gtp_cpllpd_ovrd cpllPDInst (                                                                                   
+        .i_ibufds_gte2(QPLL_CPLLPDREFCLK),                                                                                 
+        .o_cpllpd_ovrd(cpllpd),                                                                                       
+        .o_cpllreset_ovrd(cpllrst));                       
 
 
 endmodule
 
-
+                                              

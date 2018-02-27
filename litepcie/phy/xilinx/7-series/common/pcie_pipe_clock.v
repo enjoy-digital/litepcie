@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_pipe_clock.v
-// Version    : 3.0
+// Version    : 3.3
 //------------------------------------------------------------------------------
 //  Filename     :  pipe_clock.v
 //  Description  :  PIPE Clock Module for 7 Series Transceiver
@@ -143,16 +143,16 @@ module pcie_pipe_clock #
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg                         gen3_reg2     = 1'd0;   
        
     //---------- Internal Signals -------------------------- 
-    wire                        refclk;
-    wire                        mmcm_fb;
-    wire                        clk_125mhz;
-    wire                        clk_125mhz_buf;
-    wire                        clk_250mhz;
-    wire                        userclk1;
-    wire                        userclk2;
-    wire                        oobclk;
-    reg                         pclk_sel = 1'd0;
-    reg                         pclk_sel_slave = 1'd0;
+    wire                            refclk;
+    wire                            mmcm_fb;
+    wire                            clk_125mhz;
+    wire                            clk_125mhz_buf;
+    wire                            clk_250mhz;
+    wire                            userclk1;
+    wire                            userclk2;
+    wire                            oobclk;
+    reg    pclk_sel = 1'd0;
+    reg                             pclk_sel_slave = 1'd0;
 
     //---------- Output Registers --------------------------
     wire                        pclk_1;
@@ -437,23 +437,46 @@ endgenerate
 
 
 //---------- Generate DCLK Buffer ----------------------------------------------
-generate if (PCIE_USERCLK2_FREQ <= 3)
-    //---------- Disable DCLK Buffer -----------------------
-    begin : dclk_i
-    assign CLK_DCLK = userclk2_1;                       // always less than 125Mhz
-    end
-else
+//generate if (PCIE_USERCLK2_FREQ <= 3)
+//---------- Disable DCLK Buffer -----------------------
+//    begin : dclk_i
+//    assign CLK_DCLK = userclk2_1;                       // always less than 125Mhz
+//   end
+//else
+//    begin : dclk_i_bufg
+//---------- DCLK Buffer -------------------------------
+//    BUFG dclk_i
+//    (
+//---------- Input ---------------------------------
+//        .I                          (clk_125mhz), 
+//---------- Output --------------------------------
+//        .O                          (CLK_DCLK)
+//    );
+//    end 
+//endgenerate
+
+generate if (PCIE_LINK_SPEED != 1)
+
     begin : dclk_i_bufg
     //---------- DCLK Buffer -------------------------------
     BUFG dclk_i
     (
         //---------- Input ---------------------------------
-        .I                          (clk_125mhz), 
+        .I                          (clk_125mhz),
         //---------- Output --------------------------------
         .O                          (CLK_DCLK)
     );
-    end 
+    end
+
+else
+
+    //---------- Disable DCLK Buffer -----------------------
+    begin : dclk_i
+    assign CLK_DCLK = clk_125mhz_buf;                       // always 125 MHz in Gen1
+    end
+
 endgenerate
+
 
 
 

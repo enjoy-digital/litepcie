@@ -49,7 +49,7 @@
 //-----------------------------------------------------------------------------
 // Project    : Series-7 Integrated Block for PCI Express
 // File       : pcie_axi_basic_rx_pipeline.v
-// Version    : 3.0
+// Version    : 3.3
 //                                                                            //
 //  Description:                                                              //
 //  TRN to AXI RX pipeline. Converts received data from TRN protocol to AXI.  //
