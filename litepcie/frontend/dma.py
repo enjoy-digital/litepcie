@@ -265,14 +265,13 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # Data FIFO
 
-        # store data until we have enough data to issue a
-        # write request
-        fifo = SyncFIFOBuffered(endpoint.phy.data_width, fifo_depth)
+        # store data until we have enough data to issue a write request
+        fifo = SyncFIFOBuffered(endpoint.phy.data_width + 1, fifo_depth)
         self.submodules += ResetInserter()(fifo)
         self.comb += [
             fifo.we.eq(sink.valid & enable),
             sink.ready.eq(fifo.writable & sink.valid & enable),
-            fifo.din.eq(sink.data),
+            fifo.din.eq(Cat(sink.data, sink.last)),
             fifo.reset.eq(~enable)
         ]
 
@@ -309,13 +308,13 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
             port.source.first.eq(counter == 0),
-            port.source.last.eq(counter == splitter.source.length[3:] - 1),
+            port.source.last.eq((counter == splitter.source.length[3:] - 1) | fifo.dout[-1]),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(splitter.source.length[2:]),
-            port.source.dat.eq(fifo.dout)
+            port.source.dat.eq(fifo.dout[:-1])
         ]
         fsm.act("REQUEST",
             counter_ce.eq(port.source.valid & port.source.ready),
