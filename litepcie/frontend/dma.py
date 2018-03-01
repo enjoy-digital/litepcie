@@ -12,7 +12,8 @@ from litepcie.core.tlp.common import *
 def descriptor_layout(with_user_id=False):
     layout = [
         ("address", 32),
-        ("length",  16)
+        ("length",  16),
+        ("control", 16) # bit0 : disable irq / bit1 : disable last 
     ]
     if with_user_id:
         layout += [("user_id", 8)]
@@ -23,10 +24,7 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
     def __init__(self, depth):
         self.source = source = stream.Endpoint(descriptor_layout())
 
-        address_bits = len(source.address)
-        length_bits = len(source.length)
-
-        self.value = CSRStorage(address_bits + length_bits)
+        self.value = CSRStorage(64)
         self.we = CSR()
         self.loop_prog_n = CSRStorage()
         self.loop_status = CSRStatus(32)
@@ -46,8 +44,9 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
         # FIFO
 
         # instance
-        fifo_layout = [("address", address_bits),
-                       ("length", length_bits),
+        fifo_layout = [("address", 32),
+                       ("length",  16),
+                       ("control", 16),
                        ("start", 1)]
         fifo = ResetInserter()(SyncFIFO(fifo_layout, depth))
         self.submodules += fifo
@@ -63,13 +62,15 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
             If(loop_prog_n,
                 fifo.sink.address.eq(fifo.source.address),
                 fifo.sink.length.eq(fifo.source.length),
+                fifo.sink.control.eq(fifo.source.control),
                 fifo.sink.start.eq(fifo.source.start),
                 fifo.sink.valid.eq(fifo.source.ready)
             # in "program" mode, fifo input is connected
             # to registers
             ).Else(
-                fifo.sink.address.eq(value[:address_bits]),
-                fifo.sink.length.eq(value[address_bits:address_bits + length_bits]),
+                fifo.sink.address.eq(value[0:32]),
+                fifo.sink.length.eq(value[32:48]),
+                fifo.sink.control.eq(value[48:64]),
                 fifo.sink.start.eq(~fifo.source.valid),
                 fifo.sink.valid.eq(we)
             )
@@ -80,7 +81,8 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
             source.valid.eq(fifo.source.valid),
             fifo.source.ready.eq(source.valid & source.ready),
             source.address.eq(fifo.source.address),
-            source.length.eq(fifo.source.length)
+            source.length.eq(fifo.source.length),
+            source.control.eq(fifo.source.control),
         ]
 
         # loop_index, loop_count
@@ -145,6 +147,7 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
         )
         self.comb += [
             source.address.eq(sink.address + offset),
+            source.control.eq(sink.control),
             source.user_id.eq(user_id),
         ]
         fsm.act("RUN",
@@ -247,7 +250,8 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # IRQ
         self.comb += self.irq.eq(splitter.source.valid &
                                  splitter.source.ready &
-                                 splitter.source.first)
+                                 splitter.source.first &
+                                 ~splitter.source.control[0])
 
 
 class LitePCIeDMAWriter(Module, AutoCSR):
@@ -308,7 +312,8 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
             port.source.first.eq(counter == 0),
-            port.source.last.eq((counter == splitter.source.length[3:] - 1) | fifo.dout[-1]),
+            port.source.last.eq((counter == splitter.source.length[3:] - 1) | 
+            	                (fifo.dout[-1] & splitter.source.control[1])),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
@@ -334,7 +339,8 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         # IRQ
         self.comb += self.irq.eq(splitter.source.valid &
                                  splitter.source.ready &
-                                 splitter.source.first)
+                                 splitter.source.first &
+                                 ~splitter.source.control[0])
 
 
 class LitePCIeDMALoopback(Module, AutoCSR):
