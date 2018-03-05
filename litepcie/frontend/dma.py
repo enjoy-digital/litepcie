@@ -13,7 +13,7 @@ def descriptor_layout(with_user_id=False):
     layout = [
         ("address", 32),
         ("length",  16),
-        ("control", 16) # bit0 : disable irq / bit1 : disable last 
+        ("control", 16) # bit0 : disable irq / bit1 : disable last
     ]
     if with_user_id:
         layout += [("user_id", 8)]
@@ -113,6 +113,7 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
     def __init__(self, max_size):
         self.sink = sink = stream.Endpoint(descriptor_layout())
         self.source = source = stream.Endpoint(descriptor_layout(True))
+        self.end = Signal()
 
         # # #
 
@@ -155,7 +156,10 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
             source.first.eq(offset == 0),
             If((length - offset) > max_size,
                 source.length.eq(max_size),
-                offset_ce.eq(source.ready)
+                offset_ce.eq(source.ready),
+                If(source.ready & self.end,
+                    NextState("ACK")
+                )
             ).Else(
                 source.last.eq(1),
                 source.length.eq(length - offset),
@@ -274,7 +278,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.submodules += ResetInserter()(fifo)
         self.comb += [
             fifo.we.eq(sink.valid & enable),
-            sink.ready.eq(fifo.writable & sink.valid & enable),
+            sink.ready.eq(fifo.writable & enable),
             fifo.din.eq(Cat(sink.data, sink.last)),
             fifo.reset.eq(~enable)
         ]
@@ -312,8 +316,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
             port.source.first.eq(counter == 0),
-            port.source.last.eq((counter == splitter.source.length[3:] - 1) | 
-            	                (fifo.dout[-1] & splitter.source.control[1])),
+            port.source.last.eq((counter == splitter.source.length[3:] - 1)),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
@@ -325,8 +328,12 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             counter_ce.eq(port.source.valid & port.source.ready),
             port.source.valid.eq(1),
             If(port.source.ready,
-                fifo.re.eq(1),
+                # read only if not last
+                fifo.re.eq(~(fifo.dout[-1] & ~splitter.source.control[1])),
                 If(port.source.last,
+                    # always read
+                    fifo.re.eq(1),
+                    splitter.end.eq(fifo.dout[-1] & ~splitter.source.control[1]),
                     splitter.source.ready.eq(1),
                     NextState("IDLE"),
                 )
