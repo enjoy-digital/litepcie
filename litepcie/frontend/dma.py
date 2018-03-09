@@ -46,8 +46,7 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
         # instance
         fifo_layout = [("address", 32),
                        ("length",  16),
-                       ("control", 16),
-                       ("start", 1)]
+                       ("control", 16)]
         fifo = ResetInserter()(SyncFIFO(fifo_layout, depth))
         self.submodules += fifo
         self.comb += [
@@ -63,7 +62,7 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
                 fifo.sink.address.eq(fifo.source.address),
                 fifo.sink.length.eq(fifo.source.length),
                 fifo.sink.control.eq(fifo.source.control),
-                fifo.sink.start.eq(fifo.source.start),
+                fifo.sink.first.eq(fifo.source.first),
                 fifo.sink.valid.eq(fifo.source.ready)
             # in "program" mode, fifo input is connected
             # to registers
@@ -71,7 +70,7 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
                 fifo.sink.address.eq(value[0:32]),
                 fifo.sink.length.eq(value[32:48]),
                 fifo.sink.control.eq(value[48:64]),
-                fifo.sink.start.eq(~fifo.source.valid),
+                fifo.sink.first.eq(~fifo.source.valid),
                 fifo.sink.valid.eq(we)
             )
         ]
@@ -79,6 +78,7 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
         # read part
         self.comb += [
             source.valid.eq(fifo.source.valid),
+            source.first.eq(fifo.source.first),
             fifo.source.ready.eq(source.valid & source.ready),
             source.address.eq(fifo.source.address),
             source.length.eq(fifo.source.length),
@@ -88,25 +88,28 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
         # loop_index, loop_count
         # used by the software for synchronization in
         # "loop" mode
-
+        loop_first = Signal(reset=1)
         loop_index = Signal(log2_int(depth))
         loop_count = Signal(16)
-
-        self.sync += \
+        self.sync += [
+            loop_status[0:16].eq(loop_index),
+            loop_status[16:].eq(loop_count),
             If(flush,
+                loop_first.eq(1),
                 loop_index.eq(0),
                 loop_count.eq(0),
-                loop_status.eq(0),
             ).Elif(source.valid & source.ready,
-                loop_status[0:16].eq(loop_index),
-                loop_status[16:].eq(loop_count),
-                If(fifo.source.start,
+                If(source.first,
+                    loop_first.eq(0),
                     loop_index.eq(0),
-                    loop_count.eq(loop_count + 1)
+                    If(~loop_first,
+                        loop_count.eq(loop_count + 1)
+                    )
                 ).Else(
                     loop_index.eq(loop_index + 1)
                 )
             )
+        ]
 
 
 class LitePCIeDMARequestSplitter(Module, AutoCSR):
@@ -155,6 +158,7 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
             source.valid.eq(1),
             source.first.eq(offset == 0),
             If((length - offset) > max_size,
+                source.last.eq(self.end),
                 source.length.eq(max_size),
                 offset_ce.eq(source.ready),
                 If(source.ready & self.end,
@@ -254,7 +258,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # IRQ
         self.comb += self.irq.eq(splitter.source.valid &
                                  splitter.source.ready &
-                                 splitter.source.first &
+                                 splitter.source.last &
                                  ~splitter.source.control[0])
 
 
@@ -346,7 +350,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         # IRQ
         self.comb += self.irq.eq(splitter.source.valid &
                                  splitter.source.ready &
-                                 splitter.source.first &
+                                 splitter.source.last &
                                  ~splitter.source.control[0])
 
 
