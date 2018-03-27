@@ -282,7 +282,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.submodules += ResetInserter()(fifo)
         self.comb += [
             fifo.we.eq(sink.valid & enable),
-            sink.ready.eq(fifo.writable & enable),
+            sink.ready.eq(fifo.writable | ~enable),
             fifo.din.eq(Cat(sink.data, sink.last)),
             fifo.reset.eq(~enable)
         ]
