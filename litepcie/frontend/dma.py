@@ -13,12 +13,15 @@ def descriptor_layout(with_user_id=False):
     layout = [
         ("address", 32),
         ("length",  16),
-        ("control", 16) # bit0 : disable irq / bit1 : disable last
+        ("control", 16)
     ]
     if with_user_id:
         layout += [("user_id", 8)]
     return EndpointDescription(layout)
 
+# control bits
+_irq_disable = 0
+_last_disable = 1
 
 class LitePCIeDMARequestTable(Module, AutoCSR):
     def __init__(self, depth):
@@ -259,7 +262,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.comb += self.irq.eq(splitter.source.valid &
                                  splitter.source.ready &
                                  splitter.source.last &
-                                 ~splitter.source.control[0])
+                                 ~splitter.source.control[_irq_disable])
 
 
 class LitePCIeDMAWriter(Module, AutoCSR):
@@ -333,11 +336,11 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             port.source.valid.eq(1),
             If(port.source.ready,
                 # read only if not last
-                fifo.re.eq(~(fifo.dout[-1] & ~splitter.source.control[1])),
+                fifo.re.eq(~(fifo.dout[-1] & ~splitter.source.control[_last_disable])),
                 If(port.source.last,
                     # always read
                     fifo.re.eq(1),
-                    splitter.end.eq(fifo.dout[-1] & ~splitter.source.control[1]),
+                    splitter.end.eq(fifo.dout[-1] & ~splitter.source.control[_last_disable]),
                     splitter.source.ready.eq(1),
                     NextState("IDLE"),
                 )
@@ -351,7 +354,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.comb += self.irq.eq(splitter.source.valid &
                                  splitter.source.ready &
                                  splitter.source.last &
-                                 ~splitter.source.control[0])
+                                 ~splitter.source.control[_irq_disable])
 
 
 class LitePCIeDMALoopback(Module, AutoCSR):
