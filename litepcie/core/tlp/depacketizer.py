@@ -83,7 +83,6 @@ class LitePCIeTLPHeaderExtracter128b(Module):
         fsm.act("IDLE",
             NextValue(first, 1),
             NextValue(last, 0),
-            NextValue(count, 0),
             If(sink.valid,
                 NextState("HEADER")
             )
@@ -112,14 +111,14 @@ class LitePCIeTLPHeaderExtracter128b(Module):
             )
         )
         self.comb += [
-            source.dat[32*0:32*1].eq(reverse_bytes(dat[32*1:32*2])),
-            source.dat[32*1:32*2].eq(reverse_bytes(dat[32*2:32*3])),
-            source.dat[32*2:32*3].eq(reverse_bytes(dat[32*3:32*4])),
-            source.dat[32*3:32*4].eq(reverse_bytes(sink.dat[32*0:32*1])),
-            source.be[4*0:4*1].eq(reverse_bits(be[4*1:4*2])),
-            source.be[4*1:4*2].eq(reverse_bits(be[4*2:4*3])),
-            source.be[4*2:4*3].eq(reverse_bits(be[4*3:4*4])),
-            source.be[4*1:4*2].eq(reverse_bits(sink.be[4*0:4*1]))
+            source.dat[32*0:32*1].eq(reverse_bytes(dat[32*3:32*4])),
+            source.dat[32*1:32*2].eq(reverse_bytes(sink.dat[32*0:32*1])),
+            source.dat[32*2:32*3].eq(reverse_bytes(sink.dat[32*1:32*2])),
+            source.dat[32*3:32*4].eq(reverse_bytes(sink.dat[32*2:32*3])),
+            source.be[4*0:4*1].eq(reverse_bits(be[4*3:4*4])),
+            source.be[4*1:4*2].eq(reverse_bits(sink.be[4*0:4*1])),
+            source.be[4*2:4*3].eq(reverse_bits(sink.be[4*1:4*2])),
+            source.be[4*1:4*2].eq(reverse_bits(sink.be[4*2:4*3]))
         ]
 
 

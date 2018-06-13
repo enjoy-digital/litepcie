@@ -96,11 +96,11 @@ class LitePCIeTLPHeaderInserter128b(Module):
         self.submodules.fsm = fsm = FSM(reset_state="HEADER")
         fsm.act("HEADER",
             sink.ready.eq(1),
-            If(sink.first,
+            If(sink.valid & sink.first,
                 sink.ready.eq(0),
-                source.valid.eq(sink.valid),
-                source.first.eq(sink.first),
-                source.last.eq(0),
+                source.valid.eq(1),
+                source.first.eq(1),
+                source.last.eq(sink.last),
                 # 32 l lsbs
                 source.dat[32*0:32*1].eq(sink.header[32*0:32*1]),
                 source.be[4*0:4*1].eq(0xf),
@@ -115,7 +115,9 @@ class LitePCIeTLPHeaderInserter128b(Module):
                 source.be[4*3:4*4].eq(reverse_bits(sink.be[:4])),
                 If(source.valid & source.ready,
                     sink.ready.eq(1),
-                    NextState("DATA"),
+                    If(~source.last,
+                        NextState("DATA"),
+                    )
                 )
             )
         )
