@@ -323,7 +323,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
             port.source.first.eq(counter == 0),
-            port.source.last.eq((counter == splitter.source.length[3:] - 1)),
+            port.source.last.eq((counter == splitter.source.length[log2_int(endpoint.phy.data_width//8):] - 1)),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
@@ -347,7 +347,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             )
         )
 
-        fifo_ready = fifo.level >= splitter.source.length[3:]
+        fifo_ready = fifo.level >= splitter.source.length[log2_int(endpoint.phy.data_width//8):]
         self.sync += request_ready.eq(splitter.source.valid & fifo_ready)
 
         # IRQ

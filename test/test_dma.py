@@ -3,6 +3,8 @@ import random
 
 from migen import *
 
+from litex.gen.sim import *
+
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream_sim import seed_to_data
 
@@ -70,7 +72,7 @@ class MSIHandler(Module):
         while True:
             yield from dut.msi.clear.write(0)
             yield self.sink.ready.eq(1)
-            if (yield self.sink.valid) and not last_valid:
+            if (yield self.sink.valid):
                 # get vector
                 irq_vector = (yield dut.msi.vector.status)
 
@@ -90,8 +92,6 @@ class MSIHandler(Module):
                     # clear msi
                     yield from dut.msi.clear.write((yield from dut.msi.clear.read()) |
                                                    DMA_WRITER_IRQ)
-
-            last_valid = (yield self.sink.valid)
             yield
 
 
@@ -99,8 +99,8 @@ test_size = 1024
 
 
 class DUT(Module):
-    def __init__(self):
-        self.submodules.host = Host(64, root_id, endpoint_id,
+    def __init__(self, data_width):
+        self.submodules.host = Host(data_width, root_id, endpoint_id,
             phy_debug=False,
             chipset_debug=False, chipset_split=True, chipset_reordering=True,
             host_debug=True)
@@ -121,7 +121,7 @@ class DUT(Module):
 host_datas = [seed_to_data(i, True) for i in range(test_size//4)]
 loopback_datas = []
 
-def main_generator(dut):
+def main_generator(dut, nreads=8, nwrites=8):
     dut.host.malloc(0x00000000, test_size*2)
     dut.host.chipset.enable()
 
@@ -132,12 +132,12 @@ def main_generator(dut):
 
     yield from dma_reader_driver.set_prog_mode()
     yield from dma_reader_driver.flush()
-    for i in range(8):
+    for i in range(nreads):
         yield from dma_reader_driver.program_descriptor((test_size//8)*i, test_size//8)
 
     yield from dma_writer_driver.set_prog_mode()
     yield from dma_writer_driver.flush()
-    for i in range(8):
+    for i in range(nwrites):
         yield from dma_writer_driver.program_descriptor(test_size + (test_size//8)*i, test_size//8)
 
     yield dut.msi.enable.storage.eq(DMA_READER_IRQ | DMA_WRITER_IRQ)
@@ -145,10 +145,10 @@ def main_generator(dut):
     yield from dma_reader_driver.enable()
     yield from dma_writer_driver.enable()
 
-    while dut.msi_handler.dma_writer_irq_count != 8:
+    while dut.msi_handler.dma_writer_irq_count != nwrites:
         yield
 
-    for i in range(1000):
+    for i in range(1024):
         yield
 
     for data in dut.host.read_mem(test_size, test_size):
@@ -156,8 +156,8 @@ def main_generator(dut):
 
 
 class TestDMA(unittest.TestCase):
-    def test(self):
-        dut = DUT()
+    def dma_test(self, data_width):
+        dut = DUT(data_width)
         generators = {
             "sys" : [
                 main_generator(dut),
@@ -169,5 +169,12 @@ class TestDMA(unittest.TestCase):
             ]
         }
         clocks = {"sys": 10}
-        run_simulation(dut, generators, clocks, vcd_name="sim.vcd")
+        run_simulation(dut, generators, clocks, vcd_name="test_dma.vcd")
         self.assertEqual(host_datas, loopback_datas)
+
+    def test_dma_64b(self):
+        self.dma_test(64)
+
+    def test_dma_128b(self):
+        self.dma_test(128)
+
