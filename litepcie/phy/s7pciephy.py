@@ -134,6 +134,8 @@ class S7PCIEPHY(Module, AutoCSR):
         ]
 
         # hard ip
+        m_axis_rx_tlast = Signal()
+        m_axis_rx_tuser = Signal(32)
         self.specials += Instance("pcie_phy",
                 p_C_DATA_WIDTH=data_width,
                 p_C_PCIE_GT_DEVICE={
@@ -170,11 +172,11 @@ class S7PCIEPHY(Module, AutoCSR):
                 i_rx_np_req=1,
 
                 o_m_axis_rx_tvalid=m_axis_rx.valid,
-                o_m_axis_rx_tlast=m_axis_rx.last,
+                o_m_axis_rx_tlast=m_axis_rx_tlast,
                 i_m_axis_rx_tready=m_axis_rx.ready,
                 o_m_axis_rx_tdata=m_axis_rx.dat,
                 o_m_axis_rx_tkeep=m_axis_rx.be,
-                #o_m_axis_rx_tuser=,
+                o_m_axis_rx_tuser=m_axis_rx_tuser,
 
                 #o_cfg_to_turnoff=,
                 o_cfg_bus_number=bus_number,
@@ -202,6 +204,11 @@ class S7PCIEPHY(Module, AutoCSR):
                 o_QPLL_PLL1OUTCLK=Signal() if pll1 is None else pll1.clk,
                 o_QPLL_PLL1OUTREFCLK=Signal() if pll1 is None else pll1.refclk
         )
+        if data_width == 128:
+            self.comb += m_axis_rx.last.eq(m_axis_rx_tuser[21])
+        else:
+            self.comb += m_axis_rx.last.eq(m_axis_rx_tlast)
+
         litepcie_phy_path = os.path.abspath(os.path.dirname(__file__))
         platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common"))
         platform.add_source(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common", "xpm_cdc.sv"))
