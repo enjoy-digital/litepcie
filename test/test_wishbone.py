@@ -2,6 +2,8 @@ import unittest
 
 from migen import *
 
+from litex.gen.sim import *
+
 from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.stream_sim import seed_to_data
 
@@ -15,8 +17,8 @@ endpoint_id = 0x400
 
 
 class DUT(Module):
-    def __init__(self):
-        self.submodules.host = Host(64, root_id, endpoint_id,
+    def __init__(self, data_width):
+        self.submodules.host = Host(data_width, root_id, endpoint_id,
             phy_debug=False,
             chipset_debug=False,
             host_debug=False)
@@ -34,14 +36,15 @@ def main_generator(dut):
     for i in range(64):
         yield from dut.host.chipset.wr32(i, [wr_datas[i]])
 
+    rd_datas.clear()
     for i in range(64):
         yield from dut.host.chipset.rd32(i)
         rd_datas.append(dut.host.chipset.rd32_data[0])
 
 
-class TestBIST(unittest.TestCase):
-    def test(self):
-        dut = DUT()
+class TestWishbone(unittest.TestCase):
+    def wishbone_test(self, data_width):
+        dut = DUT(data_width)
         generators = {
             "sys" : [
                 main_generator(dut),
@@ -50,5 +53,11 @@ class TestBIST(unittest.TestCase):
             ]
         }
         clocks = {"sys": 10}
-        run_simulation(dut, generators, clocks, vcd_name="sim.vcd")
+        run_simulation(dut, generators, clocks)
         self.assertEqual(wr_datas, rd_datas)
+
+    def test_wishbone_64b(self):
+        self.wishbone_test(64)
+
+    def test_wishbone_128b(self):
+        self.wishbone_test(128)
