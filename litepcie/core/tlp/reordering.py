@@ -16,7 +16,8 @@ class LitePCIeTLPReordering(Module):
         # # #
 
         tag_buffer = SyncFIFO([("data", log2_int(max_pending_requests))],
-                              8*max_pending_requests)
+                              8*max_pending_requests,
+                              buffered=True)
         self.submodules += tag_buffer
         self.comb += [
             tag_buffer.sink.valid.eq(self.req_we),
