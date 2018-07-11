@@ -750,6 +750,7 @@ module pcie_core_top # (
   input       [ 2:0]  pipe_loopback,
 
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_rxprbserr,
+  input       [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_txinhibit,
 
 
   output      [4:0]                             pipe_rst_fsm,
@@ -2050,6 +2051,7 @@ pcie_gt_top #(
     .PIPE_LOOPBACK                 ( pipe_loopback ),
 
     .PIPE_RXPRBSERR                ( pipe_rxprbserr ),
+    .PIPE_TXINHIBIT                ( pipe_txinhibit ),
 
 //---------- Transceiver Debug FSM Ports ---------------------------------
     .PIPE_RST_FSM                  ( pipe_rst_fsm ),
