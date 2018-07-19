@@ -142,7 +142,7 @@ System Clk: {} MHz
         subprocess.call(["rm", "-rf", "build/*"])
 
     if actions["build-csr-csv"]:
-        csr_csv = cpu_interface.get_csr_csv(csr_regions)
+        csr_csv = cpu_interface.get_csr_csv(csr_regions, soc.get_constants())
         write_to_file(args.csr_csv, csr_csv)
 
     if actions["build-csr-header"]:
