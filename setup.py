@@ -31,6 +31,6 @@ setup(
         "Operating System :: OS Independent",
         "Programming Language :: Python",
     ],
-    packages=find_packages(exclude=("test*", "sim*", "doc*", "example_designs*")),
+    packages=find_packages(exclude=("test*", "sim*", "doc*", "examples*")),
     include_package_data=True,
 )
