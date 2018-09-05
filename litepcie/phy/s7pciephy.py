@@ -41,13 +41,9 @@ class S7PCIEPHY(Module, AutoCSR):
             i_IB=pads.clk_n,
             o_O=pcie_refclk
         )
-        pcie_refclk.attr.add("keep")
-        platform.add_period_constraint(pcie_refclk, 10.0)
 
         self.clock_domains.cd_pcie = ClockDomain()
         self.clock_domains.cd_pcie_reset_less = ClockDomain(reset_less=True)
-        self.cd_pcie.clk.attr.add("keep")
-        platform.add_period_constraint(self.cd_pcie.clk, 8.0)
 
         pcie_refclk_present = Signal()
         pcie_refclk_timer = ClockDomainsRenamer("pcie_reset_less")(WaitTimer(1024))
