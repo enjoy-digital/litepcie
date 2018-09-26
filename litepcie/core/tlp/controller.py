@@ -26,7 +26,7 @@ class LitePCIeTLPController(Module):
         info_mem_rd_port = info_mem.get_port(async_read=False)
         self.specials += info_mem, info_mem_wr_port, info_mem_rd_port
 
-        req_tag = Signal(max=max_pending_requests)
+        req_tag = Signal(log2_int(max_pending_requests))
         self.sync += \
             If(tag_fifo.re,
                 req_tag.eq(tag_fifo.dout)
@@ -83,7 +83,7 @@ class LitePCIeTLPController(Module):
             cmp_source = self.reordering.sink
 
         self.submodules.cmp_fsm = cmp_fsm = FSM(reset_state="INIT")
-        tag_cnt = Signal(max=max_pending_requests)
+        tag_cnt = Signal(log2_int(max_pending_requests))
         inc_tag_cnt = Signal()
         self.sync += \
             If(inc_tag_cnt,
