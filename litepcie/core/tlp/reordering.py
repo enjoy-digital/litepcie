@@ -27,7 +27,8 @@ class LitePCIeTLPReordering(Module):
         for i in range(max_pending_requests):
             completion = SyncFIFO(
                 completion_layout(data_width),
-                2*max_request_size//(data_width//8))
+                max_request_size//(data_width//8),
+                buffered=True)
             self.submodules += completion
             completion_write_cases[i] = [sink.connect(completion.sink)]
             completion_read_cases[i] = [completion.source.connect(source)]
