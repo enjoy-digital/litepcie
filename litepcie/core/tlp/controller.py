@@ -16,7 +16,7 @@ class LitePCIeTLPController(Module):
         req_sink, req_source = self.master_in.sink, self.master_out.sink
         cmp_sink, cmp_source = self.master_out.source, self.master_in.source
 
-        tags = SyncFIFO([("data", log2_int(max_pending_requests))], max_pending_requests)
+        tags = SyncFIFO([("data", log2_int(max_pending_requests))], max_pending_requests, buffered=True)
         self.submodules += tags
 
         info_mem = Memory(16, max_pending_requests)

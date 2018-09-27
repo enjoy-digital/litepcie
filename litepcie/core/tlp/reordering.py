@@ -17,7 +17,8 @@ class LitePCIeTLPReordering(Module):
         # Store tags in the order read requests were emitted to the Host.
         tags = SyncFIFO(
             [("data", log2_int(max_pending_requests))],
-            max_pending_requests)
+            max_pending_requests,
+            buffered=True)
         self.submodules += tags
         self.comb += tag.connect(tags.sink)
 
