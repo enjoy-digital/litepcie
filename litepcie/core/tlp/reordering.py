@@ -17,7 +17,7 @@ class LitePCIeTLPReordering(Module):
         # Store tags in the order read requests were emitted to the Host.
         tags = SyncFIFO(
             [("data", log2_int(max_pending_requests))],
-            max_pending_requests,
+            8*max_pending_requests,
             buffered=True)
         self.submodules += tags
         self.comb += tag.connect(tags.sink)
@@ -28,7 +28,7 @@ class LitePCIeTLPReordering(Module):
         for i in range(max_pending_requests):
             completion = SyncFIFO(
                 completion_layout(data_width),
-                max_request_size//(data_width//8),
+                8*max_request_size//(data_width//8),
                 buffered=True)
             self.submodules += completion
             completion_write_cases[i] = [sink.connect(completion.sink)]
