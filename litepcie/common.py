@@ -1,5 +1,7 @@
 from migen import *
 
+from litex.gen import *
+
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream import *
 from litex.soc.interconnect.stream_packet import *
@@ -7,21 +9,6 @@ from litex.soc.interconnect.stream_packet import *
 KB = 1024
 MB = 1024*KB
 GB = 1024*MB
-
-def reverse_bytes(signal):
-    n = (len(signal)+7)//8
-    r = []
-    for i in reversed(range(n)):
-        r.append(signal[i*8:min((i+1)*8, len(signal))])
-    return Cat(*r)
-
-
-def reverse_bits(signal):
-    n = len(signal)
-    r = []
-    for i in reversed(range(n)):
-        r.append(signal[i])
-    return Cat(*r)
 
 def get_bar_mask(size):
             mask = 0
