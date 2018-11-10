@@ -132,7 +132,7 @@ class S7PCIEPHY(Module, AutoCSR):
         # hard ip
         m_axis_rx_tlast = Signal()
         m_axis_rx_tuser = Signal(32)
-        self.specials += Instance("pcie_phy",
+        self.pcie_phy_params = dict(
                 p_C_DATA_WIDTH=data_width,
                 p_C_PCIE_GT_DEVICE={
                     "xc7k": "GTX",
@@ -184,22 +184,10 @@ class S7PCIEPHY(Module, AutoCSR):
 
                 i_cfg_interrupt=cfg_msi.valid,
                 o_cfg_interrupt_rdy=cfg_msi.ready,
-                i_cfg_interrupt_di=cfg_msi.dat,
-
-                p_QPLL_PLL1_FBDIV=4 if pll1 is None else pll1.config["n2"],
-                p_QPLL_PLL1_FBDIV_45=4 if pll1 is None else pll1.config["n1"],
-                p_QPLL_PLL1_REFCLK_DIV=1 if pll1 is None else pll1.config["m"],
-
-                i_QPLL_GTGREFCLK1=0 if pll1 is None else pll1.gtgrefclk,
-                i_QPLL_GTREFCLK1=0 if pll1 is None else pll1.gtrefclk,
-                i_QPLL_PLL1LOCKEN=1,
-                i_QPLL_PLL1PD=1 if pll1 is None else 0,
-                i_QPLL_PLL1REFCLKSEL=0b001 if pll1 is None else pll1.refclksel,
-                i_QPLL_PLL1RESET=1 if pll1 is None else pll1.reset,
-                o_QPLL_PLL1LOCK=Signal() if pll1 is None else pll1.lock,
-                o_QPLL_PLL1OUTCLK=Signal() if pll1 is None else pll1.clk,
-                o_QPLL_PLL1OUTREFCLK=Signal() if pll1 is None else pll1.refclk
+                i_cfg_interrupt_di=cfg_msi.dat
         )
+        if pll1 is not None:
+            self.register_pll1(pll1)
         if data_width == 128:
             self.comb += m_axis_rx.last.eq(m_axis_rx_tuser[21])
         else:
@@ -212,3 +200,23 @@ class S7PCIEPHY(Module, AutoCSR):
             platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "kintex7"))
         elif platform.device[:4] == "xc7a":
             platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "artix7"))
+
+    def register_pll1(self, pll1):
+        self.pcie_phy_params.update(
+            p_QPLL_PLL1_FBDIV=4 if pll1 is None else pll1.config["n2"],
+            p_QPLL_PLL1_FBDIV_45=4 if pll1 is None else pll1.config["n1"],
+            p_QPLL_PLL1_REFCLK_DIV=1 if pll1 is None else pll1.config["m"],
+
+            i_QPLL_GTGREFCLK1=0 if pll1 is None else pll1.gtgrefclk,
+            i_QPLL_GTREFCLK1=0 if pll1 is None else pll1.gtrefclk,
+            i_QPLL_PLL1LOCKEN=1,
+            i_QPLL_PLL1PD=1 if pll1 is None else 0,
+            i_QPLL_PLL1REFCLKSEL=0b001 if pll1 is None else pll1.refclksel,
+            i_QPLL_PLL1RESET=1 if pll1 is None else pll1.reset,
+            o_QPLL_PLL1LOCK=Signal() if pll1 is None else pll1.lock,
+            o_QPLL_PLL1OUTCLK=Signal() if pll1 is None else pll1.clk,
+            o_QPLL_PLL1OUTREFCLK=Signal() if pll1 is None else pll1.refclk
+        )
+
+    def do_finalize(self):
+        self.specials += Instance("pcie_phy", **self.pcie_phy_params)
