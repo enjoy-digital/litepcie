@@ -3,6 +3,7 @@ import os
 from migen import *
 from migen.genlib.cdc import MultiReg
 from migen.genlib.misc import WaitTimer
+from migen.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.soc.interconnect.csr import *
 
@@ -55,9 +56,10 @@ class S7PCIEPHY(Module, AutoCSR):
 
         self.comb += [
             self.cd_pcie.clk.eq(pcie_clk),
-            self.cd_pcie.rst.eq(pcie_rst & pcie_refclk_present),
-            self.cd_pcie_reset_less.clk.eq(pcie_clk),
+            self.cd_pcie_reset_less.clk.eq(pcie_clk)
         ]
+        self.specials += AsyncResetSynchronizer(self.cd_pcie,
+            (pcie_rst & pcie_refclk_present) | ResetSignal(cd))
 
         # tx cdc (fpga --> host)
         if cd == "pcie":
