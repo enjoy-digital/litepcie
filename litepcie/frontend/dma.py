@@ -12,16 +12,21 @@ from litepcie.core.tlp.common import *
 def descriptor_layout(with_user_id=False):
     layout = [
         ("address", 32),
-        ("length",  16),
-        ("control", 16)
+        ("length",  24),
+        ("control", 8)
     ]
     if with_user_id:
         layout += [("user_id", 8)]
     return EndpointDescription(layout)
 
-# control bits
-_irq_disable = 0
-_last_disable = 1
+
+DMA_ADDRESS_OFFSET = 0
+DMA_LENGTH_OFFSET  = 32
+DMA_CONTROL_OFFSET = 56
+
+DMA_IRQ_DISABLE  = 0
+DMA_LAST_DISABLE = 1
+
 
 class LitePCIeDMARequestTable(Module, AutoCSR):
     def __init__(self, depth):
@@ -48,8 +53,8 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
 
         # instance
         fifo_layout = [("address", 32),
-                       ("length",  16),
-                       ("control", 16)]
+                       ("length",  24),
+                       ("control", 8)]
         fifo = ResetInserter()(SyncFIFO(fifo_layout, depth))
         self.submodules += fifo
         self.comb += [
@@ -70,9 +75,9 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
             # in "program" mode, fifo input is connected
             # to registers
             ).Else(
-                fifo.sink.address.eq(value[0:32]),
-                fifo.sink.length.eq(value[32:48]),
-                fifo.sink.control.eq(value[48:64]),
+                fifo.sink.address.eq(value[DMA_ADDRESS_OFFSET:DMA_ADDRESS_OFFSET+32]),
+                fifo.sink.length.eq(value[DMA_LENGTH_OFFSET:DMA_LENGTH_OFFSET+24]),
+                fifo.sink.control.eq(value[DMA_CONTROL_OFFSET:DMA_CONTROL_OFFSET+8]),
                 fifo.sink.first.eq(~fifo.source.valid),
                 fifo.sink.valid.eq(we)
             )
@@ -138,7 +143,7 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
         self.sync += If(user_id_ce, user_id.eq(user_id + 1))
         self.comb += user_id_ce.eq(sink.valid & sink.ready)
 
-        length = Signal(16)
+        length = Signal(24)
         length_update = Signal()
         self.sync += If(length_update, length.eq(sink.length))
 
@@ -262,7 +267,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.comb += self.irq.eq(splitter.source.valid &
                                  splitter.source.ready &
                                  splitter.source.last &
-                                 ~splitter.source.control[_irq_disable])
+                                 ~splitter.source.control[DMA_IRQ_DISABLE])
 
 
 class LitePCIeDMAWriter(Module, AutoCSR):
@@ -336,11 +341,11 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             port.source.valid.eq(1),
             If(port.source.ready,
                 # read only if not last
-                fifo.re.eq(~(fifo.dout[-1] & ~splitter.source.control[_last_disable])),
+                fifo.re.eq(~(fifo.dout[-1] & ~splitter.source.control[DMA_LAST_DISABLE])),
                 If(port.source.last,
                     # always read
                     fifo.re.eq(1),
-                    splitter.end.eq(fifo.dout[-1] & ~splitter.source.control[_last_disable]),
+                    splitter.end.eq(fifo.dout[-1] & ~splitter.source.control[DMA_LAST_DISABLE]),
                     splitter.source.ready.eq(1),
                     NextState("IDLE"),
                 )
@@ -354,7 +359,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.comb += self.irq.eq(splitter.source.valid &
                                  splitter.source.ready &
                                  splitter.source.last &
-                                 ~splitter.source.control[_irq_disable])
+                                 ~splitter.source.control[DMA_IRQ_DISABLE])
 
 
 class LitePCIeDMALoopback(Module, AutoCSR):
