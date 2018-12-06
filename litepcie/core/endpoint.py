@@ -17,7 +17,8 @@ class LitePCIeEndpoint(Module):
         # TLP Packetizer / Depacketizer
         depacketizer = LitePCIeTLPDepacketizer(phy.data_width, phy.bar0_mask)
         packetizer = LitePCIeTLPPacketizer(phy.data_width)
-        self.submodules += depacketizer, packetizer
+        self.submodules.depacketizer = depacketizer
+        self.submodules.packetizer = packetizer
         self.comb += [
             phy.source.connect(depacketizer.sink),
             packetizer.source.connect(phy.sink)

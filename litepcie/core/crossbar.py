@@ -110,10 +110,9 @@ class LitePCIeCrossbar(Module):
             rd_rw_masters += self.filter_masters(False, False)
             if rd_rw_masters != []:
                 rd_rw_master = LitePCIeMasterInternalPort(self.data_width)
-                controller = LitePCIeTLPController(self.data_width,
-                                        self.max_pending_requests,
-                                        self.with_reordering)
-                self.submodules += controller
+                controller = LitePCIeTLPController(
+                    self.data_width, self.max_pending_requests, self.with_reordering)
+                self.submodules.controller = controller
                 self.master_arbitrate_dispatch(rd_rw_masters, controller.master_in)
                 masters.append(controller.master_out)
 
