@@ -24,7 +24,7 @@ design flow by generating the verilog rtl that you will use as a standard core.
 [> Features
 -----------
 PHY:
-  - Artix7 / Kinte7 PHYs (up to PCIe Gen2 X4)
+  - Artix7 / Kintex7 Xilinx PHY wrappers (up to PCIe Gen2 X4)
 Core:
   - TLP layer
   - Reordering
