@@ -22,6 +22,11 @@
 #include <linux/pci_regs.h>
 #include <linux/delay.h>
 #include <linux/wait.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+#include <linux/sched/signal.h>
+#endif
+
 
 #include "litepcie.h"
 #include "config.h"
