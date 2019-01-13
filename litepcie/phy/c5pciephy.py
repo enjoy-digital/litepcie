@@ -11,7 +11,20 @@ class C5PCIEPHY(Module):
 
         # # #
 
-        # tx cdc (fpga --> host)
+        pcie_clk = Signal()
+        pcie_rst_n = Signal(reset=1)
+
+        # pcie clk
+        self.specials += Instance("ALT_INBUF_DIFF",
+            i_i=pads.clk_p,
+            i_ibar=pads.clk_n,
+            o_o=pcie_clk)
+
+        # pcie rst
+        if hasattr(pads, "rst_n"):
+            self.comb += pcie_rst_n.eq(pads.rst_n)
+
+        # pcie tx cdc (fpga --> host)
         if cd == "pcie":
             tx_st = self.sink
         else:
@@ -26,7 +39,7 @@ class C5PCIEPHY(Module):
             ]
             tx_st = tx_cdc.source
 
-        # rx cdc (host --> fpga)
+        # pcie rx cdc (host --> fpga)
         if cd == "pcie":
             rx_st = self.source
         else:
@@ -130,14 +143,14 @@ class C5PCIEPHY(Module):
             #o_hip_rst_pld_clk_inuse=,
             i_hip_rst_pld_core_ready=0,
             #o_hip_rst_testin_zero=,
-            i_hip_serial_rx_in0=0,
-            i_hip_serial_rx_in1=0,
-            i_hip_serial_rx_in2=0,
-            i_hip_serial_rx_in3=0,
-            #o_hip_serial_tx_out0=,
-            #o_hip_serial_tx_out1=,
-            #o_hip_serial_tx_out2=,
-            #o_hip_serial_tx_out3=,
+            i_hip_serial_rx_in0=pads.rx_p[0],
+            i_hip_serial_rx_in1=pads.rx_p[1],
+            i_hip_serial_rx_in2=pads.rx_p[2],
+            i_hip_serial_rx_in3=pads.rx_p[3],
+            o_hip_serial_tx_out0=pads.tx_p[0],
+            o_hip_serial_tx_out1=pads.tx_p[1],
+            o_hip_serial_tx_out2=pads.tx_p[2],
+            o_hip_serial_tx_out3=pads.tx_p[3],
             #o_hip_status_derr_cor_ext_rcv=,
             #o_hip_status_derr_cor_ext_rpl=,
             #o_hip_status_derr_rpl=,
@@ -175,8 +188,8 @@ class C5PCIEPHY(Module):
             i_lmi_lmi_wren=0,
             #o_lmi_lmi_ack=,
             #o_lmi_lmi_dout=,
-            i_npor_npor=0,
-            i_npor_pin_perst=0,
+            i_npor_npor=pcie_rst_n,
+            i_npor_pin_perst=pcie_rst_n,
             i_pld_clk_clk=0,
             i_pld_clk_1_clk=0,
             i_power_mngt_pm_auxpwr=0,
@@ -185,8 +198,8 @@ class C5PCIEPHY(Module):
             i_power_mngt_pm_event=0,
             #o_power_mngt_pme_to_sr=,
             i_reconfig_clk_clk=0,
-            i_reconfig_reset_reset_n=0,
-            i_refclk_clk=0,
+            i_reconfig_reset_reset_n=pcie_rst_n,
+            i_refclk_clk=pcie_clk,
             #o_rx_bar_be_rx_st_bar=,
             i_rx_bar_be_rx_st_mask=0,
             o_rx_st_valid=rx_st.valid,
