@@ -30,7 +30,7 @@ class _CRG(Module, AutoCSR):
 
         # sys_clk / sys_rst (from PCIe)
         self.comb += self.cd_sys.clk.eq(ClockSignal("pcie"))
-        self.specials += AsyncResetSynchronizer(self.cd_sys, ResetSignal("pcie") | soft_rst)
+        self.specials += AsyncResetSynchronizer(self.cd_sys, soft_rst)
 
 
 class PCIeDMASoC(SoCCore):
