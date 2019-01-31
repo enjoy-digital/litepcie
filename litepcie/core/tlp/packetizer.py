@@ -159,7 +159,7 @@ class LitePCIeTLPPacketizer(Module):
         # # #
 
         # format TLP request and encode it
-        tlp_req = stream.Endpoint(tlp_request_layout(data_width))
+        self.tlp_req = tlp_req = stream.Endpoint(tlp_request_layout(data_width))
         self.comb += [
             tlp_req.valid.eq(req_sink.valid),
             req_sink.ready.eq(tlp_req.ready),
@@ -208,7 +208,7 @@ class LitePCIeTLPPacketizer(Module):
         ]
 
         # format TLP completion and encode it
-        tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
+        self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
         self.comb += [
             tlp_cmp.valid.eq(cmp_sink.valid),
             cmp_sink.ready.eq(tlp_cmp.ready),
