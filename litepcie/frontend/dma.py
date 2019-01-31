@@ -205,7 +205,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         # requests from table are splitted in chunks of "max_size"
         self.table = table = LitePCIeDMARequestTable(table_depth)
-        splitter = LitePCIeDMARequestSplitter(endpoint.phy.max_request_size)
+        splitter = LitePCIeDMARequestSplitter(max_request_size)
         self.submodules += table, BufferizeEndpoints({"source": DIR_SOURCE})(ResetInserter()(splitter))
         self.comb += [
             splitter.reset.eq(~enable),
