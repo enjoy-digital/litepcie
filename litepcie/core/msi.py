@@ -22,7 +22,9 @@ class LitePCIeMSI(Module, AutoCSR):
 
         # memorize and clear irqs
         vector = self.vector.status
+        vector_d = Signal(width)
         self.sync += vector.eq(~clear & (vector | self.irqs))
+        self.sync += vector_d.eq(vector)
 
         # transmit irq
         transmit_request = Signal()
@@ -33,7 +35,7 @@ class LitePCIeMSI(Module, AutoCSR):
             transmit_grant.eq(transmit_counter == 0)
         ]
         self.sync += \
-            If(~transmit_request,
+            If(~transmit_request | (vector != vector_d),
                 transmit_counter.eq(0)
             ).Else(
                 transmit_counter.eq(transmit_counter + 1)
