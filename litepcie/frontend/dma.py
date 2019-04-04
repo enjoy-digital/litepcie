@@ -100,13 +100,14 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
         loop_index = Signal(log2_int(depth))
         loop_count = Signal(16)
         self.sync += [
-            loop_status[0:16].eq(loop_index),
-            loop_status[16:].eq(loop_count),
             If(flush,
                 loop_first.eq(1),
                 loop_index.eq(0),
                 loop_count.eq(0),
+                loop_status.eq(0),
             ).Elif(source.valid & source.ready,
+                loop_status[0:16].eq(loop_index),
+                loop_status[16:].eq(loop_count),
                 If(source.first,
                     loop_first.eq(0),
                     loop_index.eq(0),
