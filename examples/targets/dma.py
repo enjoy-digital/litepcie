@@ -9,7 +9,8 @@ from litex.soc.interconnect import wishbone
 from litex.soc.integration.soc_core import SoCCore
 from litex.soc.cores.uart import UARTWishboneBridge
 
-from litepcie.phy.s7pciephy import S7PCIEPHY
+from litepcie.phy.c5pciephy import C5PCIEPHY
+#from litepcie.phy.s7pciephy import S7PCIEPHY
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
@@ -46,7 +47,7 @@ class PCIeDMASoC(SoCCore):
     mem_map = SoCCore.mem_map
     mem_map["csr"] = 0x00000000
 
-    def __init__(self, platform, with_uart_bridge=True):
+    def __init__(self, platform, with_uart_bridge=False):
         clk_freq = 125*1000000
         SoCCore.__init__(self, platform, clk_freq,
             cpu_type=None,
@@ -59,7 +60,8 @@ class PCIeDMASoC(SoCCore):
         self.submodules.crg = _CRG(platform)
 
         # PCIe endpoint
-        self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x1"))
+        # self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x1"))
+        self.submodules.pcie_phy = C5PCIEPHY(platform, platform.request("pcie_x4"))
         self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, with_reordering=True)
 
         # PCIe Wishbone bridge
