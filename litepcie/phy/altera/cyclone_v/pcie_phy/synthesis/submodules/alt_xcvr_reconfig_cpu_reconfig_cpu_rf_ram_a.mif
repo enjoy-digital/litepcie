@@ -1,0 +1,42 @@
+WIDTH=32;
+DEPTH=32;
+
+ADDRESS_RADIX=HEX;
+DATA_RADIX=HEX;
+
+CONTENT BEGIN
+
+00 : deadbeef;
+01 : deadbeef;
+02 : deadbeef;
+03 : deadbeef;
+04 : deadbeef;
+05 : deadbeef;
+06 : deadbeef;
+07 : deadbeef;
+08 : deadbeef;
+09 : deadbeef;
+0a : deadbeef;
+0b : deadbeef;
+0c : deadbeef;
+0d : deadbeef;
+0e : deadbeef;
+0f : deadbeef;
+10 : deadbeef;
+11 : deadbeef;
+12 : deadbeef;
+13 : deadbeef;
+14 : deadbeef;
+15 : deadbeef;
+16 : deadbeef;
+17 : deadbeef;
+18 : deadbeef;
+19 : deadbeef;
+1a : deadbeef;
+1b : deadbeef;
+1c : deadbeef;
+1d : deadbeef;
+1e : deadbeef;
+1f : deadbeef;
+
+END;

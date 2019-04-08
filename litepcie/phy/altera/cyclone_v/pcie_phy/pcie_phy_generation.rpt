@@ -1,0 +1,171 @@
+Info: Starting: Create HDL design files for synthesis
+Info: qsys-generate G:\working_dir\altera\LimeSDR-QPCIe\cyclone5_pcie\cyclone5_litepcie\ip\pcie_phy\pcie_phy.qsys --synthesis=VERILOG --output-directory=G:\working_dir\altera\LimeSDR-QPCIe\cyclone5_pcie\cyclone5_litepcie\ip\pcie_phy\pcie_phy\synthesis --family="Cyclone V" --part=5CGXFC7D7F31C8
+Progress: Loading pcie_phy/pcie_phy.qsys
+Progress: Reading input file
+Progress: Adding alt_xcvr_reconfig_0 [alt_xcvr_reconfig 18.0]
+Progress: Parameterizing module alt_xcvr_reconfig_0
+Progress: Adding clk_0 [clock_source 18.0]
+Progress: Parameterizing module clk_0
+Progress: Adding pcie [altera_pcie_cv_hip_ast 18.0]
+Progress: Parameterizing module pcie
+Progress: Adding pcie_reconfig_driver_0 [altera_pcie_reconfig_driver 18.0]
+Progress: Parameterizing module pcie_reconfig_driver_0
+Progress: Building connections
+Progress: Parameterizing connections
+Progress: Validating
+Progress: Done reading input file
+Info: pcie_phy.alt_xcvr_reconfig_0: reconfig_from_xcvr port width is 5*46 bits
+Info: pcie_phy.alt_xcvr_reconfig_0: reconfig_to_xcvr port width is 5*70 bits
+Info: pcie_phy.pcie: Cyclone V Hard IP for PCI Express Intel FPGA IP v18.0
+Info: pcie_phy.pcie: Device family is Cyclone V
+Info: pcie_phy.pcie: The application clock frequency (pld_clk) is 125 Mhz
+Info: pcie_phy.pcie: 5 reconfiguration interfaces are required for connection to the external reconfiguration controller
+Info: pcie_phy.pcie: Credit allocation in the 6K bytes receive buffer:
+Info: pcie_phy.pcie: Posted    : header=18  data=94
+Info: pcie_phy.pcie: Non posted: header=32  data=0
+Info: pcie_phy.pcie: Completion: header=44 data=196
+Info: pcie_phy.pcie: When using VendorID:0x1172 and DeviceID:0xE001 the generated testbench driver will run a simulation which includes link training, configuration and chaining DMA
+Warning: pcie_phy.pcie.rx_st: Interface must have an associated reset
+Warning: pcie_phy.pcie.tx_st: Interface must have an associated reset
+Warning: pcie_phy.pcie.rx_st: pcie.rx_st does not have an associated reset
+Warning: pcie_phy.pcie.tx_st: pcie.tx_st does not have an associated reset
+Warning: pcie_phy.: You have exported the interface pcie.rx_st but not its associated reset interface.  Export associatedReset of pcie.rx_st
+Warning: pcie_phy.: You have exported the interface pcie.tx_st but not its associated reset interface.  Export the driver(s) of associatedReset of pcie.tx_st
+Info: pcie_phy: Generating pcie_phy "pcie_phy" for QUARTUS_SYNTH
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_xcvr_functions.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/altera_xcvr_functions.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xcvr_h.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_xcvr_h.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_resync.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_resync.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_h.sv SYSTEM_VERILOG PATH .//alt_xcvr_reconfig_h.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig.sv SYSTEM_VERILOG PATH .//alt_xcvr_reconfig.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cal_seq.sv SYSTEM_VERILOG PATH .//alt_xcvr_reconfig_cal_seq.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xreconf_cif.sv SYSTEM_VERILOG PATH .//alt_xreconf_cif.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xreconf_uif.sv SYSTEM_VERILOG PATH .//alt_xreconf_uif.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xreconf_basic_acq.sv SYSTEM_VERILOG PATH .//alt_xreconf_basic_acq.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_analog.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_analog/alt_xcvr_reconfig_analog.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_analog_av.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_analog/alt_xcvr_reconfig_analog_av.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xreconf_analog_datactrl_av.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_analog/alt_xreconf_analog_datactrl_av.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xreconf_analog_rmw_av.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_analog/alt_xreconf_analog_rmw_av.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xreconf_analog_ctrlsm.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_analog/alt_xreconf_analog_ctrlsm.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_offset_cancellation.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_offset_cancellation/alt_xcvr_reconfig_offset_cancellation.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_offset_cancellation_av.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_offset_cancellation/alt_xcvr_reconfig_offset_cancellation_av.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_eyemon.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_eyemon/alt_xcvr_reconfig_eyemon.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_dfe.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_dfe/alt_xcvr_reconfig_dfe.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_adce.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_adce/alt_xcvr_reconfig_adce.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_dcd.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_dcd/alt_xcvr_reconfig_dcd.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_dcd_av.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_dcd/alt_xcvr_reconfig_dcd_av.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_dcd_cal_av.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_dcd/alt_xcvr_reconfig_dcd_cal_av.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_dcd_control_av.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_dcd/alt_xcvr_reconfig_dcd_control_av.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_mif.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_mif/alt_xcvr_reconfig_mif.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xcvr_reconfig_mif.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_mif/av_xcvr_reconfig_mif.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xcvr_reconfig_mif_ctrl.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_mif/av_xcvr_reconfig_mif_ctrl.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xcvr_reconfig_mif_avmm.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_mif/av_xcvr_reconfig_mif_avmm.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_pll.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_pll/alt_xcvr_reconfig_pll.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xcvr_reconfig_pll.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_pll/av_xcvr_reconfig_pll.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xcvr_reconfig_pll_ctrl.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_pll/av_xcvr_reconfig_pll_ctrl.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_soc.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_soc/alt_xcvr_reconfig_soc.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_ram.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_soc/alt_xcvr_reconfig_cpu_ram.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_ram.hex OTHER PATH ../alt_xcvr_reconfig_soc/software/alt_xcvr_reconfig_av/mem_init/alt_xcvr_reconfig_cpu_ram.hex
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_direct.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_direct/alt_xcvr_reconfig_direct.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_arbiter_acq.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_basic/alt_arbiter_acq.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_basic.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_basic/alt_xcvr_reconfig_basic.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xrbasic_l2p_addr.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_basic/av_xrbasic_l2p_addr.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xrbasic_l2p_ch.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_basic/av_xrbasic_l2p_ch.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xrbasic_l2p_rom.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_basic/av_xrbasic_l2p_rom.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xrbasic_lif_csr.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_basic/av_xrbasic_lif_csr.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xrbasic_lif.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_basic/av_xrbasic_lif.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xcvr_reconfig_basic.sv SYSTEM_VERILOG PATH ../alt_xcvr_reconfig_basic/av_xcvr_reconfig_basic.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_xcvr_reconfig.sdc OTHER PATH .//av_xcvr_reconfig.sdc
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_arbiter.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_arbiter.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_m2s.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_m2s.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_wait_generate.v VERILOG PATH ../../altera_xcvr_generic/ctrl/altera_wait_generate.v
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_csr_selector.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_csr_selector.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./sv_reconfig_bundle_to_basic.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/sv/sv_reconfig_bundle_to_basic.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_reconfig_bundle_to_basic.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_reconfig_bundle_to_basic.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./av_reconfig_bundle_to_xcvr.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_reconfig_bundle_to_xcvr.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu.v VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/alt_xcvr_reconfig_cpu.v
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_reconfig_cpu.v VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_reconfig_cpu.v
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_reconfig_cpu_rf_ram_a.mif OTHER PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_reconfig_cpu_rf_ram_a.mif
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_reconfig_cpu_rf_ram_b.mif OTHER PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_reconfig_cpu_rf_ram_b.mif
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_reconfig_cpu_test_bench.v VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_reconfig_cpu_test_bench.v
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0.v VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0.v
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_irq_mapper.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_irq_mapper.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_reset_controller.v VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/altera_reset_controller.v
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_reset_synchronizer.v VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/altera_reset_synchronizer.v
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_reset_controller.sdc OTHER PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/altera_reset_controller.sdc
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_merlin_master_translator.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/altera_merlin_master_translator.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_merlin_slave_translator.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/altera_merlin_slave_translator.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_merlin_master_agent.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/altera_merlin_master_agent.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_merlin_slave_agent.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/altera_merlin_slave_agent.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_merlin_burst_uncompressor.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/altera_merlin_burst_uncompressor.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_avalon_sc_fifo.v VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/altera_avalon_sc_fifo.v
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_router.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_router.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_router_001.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_router_001.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_router_002.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_router_002.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_router_003.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_router_003.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_cmd_demux.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_cmd_demux.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_cmd_demux_001.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_cmd_demux_001.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_cmd_mux.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_cmd_mux.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./altera_merlin_arbitrator.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/altera_merlin_arbitrator.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_cmd_mux_001.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_cmd_mux_001.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_rsp_mux.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_rsp_mux.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_rsp_mux_001.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_rsp_mux_001.sv
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_avalon_st_adapter.v VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_avalon_st_adapter.v
+Info: alt_xcvr_reconfig_0: add_fileset_file ./alt_xcvr_reconfig_cpu_mm_interconnect_0_avalon_st_adapter_error_adapter_0.sv SYSTEM_VERILOG PATH ../../../../../../Users/VYTAUT~1/AppData/Local/Temp/alt7906_543213142472662798.dir/0002_alt_xcvr_reconfig_0_gen/QUARTUS_SYNTH/submodules/alt_xcvr_reconfig_cpu_mm_interconnect_0_avalon_st_adapter_error_adapter_0.sv
+Info: alt_xcvr_reconfig_0: "pcie_phy" instantiated alt_xcvr_reconfig "alt_xcvr_reconfig_0"
+Info: pcie: add_fileset_file ./altera_xcvr_functions.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/altera_xcvr_functions.sv
+Info: pcie: add_fileset_file ./sv_reconfig_bundle_to_xcvr.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/sv/sv_reconfig_bundle_to_xcvr.sv
+Info: pcie: add_fileset_file ./sv_reconfig_bundle_to_ip.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/sv/sv_reconfig_bundle_to_ip.sv
+Info: pcie: add_fileset_file ./sv_reconfig_bundle_merger.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/sv/sv_reconfig_bundle_merger.sv
+Info: pcie: add_fileset_file ./av_xcvr_h.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_xcvr_h.sv
+Info: pcie: add_fileset_file ./av_xcvr_avmm_csr.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_xcvr_avmm_csr.sv
+Info: pcie: add_fileset_file ./av_tx_pma_ch.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_tx_pma_ch.sv
+Info: pcie: add_fileset_file ./av_tx_pma.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_tx_pma.sv
+Info: pcie: add_fileset_file ./av_rx_pma.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_rx_pma.sv
+Info: pcie: add_fileset_file ./av_pma.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_pma.sv
+Info: pcie: add_fileset_file ./av_pcs_ch.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_pcs_ch.sv
+Info: pcie: add_fileset_file ./av_pcs.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_pcs.sv
+Info: pcie: add_fileset_file ./av_xcvr_avmm.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_xcvr_avmm.sv
+Info: pcie: add_fileset_file ./av_xcvr_native.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_xcvr_native.sv
+Info: pcie: add_fileset_file ./av_xcvr_plls.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_xcvr_plls.sv
+Info: pcie: add_fileset_file ./av_xcvr_data_adapter.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_xcvr_data_adapter.sv
+Info: pcie: add_fileset_file ./av_reconfig_bundle_to_basic.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_reconfig_bundle_to_basic.sv
+Info: pcie: add_fileset_file ./av_reconfig_bundle_to_xcvr.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/av_reconfig_bundle_to_xcvr.sv
+Info: pcie: add_fileset_file ./av_hssi_8g_rx_pcs_rbc.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/rbc/av_hssi_8g_rx_pcs_rbc.sv
+Info: pcie: add_fileset_file ./av_hssi_8g_tx_pcs_rbc.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/rbc/av_hssi_8g_tx_pcs_rbc.sv
+Info: pcie: add_fileset_file ./av_hssi_common_pcs_pma_interface_rbc.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/rbc/av_hssi_common_pcs_pma_interface_rbc.sv
+Info: pcie: add_fileset_file ./av_hssi_common_pld_pcs_interface_rbc.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/rbc/av_hssi_common_pld_pcs_interface_rbc.sv
+Info: pcie: add_fileset_file ./av_hssi_pipe_gen1_2_rbc.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/rbc/av_hssi_pipe_gen1_2_rbc.sv
+Info: pcie: add_fileset_file ./av_hssi_rx_pcs_pma_interface_rbc.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/rbc/av_hssi_rx_pcs_pma_interface_rbc.sv
+Info: pcie: add_fileset_file ./av_hssi_rx_pld_pcs_interface_rbc.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/rbc/av_hssi_rx_pld_pcs_interface_rbc.sv
+Info: pcie: add_fileset_file ./av_hssi_tx_pcs_pma_interface_rbc.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/rbc/av_hssi_tx_pcs_pma_interface_rbc.sv
+Info: pcie: add_fileset_file ./av_hssi_tx_pld_pcs_interface_rbc.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/av/rbc/av_hssi_tx_pld_pcs_interface_rbc.sv
+Info: pcie: add_fileset_file ./alt_reset_ctrl_lego.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_reset_ctrl_lego.sv
+Info: pcie: add_fileset_file ./alt_reset_ctrl_tgx_cdrauto.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_reset_ctrl_tgx_cdrauto.sv
+Info: pcie: add_fileset_file ./alt_xcvr_resync.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_resync.sv
+Info: pcie: add_fileset_file ./alt_xcvr_csr_common_h.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_csr_common_h.sv
+Info: pcie: add_fileset_file ./alt_xcvr_csr_common.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_csr_common.sv
+Info: pcie: add_fileset_file ./alt_xcvr_csr_pcs8g_h.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_csr_pcs8g_h.sv
+Info: pcie: add_fileset_file ./alt_xcvr_csr_pcs8g.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_csr_pcs8g.sv
+Info: pcie: add_fileset_file ./alt_xcvr_csr_selector.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_csr_selector.sv
+Info: pcie: add_fileset_file ./alt_xcvr_mgmt2dec.sv SYSTEM_VERILOG PATH ../../altera_xcvr_generic/ctrl/alt_xcvr_mgmt2dec.sv
+Info: pcie: add_fileset_file ./altera_wait_generate.v VERILOG PATH ../../altera_xcvr_generic/ctrl/altera_wait_generate.v
+Info: pcie: add_fileset_file ./av_xcvr_emsip_adapter.sv SYSTEM_VERILOG PATH ../../altera_pcie_pipe/av/av_xcvr_emsip_adapter.sv
+Info: pcie: add_fileset_file ./av_xcvr_pipe_native_hip.sv SYSTEM_VERILOG PATH ../../altera_pcie_pipe/av/av_xcvr_pipe_native_hip.sv
+Info: pcie: "pcie_phy" instantiated altera_pcie_cv_hip_ast "pcie"
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/altera_xcvr_functions.sv
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/av_xcvr_h.sv
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/av_reconfig_bundle_to_basic.sv
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/av_reconfig_bundle_to_xcvr.sv
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/alt_xcvr_resync.sv
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/alt_xcvr_csr_selector.sv
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/altera_wait_generate.v
+Warning: Overwriting different file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/plain_files.txt
+Info: pcie_reconfig_driver_0: "pcie_phy" instantiated altera_pcie_reconfig_driver "pcie_reconfig_driver_0"
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/alt_xcvr_reconfig_h.sv
+Info: rst_controller: "pcie_phy" instantiated altera_reset_controller "rst_controller"
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/altera_reset_controller.v
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/altera_reset_synchronizer.v
+Info: Reusing file G:/working_dir/altera/LimeSDR-QPCIe/cyclone5_pcie/cyclone5_litepcie/ip/pcie_phy/pcie_phy/synthesis/submodules/altera_reset_controller.sdc
+Info: pcie_phy: Done "pcie_phy" with 5 modules, 121 files
+Info: qsys-generate succeeded.
+Info: Finished: Create HDL design files for synthesis

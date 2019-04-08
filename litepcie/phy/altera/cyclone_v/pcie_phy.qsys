@@ -1,0 +1,633 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<system name="$${FILENAME}">
+ <component
+   name="$${FILENAME}"
+   displayName="$${FILENAME}"
+   version="1.0"
+   description=""
+   tags=""
+   categories="System" />
+ <parameter name="bonusData"><![CDATA[bonusData 
+{
+   element alt_xcvr_reconfig_0
+   {
+      datum _sortIndex
+      {
+         value = "2";
+         type = "int";
+      }
+   }
+   element clk_0
+   {
+      datum _sortIndex
+      {
+         value = "3";
+         type = "int";
+      }
+   }
+   element pcie
+   {
+      datum _sortIndex
+      {
+         value = "0";
+         type = "int";
+      }
+   }
+   element pcie_reconfig_driver_0
+   {
+      datum _sortIndex
+      {
+         value = "1";
+         type = "int";
+      }
+   }
+}
+]]></parameter>
+ <parameter name="clockCrossingAdapter" value="HANDSHAKE" />
+ <parameter name="device" value="5CGXFC7D7F31C8" />
+ <parameter name="deviceFamily" value="Cyclone V" />
+ <parameter name="deviceSpeedGrade" value="8_H7" />
+ <parameter name="fabricMode" value="QSYS" />
+ <parameter name="generateLegacySim" value="false" />
+ <parameter name="generationId" value="0" />
+ <parameter name="globalResetBus" value="false" />
+ <parameter name="hdlLanguage" value="VERILOG" />
+ <parameter name="hideFromIPCatalog" value="false" />
+ <parameter name="lockedInterfaceDefinition" value="" />
+ <parameter name="maxAdditionalLatency" value="0" />
+ <parameter name="projectName" value="" />
+ <parameter name="sopcBorderPoints" value="false" />
+ <parameter name="systemHash" value="0" />
+ <parameter name="testBenchDutName" value="" />
+ <parameter name="timeStamp" value="0" />
+ <parameter name="useTestBenchNamingPattern" value="false" />
+ <instanceScript></instanceScript>
+ <interface name="config_tl" internal="pcie.config_tl" type="conduit" dir="end" />
+ <interface
+   name="coreclkout_hip"
+   internal="pcie.coreclkout_hip"
+   type="clock"
+   dir="start" />
+ <interface name="hip_ctrl" internal="pcie.hip_ctrl" type="conduit" dir="end" />
+ <interface name="hip_pipe" internal="pcie.hip_pipe" type="conduit" dir="end" />
+ <interface name="hip_rst" internal="pcie.hip_rst" type="conduit" dir="end" />
+ <interface name="hip_serial" internal="pcie.hip_serial" type="conduit" dir="end" />
+ <interface name="hip_status" internal="pcie.hip_status" type="conduit" dir="end" />
+ <interface
+   name="hip_status_drv"
+   internal="pcie_reconfig_driver_0.hip_status_drv"
+   type="conduit"
+   dir="end" />
+ <interface name="int_msi" internal="pcie.int_msi" type="conduit" dir="end" />
+ <interface name="lmi" internal="pcie.lmi" type="conduit" dir="end" />
+ <interface name="npor" internal="pcie.npor" type="conduit" dir="end" />
+ <interface name="pld_clk" internal="pcie.pld_clk" type="clock" dir="end" />
+ <interface
+   name="pld_clk_1"
+   internal="pcie_reconfig_driver_0.pld_clk"
+   type="clock"
+   dir="end" />
+ <interface name="power_mngt" internal="pcie.power_mngt" type="conduit" dir="end" />
+ <interface name="reconfig_clk" internal="clk_0.clk_in" type="clock" dir="end" />
+ <interface
+   name="reconfig_reset"
+   internal="clk_0.clk_in_reset"
+   type="reset"
+   dir="end" />
+ <interface name="refclk" internal="pcie.refclk" type="clock" dir="end" />
+ <interface name="rx_bar_be" internal="pcie.rx_bar_be" type="conduit" dir="end" />
+ <interface
+   name="rx_st"
+   internal="pcie.rx_st"
+   type="avalon_streaming"
+   dir="start" />
+ <interface name="tx_cred" internal="pcie.tx_cred" type="conduit" dir="end" />
+ <interface name="tx_fifo" internal="pcie.tx_fifo" type="conduit" dir="end" />
+ <interface name="tx_st" internal="pcie.tx_st" type="avalon_streaming" dir="end" />
+ <module
+   name="alt_xcvr_reconfig_0"
+   kind="alt_xcvr_reconfig"
+   version="18.0"
+   enabled="1">
+  <parameter name="ber_en" value="0" />
+  <parameter name="device_family" value="Cyclone V" />
+  <parameter name="enable_adce" value="0" />
+  <parameter name="enable_analog" value="0" />
+  <parameter name="enable_dcd" value="0" />
+  <parameter name="enable_dcd_power_up" value="1" />
+  <parameter name="enable_dfe" value="0" />
+  <parameter name="enable_eyemon" value="0" />
+  <parameter name="enable_mif" value="0" />
+  <parameter name="enable_offset" value="1" />
+  <parameter name="gui_cal_status_port" value="false" />
+  <parameter name="gui_enable_pll" value="0" />
+  <parameter name="gui_split_sizes" value="" />
+  <parameter name="number_of_reconfig_interfaces" value="5" />
+ </module>
+ <module name="clk_0" kind="clock_source" version="18.0" enabled="1">
+  <parameter name="clockFrequency" value="100000000" />
+  <parameter name="clockFrequencyKnown" value="true" />
+  <parameter name="inputClockFrequency" value="0" />
+  <parameter name="resetSynchronousEdges" value="NONE" />
+ </module>
+ <module name="pcie" kind="altera_pcie_cv_hip_ast" version="18.0" enabled="1">
+  <parameter name="ACDS_VERSION_HWTCL" value="15.0" />
+  <parameter name="INTENDED_DEVICE_FAMILY" value="Cyclone V" />
+  <parameter name="advanced_default_parameter_override" value="0" />
+  <parameter name="altpcie_avmm_hwtcl" value="0" />
+  <parameter name="ast_width_hwtcl" value="Avalon-ST 64-bit" />
+  <parameter name="bar0_size_mask_0_hwtcl" value="7" />
+  <parameter name="bar0_size_mask_1_hwtcl" value="28" />
+  <parameter name="bar0_size_mask_2_hwtcl" value="28" />
+  <parameter name="bar0_size_mask_3_hwtcl" value="28" />
+  <parameter name="bar0_size_mask_4_hwtcl" value="28" />
+  <parameter name="bar0_size_mask_5_hwtcl" value="28" />
+  <parameter name="bar0_size_mask_6_hwtcl" value="28" />
+  <parameter name="bar0_size_mask_7_hwtcl" value="28" />
+  <parameter name="bar0_type_0_hwtcl" value="1" />
+  <parameter name="bar0_type_1_hwtcl" value="1" />
+  <parameter name="bar0_type_2_hwtcl" value="1" />
+  <parameter name="bar0_type_3_hwtcl" value="1" />
+  <parameter name="bar0_type_4_hwtcl" value="1" />
+  <parameter name="bar0_type_5_hwtcl" value="1" />
+  <parameter name="bar0_type_6_hwtcl" value="1" />
+  <parameter name="bar0_type_7_hwtcl" value="1" />
+  <parameter name="bar1_size_mask_0_hwtcl" value="0" />
+  <parameter name="bar1_size_mask_1_hwtcl" value="0" />
+  <parameter name="bar1_size_mask_2_hwtcl" value="0" />
+  <parameter name="bar1_size_mask_3_hwtcl" value="0" />
+  <parameter name="bar1_size_mask_4_hwtcl" value="0" />
+  <parameter name="bar1_size_mask_5_hwtcl" value="0" />
+  <parameter name="bar1_size_mask_6_hwtcl" value="0" />
+  <parameter name="bar1_size_mask_7_hwtcl" value="0" />
+  <parameter name="bar1_type_0_hwtcl" value="0" />
+  <parameter name="bar1_type_1_hwtcl" value="0" />
+  <parameter name="bar1_type_2_hwtcl" value="0" />
+  <parameter name="bar1_type_3_hwtcl" value="0" />
+  <parameter name="bar1_type_4_hwtcl" value="0" />
+  <parameter name="bar1_type_5_hwtcl" value="0" />
+  <parameter name="bar1_type_6_hwtcl" value="0" />
+  <parameter name="bar1_type_7_hwtcl" value="0" />
+  <parameter name="bar2_size_mask_0_hwtcl" value="0" />
+  <parameter name="bar2_size_mask_1_hwtcl" value="0" />
+  <parameter name="bar2_size_mask_2_hwtcl" value="0" />
+  <parameter name="bar2_size_mask_3_hwtcl" value="0" />
+  <parameter name="bar2_size_mask_4_hwtcl" value="0" />
+  <parameter name="bar2_size_mask_5_hwtcl" value="0" />
+  <parameter name="bar2_size_mask_6_hwtcl" value="0" />
+  <parameter name="bar2_size_mask_7_hwtcl" value="0" />
+  <parameter name="bar2_type_0_hwtcl" value="0" />
+  <parameter name="bar2_type_1_hwtcl" value="0" />
+  <parameter name="bar2_type_2_hwtcl" value="0" />
+  <parameter name="bar2_type_3_hwtcl" value="0" />
+  <parameter name="bar2_type_4_hwtcl" value="0" />
+  <parameter name="bar2_type_5_hwtcl" value="0" />
+  <parameter name="bar2_type_6_hwtcl" value="0" />
+  <parameter name="bar2_type_7_hwtcl" value="0" />
+  <parameter name="bar3_size_mask_0_hwtcl" value="0" />
+  <parameter name="bar3_size_mask_1_hwtcl" value="0" />
+  <parameter name="bar3_size_mask_2_hwtcl" value="0" />
+  <parameter name="bar3_size_mask_3_hwtcl" value="0" />
+  <parameter name="bar3_size_mask_4_hwtcl" value="0" />
+  <parameter name="bar3_size_mask_5_hwtcl" value="0" />
+  <parameter name="bar3_size_mask_6_hwtcl" value="0" />
+  <parameter name="bar3_size_mask_7_hwtcl" value="0" />
+  <parameter name="bar3_type_0_hwtcl" value="0" />
+  <parameter name="bar3_type_1_hwtcl" value="0" />
+  <parameter name="bar3_type_2_hwtcl" value="0" />
+  <parameter name="bar3_type_3_hwtcl" value="0" />
+  <parameter name="bar3_type_4_hwtcl" value="0" />
+  <parameter name="bar3_type_5_hwtcl" value="0" />
+  <parameter name="bar3_type_6_hwtcl" value="0" />
+  <parameter name="bar3_type_7_hwtcl" value="0" />
+  <parameter name="bar4_size_mask_0_hwtcl" value="0" />
+  <parameter name="bar4_size_mask_1_hwtcl" value="0" />
+  <parameter name="bar4_size_mask_2_hwtcl" value="0" />
+  <parameter name="bar4_size_mask_3_hwtcl" value="0" />
+  <parameter name="bar4_size_mask_4_hwtcl" value="0" />
+  <parameter name="bar4_size_mask_5_hwtcl" value="0" />
+  <parameter name="bar4_size_mask_6_hwtcl" value="0" />
+  <parameter name="bar4_size_mask_7_hwtcl" value="0" />
+  <parameter name="bar4_type_0_hwtcl" value="0" />
+  <parameter name="bar4_type_1_hwtcl" value="0" />
+  <parameter name="bar4_type_2_hwtcl" value="0" />
+  <parameter name="bar4_type_3_hwtcl" value="0" />
+  <parameter name="bar4_type_4_hwtcl" value="0" />
+  <parameter name="bar4_type_5_hwtcl" value="0" />
+  <parameter name="bar4_type_6_hwtcl" value="0" />
+  <parameter name="bar4_type_7_hwtcl" value="0" />
+  <parameter name="bar5_size_mask_0_hwtcl" value="0" />
+  <parameter name="bar5_size_mask_1_hwtcl" value="0" />
+  <parameter name="bar5_size_mask_2_hwtcl" value="0" />
+  <parameter name="bar5_size_mask_3_hwtcl" value="0" />
+  <parameter name="bar5_size_mask_4_hwtcl" value="0" />
+  <parameter name="bar5_size_mask_5_hwtcl" value="0" />
+  <parameter name="bar5_size_mask_6_hwtcl" value="0" />
+  <parameter name="bar5_size_mask_7_hwtcl" value="0" />
+  <parameter name="bar5_type_0_hwtcl" value="0" />
+  <parameter name="bar5_type_1_hwtcl" value="0" />
+  <parameter name="bar5_type_2_hwtcl" value="0" />
+  <parameter name="bar5_type_3_hwtcl" value="0" />
+  <parameter name="bar5_type_4_hwtcl" value="0" />
+  <parameter name="bar5_type_5_hwtcl" value="0" />
+  <parameter name="bar5_type_6_hwtcl" value="0" />
+  <parameter name="bar5_type_7_hwtcl" value="0" />
+  <parameter name="bridge_port_ssid_support_0_hwtcl" value="false" />
+  <parameter name="bridge_port_ssid_support_1_hwtcl" value="false" />
+  <parameter name="bridge_port_ssid_support_2_hwtcl" value="false" />
+  <parameter name="bridge_port_ssid_support_3_hwtcl" value="false" />
+  <parameter name="bridge_port_ssid_support_4_hwtcl" value="false" />
+  <parameter name="bridge_port_ssid_support_5_hwtcl" value="false" />
+  <parameter name="bridge_port_ssid_support_6_hwtcl" value="false" />
+  <parameter name="bridge_port_ssid_support_7_hwtcl" value="false" />
+  <parameter name="bridge_port_vga_enable_0_hwtcl" value="false" />
+  <parameter name="bridge_port_vga_enable_1_hwtcl" value="false" />
+  <parameter name="bridge_port_vga_enable_2_hwtcl" value="false" />
+  <parameter name="bridge_port_vga_enable_3_hwtcl" value="false" />
+  <parameter name="bridge_port_vga_enable_4_hwtcl" value="false" />
+  <parameter name="bridge_port_vga_enable_5_hwtcl" value="false" />
+  <parameter name="bridge_port_vga_enable_6_hwtcl" value="false" />
+  <parameter name="bridge_port_vga_enable_7_hwtcl" value="false" />
+  <parameter name="cdc_dummy_insert_limit_advanced_default_hwtcl" value="11" />
+  <parameter name="class_code_0_hwtcl" value="0" />
+  <parameter name="class_code_1_hwtcl" value="0" />
+  <parameter name="class_code_2_hwtcl" value="0" />
+  <parameter name="class_code_3_hwtcl" value="0" />
+  <parameter name="class_code_4_hwtcl" value="0" />
+  <parameter name="class_code_5_hwtcl" value="0" />
+  <parameter name="class_code_6_hwtcl" value="0" />
+  <parameter name="class_code_7_hwtcl" value="0" />
+  <parameter name="completion_timeout_hwtcl" value="ABCD" />
+  <parameter name="d0_pme_advanced_default_hwtcl" value="false" />
+  <parameter name="d1_pme_advanced_default_hwtcl" value="false" />
+  <parameter name="d1_support_advanced_default_hwtcl" value="false" />
+  <parameter name="d2_pme_advanced_default_hwtcl" value="false" />
+  <parameter name="d2_support_advanced_default_hwtcl" value="false" />
+  <parameter name="d3_cold_pme_advanced_default_hwtcl" value="false" />
+  <parameter name="d3_hot_pme_advanced_default_hwtcl" value="false" />
+  <parameter name="deemphasis_enable_advanced_default_hwtcl" value="false" />
+  <parameter name="device_id_0_hwtcl" value="57345" />
+  <parameter name="device_id_1_hwtcl" value="1" />
+  <parameter name="device_id_2_hwtcl" value="1" />
+  <parameter name="device_id_3_hwtcl" value="1" />
+  <parameter name="device_id_4_hwtcl" value="1" />
+  <parameter name="device_id_5_hwtcl" value="1" />
+  <parameter name="device_id_6_hwtcl" value="1" />
+  <parameter name="device_id_7_hwtcl" value="1" />
+  <parameter name="device_number_advanced_default_hwtcl" value="0" />
+  <parameter name="diffclock_nfts_count_advanced_default_hwtcl" value="255" />
+  <parameter name="disable_link_x2_support_advanced_default_hwtcl" value="false" />
+  <parameter name="disable_snoop_packet_0_hwtcl" value="false" />
+  <parameter name="disable_snoop_packet_1_hwtcl" value="false" />
+  <parameter name="disable_snoop_packet_2_hwtcl" value="false" />
+  <parameter name="disable_snoop_packet_3_hwtcl" value="false" />
+  <parameter name="disable_snoop_packet_4_hwtcl" value="false" />
+  <parameter name="disable_snoop_packet_5_hwtcl" value="false" />
+  <parameter name="disable_snoop_packet_6_hwtcl" value="false" />
+  <parameter name="disable_snoop_packet_7_hwtcl" value="false" />
+  <parameter name="dll_active_report_support_0_hwtcl" value="0" />
+  <parameter name="dll_active_report_support_1_hwtcl" value="0" />
+  <parameter name="dll_active_report_support_2_hwtcl" value="0" />
+  <parameter name="dll_active_report_support_3_hwtcl" value="0" />
+  <parameter name="dll_active_report_support_4_hwtcl" value="0" />
+  <parameter name="dll_active_report_support_5_hwtcl" value="0" />
+  <parameter name="dll_active_report_support_6_hwtcl" value="0" />
+  <parameter name="dll_active_report_support_7_hwtcl" value="0" />
+  <parameter name="ecrc_check_capable_hwtcl" value="0" />
+  <parameter name="ecrc_gen_capable_hwtcl" value="0" />
+  <parameter name="ei_delay_powerdown_count_advanced_default_hwtcl" value="10" />
+  <parameter name="eie_before_nfts_count_advanced_default_hwtcl" value="4" />
+  <parameter name="enable_completion_timeout_disable_hwtcl" value="1" />
+  <parameter name="enable_function_msix_support_0_hwtcl" value="0" />
+  <parameter name="enable_function_msix_support_1_hwtcl" value="0" />
+  <parameter name="enable_function_msix_support_2_hwtcl" value="0" />
+  <parameter name="enable_function_msix_support_3_hwtcl" value="0" />
+  <parameter name="enable_function_msix_support_4_hwtcl" value="0" />
+  <parameter name="enable_function_msix_support_5_hwtcl" value="0" />
+  <parameter name="enable_function_msix_support_6_hwtcl" value="0" />
+  <parameter name="enable_function_msix_support_7_hwtcl" value="0" />
+  <parameter name="enable_l1_aspm_advanced_default_hwtcl" value="false" />
+  <parameter name="enable_rx_buffer_checking_advanced_default_hwtcl" value="false" />
+  <parameter name="enable_slot_register_hwtcl" value="0" />
+  <parameter name="endpoint_l0_latency_hwtcl" value="0" />
+  <parameter name="endpoint_l1_latency_hwtcl" value="0" />
+  <parameter name="expansion_base_address_register_0_hwtcl" value="0" />
+  <parameter name="expansion_base_address_register_1_hwtcl" value="0" />
+  <parameter name="expansion_base_address_register_2_hwtcl" value="0" />
+  <parameter name="expansion_base_address_register_3_hwtcl" value="0" />
+  <parameter name="expansion_base_address_register_4_hwtcl" value="0" />
+  <parameter name="expansion_base_address_register_5_hwtcl" value="0" />
+  <parameter name="expansion_base_address_register_6_hwtcl" value="0" />
+  <parameter name="expansion_base_address_register_7_hwtcl" value="0" />
+  <parameter name="extend_tag_field_hwtcl" value="32" />
+  <parameter name="fc_init_timer_advanced_default_hwtcl" value="1024" />
+  <parameter name="flow_control_timeout_count_advanced_default_hwtcl" value="200" />
+  <parameter name="flow_control_update_count_advanced_default_hwtcl" value="30" />
+  <parameter name="flr_capability_0_hwtcl" value="0" />
+  <parameter name="flr_capability_1_hwtcl" value="0" />
+  <parameter name="flr_capability_2_hwtcl" value="0" />
+  <parameter name="flr_capability_3_hwtcl" value="0" />
+  <parameter name="flr_capability_4_hwtcl" value="0" />
+  <parameter name="flr_capability_5_hwtcl" value="0" />
+  <parameter name="flr_capability_6_hwtcl" value="0" />
+  <parameter name="flr_capability_7_hwtcl" value="0" />
+  <parameter name="force_hrc" value="0" />
+  <parameter name="force_src" value="0" />
+  <parameter name="gen12_lane_rate_mode_hwtcl" value="Gen1 (2.5 Gbps)" />
+  <parameter name="gen2_diffclock_nfts_count_advanced_default_hwtcl" value="255" />
+  <parameter name="gen2_sameclock_nfts_count_advanced_default_hwtcl" value="255" />
+  <parameter name="hip_reconfig_hwtcl" value="0" />
+  <parameter name="hot_plug_support_advanced_default_hwtcl" value="0" />
+  <parameter name="in_cvp_mode_hwtcl" value="0" />
+  <parameter name="indicator_advanced_default_hwtcl" value="0" />
+  <parameter name="interrupt_pin_0_hwtcl" value="inta" />
+  <parameter name="interrupt_pin_1_hwtcl" value="inta" />
+  <parameter name="interrupt_pin_2_hwtcl" value="inta" />
+  <parameter name="interrupt_pin_3_hwtcl" value="inta" />
+  <parameter name="interrupt_pin_4_hwtcl" value="inta" />
+  <parameter name="interrupt_pin_5_hwtcl" value="inta" />
+  <parameter name="interrupt_pin_6_hwtcl" value="inta" />
+  <parameter name="interrupt_pin_7_hwtcl" value="inta" />
+  <parameter name="io_window_addr_width_hwtcl" value="0" />
+  <parameter name="l01_entry_latency_advanced_default_hwtcl" value="31" />
+  <parameter name="l0_exit_latency_diffclock_advanced_default_hwtcl" value="6" />
+  <parameter name="l0_exit_latency_sameclock_advanced_default_hwtcl" value="6" />
+  <parameter name="l1_exit_latency_diffclock_advanced_default_hwtcl" value="0" />
+  <parameter name="l1_exit_latency_sameclock_advanced_default_hwtcl" value="0" />
+  <parameter name="l2_async_logic_advanced_default_hwtcl" value="disable" />
+  <parameter name="lane_mask_hwtcl" value="x4" />
+  <parameter name="low_priority_vc_advanced_default_hwtcl" value="single_vc" />
+  <parameter name="max_payload_size_hwtcl" value="128" />
+  <parameter name="maximum_current_0_hwtcl" value="0" />
+  <parameter name="maximum_current_1_hwtcl" value="0" />
+  <parameter name="maximum_current_2_hwtcl" value="0" />
+  <parameter name="maximum_current_3_hwtcl" value="0" />
+  <parameter name="maximum_current_4_hwtcl" value="0" />
+  <parameter name="maximum_current_5_hwtcl" value="0" />
+  <parameter name="maximum_current_6_hwtcl" value="0" />
+  <parameter name="maximum_current_7_hwtcl" value="0" />
+  <parameter name="msi_64bit_addressing_capable_0_hwtcl" value="true" />
+  <parameter name="msi_64bit_addressing_capable_1_hwtcl" value="true" />
+  <parameter name="msi_64bit_addressing_capable_2_hwtcl" value="true" />
+  <parameter name="msi_64bit_addressing_capable_3_hwtcl" value="true" />
+  <parameter name="msi_64bit_addressing_capable_4_hwtcl" value="true" />
+  <parameter name="msi_64bit_addressing_capable_5_hwtcl" value="true" />
+  <parameter name="msi_64bit_addressing_capable_6_hwtcl" value="true" />
+  <parameter name="msi_64bit_addressing_capable_7_hwtcl" value="true" />
+  <parameter name="msi_masking_capable_0_hwtcl" value="false" />
+  <parameter name="msi_masking_capable_1_hwtcl" value="false" />
+  <parameter name="msi_masking_capable_2_hwtcl" value="false" />
+  <parameter name="msi_masking_capable_3_hwtcl" value="false" />
+  <parameter name="msi_masking_capable_4_hwtcl" value="false" />
+  <parameter name="msi_masking_capable_5_hwtcl" value="false" />
+  <parameter name="msi_masking_capable_6_hwtcl" value="false" />
+  <parameter name="msi_masking_capable_7_hwtcl" value="false" />
+  <parameter name="msi_multi_message_capable_0_hwtcl" value="1" />
+  <parameter name="msi_multi_message_capable_1_hwtcl" value="4" />
+  <parameter name="msi_multi_message_capable_2_hwtcl" value="4" />
+  <parameter name="msi_multi_message_capable_3_hwtcl" value="4" />
+  <parameter name="msi_multi_message_capable_4_hwtcl" value="4" />
+  <parameter name="msi_multi_message_capable_5_hwtcl" value="4" />
+  <parameter name="msi_multi_message_capable_6_hwtcl" value="4" />
+  <parameter name="msi_multi_message_capable_7_hwtcl" value="4" />
+  <parameter name="msi_support_0_hwtcl" value="true" />
+  <parameter name="msi_support_1_hwtcl" value="true" />
+  <parameter name="msi_support_2_hwtcl" value="true" />
+  <parameter name="msi_support_3_hwtcl" value="true" />
+  <parameter name="msi_support_4_hwtcl" value="true" />
+  <parameter name="msi_support_5_hwtcl" value="true" />
+  <parameter name="msi_support_6_hwtcl" value="true" />
+  <parameter name="msi_support_7_hwtcl" value="true" />
+  <parameter name="msix_pba_bir_0_hwtcl" value="0" />
+  <parameter name="msix_pba_bir_1_hwtcl" value="0" />
+  <parameter name="msix_pba_bir_2_hwtcl" value="0" />
+  <parameter name="msix_pba_bir_3_hwtcl" value="0" />
+  <parameter name="msix_pba_bir_4_hwtcl" value="0" />
+  <parameter name="msix_pba_bir_5_hwtcl" value="0" />
+  <parameter name="msix_pba_bir_6_hwtcl" value="0" />
+  <parameter name="msix_pba_bir_7_hwtcl" value="0" />
+  <parameter name="msix_pba_offset_0_hwtcl" value="0" />
+  <parameter name="msix_pba_offset_1_hwtcl" value="0" />
+  <parameter name="msix_pba_offset_2_hwtcl" value="0" />
+  <parameter name="msix_pba_offset_3_hwtcl" value="0" />
+  <parameter name="msix_pba_offset_4_hwtcl" value="0" />
+  <parameter name="msix_pba_offset_5_hwtcl" value="0" />
+  <parameter name="msix_pba_offset_6_hwtcl" value="0" />
+  <parameter name="msix_pba_offset_7_hwtcl" value="0" />
+  <parameter name="msix_table_bir_0_hwtcl" value="0" />
+  <parameter name="msix_table_bir_1_hwtcl" value="0" />
+  <parameter name="msix_table_bir_2_hwtcl" value="0" />
+  <parameter name="msix_table_bir_3_hwtcl" value="0" />
+  <parameter name="msix_table_bir_4_hwtcl" value="0" />
+  <parameter name="msix_table_bir_5_hwtcl" value="0" />
+  <parameter name="msix_table_bir_6_hwtcl" value="0" />
+  <parameter name="msix_table_bir_7_hwtcl" value="0" />
+  <parameter name="msix_table_offset_0_hwtcl" value="0" />
+  <parameter name="msix_table_offset_1_hwtcl" value="0" />
+  <parameter name="msix_table_offset_2_hwtcl" value="0" />
+  <parameter name="msix_table_offset_3_hwtcl" value="0" />
+  <parameter name="msix_table_offset_4_hwtcl" value="0" />
+  <parameter name="msix_table_offset_5_hwtcl" value="0" />
+  <parameter name="msix_table_offset_6_hwtcl" value="0" />
+  <parameter name="msix_table_offset_7_hwtcl" value="0" />
+  <parameter name="msix_table_size_0_hwtcl" value="0" />
+  <parameter name="msix_table_size_1_hwtcl" value="0" />
+  <parameter name="msix_table_size_2_hwtcl" value="0" />
+  <parameter name="msix_table_size_3_hwtcl" value="0" />
+  <parameter name="msix_table_size_4_hwtcl" value="0" />
+  <parameter name="msix_table_size_5_hwtcl" value="0" />
+  <parameter name="msix_table_size_6_hwtcl" value="0" />
+  <parameter name="msix_table_size_7_hwtcl" value="0" />
+  <parameter name="no_command_completed_advanced_default_hwtcl" value="false" />
+  <parameter name="no_soft_reset_advanced_default_hwtcl" value="false" />
+  <parameter name="num_of_func_hwtcl" value="1" />
+  <parameter name="override_rxbuffer_cred_preset" value="0" />
+  <parameter name="override_tbpartner_driver_setting_hwtcl" value="0" />
+  <parameter name="pcie_qsys" value="1" />
+  <parameter name="pcie_spec_version_hwtcl" value="2.1" />
+  <parameter name="pclk_out_sel_advanced_default_hwtcl" value="pclk" />
+  <parameter name="pipex1_debug_sel_advanced_default_hwtcl" value="disable" />
+  <parameter name="pll_refclk_freq_hwtcl" value="100 MHz" />
+  <parameter name="port_link_number_hwtcl" value="1" />
+  <parameter name="porttype_func_hwtcl" value="Native endpoint" />
+  <parameter name="prefetchable_mem_window_addr_width_hwtcl" value="0" />
+  <parameter name="register_pipe_signals_advanced_default_hwtcl" value="true" />
+  <parameter name="reserved_debug_advanced_default_hwtcl" value="0" />
+  <parameter
+     name="retry_buffer_last_active_address_advanced_default_hwtcl"
+     value="255" />
+  <parameter name="revision_id_0_hwtcl" value="1" />
+  <parameter name="revision_id_1_hwtcl" value="1" />
+  <parameter name="revision_id_2_hwtcl" value="1" />
+  <parameter name="revision_id_3_hwtcl" value="1" />
+  <parameter name="revision_id_4_hwtcl" value="1" />
+  <parameter name="revision_id_5_hwtcl" value="1" />
+  <parameter name="revision_id_6_hwtcl" value="1" />
+  <parameter name="revision_id_7_hwtcl" value="1" />
+  <parameter name="rpre_emph_a_val_hwtcl" value="11" />
+  <parameter name="rpre_emph_b_val_hwtcl" value="0" />
+  <parameter name="rpre_emph_c_val_hwtcl" value="22" />
+  <parameter name="rpre_emph_d_val_hwtcl" value="12" />
+  <parameter name="rpre_emph_e_val_hwtcl" value="21" />
+  <parameter name="rvod_sel_a_val_hwtcl" value="50" />
+  <parameter name="rvod_sel_b_val_hwtcl" value="34" />
+  <parameter name="rvod_sel_c_val_hwtcl" value="50" />
+  <parameter name="rvod_sel_d_val_hwtcl" value="50" />
+  <parameter name="rvod_sel_e_val_hwtcl" value="9" />
+  <parameter name="rx_cdc_almost_full_advanced_default_hwtcl" value="12" />
+  <parameter name="rx_l0s_count_idl_advanced_default_hwtcl" value="0" />
+  <parameter name="rxbuffer_rxreq_hwtcl" value="Balanced" />
+  <parameter name="sameclock_nfts_count_advanced_default_hwtcl" value="255" />
+  <parameter name="serial_sim_hwtcl" value="0" />
+  <parameter name="set_l0s_hwtcl" value="0" />
+  <parameter name="set_pld_clk_x1_625MHz_hwtcl" value="0" />
+  <parameter name="skp_os_schedule_count_advanced_default_hwtcl" value="0" />
+  <parameter name="slot_number_hwtcl" value="0" />
+  <parameter name="slot_power_limit_hwtcl" value="0" />
+  <parameter name="slot_power_scale_hwtcl" value="0" />
+  <parameter name="slotclkcfg_hwtcl" value="1" />
+  <parameter name="ssid_0_hwtcl" value="0" />
+  <parameter name="ssid_1_hwtcl" value="0" />
+  <parameter name="ssid_2_hwtcl" value="0" />
+  <parameter name="ssid_3_hwtcl" value="0" />
+  <parameter name="ssid_4_hwtcl" value="0" />
+  <parameter name="ssid_5_hwtcl" value="0" />
+  <parameter name="ssid_6_hwtcl" value="0" />
+  <parameter name="ssid_7_hwtcl" value="0" />
+  <parameter name="ssvid_0_hwtcl" value="0" />
+  <parameter name="ssvid_1_hwtcl" value="0" />
+  <parameter name="ssvid_2_hwtcl" value="0" />
+  <parameter name="ssvid_3_hwtcl" value="0" />
+  <parameter name="ssvid_4_hwtcl" value="0" />
+  <parameter name="ssvid_5_hwtcl" value="0" />
+  <parameter name="ssvid_6_hwtcl" value="0" />
+  <parameter name="ssvid_7_hwtcl" value="0" />
+  <parameter name="subsystem_device_id_0_hwtcl" value="4464" />
+  <parameter name="subsystem_device_id_1_hwtcl" value="0" />
+  <parameter name="subsystem_device_id_2_hwtcl" value="0" />
+  <parameter name="subsystem_device_id_3_hwtcl" value="0" />
+  <parameter name="subsystem_device_id_4_hwtcl" value="0" />
+  <parameter name="subsystem_device_id_5_hwtcl" value="0" />
+  <parameter name="subsystem_device_id_6_hwtcl" value="0" />
+  <parameter name="subsystem_device_id_7_hwtcl" value="0" />
+  <parameter name="subsystem_vendor_id_0_hwtcl" value="171" />
+  <parameter name="subsystem_vendor_id_1_hwtcl" value="0" />
+  <parameter name="subsystem_vendor_id_2_hwtcl" value="0" />
+  <parameter name="subsystem_vendor_id_3_hwtcl" value="0" />
+  <parameter name="subsystem_vendor_id_4_hwtcl" value="0" />
+  <parameter name="subsystem_vendor_id_5_hwtcl" value="0" />
+  <parameter name="subsystem_vendor_id_6_hwtcl" value="0" />
+  <parameter name="subsystem_vendor_id_7_hwtcl" value="0" />
+  <parameter name="surprise_down_error_support_0_hwtcl" value="0" />
+  <parameter name="surprise_down_error_support_1_hwtcl" value="0" />
+  <parameter name="surprise_down_error_support_2_hwtcl" value="0" />
+  <parameter name="surprise_down_error_support_3_hwtcl" value="0" />
+  <parameter name="surprise_down_error_support_4_hwtcl" value="0" />
+  <parameter name="surprise_down_error_support_5_hwtcl" value="0" />
+  <parameter name="surprise_down_error_support_6_hwtcl" value="0" />
+  <parameter name="surprise_down_error_support_7_hwtcl" value="0" />
+  <parameter name="tx_cdc_almost_empty_advanced_default_hwtcl" value="5" />
+  <parameter name="tx_cdc_almost_full_advanced_default_hwtcl" value="11" />
+  <parameter name="use_aer_hwtcl" value="0" />
+  <parameter name="use_crc_forwarding_hwtcl" value="0" />
+  <parameter name="use_rx_st_be_hwtcl" value="0" />
+  <parameter name="use_tl_cfg_sync_advanced_default_hwtcl" value="1" />
+  <parameter name="user_id_hwtcl" value="0" />
+  <parameter name="vc0_clk_enable_advanced_default_hwtcl" value="true" />
+  <parameter name="vendor_id_0_hwtcl" value="4466" />
+  <parameter name="vendor_id_1_hwtcl" value="0" />
+  <parameter name="vendor_id_2_hwtcl" value="0" />
+  <parameter name="vendor_id_3_hwtcl" value="0" />
+  <parameter name="vendor_id_4_hwtcl" value="0" />
+  <parameter name="vendor_id_5_hwtcl" value="0" />
+  <parameter name="vendor_id_6_hwtcl" value="0" />
+  <parameter name="vendor_id_7_hwtcl" value="0" />
+  <parameter name="vsec_id_hwtcl" value="4466" />
+  <parameter name="vsec_rev_hwtcl" value="0" />
+ </module>
+ <module
+   name="pcie_reconfig_driver_0"
+   kind="altera_pcie_reconfig_driver"
+   version="18.0"
+   enabled="1">
+  <parameter name="INTENDED_DEVICE_FAMILY" value="Cyclone V" />
+  <parameter name="enable_cal_busy_hwtcl" value="0" />
+  <parameter name="gen123_lane_rate_mode_hwtcl" value="Gen1 (2.5 Gbps)" />
+  <parameter name="number_of_reconfig_interfaces" value="5" />
+ </module>
+ <connection
+   kind="avalon"
+   version="18.0"
+   start="pcie_reconfig_driver_0.reconfig_mgmt"
+   end="alt_xcvr_reconfig_0.reconfig_mgmt">
+  <parameter name="arbitrationPriority" value="1" />
+  <parameter name="baseAddress" value="0x0000" />
+  <parameter name="defaultConnection" value="false" />
+ </connection>
+ <connection
+   kind="clock"
+   version="18.0"
+   start="clk_0.clk"
+   end="alt_xcvr_reconfig_0.mgmt_clk_clk" />
+ <connection
+   kind="clock"
+   version="18.0"
+   start="clk_0.clk"
+   end="pcie_reconfig_driver_0.reconfig_xcvr_clk" />
+ <connection
+   kind="conduit"
+   version="18.0"
+   start="pcie.hip_currentspeed"
+   end="pcie_reconfig_driver_0.hip_currentspeed">
+  <parameter name="endPort" value="" />
+  <parameter name="endPortLSB" value="0" />
+  <parameter name="startPort" value="" />
+  <parameter name="startPortLSB" value="0" />
+  <parameter name="width" value="0" />
+ </connection>
+ <connection
+   kind="conduit"
+   version="18.0"
+   start="pcie_reconfig_driver_0.reconfig_busy"
+   end="alt_xcvr_reconfig_0.reconfig_busy">
+  <parameter name="endPort" value="" />
+  <parameter name="endPortLSB" value="0" />
+  <parameter name="startPort" value="" />
+  <parameter name="startPortLSB" value="0" />
+  <parameter name="width" value="0" />
+ </connection>
+ <connection
+   kind="conduit"
+   version="18.0"
+   start="pcie.reconfig_from_xcvr"
+   end="alt_xcvr_reconfig_0.reconfig_from_xcvr">
+  <parameter name="endPort" value="" />
+  <parameter name="endPortLSB" value="0" />
+  <parameter name="startPort" value="" />
+  <parameter name="startPortLSB" value="0" />
+  <parameter name="width" value="0" />
+ </connection>
+ <connection
+   kind="conduit"
+   version="18.0"
+   start="pcie.reconfig_to_xcvr"
+   end="alt_xcvr_reconfig_0.reconfig_to_xcvr">
+  <parameter name="endPort" value="" />
+  <parameter name="endPortLSB" value="0" />
+  <parameter name="startPort" value="" />
+  <parameter name="startPortLSB" value="0" />
+  <parameter name="width" value="0" />
+ </connection>
+ <connection
+   kind="reset"
+   version="18.0"
+   start="clk_0.clk_reset"
+   end="alt_xcvr_reconfig_0.mgmt_rst_reset" />
+ <connection
+   kind="reset"
+   version="18.0"
+   start="clk_0.clk_reset"
+   end="pcie_reconfig_driver_0.reconfig_xcvr_rst" />
+ <interconnectRequirement for="$system" name="qsys_mm.clockCrossingAdapter" value="HANDSHAKE" />
+ <interconnectRequirement for="$system" name="qsys_mm.maxAdditionalLatency" value="0" />
+</system>
