@@ -58,8 +58,7 @@ class S7PCIEPHY(Module, AutoCSR):
             self.cd_pcie.clk.eq(pcie_clk),
             self.cd_pcie_reset_less.clk.eq(pcie_clk)
         ]
-        self.specials += AsyncResetSynchronizer(self.cd_pcie,
-            (pcie_rst & pcie_refclk_present) | ResetSignal(cd))
+        self.specials += AsyncResetSynchronizer(self.cd_pcie, (pcie_rst & pcie_refclk_present))
 
         # tx cdc (fpga --> host)
         if cd == "pcie":
