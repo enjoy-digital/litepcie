@@ -22,6 +22,7 @@ class S7PCIEPHY(Module, AutoCSR):
         self._max_request_size = CSRStatus(16)
         self._max_payload_size = CSRStatus(16)
 
+        self.platform = platform
         self.data_width = data_width
 
         self.id = Signal(16)
@@ -29,6 +30,8 @@ class S7PCIEPHY(Module, AutoCSR):
         self.bar0_mask = get_bar_mask(bar0_size)
         self.max_request_size = Signal(16)
         self.max_payload_size = Signal(16)
+
+        self.external_phy = False
 
         # # #
 
@@ -194,14 +197,6 @@ class S7PCIEPHY(Module, AutoCSR):
         else:
             self.comb += m_axis_rx.last.eq(m_axis_rx_tlast)
 
-        litepcie_phy_path = os.path.abspath(os.path.dirname(__file__))
-        platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common"))
-        platform.add_source(os.path.join(litepcie_phy_path, "xilinx", "7-series", "common", "xpm_cdc.sv"))
-        if platform.device[:4] == "xc7k":
-            platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "kintex7"))
-        elif platform.device[:4] == "xc7a":
-            platform.add_source_dir(os.path.join(litepcie_phy_path, "xilinx", "7-series", "artix7"))
-
     def register_pll1(self, pll1):
         self.pcie_phy_params.update(
             p_QPLL_PLL1_FBDIV=pll1.config["n2"],
@@ -219,5 +214,23 @@ class S7PCIEPHY(Module, AutoCSR):
             o_QPLL_PLL1OUTREFCLK=pll1.refclk
         )
 
+    @staticmethod
+    def add_sources(platform, phy_path):
+        platform.add_source_dir(os.path.join(phy_path, "common"))
+        platform.add_source(os.path.join(phy_path, "common", "xpm_cdc.sv"))
+        if platform.device[:4] == "xc7k":
+            platform.add_source_dir(os.path.join(phy_path, "kintex7"))
+        elif platform.device[:4] == "xc7a":
+            platform.add_source_dir(os.path.join(phy_path, "artix7"))
+
+    def use_external_phy(self, phy_path):
+        self.external_phy = True
+        self.add_sources(self.platform, phy_path)
+
     def do_finalize(self):
+        if not self.external_phy:
+            self.add_sources(self.platform, os.path.join(
+                os.path.abspath(os.path.dirname(__file__)),
+                "xilinx",
+                "7-series"))
         self.specials += Instance("pcie_phy", **self.pcie_phy_params)
