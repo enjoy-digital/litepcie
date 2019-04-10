@@ -2,8 +2,6 @@ import os
 
 from migen import *
 from migen.genlib.cdc import MultiReg
-from migen.genlib.misc import WaitTimer
-from migen.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.soc.interconnect.csr import *
 
@@ -47,21 +45,6 @@ class S7PCIEPHY(Module, AutoCSR):
         )
 
         self.clock_domains.cd_pcie = ClockDomain()
-        self.clock_domains.cd_pcie_reset_less = ClockDomain(reset_less=True)
-
-        pcie_refclk_present = Signal()
-        pcie_refclk_timer = ClockDomainsRenamer("pcie_reset_less")(WaitTimer(1024))
-        self.submodules += pcie_refclk_timer
-        self.comb += [
-            pcie_refclk_timer.wait.eq(1),
-            pcie_refclk_present.eq(pcie_refclk_timer.done)
-        ]
-
-        self.comb += [
-            self.cd_pcie.clk.eq(pcie_clk),
-            self.cd_pcie_reset_less.clk.eq(pcie_clk)
-        ]
-        self.specials += AsyncResetSynchronizer(self.cd_pcie, (pcie_rst & pcie_refclk_present))
 
         # tx cdc (fpga --> host)
         if cd == "pcie":
@@ -152,8 +135,8 @@ class S7PCIEPHY(Module, AutoCSR):
                 i_pci_exp_rxp=pads.rx_p,
                 i_pci_exp_rxn=pads.rx_n,
 
-                o_user_clk=pcie_clk,
-                o_user_reset=pcie_rst,
+                o_user_clk=ClockSignal("pcie"),
+                o_user_reset=ResetSignal("pcie"),
                 o_user_lnk_up=lnk_up,
 
                 #o_tx_buf_av=,
