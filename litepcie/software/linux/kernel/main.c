@@ -487,10 +487,6 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         goto fail5;
     }
 
-    /* soft reset */
-    litepcie_writel(s, CSR_CRG_SOFT_RST_ADDR, 1);
-    udelay(5);
-
     /* allocate DMA buffers */
     for(i = 0; i < DMA_BUFFER_COUNT; i++) {
         s->dma_tx_bufs[i] = kzalloc(DMA_BUFFER_SIZE, GFP_KERNEL | GFP_DMA32);
