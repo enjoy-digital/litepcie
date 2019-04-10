@@ -7,19 +7,23 @@ from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 
+# --------------------------------------------------------------------------------------------------
 
 class S7PCIEPHY(Module, AutoCSR):
     def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys"):
+        # Streams ----------------------------------------------------------------------------------
         self.sink = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
         self.msi = stream.Endpoint(msi_layout())
 
+        # Registers --------------------------------------------------------------------------------
         self._lnk_up = CSRStatus()
         self._msi_enable = CSRStatus()
         self._bus_master_enable = CSRStatus()
         self._max_request_size = CSRStatus(16)
         self._max_payload_size = CSRStatus(16)
 
+        # Parameters/Locals ------------------------------------------------------------------------
         self.platform = platform
         self.data_width = data_width
 
@@ -33,9 +37,7 @@ class S7PCIEPHY(Module, AutoCSR):
 
         # # #
 
-        # clocking
-        pcie_clk = Signal()
-        pcie_rst = Signal()
+        # Clocking ---------------------------------------------------------------------------------
         pcie_refclk = Signal()
         self.specials += Instance("IBUFDS_GTE2",
             i_CEB=0,
@@ -43,10 +45,9 @@ class S7PCIEPHY(Module, AutoCSR):
             i_IB=pads.clk_n,
             o_O=pcie_refclk
         )
-
         self.clock_domains.cd_pcie = ClockDomain()
 
-        # tx cdc (fpga --> host)
+        # TX CDC (FPGA --> HOST) -------------------------------------------------------------------
         if cd == "pcie":
             s_axis_tx = self.sink
         else:
@@ -61,7 +62,7 @@ class S7PCIEPHY(Module, AutoCSR):
             ]
             s_axis_tx = tx_cdc.source
 
-        # rx cdc (host --> fpga)
+        # RX CDC (HOST --> FPGA) -------------------------------------------------------------------
         if cd == "pcie":
             m_axis_rx = self.source
         else:
@@ -76,7 +77,7 @@ class S7PCIEPHY(Module, AutoCSR):
             ]
             m_axis_rx = rx_cdc.sink
 
-        # msi cdc (fpga --> host)
+        # MSI CDC (FPGA --> HOST) ------------------------------------------------------------------
         if cd == "pcie":
             cfg_msi = self.msi
         else:
@@ -86,8 +87,7 @@ class S7PCIEPHY(Module, AutoCSR):
             self.comb += self.msi.connect(msi_cdc.sink)
             cfg_msi = msi_cdc.source
 
-
-        # config
+        # Hard IP Configuration --------------------------------------------------------------------
         def convert_size(command, size):
             cases = {}
             value = 128
@@ -116,71 +116,74 @@ class S7PCIEPHY(Module, AutoCSR):
             MultiReg(self.max_payload_size, self._max_payload_size.status)
         ]
 
-        # hard ip
+        # Hard IP ----------------------------------------------------------------------------------
         m_axis_rx_tlast = Signal()
         m_axis_rx_tuser = Signal(32)
         self.pcie_phy_params = dict(
-                p_C_DATA_WIDTH=data_width,
-                p_C_PCIE_GT_DEVICE={
-                    "xc7k": "GTX",
-                    "xc7a": "GTP"}[platform.device[:4]],
-                p_C_BAR0=get_bar_mask(bar0_size),
+            p_C_DATA_WIDTH=data_width,
+            p_C_PCIE_GT_DEVICE={
+                "xc7k": "GTX",
+                "xc7a": "GTP"}[platform.device[:4]],
+            p_C_BAR0=get_bar_mask(bar0_size),
 
-                i_sys_clk=pcie_refclk,
-                i_sys_rst_n=1 if not hasattr(pads, "rst_n") else pads.rst_n,
+            i_sys_clk=pcie_refclk,
+            i_sys_rst_n=1 if not hasattr(pads, "rst_n") else pads.rst_n,
 
-                o_pci_exp_txp=pads.tx_p,
-                o_pci_exp_txn=pads.tx_n,
+            o_pci_exp_txp=pads.tx_p,
+            o_pci_exp_txn=pads.tx_n,
 
-                i_pci_exp_rxp=pads.rx_p,
-                i_pci_exp_rxn=pads.rx_n,
+            i_pci_exp_rxp=pads.rx_p,
+            i_pci_exp_rxn=pads.rx_n,
 
-                o_user_clk=ClockSignal("pcie"),
-                o_user_reset=ResetSignal("pcie"),
-                o_user_lnk_up=lnk_up,
+            o_user_clk=ClockSignal("pcie"),
+            o_user_reset=ResetSignal("pcie"),
+            o_user_lnk_up=lnk_up,
 
-                #o_tx_buf_av=,
-                #o_tx_terr_drop=,
-                #o_tx_cfg_req=,
-                i_tx_cfg_gnt=1,
+            #o_tx_buf_av=,
+            #o_tx_terr_drop=,
+            #o_tx_cfg_req=,
+            i_tx_cfg_gnt=1,
 
-                i_s_axis_tx_tvalid=s_axis_tx.valid,
-                i_s_axis_tx_tlast=s_axis_tx.last,
-                o_s_axis_tx_tready=s_axis_tx.ready,
-                i_s_axis_tx_tdata=s_axis_tx.dat,
-                i_s_axis_tx_tkeep=s_axis_tx.be,
-                i_s_axis_tx_tuser=0,
+            i_s_axis_tx_tvalid=s_axis_tx.valid,
+            i_s_axis_tx_tlast=s_axis_tx.last,
+            o_s_axis_tx_tready=s_axis_tx.ready,
+            i_s_axis_tx_tdata=s_axis_tx.dat,
+            i_s_axis_tx_tkeep=s_axis_tx.be,
+            i_s_axis_tx_tuser=0,
 
-                i_rx_np_ok=1,
-                i_rx_np_req=1,
+            i_rx_np_ok=1,
+            i_rx_np_req=1,
 
-                o_m_axis_rx_tvalid=m_axis_rx.valid,
-                o_m_axis_rx_tlast=m_axis_rx_tlast,
-                i_m_axis_rx_tready=m_axis_rx.ready,
-                o_m_axis_rx_tdata=m_axis_rx.dat,
-                o_m_axis_rx_tkeep=m_axis_rx.be,
-                o_m_axis_rx_tuser=m_axis_rx_tuser,
+            o_m_axis_rx_tvalid=m_axis_rx.valid,
+            o_m_axis_rx_tlast=m_axis_rx_tlast,
+            i_m_axis_rx_tready=m_axis_rx.ready,
+            o_m_axis_rx_tdata=m_axis_rx.dat,
+            o_m_axis_rx_tkeep=m_axis_rx.be,
+            o_m_axis_rx_tuser=m_axis_rx_tuser,
 
-                #o_cfg_to_turnoff=,
-                o_cfg_bus_number=bus_number,
-                o_cfg_device_number=device_number,
-                o_cfg_function_number=function_number,
-                o_cfg_command=command,
-                o_cfg_dcommand=dcommand,
-                o_cfg_interrupt_msienable=msienable,
+            #o_cfg_to_turnoff=,
+            o_cfg_bus_number=bus_number,
+            o_cfg_device_number=device_number,
+            o_cfg_function_number=function_number,
+            o_cfg_command=command,
+            o_cfg_dcommand=dcommand,
+            o_cfg_interrupt_msienable=msienable,
 
-                i_cfg_interrupt=cfg_msi.valid,
-                o_cfg_interrupt_rdy=cfg_msi.ready,
-                i_cfg_interrupt_di=cfg_msi.dat,
+            i_cfg_interrupt=cfg_msi.valid,
+            o_cfg_interrupt_rdy=cfg_msi.ready,
+            i_cfg_interrupt_di=cfg_msi.dat,
 
-                i_QPLL_PLL1PD=1,
+            i_QPLL_PLL1PD=1,
         )
         if data_width == 128:
             self.comb += m_axis_rx.last.eq(m_axis_rx_tuser[21])
         else:
             self.comb += m_axis_rx.last.eq(m_axis_rx_tlast)
 
+    # Second PLL registration ----------------------------------------------------------------------
     def register_pll1(self, pll1):
+        # The Xilinx's Hard IP integrates the transceivers but also the PLLs. Only one PLL is use
+        # for PCIe, on some designs having access to the second PLL is needed.
         self.pcie_phy_params.update(
             p_QPLL_PLL1_FBDIV=pll1.config["n2"],
             p_QPLL_PLL1_FBDIV_45=pll1.config["n1"],
@@ -197,6 +200,7 @@ class S7PCIEPHY(Module, AutoCSR):
             o_QPLL_PLL1OUTREFCLK=pll1.refclk
         )
 
+    # Hard IP sources ------------------------------------------------------------------------------
     @staticmethod
     def add_sources(platform, phy_path):
         platform.add_source_dir(os.path.join(phy_path, "common"))
@@ -206,10 +210,12 @@ class S7PCIEPHY(Module, AutoCSR):
         elif platform.device[:4] == "xc7a":
             platform.add_source_dir(os.path.join(phy_path, "artix7"))
 
+    # External PHY ---------------------------------------------------------------------------------
     def use_external_phy(self, phy_path):
         self.external_phy = True
         self.add_sources(self.platform, phy_path)
 
+    # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_phy:
             self.add_sources(self.platform, os.path.join(
