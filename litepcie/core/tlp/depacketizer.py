@@ -4,7 +4,7 @@ from litepcie.core.tlp.common import *
 
 
 class LitePCIeTLPHeaderExtracter64b(Module):
-    def __init__(self):
+    def __init__(self, endianness):
         self.sink = sink = stream.Endpoint(phy_layout(64))
         self.source = source = stream.Endpoint(tlp_raw_layout(64))
 
@@ -54,15 +54,15 @@ class LitePCIeTLPHeaderExtracter64b(Module):
             )
         )
         self.comb += [
-            source.dat[32*0:32*1].eq(reverse_bytes(dat[32*1:32*2])),
-            source.dat[32*1:32*2].eq(reverse_bytes(sink.dat[32*0:32*1])),
-            source.be[4*0:4*1].eq(reverse_bits(be[4*1:4*2])),
-            source.be[4*1:4*2].eq(reverse_bits(sink.be[4*0:4*1]))
+            source.dat[32*0:32*1].eq(convert_bytes(dat[32*1:32*2], endianness)),
+            source.dat[32*1:32*2].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
+            source.be[4*0:4*1].eq(convert_bits(be[4*1:4*2], endianness)),
+            source.be[4*1:4*2].eq(convert_bits(sink.be[4*0:4*1], endianness))
         ]
 
 
 class LitePCIeTLPHeaderExtracter128b(Module):
-    def __init__(self):
+    def __init__(self, endianness):
         self.sink = sink = stream.Endpoint(phy_layout(128))
         self.source = source = stream.Endpoint(tlp_raw_layout(128))
 
@@ -111,19 +111,19 @@ class LitePCIeTLPHeaderExtracter128b(Module):
             )
         )
         self.comb += [
-            source.dat[32*0:32*1].eq(reverse_bytes(dat[32*3:32*4])),
-            source.dat[32*1:32*2].eq(reverse_bytes(sink.dat[32*0:32*1])),
-            source.dat[32*2:32*3].eq(reverse_bytes(sink.dat[32*1:32*2])),
-            source.dat[32*3:32*4].eq(reverse_bytes(sink.dat[32*2:32*3])),
-            source.be[4*0:4*1].eq(reverse_bits(be[4*3:4*4])),
-            source.be[4*1:4*2].eq(reverse_bits(sink.be[4*0:4*1])),
-            source.be[4*2:4*3].eq(reverse_bits(sink.be[4*1:4*2])),
-            source.be[4*1:4*2].eq(reverse_bits(sink.be[4*2:4*3]))
+            source.dat[32*0:32*1].eq(convert_bytes(dat[32*3:32*4], endianness)),
+            source.dat[32*1:32*2].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
+            source.dat[32*2:32*3].eq(convert_bytes(sink.dat[32*1:32*2], endianness)),
+            source.dat[32*3:32*4].eq(convert_bytes(sink.dat[32*2:32*3], endianness)),
+            source.be[4*0:4*1].eq(convert_bits(be[4*3:4*4], endianness)),
+            source.be[4*1:4*2].eq(convert_bits(sink.be[4*0:4*1], endianness)),
+            source.be[4*2:4*3].eq(convert_bits(sink.be[4*1:4*2], endianness)),
+            source.be[4*1:4*2].eq(convert_bits(sink.be[4*2:4*3], endianness))
         ]
 
 
 class LitePCIeTLPDepacketizer(Module):
-    def __init__(self, data_width, address_mask=0):
+    def __init__(self, data_width, endianness, address_mask=0):
         self.sink = stream.Endpoint(phy_layout(data_width))
 
         self.req_source = stream.Endpoint(request_layout(data_width))
@@ -136,7 +136,7 @@ class LitePCIeTLPDepacketizer(Module):
              64 : LitePCIeTLPHeaderExtracter64b,
             128 : LitePCIeTLPHeaderExtracter128b,
         }
-        header_extracter = header_extracter_cls[data_width]()
+        header_extracter = header_extracter_cls[data_width](endianness)
         self.submodules += header_extracter
         self.comb += self.sink.connect(header_extracter.sink)
         header = header_extracter.source.header

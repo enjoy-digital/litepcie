@@ -8,15 +8,15 @@ from litepcie.core.crossbar import LitePCIeCrossbar
 
 
 class LitePCIeEndpoint(Module):
-    def __init__(self, phy, max_pending_requests=4, with_reordering=False):
+    def __init__(self, phy, max_pending_requests=4, with_reordering=False, endianness="big"):
         self.phy = phy
         self.max_pending_requests = max_pending_requests
 
         # # #
 
         # TLP Packetizer / Depacketizer
-        depacketizer = LitePCIeTLPDepacketizer(phy.data_width, phy.bar0_mask)
-        packetizer = LitePCIeTLPPacketizer(phy.data_width)
+        depacketizer = LitePCIeTLPDepacketizer(phy.data_width, endianness, phy.bar0_mask)
+        packetizer = LitePCIeTLPPacketizer(phy.data_width, endianness)
         self.submodules.depacketizer = depacketizer
         self.submodules.packetizer = packetizer
         self.comb += [

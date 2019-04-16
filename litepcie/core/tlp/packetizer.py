@@ -5,7 +5,7 @@ from litepcie.core.tlp.common import *
 
 
 class LitePCIeTLPHeaderInserter64b(Module):
-    def __init__(self):
+    def __init__(self, endianness):
         self.sink = sink = stream.Endpoint(tlp_raw_layout(64))
         self.source = source = stream.Endpoint(phy_layout(64))
 
@@ -45,8 +45,8 @@ class LitePCIeTLPHeaderInserter64b(Module):
             source.dat[32*0:32*1].eq(sink.header[32*2:32*3]),
             source.be[4*0:4*1].eq(0xf),
             # 32 msbs
-            source.dat[32*1:32*2].eq(reverse_bytes(sink.dat[32*0:32*1])),
-            source.be[4*1:4*2].eq(reverse_bits(sink.be[:4])),
+            source.dat[32*1:32*2].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
+            source.be[4*1:4*2].eq(convert_bits(sink.be[:4], endianness)),
             If(source.valid & source.ready,
                 sink.ready.eq(1),
                 If(source.last,
@@ -60,10 +60,10 @@ class LitePCIeTLPHeaderInserter64b(Module):
             source.valid.eq(sink.valid | last),
             source.last.eq(last),
             # 32 msbs
-            source.dat[32*0:32*1].eq(reverse_bytes(dat[32*1:32*2])),
+            source.dat[32*0:32*1].eq(convert_bytes(dat[32*1:32*2], endianness)),
 			source.be[4*0:4*1].eq(0xf),
             # 32 lsbs
-            source.dat[32*1:32*2].eq(reverse_bytes(sink.dat[32*0:32*1])),
+            source.dat[32*1:32*2].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
             If(last,
                 source.be[4*1:4*2].eq(0x0)
             ).Else(
@@ -79,7 +79,7 @@ class LitePCIeTLPHeaderInserter64b(Module):
 
 
 class LitePCIeTLPHeaderInserter128b(Module):
-    def __init__(self):
+    def __init__(self, endianness):
         self.sink = sink = stream.Endpoint(tlp_raw_layout(128))
         self.source = source = stream.Endpoint(phy_layout(128))
 
@@ -111,8 +111,8 @@ class LitePCIeTLPHeaderInserter128b(Module):
                 source.dat[32*2:32*3].eq(sink.header[32*2:32*3]),
                 source.be[4*2:4*3].eq(0xf),
                 # 32 h msbs
-                source.dat[32*3:32*4].eq(reverse_bytes(sink.dat[32*0:32*1])),
-                source.be[4*3:4*4].eq(reverse_bits(sink.be[:4])),
+                source.dat[32*3:32*4].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
+                source.be[4*3:4*4].eq(convert_bits(sink.be[:4], endianness)),
                 If(source.valid & source.ready,
                     sink.ready.eq(1),
                     If(~source.last,
@@ -125,16 +125,16 @@ class LitePCIeTLPHeaderInserter128b(Module):
             source.valid.eq(sink.valid | last),
             source.last.eq(last),
             # 32 l lsbs
-            source.dat[32*0:32*1].eq(reverse_bytes(dat[32*1:32*2])),
+            source.dat[32*0:32*1].eq(convert_bytes(dat[32*1:32*2], endianness)),
             source.be[4*0:4*1].eq(0xf),
             # 32 l msbs
-            source.dat[32*1:32*2].eq(reverse_bytes(dat[32*2:32*3])),
+            source.dat[32*1:32*2].eq(convert_bytes(dat[32*2:32*3], endianness)),
             source.be[4*1:4*2].eq(0xf),
             # 32 h lsbs
-            source.dat[32*2:32*3].eq(reverse_bytes(dat[32*3:2*32*4])),
+            source.dat[32*2:32*3].eq(convert_bytes(dat[32*3:2*32*4], endianness)),
             source.be[4*2:4*3].eq(0xf),
             # 32 h msbs
-            source.dat[32*3:32*4].eq(reverse_bytes(sink.dat[32*0:32*1])),
+            source.dat[32*3:32*4].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
             If(last,
                 source.be[4*3:4*4].eq(0x0)
             ).Else(
@@ -150,7 +150,7 @@ class LitePCIeTLPHeaderInserter128b(Module):
 
 
 class LitePCIeTLPPacketizer(Module):
-    def __init__(self, data_width):
+    def __init__(self, data_width, endianness):
         self.req_sink = req_sink = stream.Endpoint(request_layout(data_width))
         self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
 
@@ -260,7 +260,7 @@ class LitePCIeTLPPacketizer(Module):
             64 : LitePCIeTLPHeaderInserter64b,
            128 : LitePCIeTLPHeaderInserter128b
         }
-        header_inserter = header_inserter_cls[data_width]()
+        header_inserter = header_inserter_cls[data_width](endianness)
         self.submodules += header_inserter
         self.comb += [
             tlp_raw.connect(header_inserter.sink),
