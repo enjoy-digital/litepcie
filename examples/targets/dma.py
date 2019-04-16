@@ -53,7 +53,6 @@ class PCIeDMASoC(SoCCore):
 
         # PCIe DMA
         self.submodules.dma = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint, with_loopback=True)
-        self.dma.source.connect(self.dma.sink)
 
         if with_uart_bridge:
             self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), sys_clk_freq, baudrate=115200)
