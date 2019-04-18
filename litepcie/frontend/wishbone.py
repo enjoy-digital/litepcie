@@ -6,7 +6,7 @@ from litepcie.common import *
 
 
 class LitePCIeWishboneBridge(Module):
-    def __init__(self, endpoint, address_decoder, shadow_base=0x00000000):
+    def __init__(self, endpoint, address_decoder, shadow_base=0x00000000, qword_aligned=False):
         self.wishbone = wishbone.Interface()
 
         # # #
@@ -30,7 +30,12 @@ class LitePCIeWishboneBridge(Module):
         self.sync += [
             self.wishbone.sel.eq(0xf),
             self.wishbone.adr.eq(port.sink.adr[2:] | (shadow_base >> 2)),
-            self.wishbone.dat_w.eq(port.sink.dat[:32])
+            self.wishbone.dat_w.eq(port.sink.dat[:32]),
+            If(qword_aligned & port.sink.adr[2],
+                self.wishbone.dat_w.eq(port.sink.dat[:32])
+            ).Else(
+                self.wishbone.dat_w.eq(port.sink.dat[32:])
+            )
         ]
         fsm.act("WRITE",
             self.wishbone.stb.eq(1),
