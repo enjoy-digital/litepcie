@@ -33,7 +33,7 @@ class S7PCIEPHY(Module, AutoCSR):
         self.max_request_size = Signal(16)
         self.max_payload_size = Signal(16)
 
-        self.external_phy = False
+        self.external_hard_ip = False
 
         # # #
 
@@ -210,14 +210,14 @@ class S7PCIEPHY(Module, AutoCSR):
         elif platform.device[:4] == "xc7a":
             platform.add_source_dir(os.path.join(phy_path, "artix7"))
 
-    # External PHY ---------------------------------------------------------------------------------
-    def use_external_phy(self, phy_path):
-        self.external_phy = True
-        self.add_sources(self.platform, phy_path)
+    # External Hard IP -----------------------------------------------------------------------------
+    def use_external_hard_ip(self, hard_ip_path):
+        self.external_hard_ip = True
+        self.add_sources(self.platform, hard_ip_path)
 
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
-        if not self.external_phy:
+        if not self.external_hard_ip:
             self.add_sources(self.platform, os.path.join(
                 os.path.abspath(os.path.dirname(__file__)),
                 "xilinx",
