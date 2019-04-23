@@ -3,10 +3,10 @@
          / /__/ / __/ -_) ___/ /___/ // -_)
         /____/_/\__/\__/_/   \___/___/\__/
 
-        Copyright 2015-2018 / EnjoyDigital
+        Copyright 2015-2019 / EnjoyDigital
 
      A small footprint and configurable PCIe core
-                powered by LiteX & Migen
+               powered by Migen & LiteX
 
 [> Intro
 --------
@@ -24,7 +24,8 @@ design flow by generating the verilog rtl that you will use as a standard core.
 [> Features
 -----------
 PHY:
-  - Artix7 / Kintex7 Xilinx PHY wrappers (up to PCIe Gen2 X4)
+  - Xilinx 7-Series (up to PCIe Gen2 X4)
+  - Intel Cyclone5 (up to PCIe Gen2 X4)
 Core:
   - TLP layer
   - Reordering
@@ -44,9 +45,10 @@ LitePCIe is already used in commercial and open-source designs:
 [> Possible improvements
 ------------------------
 - add standardized interfaces (AXI, Avalon-ST)
-- add support for PCIe Gen2 X8 on 7-Series
-- add Ultrascale support
-- add Altera/Lattice support
+- add support for PCIe Gen2 X8
+- add Xilinx Ultrascale support
+- add Intel Stratix support
+- add Lattice support
 - add more documentation
 - ... See below Support and consulting :)
 
