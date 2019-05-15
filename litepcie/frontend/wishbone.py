@@ -30,11 +30,14 @@ class LitePCIeWishboneBridge(Module):
         self.sync += [
             self.wishbone.sel.eq(0xf),
             self.wishbone.adr.eq(port.sink.adr[2:] | (shadow_base >> 2)),
-            self.wishbone.dat_w.eq(port.sink.dat[:32]),
-            If(qword_aligned & port.sink.adr[2],
-                self.wishbone.dat_w.eq(port.sink.dat[:32])
+            If(qword_aligned,
+                If(port.sink.adr[2],
+                    self.wishbone.dat_w.eq(port.sink.dat[:32])
+                ).Else(
+                    self.wishbone.dat_w.eq(port.sink.dat[32:])
+                )
             ).Else(
-                self.wishbone.dat_w.eq(port.sink.dat[32:])
+                self.wishbone.dat_w.eq(port.sink.dat[:32]),
             )
         ]
         fsm.act("WRITE",
