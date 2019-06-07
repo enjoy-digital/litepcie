@@ -325,11 +325,12 @@ class LitePCIeDMAWriter(Module, AutoCSR):
                 NextState("REQUEST"),
             )
         )
+        length_shift = log2_int(endpoint.phy.data_width//8)
         self.comb += [
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
             port.source.first.eq(counter == 0),
-            port.source.last.eq((counter == splitter.source.length[log2_int(endpoint.phy.data_width//8):] - 1)),
+            port.source.last.eq(~enable | (counter == splitter.source.length[length_shift:] - 1)),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
