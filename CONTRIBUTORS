@@ -1,0 +1,14 @@
+LiteX ecosystem would not exist without the collaborative work of contributors! Here is below the
+list of all the LitePCIe contributors.
+
+In the source code, each file list the main authors/contributors:
+- author(s) that created the initial content.
+- contributor(s) that added essential features/improvements.
+
+If you think you should be in this list and don't find yourself, write to florent@enjoy-digital.fr
+and we'll fix it!
+
+Contributors:
+Copyright (c) 2018 Felix Held <felix-github@felixheld.de>
+Copyright (c) 2015-2019 Florent Kermarrec <florent@enjoy-digital.fr>
+Copyright (c) 2017 Tim 'mithro' Ansell <me@mith.ro>

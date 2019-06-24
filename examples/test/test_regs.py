@@ -1,3 +1,6 @@
+# This file is Copyright (c) 2015-2018 Florent Kermarrec <florent@enjoy-digital.fr>
+# License: BSD
+
 from litex import RemoteClient
 
 wb = RemoteClient()

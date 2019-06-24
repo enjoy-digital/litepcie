@@ -1,3 +1,6 @@
+# This file is Copyright (c) 2015-2017 Florent Kermarrec <florent@enjoy-digital.fr>
+# License: BSD
+
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 
