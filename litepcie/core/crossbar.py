@@ -9,10 +9,9 @@ from litepcie.core.tlp.controller import LitePCIeTLPController
 
 
 class LitePCIeCrossbar(Module):
-    def __init__(self, data_width, max_pending_requests, with_reordering=False):
+    def __init__(self, data_width, max_pending_requests):
         self.data_width = data_width
         self.max_pending_requests = max_pending_requests
-        self.with_reordering = with_reordering
 
         self.master = LitePCIeMasterInternalPort(data_width)
         self.slave = LitePCIeSlaveInternalPort(data_width)
@@ -114,7 +113,7 @@ class LitePCIeCrossbar(Module):
             if rd_rw_masters != []:
                 rd_rw_master = LitePCIeMasterInternalPort(self.data_width)
                 controller = LitePCIeTLPController(
-                    self.data_width, self.max_pending_requests, self.with_reordering)
+                    self.data_width, self.max_pending_requests)
                 self.submodules.controller = controller
                 self.master_arbitrate_dispatch(rd_rw_masters, controller.master_in)
                 masters.append(controller.master_out)

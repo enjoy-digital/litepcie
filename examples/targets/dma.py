@@ -48,7 +48,7 @@ class PCIeDMASoC(SoCCore):
 
         # PCIe endpoint
         self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x1"))
-        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, with_reordering=True)
+        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy)
 
         # PCIe Wishbone bridge
         self.add_cpu_or_bridge(LitePCIeWishboneBridge(self.pcie_endpoint, lambda a: 1))

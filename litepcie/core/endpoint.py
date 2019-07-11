@@ -11,7 +11,7 @@ from litepcie.core.crossbar import LitePCIeCrossbar
 
 
 class LitePCIeEndpoint(Module):
-    def __init__(self, phy, max_pending_requests=4, with_reordering=False, endianness="big"):
+    def __init__(self, phy, max_pending_requests=4, endianness="big"):
         self.phy = phy
         self.max_pending_requests = max_pending_requests
 
@@ -28,7 +28,7 @@ class LitePCIeEndpoint(Module):
         ]
 
         # Crossbar
-        crossbar = LitePCIeCrossbar(phy.data_width, max_pending_requests, with_reordering)
+        crossbar = LitePCIeCrossbar(phy.data_width, max_pending_requests)
         self.submodules.crossbar = crossbar
 
         # (Slave) HOST initiates the transactions
