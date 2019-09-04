@@ -434,9 +434,15 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
 
 class LitePCIeDMABuffering(Module, AutoCSR):
     def __init__(self, data_width, depth):
+        self.tx_fifo_level = CSRStatus(bits_for(depth))
+        self.rx_fifo_level = CSRStatus(bits_for(depth))
         tx_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
         rx_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
         self.submodules += tx_fifo, rx_fifo
+        self.comb += [
+            self.tx_fifo_level.status.eq(tx_fifo.level),
+            self.rx_fifo_level.status.eq(rx_fifo.level),
+        ]
 
         self.sink = tx_fifo.sink
         self.source = rx_fifo.source
