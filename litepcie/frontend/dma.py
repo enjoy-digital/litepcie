@@ -434,28 +434,29 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
 
 class LitePCIeDMABuffering(Module, AutoCSR):
     def __init__(self, data_width, depth):
-        self.tx_fifo_level = CSRStatus(bits_for(depth))
-        self.rx_fifo_level = CSRStatus(bits_for(depth))
-        tx_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
-        rx_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
-        self.submodules += tx_fifo, rx_fifo
+        self.reader_fifo_level = CSRStatus(bits_for(depth))
+        self.writer_fifo_level = CSRStatus(bits_for(depth))
+        reader_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
+        writer_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
+        self.submodules += reader_fifo, writer_fifo
         self.comb += [
-            self.tx_fifo_level.status.eq(tx_fifo.level),
-            self.rx_fifo_level.status.eq(rx_fifo.level),
+            self.reader_fifo_level.status.eq(reader_fifo.level),
+            self.writer_fifo_level.status.eq(writer_fifo.level),
         ]
 
-        self.sink = tx_fifo.sink
-        self.source = rx_fifo.source
+        self.sink = reader_fifo.sink
+        self.source = writer_fifo.source
 
-        self.next_source = tx_fifo.source
-        self.next_sink = rx_fifo.sink
+        self.next_source = reader_fifo.source
+        self.next_sink = writer_fifo.sink
 
 
 class LitePCIeDMA(Module, AutoCSR):
     def __init__(self, phy, endpoint,
         with_buffering=False, buffering_depth=256*8,
         with_loopback=False,
-        with_synchronizer=False):
+        with_synchronizer=False,
+        with_monitor=False):
 
         # Writer, Reader
         self.submodules.writer = LitePCIeDMAWriter(endpoint, endpoint.crossbar.get_master_port(write_only=True))
@@ -477,6 +478,10 @@ class LitePCIeDMA(Module, AutoCSR):
             self.submodules.buffering = LitePCIeDMABuffering(phy.data_width, buffering_depth)
             self.insert_optional_module(self.buffering)
 
+        # Monitor
+        if with_monitor:
+            self.submodules.writer_monitor = stream.Monitor(self.sink, with_overflows=True)
+            self.submodules.reader_monitor = stream.Monitor(self.source, with_underflows=True)
 
     def insert_optional_module(self, m):
         self.comb += [
