@@ -13,7 +13,7 @@ from migen.fhdl.structure import _Fragment
 from litex.build.tools import write_to_file
 from litex.build.xilinx.common import *
 
-from litex.soc.integration import cpu_interface
+from litex.soc.integration import export
 
 litepcie_path = "../"
 sys.path.append(litepcie_path) # XXX
@@ -91,8 +91,6 @@ if __name__ == "__main__":
     top_kwargs = dict((k, autotype(v)) for k, v in args.target_option)
     soc = top_class(platform, **top_kwargs)
     soc.finalize()
-    memory_regions = soc.get_memory_regions()
-    csr_regions = soc.get_csr_regions()
 
     # decode actions
     action_list = ["clean", "build-csr-csv", "build-csr-header", "build-bitstream", "load-bitstream", "all"]
@@ -142,11 +140,11 @@ System Clk: {} MHz
         subprocess.call(["rm", "-rf", "build/*"])
 
     if actions["build-csr-csv"]:
-        csr_csv = cpu_interface.get_csr_csv(csr_regions, soc.get_constants())
+        csr_csv = export.get_csr_csv(soc.csr_regions, soc.constants)
         write_to_file(args.csr_csv, csr_csv)
 
     if actions["build-csr-header"]:
-        csr_header = cpu_interface.get_csr_header(csr_regions, soc.get_constants(), with_access_functions=False)
+        csr_header = export.get_csr_header(soc.csr_regions, soc.constants, with_access_functions=False)
         write_to_file(args.csr_header, csr_header)
 
     if actions["build-bitstream"]:
