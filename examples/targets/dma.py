@@ -51,8 +51,8 @@ class PCIeDMASoC(SoCCore):
         self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy)
 
         # PCIe Wishbone bridge
-        self.add_cpu_or_bridge(LitePCIeWishboneBridge(self.pcie_endpoint, lambda a: 1))
-        self.add_wb_master(self.cpu_or_bridge.wishbone)
+        self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint, lambda a: 1)
+        self.add_wb_master(self.pcie_bridge.wishbone)
 
         # PCIe DMA
         self.submodules.dma = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint, with_loopback=True)
