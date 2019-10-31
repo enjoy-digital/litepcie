@@ -40,7 +40,6 @@ class LitePCIeTLPController(Module):
         # Requests Managment -----------------------------------------------------------------------
         self.comb += req_sink.connect(req_source, omit=set(["valid", "ready"]))
         self.submodules.req_fsm = req_fsm = FSM(reset_state="IDLE")
-        req_ready = Signal(reset=1)
         req_fsm.act("IDLE",
             If(req_sink.valid & req_sink.first,
                 If(req_sink.we,
@@ -70,7 +69,6 @@ class LitePCIeTLPController(Module):
             If(req_source.valid & req_source.ready & req_source.last,
                 tags_queue.source.ready.eq(1),
                 requests_queue.sink.valid.eq(1),
-                req_sink.ready.eq(1),
                 NextState("IDLE")
             )
         )
