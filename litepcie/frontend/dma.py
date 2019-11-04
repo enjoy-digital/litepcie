@@ -202,8 +202,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
         max_pending_words = endpoint.max_pending_requests*max_words_per_request
-
-        fifo_depth = 2*max_pending_words
+        fifo_depth = 4*max_pending_words
 
         # Request generation
 
@@ -264,7 +263,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         ]
         self.comb += fifo.source.connect(self.source)
 
-        fifo_ready = fifo.level < (fifo_depth//2)
+        fifo_ready = fifo.level < (fifo_depth - max_words_per_request)
         self.comb += request_ready.eq(splitter.source.valid & fifo_ready)
 
         # IRQ
