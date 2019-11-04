@@ -23,8 +23,8 @@ cpl_dict = {
     "ca":  0b011
 }
 
+max_payload_size = 512
 max_request_size = 512
-
 
 # headers
 tlp_common_header_length = 16

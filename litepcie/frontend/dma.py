@@ -209,7 +209,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         # requests from table are splitted in chunks of "max_size"
         self.table = table = LitePCIeDMARequestTable(table_depth)
-        splitter = LitePCIeDMARequestSplitter(max_request_size)
+        splitter = LitePCIeDMARequestSplitter(max_size=endpoint.phy.max_request_size)
         self.submodules += table, BufferizeEndpoints({"source": DIR_SOURCE})(ResetInserter()(splitter))
         self.comb += [
             splitter.reset.eq(~enable),
@@ -284,7 +284,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         enable = self.enable.storage
 
-        max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
+        max_words_per_request = max_payload_size//(endpoint.phy.data_width//8)
         fifo_depth = 4*max_words_per_request
 
         # Data FIFO
@@ -313,7 +313,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # requests from table are splitted in chunks of "max_size"
         self.table = table = LitePCIeDMARequestTable(table_depth)
-        splitter = LitePCIeDMARequestSplitter(endpoint.phy.max_payload_size)
+        splitter = LitePCIeDMARequestSplitter(max_size=endpoint.phy.max_payload_size)
         self.submodules += table, BufferizeEndpoints({"source": DIR_SOURCE})(ResetInserter()(splitter))
         self.comb += [
             splitter.reset.eq(~enable),
