@@ -38,7 +38,7 @@ class LitePCIeTLPController(Module):
         self.submodules.requests_queue = requests_queue
 
         # Requests Managment -----------------------------------------------------------------------
-        self.comb += req_sink.connect(req_source, omit=set(["valid", "ready"]))
+        self.comb += req_sink.connect(req_source, omit=set(["valid", "ready", "tag"]))
         self.submodules.req_fsm = req_fsm = FSM(reset_state="IDLE")
         req_fsm.act("IDLE",
             If(req_sink.valid & req_sink.first,
