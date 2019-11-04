@@ -58,19 +58,14 @@
 `timescale 1ns / 1ps
 module pcie_phy # (
   parameter PL_FAST_TRAIN       = "FALSE", // Simulation Speedup
-  parameter EXT_PIPE_SIM        = "FALSE",  // This Parameter has effect on selecting Enable External PIPE Interface in GUI.	
+  parameter EXT_PIPE_SIM        = "FALSE",  // This Parameter has effect on selecting Enable External PIPE Interface in GUI.
   parameter PCIE_EXT_CLK        = "TRUE",    // Use External Clocking Module
   parameter PCIE_EXT_GT_COMMON  = "FALSE",
   parameter REF_CLK_FREQ        = 0,     // 0 - 100 MHz, 1 - 125 MHz, 2 - 250 MHz
   parameter C_DATA_WIDTH        = 64, // RX/TX interface data width
   parameter KEEP_WIDTH          = C_DATA_WIDTH / 8, // TSTRB width
   parameter C_PCIE_GT_DEVICE  = "GTX",
-  parameter C_BAR0 = 32'hF0000000,
-
-  //---------- QPLL1 Parameters -----------------------
-  parameter QPLL_PLL1_FBDIV = 4,
-  parameter QPLL_PLL1_FBDIV_45 = 4,
-  parameter QPLL_PLL1_REFCLK_DIV = 1
+  parameter C_BAR0 = 32'hF0000000
 ) (
   //--- PHYSICAL INTERFACE------------------------------------------------------
   // Clk / rst
@@ -121,18 +116,7 @@ module pcie_phy # (
   output                         cfg_interrupt_msienable,
   input                          cfg_interrupt,
   output                         cfg_interrupt_rdy,
-  input    [7:0]                 cfg_interrupt_di,
-
-  //---------- QPLL1 Ports ----------------------------
-  input               QPLL_GTGREFCLK1,
-  input               QPLL_GTREFCLK1,
-  input               QPLL_PLL1LOCKEN,
-  input               QPLL_PLL1PD,
-  input       [ 2:0]  QPLL_PLL1REFCLKSEL,
-  input               QPLL_PLL1RESET,
-  output              QPLL_PLL1LOCK,
-  output              QPLL_PLL1OUTCLK,
-  output              QPLL_PLL1OUTREFCLK
+  input    [7:0]                 cfg_interrupt_di
 );
 
 // Wire Declarations
@@ -228,10 +212,7 @@ pcie_support #
     .PCIE_USERCLK2_FREQ             ( USERCLK2_FREQ +1 ),                   // PCIe user clock 2 frequency
     .PCIE_USE_MODE                  ("1.0"),           // PCIe use mode
     .PCIE_GT_DEVICE                 (C_PCIE_GT_DEVICE),              // PCIe GT device
-    .C_BAR0                         (C_BAR0),
-    .QPLL_PLL1_FBDIV                (QPLL_PLL1_FBDIV),     
-    .QPLL_PLL1_FBDIV_45             (QPLL_PLL1_FBDIV_45),
-    .QPLL_PLL1_REFCLK_DIV           (QPLL_PLL1_REFCLK_DIV)    
+    .C_BAR0                         (C_BAR0)
    )
 pcie_support_i
   (
@@ -487,18 +468,7 @@ pcie_support_i
   // System  (SYS) Interface                                                                                        //
   //----------------------------------------------------------------------------------------------------------------//
   .sys_clk                                    ( sys_clk ),
-  .sys_rst_n                                  ( sys_rst_n_c ),
-
-  //---------- QPLL1 Ports ----------------
-  .QPLL_GTGREFCLK1          (QPLL_GTGREFCLK1),
-  .QPLL_GTREFCLK1           (QPLL_GTREFCLK1),
-  .QPLL_PLL1LOCKEN          (QPLL_PLL1LOCKEN),
-  .QPLL_PLL1PD              (QPLL_PLL1PD),
-  .QPLL_PLL1REFCLKSEL       (QPLL_PLL1REFCLKSEL),
-  .QPLL_PLL1RESET           (QPLL_PLL1RESET),
-  .QPLL_PLL1LOCK            (QPLL_PLL1LOCK),
-  .QPLL_PLL1OUTCLK          (QPLL_PLL1OUTCLK),
-  .QPLL_PLL1OUTREFCLK       (QPLL_PLL1OUTREFCLK)
+  .sys_rst_n                                  ( sys_rst_n_c )
 
 );
 

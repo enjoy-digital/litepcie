@@ -174,34 +174,12 @@ class S7PCIEPHY(Module, AutoCSR):
 
             i_cfg_interrupt=cfg_msi.valid,
             o_cfg_interrupt_rdy=cfg_msi.ready,
-            i_cfg_interrupt_di=cfg_msi.dat,
-
-            i_QPLL_PLL1PD=1,
+            i_cfg_interrupt_di=cfg_msi.dat
         )
         if data_width == 128:
             self.comb += m_axis_rx.last.eq(m_axis_rx_tuser[21])
         else:
             self.comb += m_axis_rx.last.eq(m_axis_rx_tlast)
-
-    # Second PLL registration ----------------------------------------------------------------------
-    def register_pll1(self, pll1):
-        # The Xilinx's Hard IP integrates the transceivers but also the PLLs. Only one PLL is use
-        # for PCIe, on some designs having access to the second PLL is needed.
-        self.pcie_phy_params.update(
-            p_QPLL_PLL1_FBDIV=pll1.config["n2"],
-            p_QPLL_PLL1_FBDIV_45=pll1.config["n1"],
-            p_QPLL_PLL1_REFCLK_DIV=pll1.config["m"],
-
-            i_QPLL_GTGREFCLK1=pll1.gtgrefclk,
-            i_QPLL_GTREFCLK1=pll1.gtrefclk,
-            i_QPLL_PLL1LOCKEN=1,
-            i_QPLL_PLL1PD=0,
-            i_QPLL_PLL1REFCLKSEL=pll1.refclksel,
-            i_QPLL_PLL1RESET=pll1.reset,
-            o_QPLL_PLL1LOCK=pll1.lock,
-            o_QPLL_PLL1OUTCLK=pll1.clk,
-            o_QPLL_PLL1OUTREFCLK=pll1.refclk
-        )
 
     # Hard IP sources ------------------------------------------------------------------------------
     @staticmethod

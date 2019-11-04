@@ -59,12 +59,7 @@ parameter PCIE_SIM_MODE    = "FALSE",   // PCIe sim mode
 parameter PCIE_GT_DEVICE   = "GTX",     // PCIe GT device
 parameter PCIE_USE_MODE    = "2.1",     // PCIe use mode
 parameter PCIE_PLL_SEL     = "CPLL",    // PCIe PLL select for Gen1/Gen2 only
-parameter PCIE_REFCLK_FREQ = 0,          // PCIe reference clock frequency
-
-//---------- QPLL1 Parameters -----------------------
-parameter QPLL_PLL1_FBDIV = 4,
-parameter QPLL_PLL1_FBDIV_45 = 4,
-parameter QPLL_PLL1_REFCLK_DIV = 1
+parameter PCIE_REFCLK_FREQ = 0          // PCIe reference clock frequency
 )
 
 (
@@ -77,24 +72,13 @@ input               	QPLL_DRP_RST_N,
 input               	QPLL_DRP_OVRD,
 input               	QPLL_DRP_GEN3,
 input               	QPLL_DRP_START,
-output      [5:0]  	    QPLL_DRP_CRSCODE,
-output      [8:0]  	    QPLL_DRP_FSM,
+output      [5:0]  	QPLL_DRP_CRSCODE,
+output      [8:0]  	QPLL_DRP_FSM,
 output                  QPLL_DRP_DONE,
 output                  QPLL_DRP_RESET,
 output                  QPLL_QPLLLOCK,
 output                  QPLL_QPLLOUTCLK,
-output                  QPLL_QPLLOUTREFCLK,
-
-//---------- QPLL1 Ports ---------------------------
-input               QPLL_GTGREFCLK1,
-input               QPLL_GTREFCLK1,
-input               QPLL_PLL1LOCKEN,
-input               QPLL_PLL1PD,
-input       [ 2:0]  QPLL_PLL1REFCLKSEL,
-input               QPLL_PLL1RESET,
-output              QPLL_PLL1LOCK,
-output              QPLL_PLL1OUTCLK,
-output              QPLL_PLL1OUTREFCLK
+output                  QPLL_QPLLOUTREFCLK
 );
 
     //---------- QPLL DRP Module Output --------------------
@@ -155,10 +139,7 @@ pcie_qpll_wrapper #
 	        .PCIE_GT_DEVICE                 (PCIE_GT_DEVICE),               // PCIe GT device
 	        .PCIE_USE_MODE                  (PCIE_USE_MODE),                // PCIe use mode
 	        .PCIE_PLL_SEL                   (PCIE_PLL_SEL),                 // PCIe PLL select for Gen1/Gen2 only
-	        .PCIE_REFCLK_FREQ               (PCIE_REFCLK_FREQ),             // PCIe reference clock frequency
-            .QPLL_PLL1_FBDIV                (QPLL_PLL1_FBDIV),         
-            .QPLL_PLL1_FBDIV_45             (QPLL_PLL1_FBDIV_45),
-            .QPLL_PLL1_REFCLK_DIV           (QPLL_PLL1_REFCLK_DIV)
+	        .PCIE_REFCLK_FREQ               (PCIE_REFCLK_FREQ)              // PCIe reference clock frequency
         )
         qpll_wrapper_i
         (
@@ -179,18 +160,7 @@ pcie_qpll_wrapper #
             .QPLL_DRPDI                     (qpll_drp_di),
             .QPLL_DRPWE                     (qpll_drp_we),
             .QPLL_DRPDO                     (qpll_drp_do),
-            .QPLL_DRPRDY                    (qpll_drp_rdy),
-
-        //---------- QPLL1 Ports ----------------
-            .QPLL_GTGREFCLK1          (QPLL_GTGREFCLK1),
-            .QPLL_GTREFCLK1           (QPLL_GTREFCLK1),
-            .QPLL_PLL1LOCKEN          (QPLL_PLL1LOCKEN),
-            .QPLL_PLL1PD              (QPLL_PLL1PD),
-            .QPLL_PLL1REFCLKSEL       (QPLL_PLL1REFCLKSEL),
-            .QPLL_PLL1RESET           (QPLL_PLL1RESET),
-            .QPLL_PLL1LOCK            (QPLL_PLL1LOCK),
-            .QPLL_PLL1OUTCLK          (QPLL_PLL1OUTCLK),
-            .QPLL_PLL1OUTREFCLK       (QPLL_PLL1OUTREFCLK)
+            .QPLL_DRPRDY                    (qpll_drp_rdy)			
         );
-
+  
 endmodule

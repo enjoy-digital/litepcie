@@ -431,12 +431,7 @@ module pcie_core_top # (
   parameter         TX_MARGIN_LOW_1   = 7'b1000110,
   parameter         TX_MARGIN_LOW_2   = 7'b1000011,
   parameter         TX_MARGIN_LOW_3   = 7'b1000010,
-  parameter         TX_MARGIN_LOW_4   = 7'b1000000,
-
-  //---------- QPLL1 Parameters -----------------------
-  parameter QPLL_PLL1_FBDIV = 4,
-  parameter QPLL_PLL1_FBDIV_45 = 4,
-  parameter QPLL_PLL1_REFCLK_DIV = 1
+  parameter         TX_MARGIN_LOW_4   = 7'b1000000
 )
 (
 
@@ -769,17 +764,17 @@ module pcie_core_top # (
 
   output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_cpll_lock,
   output     [(LINK_CAP_MAX_LINK_WIDTH-1)>>2:0] pipe_qpll_lock,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxpmaresetdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*3)-1:0]  pipe_rxbufstatus,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphaligndone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphinitdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txdlysresetdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxphaligndone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxdlysresetdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxsyncdone,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxdisperr,
-  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxnotintable,
-  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxcommadet,
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxpmaresetdone,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*3)-1:0]  pipe_rxbufstatus,         
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphaligndone,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txphinitdone,        
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_txdlysresetdone,    
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxphaligndone,      
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxdlysresetdone,     
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxsyncdone,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxdisperr,       
+  output     [(LINK_CAP_MAX_LINK_WIDTH*8)-1:0]  pipe_rxnotintable,      
+  output     [(LINK_CAP_MAX_LINK_WIDTH)-1:0]    pipe_rxcommadet,        
 
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     gt_ch_drp_rdy,
   output      [LINK_CAP_MAX_LINK_WIDTH-1:0]     pipe_debug_0,
@@ -865,18 +860,7 @@ module pcie_core_top # (
 
   input wire           pipe_mmcm_rst_n,        // Async      | Async
   input wire           sys_clk,
-  input wire           sys_rst_n,
-
-  //---------- QPLL1 Ports ----------------------------
-  input               QPLL_GTGREFCLK1,
-  input               QPLL_GTREFCLK1,
-  input               QPLL_PLL1LOCKEN,
-  input               QPLL_PLL1PD,
-  input       [ 2:0]  QPLL_PLL1REFCLKSEL,
-  input               QPLL_PLL1RESET,
-  output              QPLL_PLL1LOCK,
-  output              QPLL_PLL1OUTCLK,
-  output              QPLL_PLL1OUTREFCLK
+  input wire           sys_rst_n
 );
 
   wire                 user_clk;
@@ -1827,10 +1811,7 @@ pcie_gt_top #(
     .TX_MARGIN_LOW_2               ( TX_MARGIN_LOW_2 ),
     .TX_MARGIN_LOW_3               ( TX_MARGIN_LOW_3 ),
     .TX_MARGIN_LOW_4               ( TX_MARGIN_LOW_4 ),
-    .PCIE_CHAN_BOND                ( PCIE_CHAN_BOND ),
-    .QPLL_PLL1_FBDIV               (QPLL_PLL1_FBDIV),     
-    .QPLL_PLL1_FBDIV_45            (QPLL_PLL1_FBDIV_45),
-    .QPLL_PLL1_REFCLK_DIV          (QPLL_PLL1_REFCLK_DIV)
+    .PCIE_CHAN_BOND                ( PCIE_CHAN_BOND )
 
   ) gt_top_i (
     // pl ltssm
@@ -1995,14 +1976,14 @@ pcie_gt_top #(
     .INT_USERCLK1_OUT              ( int_userclk1_out ),
     .INT_USERCLK2_OUT              ( int_userclk2_out),
     .INT_OOBCLK_OUT                ( int_oobclk_out),
-    .INT_MMCM_LOCK_OUT             ( int_mmcm_lock_out ),
+    .INT_MMCM_LOCK_OUT             ( int_mmcm_lock_out ),        
     .INT_QPLLLOCK_OUT              ( int_qplllock_out ),
     .INT_QPLLOUTCLK_OUT            ( int_qplloutclk_out ),
     .INT_QPLLOUTREFCLK_OUT         ( int_qplloutrefclk_out ),
     .INT_PCLK_SEL_SLAVE            ( int_pclk_sel_slave ),
 
     // ---------- Shared Logic External------------------
-    //External Clock Ports
+    //External Clock Ports 
     .PIPE_PCLK_IN                  ( pipe_pclk_in ),
     .PIPE_RXUSRCLK_IN              ( pipe_rxusrclk_in ),
     .PIPE_RXOUTCLK_IN              ( pipe_rxoutclk_in ),
@@ -2070,17 +2051,17 @@ pcie_gt_top #(
 
     .PIPE_CPLL_LOCK                ( pipe_cpll_lock ),
     .PIPE_QPLL_LOCK                ( pipe_qpll_lock ),
-    .PIPE_RXPMARESETDONE           ( pipe_rxpmaresetdone ),
-    .PIPE_RXBUFSTATUS              ( pipe_rxbufstatus ),
-    .PIPE_TXPHALIGNDONE            ( pipe_txphaligndone ),
-    .PIPE_TXPHINITDONE             ( pipe_txphinitdone ),
-    .PIPE_TXDLYSRESETDONE          ( pipe_txdlysresetdone ),
-    .PIPE_RXPHALIGNDONE            ( pipe_rxphaligndone ),
-    .PIPE_RXDLYSRESETDONE          ( pipe_rxdlysresetdone ),
-    .PIPE_RXSYNCDONE               ( pipe_rxsyncdone ),
-    .PIPE_RXDISPERR                ( pipe_rxdisperr ),
-    .PIPE_RXNOTINTABLE             ( pipe_rxnotintable ),
-    .PIPE_RXCOMMADET               ( pipe_rxcommadet ),
+    .PIPE_RXPMARESETDONE           ( pipe_rxpmaresetdone ),       
+    .PIPE_RXBUFSTATUS              ( pipe_rxbufstatus ),         
+    .PIPE_TXPHALIGNDONE            ( pipe_txphaligndone ),       
+    .PIPE_TXPHINITDONE             ( pipe_txphinitdone ),        
+    .PIPE_TXDLYSRESETDONE          ( pipe_txdlysresetdone ),    
+    .PIPE_RXPHALIGNDONE            ( pipe_rxphaligndone ),      
+    .PIPE_RXDLYSRESETDONE          ( pipe_rxdlysresetdone ),     
+    .PIPE_RXSYNCDONE               ( pipe_rxsyncdone ),       
+    .PIPE_RXDISPERR                ( pipe_rxdisperr ),       
+    .PIPE_RXNOTINTABLE             ( pipe_rxnotintable ),      
+    .PIPE_RXCOMMADET               ( pipe_rxcommadet ),        
     //---------- JTAG Ports --------------------------------
     .PIPE_JTAG_RDY                 (gt_ch_drp_rdy ),
 
@@ -2096,18 +2077,7 @@ pcie_gt_top #(
     .PIPE_DEBUG_7                  ( pipe_debug_7 ),
     .PIPE_DEBUG_8                  ( pipe_debug_8 ),
     .PIPE_DEBUG_9                  ( pipe_debug_9 ),
-    .PIPE_DEBUG                    ( pipe_debug ),
-
-    //---------- QPLL1 Ports ----------------
-    .QPLL_GTGREFCLK1          (QPLL_GTGREFCLK1),
-    .QPLL_GTREFCLK1           (QPLL_GTREFCLK1),
-    .QPLL_PLL1LOCKEN          (QPLL_PLL1LOCKEN),
-    .QPLL_PLL1PD              (QPLL_PLL1PD),
-    .QPLL_PLL1REFCLKSEL       (QPLL_PLL1REFCLKSEL),
-    .QPLL_PLL1RESET           (QPLL_PLL1RESET),
-    .QPLL_PLL1LOCK            (QPLL_PLL1LOCK),
-    .QPLL_PLL1OUTCLK          (QPLL_PLL1OUTCLK),
-    .QPLL_PLL1OUTREFCLK       (QPLL_PLL1OUTREFCLK)
+    .PIPE_DEBUG                    ( pipe_debug )
   );
 
   assign  common_commands_out = 12'b0;

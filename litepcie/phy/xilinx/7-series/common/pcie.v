@@ -1,10 +1,10 @@
 // (c) Copyright 1995-2018 Xilinx, Inc. All rights reserved.
-// 
+//
 // This file contains confidential and proprietary information
 // of Xilinx, Inc. and is protected under U.S. and
 // international copyright and other intellectual property
 // laws.
-// 
+//
 // DISCLAIMER
 // This disclaimer is not a license and does not grant any
 // rights to the materials distributed herewith. Except as
@@ -40,10 +40,10 @@
 // liability of any use of Xilinx products in Critical
 // Applications, subject only to applicable laws and
 // regulations governing limitations on product liability.
-// 
+//
 // THIS COPYRIGHT NOTICE AND DISCLAIMER MUST BE RETAINED AS
 // PART OF THIS FILE AT ALL TIMES.
-// 
+//
 // DO NOT MODIFY THIS FILE.
 
 
@@ -64,10 +64,7 @@ _control_encodedbar3=00,c_rbar_cap_sup4=00001,c_rbar_cap_index4=0,c_rbar_cap_con
 TATUS_PORTS=FALSE,SHARED_LOGIC_IN_CORE=FALSE,ERR_REPORTING_IF=TRUE,PL_INTERFACE=TRUE,CFG_MGMT_IF=TRUE,CFG_CTL_IF=TRUE,CFG_STATUS_IF=TRUE,RCV_MSG_IF=TRUE,CFG_FC_IF=TRUE,EXT_PIPE_INTERFACE=FALSE,EXT_STARTUP_PRIMITIVE=FALSE,KEEP_WIDTH=8,PCIE_ASYNC_EN=FALSE,ENABLE_JTAG_DBG=FALSE}" *)
 (* DowngradeIPIdentifiedWarnings = "yes" *)
 module pcie # (
-  parameter C_BAR0 = 32'hF0000000,
-  parameter QPLL_PLL1_FBDIV = 4,
-  parameter QPLL_PLL1_FBDIV_45 = 4,
-  parameter QPLL_PLL1_REFCLK_DIV = 1
+  parameter C_BAR0 = 32'hF0000000
  )(
   pci_exp_txp,
   pci_exp_txn,
@@ -244,16 +241,7 @@ module pcie # (
   pcie_drp_addr,
   pcie_drp_di,
   pcie_drp_do,
-  pcie_drp_rdy,
-  QPLL_GTGREFCLK1,
-  QPLL_GTREFCLK1,
-  QPLL_PLL1LOCKEN,
-  QPLL_PLL1PD,
-  QPLL_PLL1REFCLKSEL,
-  QPLL_PLL1RESET,
-  QPLL_PLL1LOCK,
-  QPLL_PLL1OUTCLK,
-  QPLL_PLL1OUTREFCLK
+  pcie_drp_rdy
 );
 
 (* X_INTERFACE_INFO = "xilinx.com:interface:pcie_7x_mgt:1.0 pcie_7x_mgt txp" *)
@@ -612,16 +600,6 @@ output wire [15 : 0] pcie_drp_do;
 (* X_INTERFACE_INFO = "xilinx.com:interface:drp:1.0 drp DRDY" *)
 output wire pcie_drp_rdy;
 
-input               QPLL_GTGREFCLK1;
-input               QPLL_GTREFCLK1;
-input               QPLL_PLL1LOCKEN;
-input               QPLL_PLL1PD;
-input       [ 2:0]  QPLL_PLL1REFCLKSEL;
-input               QPLL_PLL1RESET;
-output              QPLL_PLL1LOCK;
-output              QPLL_PLL1OUTCLK;
-output              QPLL_PLL1OUTREFCLK;
-
   pcie_pcie2_top #(
     .c_component_name("pcie"),
     .dev_port_type("0000"),
@@ -834,10 +812,7 @@ output              QPLL_PLL1OUTREFCLK;
     .EXT_STARTUP_PRIMITIVE("FALSE"),
     .KEEP_WIDTH(8),
     .PCIE_ASYNC_EN("FALSE"),
-    .ENABLE_JTAG_DBG("FALSE"),
-    .QPLL_PLL1_FBDIV      (QPLL_PLL1_FBDIV),     
-    .QPLL_PLL1_FBDIV_45   (QPLL_PLL1_FBDIV_45),
-    .QPLL_PLL1_REFCLK_DIV (QPLL_PLL1_REFCLK_DIV)
+    .ENABLE_JTAG_DBG("FALSE")
   ) inst (
     .pci_exp_txp(pci_exp_txp),
     .pci_exp_txn(pci_exp_txn),
@@ -1128,16 +1103,6 @@ output              QPLL_PLL1OUTREFCLK;
     .pipe_tx_4_sigs(),
     .pipe_tx_5_sigs(),
     .pipe_tx_6_sigs(),
-    .pipe_tx_7_sigs(),
-    //---------- QPLL1 Ports ----------------
-    .QPLL_GTGREFCLK1          (QPLL_GTGREFCLK1),
-    .QPLL_GTREFCLK1           (QPLL_GTREFCLK1),
-    .QPLL_PLL1LOCKEN          (QPLL_PLL1LOCKEN),
-    .QPLL_PLL1PD              (QPLL_PLL1PD),
-    .QPLL_PLL1REFCLKSEL       (QPLL_PLL1REFCLKSEL),
-    .QPLL_PLL1RESET           (QPLL_PLL1RESET),
-    .QPLL_PLL1LOCK            (QPLL_PLL1LOCK),
-    .QPLL_PLL1OUTCLK          (QPLL_PLL1OUTCLK),
-    .QPLL_PLL1OUTREFCLK       (QPLL_PLL1OUTREFCLK)
+    .pipe_tx_7_sigs()
   );
 endmodule

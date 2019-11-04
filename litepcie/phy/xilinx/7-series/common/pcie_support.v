@@ -68,12 +68,7 @@ module pcie_support # (
   parameter PCIE_USERCLK2_FREQ      = 2,                       // PCIe user clock 2 frequency
   parameter PCIE_GT_DEVICE          = "GTX",                   // PCIe GT device
   parameter PCIE_USE_MODE           = "2.1",                    // PCIe use mode
-  parameter C_BAR0 = 32'hF0000000,
-
-  //---------- QPLL1 Parameters -----------------------
-  parameter QPLL_PLL1_FBDIV = 4,
-  parameter QPLL_PLL1_FBDIV_45 = 4,
-  parameter QPLL_PLL1_REFCLK_DIV = 1
+  parameter C_BAR0 = 32'hF0000000
 )
 (
 
@@ -288,7 +283,7 @@ module pcie_support # (
   input                                       pl_directed_link_speed,
   input                                       pl_directed_link_auton,
   input                                       pl_upstream_prefer_deemph,
- 
+
   output                                      pl_sel_lnk_rate,
   output   [1:0]                              pl_sel_lnk_width,
   output   [5:0]                              pl_ltssm_state,
@@ -325,18 +320,7 @@ module pcie_support # (
   output   [15:0]                             pcie_drp_do,
 
   input                                       sys_clk,
-  input                                       sys_rst_n,
-
-  //---------- QPLL1 Ports ----------------------------
-  input               QPLL_GTGREFCLK1,
-  input               QPLL_GTREFCLK1,
-  input               QPLL_PLL1LOCKEN,
-  input               QPLL_PLL1PD,
-  input       [ 2:0]  QPLL_PLL1REFCLKSEL,
-  input               QPLL_PLL1RESET,
-  output              QPLL_PLL1LOCK,
-  output              QPLL_PLL1OUTCLK,
-  output              QPLL_PLL1OUTREFCLK
+  input                                       sys_rst_n
 );
   // Wires used for external clocking connectivity
   wire                                        pipe_pclk_out;
@@ -382,7 +366,7 @@ pcie_pipe_clock #
           .CLK_CLK                        ( sys_clk ),
           .CLK_TXOUTCLK                   ( pipe_txoutclk_in ),     // Reference clock from lane 0
           .CLK_RXOUTCLK_IN                ( pipe_rxoutclk_in ),
-          .CLK_RST_N                      ( pipe_mmcm_rst_n ),      // Allow system reset for error_recovery             
+          .CLK_RST_N                      ( pipe_mmcm_rst_n ),      // Allow system reset for error_recovery
           .CLK_PCLK_SEL                   ( pipe_pclk_sel_in ),
           .CLK_PCLK_SEL_SLAVE             ( pipe_pclk_sel_slave),
           .CLK_GEN3                       ( pipe_gen3_in ),
@@ -408,7 +392,7 @@ pcie_pipe_clock #
             wire [1:0]                          qpll_qplllock;
             wire [1:0]                          qpll_qplloutclk;
             wire [1:0]                          qpll_qplloutrefclk;
-            
+
 	    assign qpll_drp_done                         =  2'd0;
             assign qpll_drp_reset                        =  2'd0;
             assign qpll_drp_crscode                      =  12'd0;
@@ -420,10 +404,7 @@ pcie_pipe_clock #
 
 
 pcie #(
-    .C_BAR0(C_BAR0),
-    .QPLL_PLL1_FBDIV           (QPLL_PLL1_FBDIV),     
-    .QPLL_PLL1_FBDIV_45        (QPLL_PLL1_FBDIV_45),
-    .QPLL_PLL1_REFCLK_DIV      (QPLL_PLL1_REFCLK_DIV)
+    .C_BAR0(C_BAR0)
 ) pcie_i (
     .pci_exp_txn(pci_exp_txn),
     .pci_exp_txp(pci_exp_txp),
@@ -600,17 +581,7 @@ pcie #(
     .pcie_drp_rdy(pcie_drp_rdy),
     .pcie_drp_do(pcie_drp_do),
     .sys_clk(sys_clk),
-    .sys_rst_n(sys_rst_n),
-    //---------- QPLL1 Ports ----------------
-    .QPLL_GTGREFCLK1          (QPLL_GTGREFCLK1),
-    .QPLL_GTREFCLK1           (QPLL_GTREFCLK1),
-    .QPLL_PLL1LOCKEN          (QPLL_PLL1LOCKEN),
-    .QPLL_PLL1PD              (QPLL_PLL1PD),
-    .QPLL_PLL1REFCLKSEL       (QPLL_PLL1REFCLKSEL),
-    .QPLL_PLL1RESET           (QPLL_PLL1RESET),
-    .QPLL_PLL1LOCK            (QPLL_PLL1LOCK),
-    .QPLL_PLL1OUTCLK          (QPLL_PLL1OUTCLK),
-    .QPLL_PLL1OUTREFCLK       (QPLL_PLL1OUTREFCLK)
+    .sys_rst_n(sys_rst_n)
   );
 
 endmodule
