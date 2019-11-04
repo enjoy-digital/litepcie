@@ -51,34 +51,41 @@ class S7PCIEPHY(Module, AutoCSR):
         self.clock_domains.cd_pcie = ClockDomain()
 
         # TX CDC (FPGA --> HOST) -------------------------------------------------------------------
-        if cd == "pcie":
+        if (cd == "pcie") and (data_width == 64):
             s_axis_tx = self.sink
         else:
-            tx_buffer = stream.Buffer(phy_layout(data_width))
-            tx_buffer = ClockDomainsRenamer(cd)(tx_buffer)
-            tx_cdc    = stream.AsyncFIFO(phy_layout(data_width), 4)
-            tx_cdc    = ClockDomainsRenamer({"write": cd, "read": "pcie"})(tx_cdc)
-            self.submodules += tx_buffer, tx_cdc
+            tx_buffer    = stream.Buffer(phy_layout(data_width))
+            tx_buffer    = ClockDomainsRenamer(cd)(tx_buffer)
+            tx_cdc       = stream.AsyncFIFO(phy_layout(data_width), 4)
+            tx_cdc       = ClockDomainsRenamer({"write": cd, "read": "pcie"})(tx_cdc)
+            tx_converter = stream.StrideConverter(phy_layout(data_width), phy_layout(64))
+            tx_converter = ClockDomainsRenamer("pcie")(tx_converter)
+            self.submodules += tx_buffer, tx_cdc, tx_converter
             self.comb += [
                 self.sink.connect(tx_buffer.sink),
-                tx_buffer.source.connect(tx_cdc.sink)
+                tx_buffer.source.connect(tx_cdc.sink),
+                tx_cdc.source.connect(tx_converter.sink),
             ]
-            s_axis_tx = tx_cdc.source
+            s_axis_tx = tx_converter.source
 
         # RX CDC (HOST --> FPGA) -------------------------------------------------------------------
-        if cd == "pcie":
+        if (cd == "pcie") and (data_width == 64):
             m_axis_rx = self.source
         else:
-            rx_cdc    = stream.AsyncFIFO(phy_layout(data_width), 4)
-            rx_cdc    = ClockDomainsRenamer({"write": "pcie", "read": cd})(rx_cdc)
-            rx_buffer = stream.Buffer(phy_layout(data_width))
-            rx_buffer = ClockDomainsRenamer(cd)(rx_buffer)
-            self.submodules += rx_buffer, rx_cdc
+            rx_converter    = stream.StrideConverter(phy_layout(64), phy_layout(data_width))
+            rx_converter    = ClockDomainsRenamer("pcie")(rx_converter)
+            rx_cdc          = stream.AsyncFIFO(phy_layout(data_width), 4)
+            rx_cdc          = ClockDomainsRenamer({"write": "pcie", "read": cd})(rx_cdc)
+            rx_buffer       = stream.Buffer(phy_layout(data_width))
+            rx_buffer       = ClockDomainsRenamer(cd)(rx_buffer)
+            self.submodules += rx_converter, rx_buffer, rx_cdc
             self.comb += [
+                rx_converter.source.connect(rx_cdc.sink),
                 rx_cdc.source.connect(rx_buffer.sink),
-                rx_buffer.source.connect(self.source)
+                rx_buffer.source.connect(self.source),
             ]
-            m_axis_rx = rx_cdc.sink
+            m_axis_rx = rx_converter.sink
+
 
         # MSI CDC (FPGA --> HOST) ------------------------------------------------------------------
         if cd == "pcie":
@@ -123,7 +130,7 @@ class S7PCIEPHY(Module, AutoCSR):
         m_axis_rx_tlast = Signal()
         m_axis_rx_tuser = Signal(32)
         self.pcie_phy_params = dict(
-            p_C_DATA_WIDTH            = data_width,
+            p_C_DATA_WIDTH            = 64,
             p_C_PCIE_GT_DEVICE        = {
                 "xc7k": "GTX",
                 "xc7a": "GTP"}[platform.device[:4]],
@@ -158,11 +165,11 @@ class S7PCIEPHY(Module, AutoCSR):
             i_rx_np_req               = 1,
 
             o_m_axis_rx_tvalid        = m_axis_rx.valid,
-            o_m_axis_rx_tlast         = m_axis_rx_tlast,
+            o_m_axis_rx_tlast         = m_axis_rx.last,
             i_m_axis_rx_tready        = m_axis_rx.ready,
             o_m_axis_rx_tdata         = m_axis_rx.dat,
             o_m_axis_rx_tkeep         = m_axis_rx.be,
-            o_m_axis_rx_tuser         = m_axis_rx_tuser,
+            #o_m_axis_rx_tuser        = ,
 
             #o_cfg_to_turnoff         = ,
             o_cfg_bus_number          = bus_number,
@@ -176,10 +183,6 @@ class S7PCIEPHY(Module, AutoCSR):
             o_cfg_interrupt_rdy       = cfg_msi.ready,
             i_cfg_interrupt_di        = cfg_msi.dat
         )
-        if data_width == 128:
-            self.comb += m_axis_rx.last.eq(m_axis_rx_tuser[21])
-        else:
-            self.comb += m_axis_rx.last.eq(m_axis_rx_tlast)
 
     # Hard IP sources ------------------------------------------------------------------------------
     @staticmethod
