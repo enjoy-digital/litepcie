@@ -38,7 +38,6 @@ class PCIeDMASoC(SoCCore):
         sys_clk_freq = int(125e6)
         SoCCore.__init__(self, platform, sys_clk_freq,
             cpu_type=None,
-            shadow_base=0x00000000,
             csr_data_width=32,
             with_uart=False,
             ident="LitePCIe example design", ident_version=True,
