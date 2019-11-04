@@ -98,12 +98,12 @@ class S7PCIEPHY(Module, AutoCSR):
             cfg_msi = msi_cdc.source
 
         # Hard IP Configuration --------------------------------------------------------------------
-        def convert_size(command, size):
+        def convert_size(command, size, max_size):
             cases = {}
             value = 128
             for i in range(6):
                 cases[i] = size.eq(value)
-                value = value*2
+                value = min(value*2, max_size)
             return Case(command, cases)
 
         lnk_up          = Signal()
@@ -114,8 +114,8 @@ class S7PCIEPHY(Module, AutoCSR):
         command         = Signal(16)
         dcommand        = Signal(16)
         self.sync.pcie += [
-            convert_size(dcommand[12:15], self.max_request_size),
-            convert_size(dcommand[5:8], self.max_payload_size),
+            convert_size(dcommand[12:15], self.max_request_size, max_size=512),
+            convert_size(dcommand[5:8],   self.max_payload_size, max_size=512),
             self.id.eq(Cat(function_number, device_number, bus_number))
         ]
         self.specials += [
