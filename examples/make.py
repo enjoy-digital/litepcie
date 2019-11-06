@@ -45,15 +45,15 @@ LitePCIe - based on Migen.
 This program builds and/or loads LitePCIe components.
 One or several actions can be specified:
 
-clean           delete previous build(s).
-build-rtl       build verilog rtl.
-build-bitstream build-bitstream build FPGA bitstream.
-build-csr-csv   save CSR map into CSV file.
+clean            delete previous build(s).
+build-rtl        build verilog rtl.
+build-bitstream  build-bitstream build FPGA bitstream.
 build-csr-header save CSR map into C header file.
+build-soc-header save CSR map into C header file.
 
-load-bitstream  load bitstream into volatile storage.
+load-bitstream   load bitstream into volatile storage.
 
-all             clean, build-csr-csv, build-bitstream, load-bitstream.
+all              clean, build-csr-csv, build-bitstream, load-bitstream.
 """)
 
     parser.add_argument("-t", "--target", default="dma", help="Core type to build")
@@ -62,7 +62,8 @@ all             clean, build-csr-csv, build-bitstream, load-bitstream.
     parser.add_argument("-Ot", "--target-option", default=[], nargs=2, action="append", help="set target-specific option")
     parser.add_argument("-Op", "--platform-option", default=[], nargs=2, action="append", help="set platform-specific option")
     parser.add_argument("-Ob", "--build-option", default=[], nargs=2, action="append", help="set build option")
-    parser.add_argument("--csr_header", default="../litepcie/software/kernel/csr.h", help="C header file to save the CSR map into")
+    parser.add_argument("--csr-header", default="../litepcie/software/kernel/csr.h", help="C header file to save the CSR map into")
+    parser.add_argument("--soc-header", default="../litepcie/software/kernel/soc.h", help="C header file to save the SoC constants into")
     parser.add_argument("action", nargs="+", help="specify an action")
 
     return parser.parse_args()
@@ -92,7 +93,7 @@ if __name__ == "__main__":
     soc.finalize()
 
     # decode actions
-    action_list = ["clean", "build-csr-csv", "build-csr-header", "build-bitstream", "load-bitstream", "all"]
+    action_list = ["clean", "build-csr-header", "build-soc-header", "build-bitstream", "load-bitstream", "all"]
     actions = {k: False for k in action_list}
     for action in args.action:
         if action in actions:
@@ -126,14 +127,15 @@ System Clk: {} MHz
 
     # dependencies
     if actions["all"]:
-        actions["build-csr-csv"] = True
+        actions["build-csr-csv"]    = True
         actions["build-csr-header"] = True
-        actions["build-bitstream"] = True
-        actions["load-bitstream"] = True
+        actions["build-soc-header"] = True
+        actions["build-bitstream"]  = True
+        actions["load-bitstream"]   = True
 
     if actions["build-bitstream"]:
-        actions["build-csr-csv"] = True
         actions["build-csr-header"] = True
+        actions["build-soc-header"] = True
 
     if actions["clean"]:
         subprocess.call(["rm", "-rf", "build/*"])
@@ -141,6 +143,10 @@ System Clk: {} MHz
     if actions["build-csr-header"]:
         csr_header = export.get_csr_header(soc.csr_regions, soc.constants, with_access_functions=False)
         write_to_file(args.csr_header, csr_header)
+
+    if actions["build-soc-header"]:
+        soc_header = export.get_soc_header(soc.constants, with_access_functions=False)
+        write_to_file(args.soc_header, soc_header)
 
     if actions["build-bitstream"]:
         build_kwargs = dict((k, autotype(v)) for k, v in args.build_option)
