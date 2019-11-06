@@ -63,7 +63,7 @@ all             clean, build-csr-csv, build-bitstream, load-bitstream.
     parser.add_argument("-Op", "--platform-option", default=[], nargs=2, action="append", help="set platform-specific option")
     parser.add_argument("-Ob", "--build-option", default=[], nargs=2, action="append", help="set build option")
     parser.add_argument("--csr_csv", default="./test/csr.csv", help="CSV file to save the CSR map into")
-    parser.add_argument("--csr_header", default="../litepcie/software/linux/kernel/csr.h", help="C header file to save the CSR map into")
+    parser.add_argument("--csr_header", default="../litepcie/software/kernel/csr.h", help="C header file to save the CSR map into")
     parser.add_argument("action", nargs="+", help="specify an action")
 
     return parser.parse_args()
