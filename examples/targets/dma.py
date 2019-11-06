@@ -21,6 +21,7 @@ class _CRG(Module, AutoCSR):
 
 class PCIeDMASoC(SoCMini):
     default_platform = "kc705"
+    mem_map = {"csr": 0x00000000}
     def __init__(self, platform):
         sys_clk_freq = int(125e6)
         SoCMini.__init__(self, platform, sys_clk_freq, csr_data_width=32,
