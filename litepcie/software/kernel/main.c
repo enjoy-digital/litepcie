@@ -34,16 +34,17 @@
 #include "litepcie.h"
 #include "config.h"
 #include "csr.h"
+#include "soc.h"
 #include "flags.h"
 
 #define LITEPCIE_NAME "litepcie"
 #define LITEPCIE_MINOR_COUNT 4
 
 #define DMA_BUFFER_SIZE PAGE_ALIGN(32768)
-#define DMA_BUFFER_MAP_SIZE (DMA_BUFFER_SIZE * DMA_BUFFER_COUNT)
+#define DMA_BUFFER_MAP_SIZE (DMA_BUFFER_SIZE * PCIE_DMA_BUFFER_COUNT)
 
-#define IRQ_MASK_DMA_READER (1 << DMA_READER_INTERRUPT)
-#define IRQ_MASK_DMA_WRITER (1 << DMA_WRITER_INTERRUPT)
+#define IRQ_MASK_PCIE_DMA_READER (1 << PCIE_DMA_READER_INTERRUPT)
+#define IRQ_MASK_PCIE_DMA_WRITER (1 << PCIE_DMA_WRITER_INTERRUPT)
 
 typedef struct {
     int minor;
@@ -52,10 +53,10 @@ typedef struct {
     phys_addr_t bar0_phys_addr;
     uint8_t *bar0_addr; /* virtual address of BAR0 */
 
-    uint8_t *dma_tx_bufs[DMA_BUFFER_COUNT];
-    unsigned long dma_tx_bufs_addr[DMA_BUFFER_COUNT];
-    uint8_t *dma_rx_bufs[DMA_BUFFER_COUNT];
-    unsigned long dma_rx_bufs_addr[DMA_BUFFER_COUNT];
+    uint8_t *dma_tx_bufs[PCIE_DMA_BUFFER_COUNT];
+    unsigned long dma_tx_bufs_addr[PCIE_DMA_BUFFER_COUNT];
+    uint8_t *dma_rx_bufs[PCIE_DMA_BUFFER_COUNT];
+    unsigned long dma_rx_bufs_addr[PCIE_DMA_BUFFER_COUNT];
     uint8_t tx_dma_started;
     uint8_t rx_dma_started;
     wait_queue_head_t dma_waitqueue;
@@ -81,17 +82,17 @@ static inline void litepcie_writel(LitePCIeState *s, uint32_t addr, uint32_t val
 static void litepcie_enable_interrupt(LitePCIeState *s, int irq_num)
 {
     uint32_t v;
-    v = litepcie_readl(s, CSR_MSI_ENABLE_ADDR);
+    v = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
     v |= (1 << irq_num);
-    litepcie_writel(s, CSR_MSI_ENABLE_ADDR, v);
+    litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
 }
 
 static void litepcie_disable_interrupt(LitePCIeState *s, int irq_num)
 {
     uint32_t v;
-    v = litepcie_readl(s, CSR_MSI_ENABLE_ADDR);
+    v = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
     v &= ~(1 << irq_num);
-    litepcie_writel(s, CSR_MSI_ENABLE_ADDR, v);
+    litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
 }
 
 static int litepcie_open(struct inode *inode, struct file *file)
@@ -127,7 +128,7 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
             return -EINVAL;
         is_tx = 0;
     remap_ram:
-        for(i = 0; i < DMA_BUFFER_COUNT; i++) {
+        for(i = 0; i < PCIE_DMA_BUFFER_COUNT; i++) {
             if (is_tx)
                 pfn = __pa(s->dma_tx_bufs[i]) >> PAGE_SHIFT;
             else
@@ -173,15 +174,15 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
     LitePCIeState *s = data;
     uint32_t clear_mask, irq_vector;
 
-    irq_vector = litepcie_readl(s, CSR_MSI_VECTOR_ADDR);
+    irq_vector = litepcie_readl(s, CSR_PCIE_MSI_VECTOR_ADDR);
     clear_mask = 0;
-    if (irq_vector & (IRQ_MASK_DMA_READER | IRQ_MASK_DMA_WRITER)) {
+    if (irq_vector & (IRQ_MASK_PCIE_DMA_READER | IRQ_MASK_PCIE_DMA_WRITER)) {
         /* wake up processes waiting on dma_wait() */
         wake_up_interruptible(&s->dma_waitqueue);
-        clear_mask |= (IRQ_MASK_DMA_READER | IRQ_MASK_DMA_WRITER);
+        clear_mask |= (IRQ_MASK_PCIE_DMA_READER | IRQ_MASK_PCIE_DMA_WRITER);
     }
 
-    litepcie_writel(s, CSR_MSI_CLEAR_ADDR, clear_mask);
+    litepcie_writel(s, CSR_PCIE_MSI_CLEAR_ADDR, clear_mask);
 
     return IRQ_HANDLED;
 }
@@ -203,49 +204,49 @@ static int litepcie_dma_start(LitePCIeState *s, struct litepcie_ioctl_dma_start 
         return -EINVAL;
 
     /* check buffer count */
-    if (m->tx_buf_count > DMA_BUFFER_COUNT)
+    if (m->tx_buf_count > PCIE_DMA_BUFFER_COUNT)
        return -EINVAL;
-    if (m->rx_buf_count > DMA_BUFFER_COUNT)
+    if (m->rx_buf_count > PCIE_DMA_BUFFER_COUNT)
         return -EINVAL;
 
-    val = ((m->dma_flags & DMA_LOOPBACK_ENABLE) != 0);
-    litepcie_writel(s, CSR_DMA_LOOPBACK_ENABLE_ADDR, val);
+    val = ((m->dma_flags & PCIE_DMA_LOOPBACK_ENABLE) != 0);
+    litepcie_writel(s, CSR_PCIE_DMA_LOOPBACK_ENABLE_ADDR, val);
 
     /* init DMA write */
     if (m->rx_buf_size != 0) {
-        litepcie_writel(s, CSR_DMA_WRITER_ENABLE_ADDR, 0);
-        litepcie_writel(s, CSR_DMA_WRITER_TABLE_FLUSH_ADDR, 1);
-        litepcie_writel(s, CSR_DMA_WRITER_TABLE_LOOP_PROG_N_ADDR, 0);
+        litepcie_writel(s, CSR_PCIE_DMA_WRITER_ENABLE_ADDR, 0);
+        litepcie_writel(s, CSR_PCIE_DMA_WRITER_TABLE_FLUSH_ADDR, 1);
+        litepcie_writel(s, CSR_PCIE_DMA_WRITER_TABLE_LOOP_PROG_N_ADDR, 0);
         for(i = 0; i < m->rx_buf_count; i++) {
-            litepcie_writel(s, CSR_DMA_WRITER_TABLE_VALUE_ADDR, m->rx_buf_size);
-            litepcie_writel(s, CSR_DMA_WRITER_TABLE_VALUE_ADDR + 4,
+            litepcie_writel(s, CSR_PCIE_DMA_WRITER_TABLE_VALUE_ADDR, m->rx_buf_size);
+            litepcie_writel(s, CSR_PCIE_DMA_WRITER_TABLE_VALUE_ADDR + 4,
                        s->dma_rx_bufs_addr[i]);
-            litepcie_writel(s, CSR_DMA_WRITER_TABLE_WE_ADDR, 1);
+            litepcie_writel(s, CSR_PCIE_DMA_WRITER_TABLE_WE_ADDR, 1);
         }
-        litepcie_writel(s, CSR_DMA_WRITER_TABLE_LOOP_PROG_N_ADDR, 1);
+        litepcie_writel(s, CSR_PCIE_DMA_WRITER_TABLE_LOOP_PROG_N_ADDR, 1);
     }
 
     /* init DMA read */
     if (m->tx_buf_size != 0) {
-        litepcie_writel(s, CSR_DMA_READER_ENABLE_ADDR, 0);
-        litepcie_writel(s, CSR_DMA_READER_TABLE_FLUSH_ADDR, 1);
-        litepcie_writel(s, CSR_DMA_READER_TABLE_LOOP_PROG_N_ADDR, 0);
+        litepcie_writel(s, CSR_PCIE_DMA_READER_ENABLE_ADDR, 0);
+        litepcie_writel(s, CSR_PCIE_DMA_READER_TABLE_FLUSH_ADDR, 1);
+        litepcie_writel(s, CSR_PCIE_DMA_READER_TABLE_LOOP_PROG_N_ADDR, 0);
         for(i = 0; i < m->tx_buf_count; i++) {
-            litepcie_writel(s, CSR_DMA_READER_TABLE_VALUE_ADDR, m->tx_buf_size);
-            litepcie_writel(s, CSR_DMA_READER_TABLE_VALUE_ADDR + 4,
+            litepcie_writel(s, CSR_PCIE_DMA_READER_TABLE_VALUE_ADDR, m->tx_buf_size);
+            litepcie_writel(s, CSR_PCIE_DMA_READER_TABLE_VALUE_ADDR + 4,
                        s->dma_tx_bufs_addr[i]);
-            litepcie_writel(s, CSR_DMA_READER_TABLE_WE_ADDR, 1);
+            litepcie_writel(s, CSR_PCIE_DMA_READER_TABLE_WE_ADDR, 1);
         }
-        litepcie_writel(s, CSR_DMA_READER_TABLE_LOOP_PROG_N_ADDR, 1);
+        litepcie_writel(s, CSR_PCIE_DMA_READER_TABLE_LOOP_PROG_N_ADDR, 1);
     }
 
     /* start DMA */
     if (m->rx_buf_size != 0) {
-        litepcie_writel(s, CSR_DMA_WRITER_ENABLE_ADDR, 1);
+        litepcie_writel(s, CSR_PCIE_DMA_WRITER_ENABLE_ADDR, 1);
         s->rx_dma_started = 1;
     }
     if (m->tx_buf_size != 0) {
-        litepcie_writel(s, CSR_DMA_READER_ENABLE_ADDR, 1);
+        litepcie_writel(s, CSR_PCIE_DMA_READER_ENABLE_ADDR, 1);
         s->tx_dma_started = 1;
     }
 
@@ -262,12 +263,12 @@ static int litepcie_dma_wait(LitePCIeState *s, struct litepcie_ioctl_dma_wait *m
         if (!s->tx_dma_started)
             return -EIO;
         last_buf_num = m->tx_buf_num;
-        litepcie_enable_interrupt(s, DMA_READER_INTERRUPT);
+        litepcie_enable_interrupt(s, PCIE_DMA_READER_INTERRUPT);
     } else {
         if (!s->rx_dma_started)
             return -EIO;
         last_buf_num = m->rx_buf_num;
-        litepcie_enable_interrupt(s, DMA_WRITER_INTERRUPT);
+        litepcie_enable_interrupt(s, PCIE_DMA_WRITER_INTERRUPT);
     }
 
     add_wait_queue(&s->dma_waitqueue, &wait);
@@ -276,12 +277,12 @@ static int litepcie_dma_wait(LitePCIeState *s, struct litepcie_ioctl_dma_wait *m
     for (;;) {
         /* set current buffer */
         if (s->tx_dma_started) {
-            m->tx_buf_num = (litepcie_readl(s, CSR_DMA_READER_TABLE_LOOP_STATUS_ADDR) & 0xffff);
+            m->tx_buf_num = (litepcie_readl(s, CSR_PCIE_DMA_READER_TABLE_LOOP_STATUS_ADDR) & 0xffff);
         } else {
             m->tx_buf_num = 0;
         }
         if (s->rx_dma_started) {
-            m->rx_buf_num = (litepcie_readl(s, CSR_DMA_WRITER_TABLE_LOOP_STATUS_ADDR) & 0xffff);
+            m->rx_buf_num = (litepcie_readl(s, CSR_PCIE_DMA_WRITER_TABLE_LOOP_STATUS_ADDR) & 0xffff);
         } else {
             m->rx_buf_num = 0;
         }
@@ -306,9 +307,9 @@ static int litepcie_dma_wait(LitePCIeState *s, struct litepcie_ioctl_dma_wait *m
     ret = 0;
  done:
     if (m->tx_wait) {
-        litepcie_disable_interrupt(s, DMA_READER_INTERRUPT);
+        litepcie_disable_interrupt(s, PCIE_DMA_READER_INTERRUPT);
     } else {
-        litepcie_disable_interrupt(s, DMA_WRITER_INTERRUPT);
+        litepcie_disable_interrupt(s, PCIE_DMA_WRITER_INTERRUPT);
     }
 
     __set_current_state(TASK_RUNNING);
@@ -319,20 +320,20 @@ static int litepcie_dma_wait(LitePCIeState *s, struct litepcie_ioctl_dma_wait *m
 static int litepcie_dma_stop(LitePCIeState *s)
 {
     /* just to be sure, we disable the interrupts */
-    litepcie_disable_interrupt(s, DMA_READER_INTERRUPT);
-    litepcie_disable_interrupt(s, DMA_WRITER_INTERRUPT);
+    litepcie_disable_interrupt(s, PCIE_DMA_READER_INTERRUPT);
+    litepcie_disable_interrupt(s, PCIE_DMA_WRITER_INTERRUPT);
 
     s->tx_dma_started = 0;
-    litepcie_writel(s, CSR_DMA_READER_TABLE_LOOP_PROG_N_ADDR, 0);
-    litepcie_writel(s, CSR_DMA_READER_TABLE_FLUSH_ADDR, 1);
+    litepcie_writel(s, CSR_PCIE_DMA_READER_TABLE_LOOP_PROG_N_ADDR, 0);
+    litepcie_writel(s, CSR_PCIE_DMA_READER_TABLE_FLUSH_ADDR, 1);
     udelay(100);
-    litepcie_writel(s, CSR_DMA_READER_ENABLE_ADDR, 0);
+    litepcie_writel(s, CSR_PCIE_DMA_READER_ENABLE_ADDR, 0);
 
     s->rx_dma_started = 0;
-    litepcie_writel(s, CSR_DMA_WRITER_TABLE_LOOP_PROG_N_ADDR, 0);
-    litepcie_writel(s, CSR_DMA_WRITER_TABLE_FLUSH_ADDR, 1);
+    litepcie_writel(s, CSR_PCIE_DMA_WRITER_TABLE_LOOP_PROG_N_ADDR, 0);
+    litepcie_writel(s, CSR_PCIE_DMA_WRITER_TABLE_FLUSH_ADDR, 1);
     udelay(100);
-    litepcie_writel(s, CSR_DMA_WRITER_ENABLE_ADDR, 0);
+    litepcie_writel(s, CSR_PCIE_DMA_WRITER_ENABLE_ADDR, 0);
 
     return 0;
 }
@@ -348,11 +349,11 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             struct litepcie_ioctl_mmap_info m;
             m.dma_tx_buf_offset = 0;
             m.dma_tx_buf_size = DMA_BUFFER_SIZE;
-            m.dma_tx_buf_count = DMA_BUFFER_COUNT;
+            m.dma_tx_buf_count = PCIE_DMA_BUFFER_COUNT;
 
             m.dma_rx_buf_offset = DMA_BUFFER_MAP_SIZE;
             m.dma_rx_buf_size = DMA_BUFFER_SIZE;
-            m.dma_rx_buf_count = DMA_BUFFER_COUNT;
+            m.dma_rx_buf_count = PCIE_DMA_BUFFER_COUNT;
 
             m.reg_offset = 2 * DMA_BUFFER_MAP_SIZE;
             m.reg_size = PCI_FPGA_BAR0_SIZE;
@@ -491,7 +492,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     }
 
     /* allocate DMA buffers */
-    for(i = 0; i < DMA_BUFFER_COUNT; i++) {
+    for(i = 0; i < PCIE_DMA_BUFFER_COUNT; i++) {
         s->dma_tx_bufs[i] = kzalloc(DMA_BUFFER_SIZE, GFP_KERNEL | GFP_DMA32);
         if (!s->dma_tx_bufs[i]) {
             printk(KERN_ERR LITEPCIE_NAME " Failed to allocate dma_tx_buf\n");
@@ -506,7 +507,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         }
     }
 
-    for(i = 0; i < DMA_BUFFER_COUNT; i++) {
+    for(i = 0; i < PCIE_DMA_BUFFER_COUNT; i++) {
         s->dma_rx_bufs[i] = kzalloc(DMA_BUFFER_SIZE, GFP_KERNEL | GFP_DMA32);
         if (!s->dma_rx_bufs[i]) {
             printk(KERN_ERR LITEPCIE_NAME " Failed to allocate dma_rx_buf\n");
@@ -550,7 +551,7 @@ static void litepcie_end(struct pci_dev *dev, LitePCIeState *s)
 {
     int i;
 
-    for(i = 0; i < DMA_BUFFER_COUNT; i++) {
+    for(i = 0; i < PCIE_DMA_BUFFER_COUNT; i++) {
         if (s->dma_tx_bufs_addr[i]) {
             dma_unmap_single(&dev->dev, s->dma_tx_bufs_addr[i],
                              DMA_BUFFER_SIZE, DMA_TO_DEVICE);
@@ -558,7 +559,7 @@ static void litepcie_end(struct pci_dev *dev, LitePCIeState *s)
         kfree(s->dma_tx_bufs[i]);
     }
 
-    for(i = 0; i < DMA_BUFFER_COUNT; i++) {
+    for(i = 0; i < PCIE_DMA_BUFFER_COUNT; i++) {
         if (s->dma_rx_bufs_addr[i]) {
             dma_unmap_single(&dev->dev, s->dma_rx_bufs_addr[i],
                              DMA_BUFFER_SIZE, DMA_FROM_DEVICE);

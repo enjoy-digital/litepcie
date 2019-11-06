@@ -128,7 +128,7 @@ void litepcie_dma_start(LitePCIeState *s, int buf_size, int buf_count, BOOL is_l
 {
     struct litepcie_ioctl_dma_start dma_start;
 
-    if (buf_count > DMA_BUFFER_COUNT) {
+    if (buf_count > PCIE_DMA_BUFFER_COUNT) {
         litepcie_log(s, "unsupported buf_count\n");
         exit(1);
     }
@@ -138,7 +138,7 @@ void litepcie_dma_start(LitePCIeState *s, int buf_size, int buf_count, BOOL is_l
 
     dma_start.dma_flags = 0;
     if (is_loopback)
-        dma_start.dma_flags |= DMA_LOOPBACK_ENABLE;
+        dma_start.dma_flags |= PCIE_DMA_LOOPBACK_ENABLE;
     dma_start.tx_buf_size = s->tx_buf_size;
     dma_start.tx_buf_count = s->tx_buf_count;
     dma_start.rx_buf_size = s->rx_buf_size;

@@ -19,6 +19,7 @@
 #include "cutils.h"
 #include "config.h"
 #include "csr.h"
+#include "soc.h"
 #include "flags.h"
 #include "litepcie_lib.h"
 
@@ -197,7 +198,7 @@ void dma_loopback_test(void)
         fprintf(stderr, "Could not init driver\n");
         exit(1);
     }
-    dma_test(s, 16*1024, DMA_BUFFER_COUNT, TRUE);
+    dma_test(s, 16*1024, PCIE_DMA_BUFFER_COUNT, TRUE);
 
     litepcie_close(s);
 }
