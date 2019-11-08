@@ -11,6 +11,14 @@ from litex.soc.interconnect.csr import *
 from litepcie.common import *
 from litepcie.core.tlp.common import *
 
+# Constants/Layouts --------------------------------------------------------------------------------
+
+DMA_ADDRESS_OFFSET = 0
+DMA_LENGTH_OFFSET  = 32
+DMA_CONTROL_OFFSET = 56
+
+DMA_IRQ_DISABLE    = 0
+DMA_LAST_DISABLE   = 1
 
 def descriptor_layout(with_user_id=False):
     layout = [
@@ -23,70 +31,58 @@ def descriptor_layout(with_user_id=False):
     return EndpointDescription(layout)
 
 
-DMA_ADDRESS_OFFSET = 0
-DMA_LENGTH_OFFSET  = 32
-DMA_CONTROL_OFFSET = 56
-
-DMA_IRQ_DISABLE  = 0
-DMA_LAST_DISABLE = 1
-
+# LitePCIeDMARequestTable --------------------------------------------------------------------------
 
 class LitePCIeDMARequestTable(Module, AutoCSR):
     def __init__(self, depth):
         self.source = source = stream.Endpoint(descriptor_layout())
 
-        self.value = CSRStorage(64)
-        self.we = CSR()
+        self.value       = CSRStorage(64)
+        self.we          = CSR()
         self.loop_prog_n = CSRStorage()
         self.loop_status = CSRStatus(32)
-        self.level = CSRStatus(log2_int(depth))
-        self.flush = CSR()
+        self.level       = CSRStatus(log2_int(depth))
+        self.flush       = CSR()
 
         # # #
 
-        # CSR signals
-        value = self.value.storage
-        we = self.we.r & self.we.re
+        # CSRs -------------------------------------------------------------------------------------
+        value       = self.value.storage
+        we          = self.we.r & self.we.re
         loop_prog_n = self.loop_prog_n.storage
         loop_status = self.loop_status.status
-        level = self.level.status
-        flush = self.flush.r & self.flush.re
+        level       = self.level.status
+        flush       = self.flush.r & self.flush.re
 
-        # FIFO
-
-        # instance
-        fifo_layout = [("address", 32),
-                       ("length",  24),
-                       ("control", 8)]
-        fifo = ResetInserter()(SyncFIFO(fifo_layout, depth))
+        # Table FIFO -------------------------------------------------------------------------------
+        fifo = SyncFIFO([("address", 32), ("length",  24), ("control", 8)], depth)
+        fifo = ResetInserter()(fifo)
         self.submodules += fifo
         self.comb += [
             fifo.reset.eq(flush),
-            level.eq(fifo.level)
+            level.eq(fifo.level),
         ]
 
-        # write part
+        # Write logic ------------------------------------------------------------------------------
         self.sync += [
-            # in "loop" mode, each data output of the fifo is
-            # written back
+            # In "loop" mode, each data output of the fifo is written back
             If(loop_prog_n,
                 fifo.sink.address.eq(fifo.source.address),
                 fifo.sink.length.eq(fifo.source.length),
                 fifo.sink.control.eq(fifo.source.control),
                 fifo.sink.first.eq(fifo.source.first),
                 fifo.sink.valid.eq(fifo.source.ready)
-            # in "program" mode, fifo input is connected
-            # to registers
+            # In "program" mode, fifo input is connected to registers
             ).Else(
-                fifo.sink.address.eq(value[DMA_ADDRESS_OFFSET:DMA_ADDRESS_OFFSET+32]),
-                fifo.sink.length.eq(value[DMA_LENGTH_OFFSET:DMA_LENGTH_OFFSET+24]),
-                fifo.sink.control.eq(value[DMA_CONTROL_OFFSET:DMA_CONTROL_OFFSET+8]),
+                fifo.sink.address.eq(value[DMA_ADDRESS_OFFSET:DMA_ADDRESS_OFFSET + 32]),
+                fifo.sink.length.eq( value[ DMA_LENGTH_OFFSET:DMA_LENGTH_OFFSET  + 24]),
+                fifo.sink.control.eq(value[DMA_CONTROL_OFFSET:DMA_CONTROL_OFFSET +  8]),
                 fifo.sink.first.eq(~fifo.source.valid),
                 fifo.sink.valid.eq(we)
             )
         ]
 
-        # read part
+        # Read logic -------------------------------------------------------------------------------
         self.comb += [
             source.valid.eq(fifo.source.valid),
             source.first.eq(fifo.source.first),
@@ -96,9 +92,8 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
             source.control.eq(fifo.source.control),
         ]
 
-        # loop_index, loop_count
-        # used by the software for synchronization in
-        # "loop" mode
+        # Loops monitoring -------------------------------------------------------------------------
+        # Used by the software for synchronization in "loop" mode
         loop_first = Signal(reset=1)
         loop_index = Signal(log2_int(depth))
         loop_count = Signal(16)
@@ -123,18 +118,20 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
             )
         ]
 
+# LitePCIeDMARequestSplitter -----------------------------------------------------------------------
 
 class LitePCIeDMARequestSplitter(Module, AutoCSR):
     def __init__(self, max_size):
-        self.sink = sink = stream.Endpoint(descriptor_layout())
+        self.sink   =   sink = stream.Endpoint(descriptor_layout())
         self.source = source = stream.Endpoint(descriptor_layout(True))
-        self.end = Signal()
+        self.end    = Signal()
 
         # # #
 
-        offset = Signal(32)
+        # Offset/UserID/Length ---------------------------------------------------------------------
+        offset       = Signal(32)
         offset_reset = Signal()
-        offset_ce = Signal()
+        offset_ce    = Signal()
         self.sync += \
             If(offset_reset,
                 offset.eq(0)
@@ -142,15 +139,16 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
                 offset.eq(offset + max_size)
             )
 
-        user_id = Signal(32)
+        user_id    = Signal(32)
         user_id_ce = Signal()
         self.sync += If(user_id_ce, user_id.eq(user_id + 1))
         self.comb += user_id_ce.eq(sink.valid & sink.ready)
 
-        length = Signal(24)
+        length        = Signal(24)
         length_update = Signal()
         self.sync += If(length_update, length.eq(sink.length))
 
+        # FSM --------------------------------------------------------------------------------------
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             offset_reset.eq(1),
@@ -189,35 +187,38 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
             NextState("IDLE")
         )
 
+# LitePCIeDMAReader --------------------------------------------------------------------------------
 
 class LitePCIeDMAReader(Module, AutoCSR):
     def __init__(self, endpoint, port, table_depth=256):
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
-        self.irq = Signal()
+        self.irq    = Signal()
         self.enable = CSRStorage()
 
         # # #
 
+        # CSR/Parameters ---------------------------------------------------------------------------
         enable = self.enable.storage
 
         max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
-        max_pending_words = endpoint.max_pending_requests*max_words_per_request
-        fifo_depth = 4*max_pending_words
+        max_pending_words     = endpoint.max_pending_requests*max_words_per_request
+        fifo_depth            = 4*max_pending_words
 
-        # Request generation
-
-        # requests from table are splitted in chunks of "max_size"
-        self.table = table = LitePCIeDMARequestTable(table_depth)
+        # Table / Splitter -----------------------------------------------------------------
+        # Requests from Table are splitted in requests of max_request_size. (negociated at link-up)
+        table    = LitePCIeDMARequestTable(table_depth)
         splitter = LitePCIeDMARequestSplitter(max_size=endpoint.phy.max_request_size)
-        self.submodules += table, BufferizeEndpoints({"source": DIR_SOURCE})(ResetInserter()(splitter))
+        splitter = ResetInserter()(splitter)
+        splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
+        self.submodules.table    = table
+        self.submodules.splitter = splitter
         self.comb += [
             splitter.reset.eq(~enable),
             table.source.connect(splitter.sink)
         ]
 
-        # Request FSM
+        # FSM --------------------------------------------------------------------------------------
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
-
         request_ready = Signal()
         fsm.act("IDLE",
             If(request_ready,
@@ -243,11 +244,10 @@ class LitePCIeDMAReader(Module, AutoCSR):
             )
         )
 
-        # Data FIFO
-
-        # issue read requests when enough space available in fifo
+        # Data FIFO --------------------------------------------------------------------------------
         fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), fifo_depth, buffered=True)
-        self.submodules += ResetInserter()(fifo)
+        fifo = ResetInserter()(fifo)
+        self.submodules.fifo = fifo
         self.comb += fifo.reset.eq(~enable)
 
         last_user_id = Signal(8, reset=255)
@@ -266,29 +266,31 @@ class LitePCIeDMAReader(Module, AutoCSR):
         fifo_ready = fifo.level < (fifo_depth - max_words_per_request)
         self.comb += request_ready.eq(splitter.source.valid & fifo_ready)
 
-        # IRQ
-        self.comb += self.irq.eq(splitter.source.valid &
-                                 splitter.source.ready &
-                                 splitter.source.last &
-                                 ~splitter.source.control[DMA_IRQ_DISABLE])
+        # IRQ --------------------------------------------------------------------------------------
+        self.comb += self.irq.eq(
+            splitter.source.valid &
+            splitter.source.ready &
+            splitter.source.last  &
+            ~splitter.source.control[DMA_IRQ_DISABLE]
+        )
 
+# LitePCIeDMAWriter --------------------------------------------------------------------------------
 
 class LitePCIeDMAWriter(Module, AutoCSR):
     def __init__(self, endpoint, port, table_depth=256):
-        self.sink = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
-        self.irq = Signal()
+        self.sink   = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
+        self.irq    = Signal()
         self.enable = CSRStorage()
 
         # # #
 
+        # CSR/Parameters ---------------------------------------------------------------------------
         enable = self.enable.storage
 
         max_words_per_request = max_payload_size//(endpoint.phy.data_width//8)
-        fifo_depth = 4*max_words_per_request
+        fifo_depth            = 4*max_words_per_request
 
-        # Data FIFO
-
-        # store data until we have enough data to issue a write request
+        # Data FIFO --------------------------------------------------------------------------------
         fifo = SyncFIFOBuffered(endpoint.phy.data_width + 1, fifo_depth)
         self.submodules += ResetInserter()(fifo)
         self.comb += [
@@ -298,11 +300,23 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             fifo.reset.eq(~enable)
         ]
 
-        # Request generation
-        request_ready = Signal()
-        counter = Signal(max=(2**len(endpoint.phy.max_payload_size))//8)
+        # Table/Splitter ---------------------------------------------------------------------------
+        # Requests from Table are splitted in requests of max_payload_size. (negociated at link-up)
+        table    = LitePCIeDMARequestTable(table_depth)
+        splitter = LitePCIeDMARequestSplitter(max_size=endpoint.phy.max_payload_size)
+        splitter = ResetInserter()(splitter)
+        splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
+        self.submodules.table    = table
+        self.submodules.splitter = splitter
+        self.comb += [
+            splitter.reset.eq(~enable),
+            table.source.connect(splitter.sink)
+        ]
+
+        # Counter ----------------------------------------------------------------------------------
+        counter       = Signal(max=(2**len(endpoint.phy.max_payload_size))//8)
         counter_reset = Signal()
-        counter_ce = Signal()
+        counter_ce    = Signal()
         self.sync += \
             If(counter_reset,
                 counter.eq(0)
@@ -310,16 +324,8 @@ class LitePCIeDMAWriter(Module, AutoCSR):
                 counter.eq(counter + 1)
             )
 
-        # requests from table are splitted in chunks of "max_size"
-        self.table = table = LitePCIeDMARequestTable(table_depth)
-        splitter = LitePCIeDMARequestSplitter(max_size=endpoint.phy.max_payload_size)
-        self.submodules += table, BufferizeEndpoints({"source": DIR_SOURCE})(ResetInserter()(splitter))
-        self.comb += [
-            splitter.reset.eq(~enable),
-            table.source.connect(splitter.sink)
-        ]
-
-        # Request FSM
+        # FSM --------------------------------------------------------------------------------------
+        request_ready = Signal()
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             counter_reset.eq(1),
@@ -359,64 +365,66 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         fifo_ready = fifo.level >= splitter.source.length[log2_int(endpoint.phy.data_width//8):]
         self.sync += request_ready.eq(splitter.source.valid & fifo_ready)
 
-        # IRQ
-        self.comb += self.irq.eq(splitter.source.valid &
-                                 splitter.source.ready &
-                                 splitter.source.last &
-                                 ~splitter.source.control[DMA_IRQ_DISABLE])
+        # IRQ --------------------------------------------------------------------------------------
+        self.comb += self.irq.eq(
+            splitter.source.valid &
+            splitter.source.ready &
+            splitter.source.last  &
+            ~splitter.source.control[DMA_IRQ_DISABLE]
+        )
 
+# LitePCIeDMALoopback ------------------------------------------------------------------------------
 
 class LitePCIeDMALoopback(Module, AutoCSR):
     def __init__(self, data_width):
-        self.enable = CSRStorage()
+        self.enable      = CSRStorage()
 
-        self.sink = stream.Endpoint(dma_layout(data_width))
-        self.source = stream.Endpoint(dma_layout(data_width))
+        self.sink        = stream.Endpoint(dma_layout(data_width))
+        self.source      = stream.Endpoint(dma_layout(data_width))
 
         self.next_source = stream.Endpoint(dma_layout(data_width))
-        self.next_sink = stream.Endpoint(dma_layout(data_width))
+        self.next_sink   = stream.Endpoint(dma_layout(data_width))
 
         # # #
 
-        enable = self.enable.storage
-        self.comb += \
-                If(enable,
-                    self.sink.connect(self.source)
-                ).Else(
-                    self.sink.connect(self.next_source),
-                    self.next_sink.connect(self.source)
-                )
+        self.comb += [
+            If(self.enable.storage,
+                self.sink.connect(self.source)
+            ).Else(
+                self.sink.connect(self.next_source),
+                self.next_sink.connect(self.source)
+            )
+        ]
 
+# LitePCIeDMASynchronizer --------------------------------------------------------------------------
 
 class LitePCIeDMASynchronizer(Module, AutoCSR):
     def __init__(self, data_width):
-        self.bypass = CSRStorage()
-        self.enable = CSRStorage()
-        self.ready = Signal(reset=1)
-        self.pps = Signal()
+        self.bypass      = CSRStorage()
+        self.enable      = CSRStorage()
+        self.ready       = Signal(reset=1)
+        self.pps         = Signal()
 
-        self.sink = stream.Endpoint(dma_layout(data_width))
-        self.source = stream.Endpoint(dma_layout(data_width))
+        self.sink        = stream.Endpoint(dma_layout(data_width))
+        self.source      = stream.Endpoint(dma_layout(data_width))
 
         self.next_source = stream.Endpoint(dma_layout(data_width))
-        self.next_sink = stream.Endpoint(dma_layout(data_width))
+        self.next_sink   = stream.Endpoint(dma_layout(data_width))
 
         # # #
 
-        bypass = self.bypass.storage
-        enable = self.enable.storage
         synced = Signal()
 
-        self.sync += \
-            If(~enable,
+        self.sync += [
+            If(~self.enable.storage,
                 synced.eq(0)
             ).Else(
-                If(self.ready & self.sink.valid & (self.pps | bypass),
+                If(self.ready & self.sink.valid & (self.pps | self.bypass.storage),
                     synced.eq(1)
                 )
             )
-
-        self.comb += \
+        ]
+        self.comb += [
             If(synced,
                 self.sink.connect(self.next_source),
                 self.next_sink.connect(self.source),
@@ -429,12 +437,17 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
                 self.source.valid.eq(0),
                 self.next_sink.ready.eq(1),
             )
+        ]
 
+# LitePCIeDMABuffering -----------------------------------------------------------------------------
 
 class LitePCIeDMABuffering(Module, AutoCSR):
     def __init__(self, data_width, depth):
         self.reader_fifo_level = CSRStatus(bits_for(depth))
         self.writer_fifo_level = CSRStatus(bits_for(depth))
+
+        # # #
+
         reader_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
         writer_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
         self.submodules += reader_fifo, writer_fifo
@@ -443,46 +456,49 @@ class LitePCIeDMABuffering(Module, AutoCSR):
             self.writer_fifo_level.status.eq(writer_fifo.level),
         ]
 
-        self.sink = reader_fifo.sink
-        self.source = writer_fifo.source
+        self.sink        = reader_fifo.sink
+        self.source      = writer_fifo.source
 
         self.next_source = reader_fifo.source
-        self.next_sink = writer_fifo.sink
+        self.next_sink   = writer_fifo.sink
 
+# LitePCIeDMA --------------------------------------------------------------------------------------
 
 class LitePCIeDMA(Module, AutoCSR):
     def __init__(self, phy, endpoint,
-        with_buffering=False, buffering_depth=256*8,
-        with_loopback=False,
-        with_synchronizer=False,
-        with_monitor=False):
+        with_buffering    = False, buffering_depth = 256*8,
+        with_loopback     = False,
+        with_synchronizer = False,
+        with_monitor      = False):
 
-        # Writer, Reader
-        self.submodules.writer = LitePCIeDMAWriter(endpoint, endpoint.crossbar.get_master_port(write_only=True))
-        self.submodules.reader = LitePCIeDMAReader(endpoint, endpoint.crossbar.get_master_port(read_only=True))
-        self.sink, self.source = self.writer.sink, self.reader.source
+        # Writer/Reader ----------------------------------------------------------------------------
+        writer = LitePCIeDMAWriter(endpoint, endpoint.crossbar.get_master_port(write_only=True))
+        reader = LitePCIeDMAReader(endpoint, endpoint.crossbar.get_master_port(read_only=True))
+        self.submodules.writer = writer
+        self.submodules.reader = reader
+        self.sink, self.source = writer.sink, reader.source
 
-        # Loopback
+        # Loopback ---------------------------------------------------------------------------------
         if with_loopback:
             self.submodules.loopback = LitePCIeDMALoopback(phy.data_width)
-            self.insert_optional_module(self.loopback)
+            self.add_plugin_module(self.loopback)
 
-        # Synchronizer
+        # Synchronizer -----------------------------------------------------------------------------
         if with_synchronizer:
             self.submodules.synchronizer = LitePCIeDMASynchronizer(phy.data_width)
-            self.insert_optional_module(self.synchronizer)
+            self.add_plugin_module(self.synchronizer)
 
-        # Buffering
+        # Buffering --------------------------------------------------------------------------------
         if with_buffering:
             self.submodules.buffering = LitePCIeDMABuffering(phy.data_width, buffering_depth)
-            self.insert_optional_module(self.buffering)
+            self.add_plugin_module(self.buffering)
 
-        # Monitor
+        # Monitor ----------------------------------------------------------------------------------
         if with_monitor:
             self.submodules.writer_monitor = stream.Monitor(self.sink, with_overflows=True)
             self.submodules.reader_monitor = stream.Monitor(self.source, with_underflows=True)
 
-    def insert_optional_module(self, m):
+    def add_plugin_module(self, m):
         self.comb += [
             self.source.connect(m.sink),
             m.source.connect(self.sink)
