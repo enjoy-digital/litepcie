@@ -186,8 +186,6 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         # # #
 
-        request_ready = Signal()
-
         # CSR/Parameters ---------------------------------------------------------------------------
         enable = self.enable.storage
 
@@ -208,11 +206,33 @@ class LitePCIeDMAReader(Module, AutoCSR):
             table.source.connect(splitter.sink)
         ]
 
+        # Data FIFO --------------------------------------------------------------------------------
+        fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), fifo_depth, buffered=True)
+        fifo = ResetInserter()(fifo)
+        self.submodules.fifo = fifo
+        self.comb += fifo.reset.eq(~enable)
+        self.comb += fifo.source.connect(self.source)
+
+        last_user_id = Signal(8, reset=255)
+        self.comb += [
+            fifo.sink.valid.eq(port.sink.valid),
+            fifo.sink.first.eq(port.sink.first & (port.sink.user_id != last_user_id)),
+            fifo.sink.data.eq(port.sink.dat),
+            port.sink.ready.eq(fifo.sink.ready | ~enable),
+        ]
+        self.sync += [
+            If(port.sink.valid & port.sink.first & port.sink.ready,
+                last_user_id.eq(port.sink.user_id)
+            )
+        ]
+
         # FSM --------------------------------------------------------------------------------------
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            If(request_ready,
-                NextState("REQUEST"),
+            If(splitter.source.valid,
+                If(fifo.level < (fifo_depth - max_words_per_request),
+                    NextState("REQUEST"),
+                )
             )
         )
         self.comb += [
@@ -234,28 +254,6 @@ class LitePCIeDMAReader(Module, AutoCSR):
             )
         )
 
-        # Data FIFO --------------------------------------------------------------------------------
-        fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), fifo_depth, buffered=True)
-        fifo = ResetInserter()(fifo)
-        self.submodules.fifo = fifo
-        self.comb += fifo.reset.eq(~enable)
-
-        last_user_id = Signal(8, reset=255)
-        self.sync += \
-            If(port.sink.valid & port.sink.first & port.sink.ready,
-                last_user_id.eq(port.sink.user_id)
-            )
-        self.comb += [
-            fifo.sink.valid.eq(port.sink.valid),
-            fifo.sink.first.eq(port.sink.first & (port.sink.user_id != last_user_id)),
-            fifo.sink.data.eq(port.sink.dat),
-            port.sink.ready.eq(fifo.sink.ready | ~enable),
-        ]
-        self.comb += fifo.source.connect(self.source)
-
-        fifo_ready = fifo.level < (fifo_depth - max_words_per_request)
-        self.comb += request_ready.eq(splitter.source.valid & fifo_ready)
-
         # IRQ --------------------------------------------------------------------------------------
         self.comb += self.irq.eq(
             splitter.source.valid &
@@ -274,24 +272,13 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # # #
 
-        counter       = Signal(max=(2**len(endpoint.phy.max_payload_size))//8)
-        request_ready = Signal()
+        counter = Signal(max=(2**len(endpoint.phy.max_payload_size))//8)
 
         # CSR/Parameters ---------------------------------------------------------------------------
         enable = self.enable.storage
 
         max_words_per_request = max_payload_size//(endpoint.phy.data_width//8)
         fifo_depth            = 4*max_words_per_request
-
-        # Data FIFO --------------------------------------------------------------------------------
-        fifo = SyncFIFOBuffered(endpoint.phy.data_width + 1, fifo_depth)
-        self.submodules += ResetInserter()(fifo)
-        self.comb += [
-            fifo.we.eq(sink.valid & enable),
-            sink.ready.eq(fifo.writable | ~enable),
-            fifo.din.eq(Cat(sink.data, sink.last)),
-            fifo.reset.eq(~enable)
-        ]
 
         # Table/Splitter ---------------------------------------------------------------------------
         # Requests from Table are splitted in requests of max_payload_size. (negociated at link-up)
@@ -306,13 +293,24 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             table.source.connect(splitter.sink)
         ]
 
+        # Data FIFO --------------------------------------------------------------------------------
+        fifo = SyncFIFOBuffered(endpoint.phy.data_width + 1, fifo_depth)
+        self.submodules += ResetInserter()(fifo)
+        self.comb += [
+            fifo.we.eq(sink.valid & enable),
+            sink.ready.eq(fifo.writable | ~enable),
+            fifo.din.eq(Cat(sink.data, sink.last)),
+            fifo.reset.eq(~enable)
+        ]
+
         # FSM --------------------------------------------------------------------------------------
-        request_ready = Signal()
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             NextValue(counter, 0),
-            If(request_ready,
-                NextState("REQUEST"),
+            If(splitter.source.valid,
+                If(fifo.level >= splitter.source.length[log2_int(endpoint.phy.data_width//8):],
+                    NextState("REQUEST"),
+                )
             )
         )
         length_shift = log2_int(endpoint.phy.data_width//8)
@@ -343,9 +341,6 @@ class LitePCIeDMAWriter(Module, AutoCSR):
                 )
             )
         )
-
-        fifo_ready = fifo.level >= splitter.source.length[log2_int(endpoint.phy.data_width//8):]
-        self.sync += request_ready.eq(splitter.source.valid & fifo_ready)
 
         # IRQ --------------------------------------------------------------------------------------
         self.comb += self.irq.eq(
