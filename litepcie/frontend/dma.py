@@ -40,7 +40,10 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
         self.value       = CSRStorage(64)
         self.we          = CSR()
         self.loop_prog_n = CSRStorage()
-        self.loop_status = CSRStatus(32)
+        self.loop_status = CSRStatus(fields=[
+            CSRField("index", size=16, offset= 0),
+            CSRField("count", size=16, offset=16),
+        ])
         self.level       = CSRStatus(log2_int(depth))
         self.flush       = CSR()
 
@@ -50,7 +53,7 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
         value       = self.value.storage
         we          = self.we.r & self.we.re
         loop_prog_n = self.loop_prog_n.storage
-        loop_status = self.loop_status.status
+        loop_status = self.loop_status
         level       = self.level.status
         flush       = self.flush.r & self.flush.re
 
@@ -102,10 +105,11 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
                 loop_first.eq(1),
                 loop_index.eq(0),
                 loop_count.eq(0),
-                loop_status.eq(0),
+                loop_status.fields.index.eq(0),
+                loop_status.fields.count.eq(0),
             ).Elif(source.valid & source.ready,
-                loop_status[0:16].eq(loop_index),
-                loop_status[16:].eq(loop_count),
+                loop_status.fields.index.eq(loop_index),
+                loop_status.fields.count.eq(loop_count),
                 If(source.first,
                     loop_first.eq(0),
                     loop_index.eq(0),
