@@ -128,32 +128,14 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
 
         # # #
 
-        # Offset/UserID/Length ---------------------------------------------------------------------
-        offset       = Signal(32)
-        offset_reset = Signal()
-        offset_ce    = Signal()
-        self.sync += \
-            If(offset_reset,
-                offset.eq(0)
-            ).Elif(offset_ce,
-                offset.eq(offset + max_size)
-            )
-
-        user_id    = Signal(32)
-        user_id_ce = Signal()
-        self.sync += If(user_id_ce, user_id.eq(user_id + 1))
-        self.comb += user_id_ce.eq(sink.valid & sink.ready)
-
-        length        = Signal(24)
-        length_update = Signal()
-        self.sync += If(length_update, length.eq(sink.length))
+        offset  = Signal(32)
+        user_id = Signal(32)
 
         # FSM --------------------------------------------------------------------------------------
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            offset_reset.eq(1),
+            NextValue(offset, 0),
             If(sink.valid,
-                length_update.eq(1),
                 NextState("RUN")
             ).Else(
                 sink.ready.eq(1)
@@ -167,16 +149,18 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
         fsm.act("RUN",
             source.valid.eq(1),
             source.first.eq(offset == 0),
-            If((length - offset) > max_size,
+            If((sink.length - offset) > max_size,
                 source.last.eq(self.end),
                 source.length.eq(max_size),
-                offset_ce.eq(source.ready),
-                If(source.ready & self.end,
-                    NextState("ACK")
+                If(source.ready,
+                    NextValue(offset, offset + max_size),
+                    If(self.end,
+                        NextState("ACK")
+                    )
                 )
             ).Else(
                 source.last.eq(1),
-                source.length.eq(length - offset),
+                source.length.eq(sink.length - offset),
                 If(source.ready,
                     NextState("ACK")
                 )
@@ -184,6 +168,7 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
         )
         fsm.act("ACK",
             sink.ready.eq(1),
+            NextValue(user_id, user_id + 1),
             NextState("IDLE")
         )
 
@@ -196,6 +181,8 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.enable = CSRStorage()
 
         # # #
+
+        request_ready = Signal()
 
         # CSR/Parameters ---------------------------------------------------------------------------
         enable = self.enable.storage
@@ -219,7 +206,6 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         # FSM --------------------------------------------------------------------------------------
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
-        request_ready = Signal()
         fsm.act("IDLE",
             If(request_ready,
                 NextState("REQUEST"),
@@ -284,6 +270,9 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # # #
 
+        counter       = Signal(max=(2**len(endpoint.phy.max_payload_size))//8)
+        request_ready = Signal()
+
         # CSR/Parameters ---------------------------------------------------------------------------
         enable = self.enable.storage
 
@@ -313,22 +302,11 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             table.source.connect(splitter.sink)
         ]
 
-        # Counter ----------------------------------------------------------------------------------
-        counter       = Signal(max=(2**len(endpoint.phy.max_payload_size))//8)
-        counter_reset = Signal()
-        counter_ce    = Signal()
-        self.sync += \
-            If(counter_reset,
-                counter.eq(0)
-            ).Elif(counter_ce,
-                counter.eq(counter + 1)
-            )
-
         # FSM --------------------------------------------------------------------------------------
         request_ready = Signal()
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            counter_reset.eq(1),
+            NextValue(counter, 0),
             If(request_ready,
                 NextState("REQUEST"),
             )
@@ -347,9 +325,9 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             port.source.dat.eq(fifo.dout[:-1])
         ]
         fsm.act("REQUEST",
-            counter_ce.eq(port.source.valid & port.source.ready),
             port.source.valid.eq(1),
             If(port.source.ready,
+                NextValue(counter, counter + 1),
                 # read only if not last
                 fifo.re.eq(~(fifo.dout[-1] & ~splitter.source.control[DMA_LAST_DISABLE])),
                 If(port.source.last,
