@@ -78,7 +78,7 @@ class LitePCIeTLPController(Module):
         cmp_write_cases = {}
         cmp_read_cases = {}
         for i in range(max_pending_requests):
-            cmp_buf_depth = int(max_request_size/(data_width/8))
+            cmp_buf_depth = int(4*max_request_size/(data_width/8))
             cmp_buf = SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=True)
             self.submodules += cmp_buf
             cmp_write_cases[i] = [cmp_reorder.connect(cmp_buf.sink)]
