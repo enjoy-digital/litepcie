@@ -3,7 +3,7 @@
 
 from migen import *
 
-from litepcie.core.tlp.common import *
+from litepcie.tlp.common import *
 
 
 class LitePCIeTLPHeaderExtracter64b(Module):

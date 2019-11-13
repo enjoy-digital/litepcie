@@ -5,7 +5,7 @@ from migen import *
 
 from litepcie.common import *
 from litepcie.core.common import *
-from litepcie.core.tlp.controller import LitePCIeTLPController
+from litepcie.tlp.controller import LitePCIeTLPController
 
 
 class LitePCIeCrossbar(Module):

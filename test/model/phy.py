@@ -4,7 +4,7 @@
 import math
 
 from litepcie.common import *
-from litepcie.core.tlp.common import *
+from litepcie.tlp.common import *
 
 
 def print_phy(s):

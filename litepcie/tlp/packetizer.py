@@ -4,7 +4,7 @@
 from migen import *
 from migen.genlib.misc import chooser
 
-from litepcie.core.tlp.common import *
+from litepcie.tlp.common import *
 
 
 class LitePCIeTLPHeaderInserter64b(Module):

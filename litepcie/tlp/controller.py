@@ -5,7 +5,7 @@ from migen import *
 
 from litepcie.common import *
 from litepcie.core.common import *
-from litepcie.core.tlp.common import *
+from litepcie.tlp.common import *
 
 
 class LitePCIeTLPController(Module):

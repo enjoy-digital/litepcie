@@ -5,8 +5,8 @@ from migen import *
 
 from litex.soc.interconnect.csr import *
 
-from litepcie.core.tlp.depacketizer import LitePCIeTLPDepacketizer
-from litepcie.core.tlp.packetizer import LitePCIeTLPPacketizer
+from litepcie.tlp.depacketizer import LitePCIeTLPDepacketizer
+from litepcie.tlp.packetizer import LitePCIeTLPPacketizer
 from litepcie.core.crossbar import LitePCIeCrossbar
 
 

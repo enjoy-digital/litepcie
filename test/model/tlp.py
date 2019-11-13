@@ -2,7 +2,7 @@
 # License: BSD
 
 from litepcie.common import *
-from litepcie.core.tlp.common import *
+from litepcie.tlp.common import *
 
 
 # TLP Layer model

@@ -9,7 +9,7 @@ from litex.soc.interconnect.stream import *
 from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
-from litepcie.core.tlp.common import *
+from litepcie.tlp.common import *
 
 # Constants/Layouts --------------------------------------------------------------------------------
 
