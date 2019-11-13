@@ -6,41 +6,33 @@ from litepcie.common import *
 
 
 class LitePCIeMSI(Module, AutoCSR):
-    def __init__(self, width=32, transmit_interval=2):
-        self.irqs = Signal(width)
+    def __init__(self, width=32):
+        self.irqs   = Signal(width)
         self.source = stream.Endpoint(msi_layout())
 
         self.enable = CSRStorage(width)
-        self.clear = CSR(width)
+        self.clear  = CSR(width)
         self.vector = CSRStatus(width)
 
         # # #
 
-        enable = self.enable.storage
-        clear = Signal(width)
+        enable = Signal(width)
+        clear  = Signal(width)
+        vector = Signal(width)
+
+        # Memorize and clear IRQ Vector ------------------------------------------------------------
         self.comb += If(self.clear.re, clear.eq(self.clear.r))
+        self.comb += enable.eq(self.enable.storage)
+        self.comb += self.vector.status.eq(vector)
+        self.sync += vector.eq(enable & ((vector & ~clear) | self.irqs))
 
-        # memorize and clear irqs
-        vector = self.vector.status
-        vector_d = Signal(width)
-        self.sync += vector.eq(~clear & (vector | self.irqs))
-        self.sync += vector_d.eq(vector)
-
-        # transmit irq
-        transmit_request = Signal()
-        transmit_grant = Signal()
-        transmit_counter = Signal(max=transmit_interval)
-        self.comb += [
-            transmit_request.eq((vector & enable) != 0),
-            transmit_grant.eq(transmit_counter == 0)
-        ]
-        self.sync += \
-            If(~transmit_request | (vector != vector_d),
-                transmit_counter.eq(0)
+        # Generate MSI -----------------------------------------------------------------------------
+        msi = Signal(width)
+        self.sync += [
+            If(self.source.ready,
+                msi.eq(self.irqs)
             ).Else(
-                transmit_counter.eq(transmit_counter + 1)
+                msi.eq(msi | self.irqs)
             )
-        self.comb += \
-            If(transmit_grant,
-                self.source.valid.eq(transmit_request)
-            )
+        ]
+        self.comb += self.source.valid.eq(msi != 0)
