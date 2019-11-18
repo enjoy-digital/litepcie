@@ -70,7 +70,7 @@ class LitePCIeWishboneBridge(Module):
             port.source.cmp_id.eq(endpoint.phy.id),
             port.source.req_id.eq(port.sink.req_id),
             If(update_dat,
-                port.source.dat.eq(self.wishbone.dat_r),
+                port.source.dat.eq(self.wishbone.dat_r)
             )
         ]
         fsm.act("COMPLETION",

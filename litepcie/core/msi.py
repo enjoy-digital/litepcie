@@ -4,6 +4,7 @@ from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 
+# --------------------------------------------------------------------------------------------------
 
 class LitePCIeMSI(Module, AutoCSR):
     def __init__(self, width=32):

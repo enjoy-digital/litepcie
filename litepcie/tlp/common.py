@@ -5,7 +5,8 @@ from migen import *
 
 from litepcie.common import *
 
-# constants
+# Constants ----------------------------------------------------------------------------------------
+
 fmt_type_dict = {
     "mem_rd32": 0b0000000,
     "mem_wr32": 0b1000000,
@@ -26,7 +27,8 @@ cpl_dict = {
 max_payload_size = 512
 max_request_size = 512
 
-# headers
+# Headers ------------------------------------------------------------------------------------------
+
 tlp_common_header_length = 16
 tlp_common_header_fields = {
     "fmt":  HeaderField(0*4, 29, 2),
@@ -82,14 +84,14 @@ tlp_completion_header = Header(tlp_completion_header_fields,
                                tlp_completion_header_length,
                                swap_field_bytes=False)
 
-# helpers
+# Helpers ------------------------------------------------------------------------------------------
 def convert_bytes(s, endianness="big"):
     return reverse_bytes(s) if endianness == "big" else s
 
 def convert_bits(s, endianness="big"):
     return reverse_bits(s) if endianness == "big" else s
 
-# layouts
+# Layouts ------------------------------------------------------------------------------------------
 def tlp_raw_layout(data_width):
     layout = [
         ("header", 4*32),

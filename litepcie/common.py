@@ -9,6 +9,8 @@ from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream import *
 from litex.soc.interconnect.stream_packet import *
 
+# Constants/Helpers --------------------------------------------------------------------------------
+
 KB = 1024
 MB = 1024*KB
 GB = 1024*MB
@@ -23,6 +25,8 @@ def get_bar_mask(size):
                     mask |= (1 << i)
                 size = size >> 1
             return mask
+
+# Layouts ------------------------------------------------------------------------------------------
 
 def phy_layout(data_width):
     layout = [
@@ -39,8 +43,8 @@ def request_layout(data_width):
             ("req_id",          16),
             ("tag",              8),
             ("dat",     data_width),
-            ("channel",          8),  # for routing
-            ("user_id",          8)   # for packet identification
+            ("channel",          8), # for routing
+            ("user_id",          8)  # for packet identification
     ]
     return EndpointDescription(layout)
 
@@ -54,14 +58,13 @@ def completion_layout(data_width):
             ("err",              1),
             ("tag",              8),
             ("dat",     data_width),
-            ("channel",          8),  # for routing
-            ("user_id",          8)   # for packet identification
+            ("channel",          8), # for routing
+            ("user_id",          8)  # for packet identification
     ]
     return EndpointDescription(layout)
 
 def msi_layout():
     return [("dat", 8)]
-
 
 def dma_layout(data_width):
     layout = [("data", data_width)]

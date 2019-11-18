@@ -6,15 +6,16 @@ from migen.genlib.misc import chooser
 
 from litepcie.tlp.common import *
 
+# LitePCIeTLPHeaderInserter64b ---------------------------------------------------------------------
 
 class LitePCIeTLPHeaderInserter64b(Module):
     def __init__(self, endianness):
-        self.sink = sink = stream.Endpoint(tlp_raw_layout(64))
+        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(64))
         self.source = source = stream.Endpoint(phy_layout(64))
 
         # # #
 
-        dat = Signal(64, reset_less=True)
+        dat  = Signal(64, reset_less=True)
         last = Signal(reset_less=True)
         self.sync += \
             If(sink.valid & sink.ready,
@@ -80,15 +81,16 @@ class LitePCIeTLPHeaderInserter64b(Module):
             )
         )
 
+# LitePCIeTLPHeaderInserter128b --------------------------------------------------------------------
 
 class LitePCIeTLPHeaderInserter128b(Module):
     def __init__(self, endianness):
-        self.sink = sink = stream.Endpoint(tlp_raw_layout(128))
+        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(128))
         self.source = source = stream.Endpoint(phy_layout(128))
 
         # # #
 
-        dat = Signal(128, reset_less=True)
+        dat  = Signal(128, reset_less=True)
         last = Signal(reset_less=True)
         self.sync += \
             If(sink.valid & sink.ready,
@@ -151,17 +153,17 @@ class LitePCIeTLPHeaderInserter128b(Module):
             )
         )
 
+# LitePCIeTLPPacketizer ----------------------------------------------------------------------------
 
 class LitePCIeTLPPacketizer(Module):
     def __init__(self, data_width, endianness):
         self.req_sink = req_sink = stream.Endpoint(request_layout(data_width))
         self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
-
-        self.source = stream.Endpoint(phy_layout(data_width))
+        self.source   = stream.Endpoint(phy_layout(data_width))
 
         # # #
 
-        # format TLP request and encode it
+        # Format TLP request and encode it ---------------------------------------------------------
         self.tlp_req = tlp_req = stream.Endpoint(tlp_request_layout(data_width))
         self.comb += [
             tlp_req.valid.eq(req_sink.valid),
@@ -196,7 +198,7 @@ class LitePCIeTLPPacketizer(Module):
                 tlp_req.be.eq(0xff)
             ).Else(
                 tlp_req.be.eq(0x00)
-            ),
+            )
         ]
 
         tlp_raw_req = stream.Endpoint(tlp_raw_layout(data_width))
@@ -207,10 +209,10 @@ class LitePCIeTLPPacketizer(Module):
             tlp_raw_req.last.eq(tlp_req.last),
             tlp_request_header.encode(tlp_req, tlp_raw_req.header),
             tlp_raw_req.dat.eq(tlp_req.dat),
-            tlp_raw_req.be.eq(tlp_req.be),
+            tlp_raw_req.be.eq(tlp_req.be)
         ]
 
-        # format TLP completion and encode it
+        # Format TLP completion and encode it ------------------------------------------------------
         self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
         self.comb += [
             tlp_cmp.valid.eq(cmp_sink.valid),
@@ -251,14 +253,14 @@ class LitePCIeTLPPacketizer(Module):
             tlp_raw_cmp.last.eq(tlp_cmp.last),
             tlp_completion_header.encode(tlp_cmp, tlp_raw_cmp.header),
             tlp_raw_cmp.dat.eq(tlp_cmp.dat),
-            tlp_raw_cmp.be.eq(tlp_cmp.be),
+            tlp_raw_cmp.be.eq(tlp_cmp.be)
         ]
 
-        # arbitrate
+        # Arbitrate --------------------------------------------------------------------------------
         tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))
         self.submodules.arbitrer = Arbiter([tlp_raw_req, tlp_raw_cmp], tlp_raw)
 
-        # insert header
+        # Insert header ----------------------------------------------------------------------------
         header_inserter_cls = {
             64 : LitePCIeTLPHeaderInserter64b,
            128 : LitePCIeTLPHeaderInserter128b

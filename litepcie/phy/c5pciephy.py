@@ -128,13 +128,12 @@ class C5PCIEPHY(Module, AutoCSR):
             self.id.eq(Cat(function_number, device_number, bus_number))
         ]
 
-        # To capture configuration space Register
-        #  register LSB bit of tl_cfg_add
+        # To capture configuration space Register, register LSB bit of tl_cfg_add
         self.sync.pcie += [
             tl_cfg_add_reg_lsb.eq(pcie_config_tl_tl_cfg_add[0]),
             tl_cfg_add_reg2_lsb.eq(tl_cfg_add_reg_lsb)
         ]
-        # detect the address change to generate a strobe to sample the input 32-bit data
+        # Detect the address change to generate a strobe to sample the input 32-bit data
         self.sync.pcie += [
             cfgctl_addr_change.eq(tl_cfg_add_reg_lsb != tl_cfg_add_reg2_lsb),
             cfgctl_addr_change2.eq(cfgctl_addr_change),
@@ -159,9 +158,9 @@ class C5PCIEPHY(Module, AutoCSR):
                )
         ]
 
-        # tl_cfg_add[6:4] should represent function number whose information is
-        # being presented on tl_cfg_ctl, but only one function is enabled on IP core
-        # in this case function_number is always 0
+        # tl_cfg_add[6:4] should represent function number whose information is being presented on
+        # tl_cfg_ctl, but only one function is enabled on IP core  in this case function_number is
+        # always 0
         self.comb += function_number.eq(0)
 
         # Native stream <--> AvalonST --------------------------------------------------------------

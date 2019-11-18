@@ -5,20 +5,20 @@ from migen import *
 
 from litepcie.tlp.common import *
 
+# LitePCIeTLPHeaderExtracter64b --------------------------------------------------------------------
 
 class LitePCIeTLPHeaderExtracter64b(Module):
     def __init__(self, endianness):
-        self.sink = sink = stream.Endpoint(phy_layout(64))
+        self.sink   = sink   = stream.Endpoint(phy_layout(64))
         self.source = source = stream.Endpoint(tlp_raw_layout(64))
 
         # # #
 
         first = Signal()
-        last = Signal()
+        last  = Signal()
         count = Signal()
-
-        dat = Signal(64, reset_less=True)
-        be = Signal(64//8, reset_less=True)
+        dat   = Signal(64, reset_less=True)
+        be    = Signal(64//8, reset_less=True)
         self.sync += \
             If(sink.valid & sink.ready,
                 dat.eq(sink.dat),
@@ -36,10 +36,10 @@ class LitePCIeTLPHeaderExtracter64b(Module):
             sink.ready.eq(1),
             If(sink.valid,
                 NextValue(count, count + 1),
-                NextValue(self.source.header[32*0:32*1], self.source.header[32*2:32*3]),
-                NextValue(self.source.header[32*1:32*2], self.source.header[32*3:32*4]),
-                NextValue(self.source.header[32*2:32*3], sink.dat[32*0:32*1]),
-                NextValue(self.source.header[32*3:32*4], sink.dat[32*1:32*2]),
+                NextValue(source.header[32*0:32*1], source.header[32*2:32*3]),
+                NextValue(source.header[32*1:32*2], source.header[32*3:32*4]),
+                NextValue(source.header[32*2:32*3], sink.dat[32*0:32*1]),
+                NextValue(source.header[32*3:32*4], sink.dat[32*1:32*2]),
                 If(count,
                     If(sink.last, NextValue(last, 1)),
                     NextState("COPY")
@@ -63,19 +63,19 @@ class LitePCIeTLPHeaderExtracter64b(Module):
             source.be[4*1:4*2].eq(convert_bits(sink.be[4*0:4*1], endianness))
         ]
 
+# LitePCIeTLPHeaderExtracter128b -------------------------------------------------------------------
 
 class LitePCIeTLPHeaderExtracter128b(Module):
     def __init__(self, endianness):
-        self.sink = sink = stream.Endpoint(phy_layout(128))
+        self.sink   = sink   = stream.Endpoint(phy_layout(128))
         self.source = source = stream.Endpoint(tlp_raw_layout(128))
 
         # # #
 
         first = Signal()
-        last = Signal()
-
-        dat = Signal(128, reset_less=True)
-        be = Signal(128//8, reset_less=True)
+        last  = Signal()
+        dat   = Signal(128, reset_less=True)
+        be    = Signal(128//8, reset_less=True)
         self.sync += \
             If(sink.valid & sink.ready,
                 dat.eq(sink.dat),
@@ -93,11 +93,13 @@ class LitePCIeTLPHeaderExtracter128b(Module):
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid,
-                NextValue(self.source.header[32*0:32*1], sink.dat[32*0:32*1]),
-                NextValue(self.source.header[32*1:32*2], sink.dat[32*1:32*2]),
-                NextValue(self.source.header[32*2:32*3], sink.dat[32*2:32*3]),
-                NextValue(self.source.header[32*3:32*4], sink.dat[32*3:32*4]),
-                If(sink.last, NextValue(last, 1)),
+                NextValue(source.header[32*0:32*1], sink.dat[32*0:32*1]),
+                NextValue(source.header[32*1:32*2], sink.dat[32*1:32*2]),
+                NextValue(source.header[32*2:32*3], sink.dat[32*2:32*3]),
+                NextValue(source.header[32*3:32*4], sink.dat[32*3:32*4]),
+                If(sink.last,
+                    NextValue(last, 1)
+                ),
                 NextState("COPY")
             )
         )
@@ -124,17 +126,17 @@ class LitePCIeTLPHeaderExtracter128b(Module):
             source.be[4*1:4*2].eq(convert_bits(sink.be[4*2:4*3], endianness))
         ]
 
+# LitePCIeTLPDepacketizer --------------------------------------------------------------------------
 
 class LitePCIeTLPDepacketizer(Module):
     def __init__(self, data_width, endianness, address_mask=0):
-        self.sink = stream.Endpoint(phy_layout(data_width))
-
+        self.sink       = stream.Endpoint(phy_layout(data_width))
         self.req_source = stream.Endpoint(request_layout(data_width))
         self.cmp_source = stream.Endpoint(completion_layout(data_width))
 
         # # #
 
-        # extract raw header
+        # Extract raw header -----------------------------------------------------------------------
         header_extracter_cls = {
              64 : LitePCIeTLPHeaderExtracter64b,
             128 : LitePCIeTLPHeaderExtracter128b,
@@ -144,10 +146,9 @@ class LitePCIeTLPDepacketizer(Module):
         self.comb += self.sink.connect(header_extracter.sink)
         header = header_extracter.source.header
 
-
-        # dispatch data according to fmt/type
+        # Dispatch data according to fmt/type ------------------------------------------------------
         dispatch_source = stream.Endpoint(tlp_common_layout(data_width))
-        dispatch_sinks = [stream.Endpoint(tlp_common_layout(data_width)) for i in range(2)]
+        dispatch_sinks  = [stream.Endpoint(tlp_common_layout(data_width)) for i in range(2)]
 
         self.comb += [
             dispatch_source.valid.eq(header_extracter.source.valid),
@@ -162,16 +163,15 @@ class LitePCIeTLPDepacketizer(Module):
         self.submodules.dispatcher = Dispatcher(dispatch_source, dispatch_sinks)
 
         fmt_type = Cat(dispatch_source.type, dispatch_source.fmt)
-        self.comb += \
-            If((fmt_type == fmt_type_dict["mem_rd32"]) |
-               (fmt_type == fmt_type_dict["mem_wr32"]),
+        self.comb += [
+            If((fmt_type == fmt_type_dict["mem_rd32"]) | (fmt_type == fmt_type_dict["mem_wr32"]),
                 self.dispatcher.sel.eq(0),
-            ).Elif((fmt_type == fmt_type_dict["cpld"]) |
-                   (fmt_type == fmt_type_dict["cpl"]),
-                self.dispatcher.sel.eq(1),
+            ).Elif((fmt_type == fmt_type_dict["cpld"]) | (fmt_type == fmt_type_dict["cpl"]),
+                self.dispatcher.sel.eq(1)
             )
+        ]
 
-        # decode TLP request and format local request
+        # Decode TLP request and format local request ----------------------------------------------
         self.tlp_req = tlp_req = stream.Endpoint(tlp_request_layout(data_width))
         self.comb += dispatch_sinks[0].connect(tlp_req)
         self.comb += tlp_request_header.decode(header, tlp_req)
@@ -179,8 +179,8 @@ class LitePCIeTLPDepacketizer(Module):
         req_source = self.req_source
         self.comb += [
             req_source.valid.eq(tlp_req.valid),
-            req_source.we.eq(tlp_req.valid & (Cat(tlp_req.type, tlp_req.fmt) ==
-                                            fmt_type_dict["mem_wr32"])),
+            req_source.we.eq(tlp_req.valid &
+                (Cat(tlp_req.type, tlp_req.fmt) == fmt_type_dict["mem_wr32"])),
             tlp_req.ready.eq(req_source.ready),
             req_source.first.eq(tlp_req.first),
             req_source.last.eq(tlp_req.last),
@@ -188,10 +188,10 @@ class LitePCIeTLPDepacketizer(Module):
             req_source.len.eq(tlp_req.length),
             req_source.req_id.eq(tlp_req.requester_id),
             req_source.tag.eq(tlp_req.tag),
-            req_source.dat.eq(tlp_req.dat),
+            req_source.dat.eq(tlp_req.dat)
         ]
 
-        # decode TLP completion and format local completion
+        # Decode TLP completion and format local completion ----------------------------------------
         self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
         self.comb += dispatch_sinks[1].connect(tlp_cmp)
         self.comb += tlp_completion_header.decode(header, tlp_cmp)

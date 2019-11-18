@@ -7,29 +7,35 @@ from litepcie.common import *
 from litepcie.core.common import *
 from litepcie.tlp.controller import LitePCIeTLPController
 
+# --------------------------------------------------------------------------------------------------
 
 class LitePCIeCrossbar(Module):
     def __init__(self, data_width, max_pending_requests):
-        self.data_width = data_width
+        self.data_width           = data_width
         self.max_pending_requests = max_pending_requests
 
-        self.master = LitePCIeMasterInternalPort(data_width)
-        self.slave = LitePCIeSlaveInternalPort(data_width)
+        self.master     = LitePCIeMasterInternalPort(data_width)
+        self.slave      = LitePCIeSlaveInternalPort(data_width)
         self.phy_master = LitePCIeMasterPort(self.master)
-        self.phy_slave = LitePCIeSlavePort(self.slave)
+        self.phy_slave  = LitePCIeSlavePort(self.slave)
 
-        self.user_masters = []
+        self.user_masters         = []
         self.user_masters_channel = 0
-        self.user_slaves = []
+        self.user_slaves          = []
 
     def get_slave_port(self, address_decoder):
-        s = LitePCIeSlaveInternalPort(self.data_width, address_decoder)
+        s = LitePCIeSlaveInternalPort(
+            data_width      = self.data_width,
+            address_decoder = address_decoder)
         self.user_slaves.append(s)
         return LitePCIeSlavePort(s)
 
     def get_master_port(self, write_only=False, read_only=False):
-        m = LitePCIeMasterInternalPort(self.data_width, self.user_masters_channel,
-                                       write_only, read_only)
+        m = LitePCIeMasterInternalPort(
+            data_width = self.data_width,
+            channel    = self.user_masters_channel,
+            write_only = write_only,
+            read_only  = read_only)
         self.user_masters_channel += 1
         self.user_masters.append(m)
         return LitePCIeMasterPort(m)
@@ -42,25 +48,25 @@ class LitePCIeCrossbar(Module):
         return masters
 
     def slave_dispatch_arbitrate(self, slaves, slave):
-        # dispatch
+        # Dispatch ---------------------------------------------------------------------------------
         s_sources = [s.source for s in slaves]
         s_dispatcher = Dispatcher(slave.source, s_sources, one_hot=True)
         self.submodules += s_dispatcher
         for i, s in enumerate(slaves):
                 self.comb += s_dispatcher.sel[i].eq(s.address_decoder(slave.source.adr))
 
-        # arbitrate
+        # Arbitrate --------------------------------------------------------------------------------
         s_sinks = [s.sink for s in slaves]
         s_arbiter = Arbiter(s_sinks, slave.sink)
         self.submodules += s_arbiter
 
     def master_arbitrate_dispatch(self, masters, master, dispatch=True):
-        # arbitrate
+        # Arbitrate --------------------------------------------------------------------------------
         m_sinks = [m.sink for m in masters]
         m_arbiter = Arbiter(m_sinks, master.sink)
         self.submodules += m_arbiter
 
-        # dispatch
+        # Dispatch ---------------------------------------------------------------------------------
         if dispatch:
             m_sources = [m.source for m in masters]
             m_dispatcher = Dispatcher(master.source, m_sources, one_hot=True)
@@ -69,17 +75,17 @@ class LitePCIeCrossbar(Module):
                 if m.channel is not None:
                     self.comb += m_dispatcher.sel[i].eq(master.source.channel == m.channel)
         else:
-            # connect to first master
+            # Connect to first master
             self.comb += master.source.connect(masters[0].source)
 
     def do_finalize(self):
-        # Slave path
+        # Slave path -------------------------------------------------------------------------------
         # Dispatch request to user sources (according to address decoder)
         # Arbitrate completion from user sinks
         if self.user_slaves != []:
             self.slave_dispatch_arbitrate(self.user_slaves, self.slave)
 
-        # Master path
+        # Master path ------------------------------------------------------------------------------
         # Abritrate requests from user sinks
         # Dispatch completion to user sources (according to channel)
 
@@ -106,7 +112,7 @@ class LitePCIeCrossbar(Module):
         if self.user_masters != []:
             masters = []
 
-            # Arbitrate / dispatch read_only / read_write ports
+            # Arbitrate / dispatch read_only / read_write ports ------------------------------------
             # and insert controller
             rd_rw_masters = self.filter_masters(False, True)
             rd_rw_masters += self.filter_masters(False, False)
@@ -118,12 +124,12 @@ class LitePCIeCrossbar(Module):
                 self.master_arbitrate_dispatch(rd_rw_masters, controller.master_in)
                 masters.append(controller.master_out)
 
-            # Arbitrate / dispatch write_only ports
+            # Arbitrate / dispatch write_only ports ------------------------------------------------
             wr_masters = self.filter_masters(True, False)
             if wr_masters != []:
                 wr_master = LitePCIeMasterInternalPort(self.data_width)
                 self.master_arbitrate_dispatch(wr_masters, wr_master)
                 masters.append(wr_master)
 
-            # Final Arbitrate / dispatch stage
+            # Final Arbitrate / dispatch stage -----------------------------------------------------
             self.master_arbitrate_dispatch(masters, self.master, False)
