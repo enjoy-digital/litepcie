@@ -13,49 +13,71 @@ from litepcie.tlp.common import *
 
 # Constants/Layouts --------------------------------------------------------------------------------
 
-DMA_ADDRESS_OFFSET = 0
-DMA_LENGTH_OFFSET  = 32
-DMA_CONTROL_OFFSET = 56
-
 DMA_IRQ_DISABLE    = 0
 DMA_LAST_DISABLE   = 1
 
 def descriptor_layout(with_user_id=False):
-    layout = [
-        ("address", 32),
-        ("length",  24),
-        ("control", 8)
-    ]
+    layout = [("address", 32), ("length",  24), ("control", 8)]
     if with_user_id:
         layout += [("user_id", 8)]
     return EndpointDescription(layout)
 
 
-# LitePCIeDMARequestTable --------------------------------------------------------------------------
+# LitePCIeDMAScatterGather --------------------------------------------------------------------------
 
-class LitePCIeDMARequestTable(Module, AutoCSR):
+class LitePCIeDMAScatterGather(Module, AutoCSR):
+    """LitePCIe DMA Scatter-Gather
+
+    Software programmable table that stores a list of DMA descriptors to be executed.
+
+    A DMA descriptor is composed of:
+    - a 32-bit address: the base address where the data stream should be written/read.
+    - a 24-bit length : the length of the data stream (bytes).
+    - 8 control bits  : control to allow dynamic specific behavior (for example: disable MSI IRQ).
+
+    The table is implemented as a FIFO initially filled by software. Once enabled, the DMA gets the
+    descriptors from this table and executes them.
+
+    This module has two modes:
+    - PROG mode: Used to program the table by software and for cases where automatic refill of the
+    table is not needed: A descriptor is only executed once and when all the descriptors have been
+    executed (ie the table is empty), the DMA just stops until the next software refill.
+    - LOOP mode: Used once the table has been filled by software in PROG mode and allow continuous
+    Scatter-Gather DMA: Each descriptor sent to the DMA is refilled to the table.
+
+    In LOOP mode, a loop status is maintained by the hardware for the software synchronization of the
+    DMA buffers. (Even if a MSI IRQ is generated after a descriptor has been executed, since IRQ can
+    potentially be lost, it's safer for the software to just use the hardware loop status than to
+    maintain a software loop status based MSI IRQ reception).
+    """
     def __init__(self, depth):
         self.source = source = stream.Endpoint(descriptor_layout())
 
-        self.value       = CSRStorage(64)
-        self.we          = CSR()
-        self.loop_prog_n = CSRStorage()
+        self.value = CSRStorage(64, fields=[
+            CSRField("address", size=32),
+            CSRField("length",  size=24),
+            CSRField("control", size=8)
+            ], description="64-bit DMA descriptor to be writter to the table")
+        self.we = CSRStorage(description="A write to this register writes descriptor to table")
+        self.loop_prog_n = CSRStorage(description="PROG(0) / LOOP(1) mode")
         self.loop_status = CSRStatus(fields=[
             CSRField("index", size=16, offset= 0),
             CSRField("count", size=16, offset=16),
-        ])
-        self.level       = CSRStatus(log2_int(depth))
-        self.flush       = CSR()
+            ], description="Loop monitoring for software synchronization")
+        self.level = CSRStatus(log2_int(depth), description="Table FIFO level")
+        self.flush = CSRStorage(description="A write to this register flushes the table")
 
         # # #
 
         # CSRs -------------------------------------------------------------------------------------
-        value       = self.value.storage
-        we          = self.we.r & self.we.re
+        address     = self.value.fields.address
+        length      = self.value.fields.length
+        control     = self.value.fields.control
+        we          = self.we.storage & self.we.re
         loop_prog_n = self.loop_prog_n.storage
         loop_status = self.loop_status
         level       = self.level.status
-        flush       = self.flush.r & self.flush.re
+        flush       = self.flush.storage & self.flush.re
 
         # Table FIFO -------------------------------------------------------------------------------
         fifo = SyncFIFO([("address", 32), ("length",  24), ("control", 8)], depth)
@@ -68,18 +90,18 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
 
         # Write logic ------------------------------------------------------------------------------
         self.sync += [
-            # In "loop" mode, each data output of the fifo is written back
+            # In LOOP mode, the FIFO is automatically refilled with the descriptors.
             If(loop_prog_n,
                 fifo.sink.address.eq(fifo.source.address),
                 fifo.sink.length.eq(fifo.source.length),
                 fifo.sink.control.eq(fifo.source.control),
                 fifo.sink.first.eq(fifo.source.first),
                 fifo.sink.valid.eq(fifo.source.ready)
-            # In "program" mode, fifo input is connected to registers
+            # In PROG mode, the FIFO is filled through the CSRs and not automatically refilled.
             ).Else(
-                fifo.sink.address.eq(value[DMA_ADDRESS_OFFSET:DMA_ADDRESS_OFFSET + 32]),
-                fifo.sink.length.eq( value[ DMA_LENGTH_OFFSET:DMA_LENGTH_OFFSET  + 24]),
-                fifo.sink.control.eq(value[DMA_CONTROL_OFFSET:DMA_CONTROL_OFFSET +  8]),
+                fifo.sink.address.eq(address),
+                fifo.sink.length.eq(length),
+                fifo.sink.control.eq(control),
                 fifo.sink.first.eq(~fifo.source.valid),
                 fifo.sink.valid.eq(we)
             )
@@ -96,7 +118,7 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
         ]
 
         # Loops monitoring -------------------------------------------------------------------------
-        # Used by the software for synchronization in "loop" mode
+        # Used for software synchronization in LOOP mode.
         loop_first = Signal(reset=1)
         loop_index = Signal(log2_int(depth))
         loop_count = Signal(16)
@@ -122,12 +144,24 @@ class LitePCIeDMARequestTable(Module, AutoCSR):
             )
         ]
 
-# LitePCIeDMARequestSplitter -----------------------------------------------------------------------
+# LitePCIeDMADescriptorSplitter --------------------------------------------------------------------
 
-class LitePCIeDMARequestSplitter(Module, AutoCSR):
+class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
+    """LitePCIe DMA Descriptor Splitter
+
+    Splits descriptors from LitePCIeDMAScatterGather in shorter descriptors of:
+    - Maximum Payload Size for Writes.
+    - Maximum Request Size for Reads.
+
+    Descriptors from LitePCIeDMAScatterGather have a maximum length of 16mB (24-bits). It is not
+    possible to do such long Writes/Reads on the PCIe bus. At the PCIe enumeration, Maximum Payload
+    and Request Sizes are negociated between the Host and the Device. Writes are limited to Maximum
+    Payload Size, Reads are limited to Maximum Rquest Size. Each descriptor is then splitted in
+    several shorter descriptors.
+    """
     def __init__(self, max_size):
         self.sink   =   sink = stream.Endpoint(descriptor_layout())
-        self.source = source = stream.Endpoint(descriptor_layout(True))
+        self.source = source = stream.Endpoint(descriptor_layout(with_user_id=True))
         self.end    = Signal()
 
         # # #
@@ -179,6 +213,19 @@ class LitePCIeDMARequestSplitter(Module, AutoCSR):
 # LitePCIeDMAReader --------------------------------------------------------------------------------
 
 class LitePCIeDMAReader(Module, AutoCSR):
+    """LitePCIe DMA Reader
+
+    Generates a data stream from Host's memory.
+
+    This module allows Scatter-Gather DMAs from Host's memory to data stream in the FPGA. The DMA
+    descriptors, stored in a software programmable table, are splitted and executed as Read Requests
+    on the PCIe bus.
+
+    A Read Request is only sent to the Host when enough space is available in the Data FIFO to store
+    the requested datas.
+
+    A MSI IRQ can be generated when a descriptor has been executed.
+    """
     def __init__(self, endpoint, port, table_depth=256):
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq    = Signal()
@@ -194,9 +241,9 @@ class LitePCIeDMAReader(Module, AutoCSR):
         fifo_depth            = 4*max_pending_words
 
         # Table / Splitter -----------------------------------------------------------------
-        # Requests from Table are splitted in requests of max_request_size. (negociated at link-up)
-        table    = LitePCIeDMARequestTable(table_depth)
-        splitter = LitePCIeDMARequestSplitter(max_size=endpoint.phy.max_request_size)
+        # Descriptors from Table are splitted in descriptors of max_request_size. (negociated at link-up)
+        table    = LitePCIeDMAScatterGather(table_depth)
+        splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_request_size)
         splitter = ResetInserter()(splitter)
         splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
         self.submodules.table    = table
@@ -265,6 +312,19 @@ class LitePCIeDMAReader(Module, AutoCSR):
 # LitePCIeDMAWriter --------------------------------------------------------------------------------
 
 class LitePCIeDMAWriter(Module, AutoCSR):
+    """LitePCIe DMA Writer
+
+    Stores a data stream to Host's memory.
+
+    This module allows Scatter-Gather DMAs from a data stream in the FPGA to Host's memory. The DMA
+    descriptors, stored in a software programmable table, are splitted and executed as Write Requests
+    on the PCIe bus.
+
+    A Write Request is only sent to the Host when enough datas are available for the current splitted
+    descriptor.
+
+    A MSI IRQ can be generated when a descriptor has been executed.
+    """
     def __init__(self, endpoint, port, table_depth=256):
         self.sink   = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq    = Signal()
@@ -281,9 +341,9 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         fifo_depth            = 4*max_words_per_request
 
         # Table/Splitter ---------------------------------------------------------------------------
-        # Requests from Table are splitted in requests of max_payload_size. (negociated at link-up)
-        table    = LitePCIeDMARequestTable(table_depth)
-        splitter = LitePCIeDMARequestSplitter(max_size=endpoint.phy.max_payload_size)
+        # Descriptors from table are splitted in descriptors of max_payload_size. (negociated at link-up)
+        table    = LitePCIeDMAScatterGather(table_depth)
+        splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_payload_size)
         splitter = ResetInserter()(splitter)
         splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
         self.submodules.table    = table
@@ -353,6 +413,15 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 # LitePCIeDMALoopback ------------------------------------------------------------------------------
 
 class LitePCIeDMALoopback(Module, AutoCSR):
+    """LitePCIe DMA Loopback
+
+    Optional DMA Reader to DMA Writer loopback.
+
+    For software development or system bring-up/check, being able to do a DMA loopback in the FPGA
+    is very useful. This module allows doing a DMA Reader to DMA Writer loopback that can be enabled
+    by a CSR. When enabled, user data stream from the DMA Reader is no longer generated, the same
+    goes for user data stream to the DMA Writer that is no longer consumed.
+    """
     def __init__(self, data_width):
         self.enable      = CSRStorage()
 
@@ -376,6 +445,14 @@ class LitePCIeDMALoopback(Module, AutoCSR):
 # LitePCIeDMASynchronizer --------------------------------------------------------------------------
 
 class LitePCIeDMASynchronizer(Module, AutoCSR):
+    """LitePCIe DMA Synchronizer
+
+    Optional DMA synchronization.
+
+    For some applications (Software Defined Radio, Video, ...), DMA start needs to be precisely
+    synchronized to an internal signal of the FPGA (PPS for example for an SDR applications). This
+    module allows releasing precisely the DMA Writer/Reader data streams.
+    """
     def __init__(self, data_width):
         self.bypass      = CSRStorage()
         self.enable      = CSRStorage()
@@ -419,6 +496,16 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
 # LitePCIeDMABuffering -----------------------------------------------------------------------------
 
 class LitePCIeDMABuffering(Module, AutoCSR):
+    """LitePCIe DMA Synchronizer
+
+    Optional DMA buffering.
+
+    For some applications (Software Defined Radio, Video, ...), the user module consuming the datas
+    from the DMA Reader works at fixed rate and does not handle backpressure. (The same also applies
+    to the user module generating the datas to the DMA Writer). Since the PCIe bus is shared, gaps
+    appears in the streams and our Writes/Reads can't be absorbed/produced at a fixed rate. A minimum
+    of buffering is needed to make sure the gaps are smoothed and not propagated to user modules.
+    """
     def __init__(self, data_width, depth):
         self.reader_fifo_level = CSRStatus(bits_for(depth))
         self.writer_fifo_level = CSRStatus(bits_for(depth))
@@ -442,6 +529,14 @@ class LitePCIeDMABuffering(Module, AutoCSR):
 # LitePCIeDMA --------------------------------------------------------------------------------------
 
 class LitePCIeDMA(Module, AutoCSR):
+    """LitePCIe DMA Synchronizer
+
+    Scatter-Gather bi-directional DMA:
+    - Generates a data stream from Host's memory.
+    - Stores a data stream to Host's memory.
+
+    Optional buffering, loopback, synchronization and monitoring.
+    """
     def __init__(self, phy, endpoint,
         with_buffering    = False, buffering_depth = 256*8,
         with_loopback     = False,
