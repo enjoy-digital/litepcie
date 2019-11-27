@@ -529,7 +529,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
 # LitePCIeDMA --------------------------------------------------------------------------------------
 
 class LitePCIeDMA(Module, AutoCSR):
-    """LitePCIe DMA Synchronizer
+    """LitePCIe DMA
 
     Scatter-Gather bi-directional DMA:
     - Generates a data stream from Host's memory.
