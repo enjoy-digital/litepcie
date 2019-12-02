@@ -23,16 +23,16 @@ root_id     = 0x100
 endpoint_id = 0x400
 
 class TestWishbone(unittest.TestCase):
-    def wishbone_test(self, data_width):
-        wr_datas = [seed_to_data(i, True) for i in range(64)]
+    def wishbone_test(self, data_width, nwords=64):
+        wr_datas = [seed_to_data(i, True) for i in range(nwords)]
         rd_datas = []
 
-        def main_generator(dut, ndatas=64):
+        def main_generator(dut):
             # Write ndatas to the Wishbone SRAM
-            for i in range(ndatas):
+            for i in range(nwords):
                 yield from dut.host.chipset.wr32(i, [wr_datas[i]])
             # Read ndatas from the Wishbone SRAM
-            for i in range(ndatas):
+            for i in range(nwords):
                 yield from dut.host.chipset.rd32(i)
                 rd_datas.append(dut.host.chipset.rd32_data[0])
 
@@ -41,7 +41,7 @@ class TestWishbone(unittest.TestCase):
                 self.submodules.host            = Host(data_width, root_id, endpoint_id)
                 self.submodules.endpoint        = LitePCIeEndpoint(self.host.phy)
                 self.submodules.wishbone_bridge = LitePCIeWishboneBridge(self.endpoint, lambda a: 1)
-                self.submodules.sram            = wishbone.SRAM(128, bus=self.wishbone_bridge.wishbone)
+                self.submodules.sram            = wishbone.SRAM(nwords*4, bus=self.wishbone_bridge.wishbone)
 
         dut = DUT(data_width)
         generators = {
