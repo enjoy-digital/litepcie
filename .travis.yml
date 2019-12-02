@@ -6,5 +6,6 @@ install:
   # Get Migen / LiteX / Cores
   - wget https://raw.githubusercontent.com/enjoy-digital/litex/master/litex_setup.py
   - python3 litex_setup.py init install
+  - python3 -m pip install pyyaml
 
 script: python setup.py test
