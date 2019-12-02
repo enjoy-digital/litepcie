@@ -23,3 +23,14 @@ class TestExamples(unittest.TestCase):
 
     def test_dma_example(self):
         self.example_test("dma", "PCIeDMASoC")
+
+    def gen_test(self, name):
+        os.system("rm -rf examples/build")
+        os.system("cd examples && python3 ../litepcie/gen.py gen/{}.yml".format(name))
+        errors = not os.path.isfile("examples/build/gateware/litepcie_core.v")
+        os.system("rm -rf examples/build")
+        return errors
+
+    def test_gen_ac701(self):
+        errors = self.gen_test("ac701")
+        self.assertEqual(errors, 0)
