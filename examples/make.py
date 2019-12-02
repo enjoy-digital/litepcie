@@ -40,7 +40,7 @@ def _import(default, name):
 def _get_args():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
-LitePCIe - based on Migen.
+LitePCIe - based on Migen & LiteX.
 
 This program builds and/or loads LitePCIe components.
 One or several actions can be specified:
@@ -111,7 +111,7 @@ if __name__ == "__main__":
    /____/_/\__/\__/_/   \___/___/\__/
 
   A small footprint and configurable PCIe
-          core powered by Migen
+       core powered by Migen & LiteX
 ====== Building options: ======
 Platform:  {}
 Target:    {}
