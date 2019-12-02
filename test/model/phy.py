@@ -1,4 +1,4 @@
-# This file is Copyright (c) 2015-2018 Florent Kermarrec <florent@enjoy-digital.fr>
+# This file is Copyright (c) 2015-2019 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
 import math
@@ -6,19 +6,21 @@ import math
 from litepcie.common import *
 from litepcie.tlp.common import *
 
+# Helpers ------------------------------------------------------------------------------------------
 
 def print_phy(s):
     print("[PHY] {}".format(s))
 
+# PHY Packet model ---------------------------------------------------------------------------------
 
-# PHY Layer model
 class PHYPacket:
     def __init__(self, dat=[], be=[]):
-        self.dat = dat
-        self.be = be
+        self.dat   = dat
+        self.be    = be
         self.start = 1
-        self.done = 0
+        self.done  = 0
 
+# PHY Source model ---------------------------------------------------------------------------------
 
 class PHYSource(Module):
     def __init__(self, data_width):
@@ -27,7 +29,7 @@ class PHYSource(Module):
         # # #
 
         self.packets = []
-        self.packet = PHYPacket()
+        self.packet  = PHYPacket()
         self.packet.done = 1
 
     def send(self, packet):
@@ -61,6 +63,8 @@ class PHYSource(Module):
                     yield self.source.valid.eq(0)
             yield
 
+# PHY Sink model -----------------------------------------------------------------------------------
+
 class PHYSink(Module):
     def __init__(self, data_width):
         self.sink = stream.Endpoint(phy_layout(data_width))
@@ -68,7 +72,7 @@ class PHYSink(Module):
         # # #
 
         self.packet = PHYPacket()
-        self.first = True
+        self.first  = True
 
     def receive(self):
         self.packet.done = 0
@@ -94,6 +98,7 @@ class PHYSink(Module):
                 self.first = True
             yield
 
+# PHY Layer model ----------------------------------------------------------------------------------
 
 class PHY(Module):
     def __init__(self, data_width, id, bar0_size, debug):
@@ -108,43 +113,43 @@ class PHY(Module):
         self.max_payload_size = Signal(8, reset=128)
 
         self.submodules.phy_source = PHYSource(data_width)
-        self.submodules.phy_sink = PHYSink(data_width)
+        self.submodules.phy_sink   = PHYSink(data_width)
 
         self.source = self.phy_source.source
-        self.sink = self.phy_sink.sink
+        self.sink   = self.phy_sink.sink
 
     def dwords2packet(self, dwords):
-            ratio = self.data_width//32
+            ratio  = self.data_width//32
             length = math.ceil(len(dwords)/ratio)
-            dat = [0]*length
-            be = [0]*length
+            dat    = [0]*length
+            be     = [0]*length
             for n in range(length):
                 for i in reversed(range(ratio)):
                     dat[n] = dat[n] << 32
-                    be[n] = be[n] << 4
+                    be[n]  = be[n] << 4
                     try:
                         dat[n] |= dwords[2*n+i]
-                        be[n] |= 0xF
+                        be[n]  |= 0xF
                     except:
                         pass
             return dat, be
 
     def send(self, dwords):
         dat, be = self.dwords2packet(dwords)
-        packet = PHYPacket(dat, be)
+        packet  = PHYPacket(dat, be)
         self.phy_source.send(packet)
 
     def send_blocking(self, dwords):
         dat, be = self.dwords2packet(dwords)
-        packet = PHYPacket(dat, be)
+        packet  = PHYPacket(dat, be)
         yield from self.phy_source.send_blocking(packet)
 
     def packet2dwords(self, p_dat, p_be):
-            ratio = self.data_width//32
+            ratio  = self.data_width//32
             dwords = []
             for dat, be in zip(p_dat, p_be):
                 for i in range(ratio):
-                    dword_be = (be >> (4*i)) & 0xf
+                    dword_be  = (be >> (4*i)) & 0xf
                     dword_dat = (dat >> (32*i)) & 0xffffffff
                     if dword_be == 0xf:
                         dwords.append(dword_dat)
@@ -153,8 +158,7 @@ class PHY(Module):
     def receive(self):
         if self.phy_sink.packet.done:
             self.phy_sink.packet.done = 0
-            return self.packet2dwords(self.phy_sink.packet.dat,
-                                      self.phy_sink.packet.be)
+            return self.packet2dwords(self.phy_sink.packet.dat, self.phy_sink.packet.be)
         else:
             return None
 

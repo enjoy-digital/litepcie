@@ -1,11 +1,12 @@
-# This file is Copyright (c) 2015-2017 Florent Kermarrec <florent@enjoy-digital.fr>
+# This file is Copyright (c) 2015-2019 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
 from litepcie.common import *
 from litepcie.tlp.common import *
 
 
-# TLP Layer model
+# Helpers/Definitions ------------------------------------------------------------------------------
+
 def get_field_data(field, dwords):
     return (dwords[field.byte//4] >> field.offset) & (2**field.width-1)
 
@@ -16,12 +17,13 @@ tlp_headers_dict = {
     "CPL":  tlp_completion_header
 }
 
+# TLP Layer model ----------------------------------------------------------------------------------
 
 class TLP:
     def __init__(self, name, dwords=[0, 0, 0]):
-        self.name = name
+        self.name   = name
         self.header = dwords[:3]
-        self.data = dwords[3:]
+        self.data   = dwords[3:]
         self.dwords = self.header + self.data
         self.decode_dwords()
 
@@ -34,7 +36,7 @@ class TLP:
         for k, v in tlp_headers_dict[self.name].fields.items():
             field = tlp_headers_dict[self.name].fields[k]
             self.header[field.byte//4] |= (getattr(self, k) << field.offset)
-        self.data = data
+        self.data   = data
         self.dwords = self.header + self.data
         return self.dwords
 
@@ -49,31 +51,38 @@ class TLP:
                 r += "{:08x}\n".format(d)
         return r
 
+# RD32 ---------------------------------------------------------------------------------------------
 
 class RD32(TLP):
     def __init__(self, dwords=[0, 0, 0]):
         TLP.__init__(self, "RD32", dwords)
 
+# WR32 ---------------------------------------------------------------------------------------------
 
 class WR32(TLP):
     def __init__(self, dwords=[0, 0, 0]):
         TLP.__init__(self, "WR32", dwords)
 
+# CPLD ---------------------------------------------------------------------------------------------
 
 class CPLD(TLP):
     def __init__(self, dwords=[0, 0, 0]):
         TLP.__init__(self, "CPLD", dwords)
 
+# CPL ----------------------------------------------------------------------------------------------
 
 class CPL(TLP):
     def __init__(self, dwords=[0, 0, 0]):
         TLP.__init__(self, "CPL", dwords)
 
+# Unknown ------------------------------------------------------------------------------------------
 
 class Unknown:
     def __repr__(self):
         r = "UNKNOWN\n"
         return r
+
+# --------------------------------------------------------------------------------------------------
 
 fmt_type_dict = {
     fmt_type_dict["mem_rd32"]: (RD32, 3),

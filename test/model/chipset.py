@@ -1,4 +1,4 @@
-# This file is Copyright (c) 2015-2017 Florent Kermarrec <florent@enjoy-digital.fr>
+# This file is Copyright (c) 2015-2019 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
 import random
@@ -8,6 +8,7 @@ from litepcie.tlp.common import *
 
 from test.model.tlp import *
 
+# Helpers ------------------------------------------------------------------------------------------
 
 def print_chipset(s):
     print("[CHIPSET] {}".format(s))
@@ -27,12 +28,13 @@ def find_first_cmp_msg(queue, msg_tag):
             return i
 
 
-# Chipset model
+# Chipset model ------------------------------------------------------------------------------------
+
 class Chipset(Module):
     def __init__(self, phy, root_id, debug=False, with_reordering=False):
-        self.phy = phy
+        self.phy     = phy
         self.root_id = root_id
-        self.debug = debug
+        self.debug   = debug
         self.with_reordering = with_reordering
 
         # # #
@@ -52,12 +54,12 @@ class Chipset(Module):
 
     def wr32(self, adr, data):
         wr32 = WR32()
-        wr32.fmt             = 0b10
-        wr32.type            = 0b00000
-        wr32.length          = len(data)
-        wr32.first_be        = 0xf
-        wr32.address         = adr
-        wr32.requester_id    = self.root_id
+        wr32.fmt          = 0b10
+        wr32.type         = 0b00000
+        wr32.length       = len(data)
+        wr32.first_be     = 0xf
+        wr32.address      = adr
+        wr32.requester_id = self.root_id
         dwords = wr32.encode_dwords(data)
         if self.debug:
             print_chipset(">>>>>>>>")
@@ -66,12 +68,12 @@ class Chipset(Module):
 
     def rd32(self, adr, length=1):
         rd32 = RD32()
-        rd32.fmt             = 0b00
-        rd32.type             = 0b00000
-        rd32.length         = length
-        rd32.first_be        = 0xf
-        rd32.address         = adr
-        rd32.requester_id    = self.root_id
+        rd32.fmt          = 0b00
+        rd32.type         = 0b00000
+        rd32.length       = length
+        rd32.first_be     = 0xf
+        rd32.address      = adr
+        rd32.requester_id = self.root_id
         dwords = rd32.encode_dwords()
         if self.debug:
             print_chipset(">>>>>>>>")
@@ -87,8 +89,7 @@ class Chipset(Module):
             print_chipset("<<<<<<<<")
             print_chipset(cpld)
 
-    def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0,
-            with_split=False):
+    def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0, with_split=False):
         if with_split:
             d = random.choice([64, 128, 256])
             n = byte_count//d
@@ -106,12 +107,12 @@ class Chipset(Module):
             else:
                 fmt = 0b10
                 cpl = CPLD()
-            cpl.fmt = fmt
-            cpl.type = 0b01010
-            cpl.length = len(data)
+            cpl.fmt           = fmt
+            cpl.type          = 0b01010
+            cpl.length        = len(data)
             cpl.lower_address = lower_address
-            cpl.requester_id = req_id
-            cpl.completer_id = self.root_id
+            cpl.requester_id  = req_id
+            cpl.completer_id  = self.root_id
             if byte_count is None:
                 cpl.byte_count = len(data)*4
             else:
@@ -127,8 +128,8 @@ class Chipset(Module):
         if len(self.cmp_queue):
             if self.with_reordering:
                 tags = find_cmp_tags(self.cmp_queue)
-                tag = random.choice(tags)
-                n = find_first_cmp_msg(self.cmp_queue, tag)
+                tag  = random.choice(tags)
+                n    = find_first_cmp_msg(self.cmp_queue, tag)
                 tag, dwords = self.cmp_queue.pop(n)
             else:
                 tag, dwords = self.cmp_queue.pop(0)
