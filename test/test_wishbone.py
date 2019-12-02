@@ -1,6 +1,12 @@
 # This file is Copyright (c) 2015-2018 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
+# In this high level test, LitePCIeEndpoint is connected to LitePCIeWishboneBridge frontend, itself
+# connected to a Wishbone SRAM and our Host software model is used to generate Write/Read TLPs.
+#
+# The test verifies that the Host model is able to access the wishbone SRAM correctly through the
+# LitePCIeEndpoint.
+
 import unittest
 
 from migen import *
@@ -12,12 +18,6 @@ from litepcie.core import LitePCIeEndpoint
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
 from test.model.host import *
-
-# In this high level test, LitePCIeEndpoint is connected to LitePCIeWishboneBridge frontend, itself
-# connected to a Wishbone SRAM and our Host software model is used to generate Write/Read TLPs.
-#
-# The test verifies that the Host model is able to access the wishbone SRAM correctly through the
-# LitePCIeEndpoint.
 
 root_id     = 0x100
 endpoint_id = 0x400
