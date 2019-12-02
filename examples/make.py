@@ -62,8 +62,8 @@ all              clean, build-csr-csv, build-bitstream, load-bitstream.
     parser.add_argument("-Ot", "--target-option", default=[], nargs=2, action="append", help="set target-specific option")
     parser.add_argument("-Op", "--platform-option", default=[], nargs=2, action="append", help="set platform-specific option")
     parser.add_argument("-Ob", "--build-option", default=[], nargs=2, action="append", help="set build option")
-    parser.add_argument("--csr-header", default="../litepcie/software/kernel/csr.h", help="C header file to save the CSR map into")
-    parser.add_argument("--soc-header", default="../litepcie/software/kernel/soc.h", help="C header file to save the SoC constants into")
+    parser.add_argument("--csr-header", default="build/csr.h", help="C header file to save the CSR map into")
+    parser.add_argument("--soc-header", default="build/soc.h", help="C header file to save the SoC constants into")
     parser.add_argument("action", nargs="+", help="specify an action")
 
     return parser.parse_args()
@@ -140,6 +140,13 @@ System Clk: {} MHz
     if actions["clean"]:
         subprocess.call(["rm", "-rf", "build/*"])
 
+    if actions["build-bitstream"]:
+        build_kwargs = dict((k, autotype(v)) for k, v in args.build_option)
+        vns = platform.build(soc, build_name=build_name, **build_kwargs)
+        if hasattr(soc, "do_exit") and vns is not None:
+            if hasattr(soc.do_exit, '__call__'):
+                soc.do_exit(vns)
+
     if actions["build-csr-header"]:
         csr_header = export.get_csr_header(soc.csr_regions, soc.constants, with_access_functions=False)
         write_to_file(args.csr_header, csr_header)
@@ -147,13 +154,6 @@ System Clk: {} MHz
     if actions["build-soc-header"]:
         soc_header = export.get_soc_header(soc.constants, with_access_functions=False)
         write_to_file(args.soc_header, soc_header)
-
-    if actions["build-bitstream"]:
-        build_kwargs = dict((k, autotype(v)) for k, v in args.build_option)
-        vns = platform.build(soc, build_name=build_name, **build_kwargs)
-        if hasattr(soc, "do_exit") and vns is not None:
-            if hasattr(soc.do_exit, '__call__'):
-                soc.do_exit(vns)
 
     if actions["load-bitstream"]:
         prog = platform.create_programmer()
