@@ -7,6 +7,11 @@
     "phy_lanes":      4,           # Number of lanes
     "phy_data_width": 128,         # Bus data_width
 
+    # MMAP ---------------------------------------------------------------------
+    "mmap":      True,
+    "mmap_base": 0x10000000,
+    "mmap_size": 0x00100000,
+
     # DMA channels -------------------------------------------------------------
     "dma_channels":     4,         # Number of DMA channels
     "dma_buffering":    8192,      # Buffering for each channel (in bytes)

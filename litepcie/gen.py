@@ -25,6 +25,8 @@ import argparse
 from migen import *
 
 from litex.soc.interconnect.csr import *
+from litex.soc.interconnect import wishbone
+from litex.soc.interconnect.axi import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 from litex.soc.integration.export import get_csr_header, get_soc_header
@@ -54,6 +56,37 @@ def get_pcie_ios(phy_lanes=4):
             Subsignal("rx_n",  Pins(phy_lanes)),
             Subsignal("tx_p",  Pins(phy_lanes)),
             Subsignal("tx_n",  Pins(phy_lanes)),
+        ),
+    ]
+
+def get_axi_lite_mmap_ios(aw, dw):
+    return [
+        ("mmap_axi_lite", 0,
+            # aw
+            Subsignal("aw_valid", Pins(1)),
+            Subsignal("aw_ready", Pins(1)),
+            Subsignal("aw_addr",  Pins(aw)),
+
+            # w
+            Subsignal("w_valid", Pins(1)),
+            Subsignal("w_ready", Pins(1)),
+            Subsignal("w_strb",  Pins(dw//8)),
+            Subsignal("w_data",  Pins(dw)),
+
+            # b
+            Subsignal("b_valid", Pins(1)),
+            Subsignal("b_ready", Pins(1)),
+            Subsignal("b_resp",  Pins(2)),
+
+            # ar
+            Subsignal("ar_valid", Pins(1)),
+            Subsignal("ar_ready", Pins(1)),
+            Subsignal("ar_addr",  Pins(aw)),
+
+            # r
+            Subsignal("r_valid", Pins(1)),
+            Subsignal("r_ready", Pins(1)),
+            Subsignal("r_resp",  Pins(2)),
         ),
     ]
 
@@ -120,6 +153,44 @@ class LitePCIeCore(SoCMini):
             qword_aligned = core_config["qword_aligned"])
         self.submodules += pcie_wishbone
         self.add_wb_master(pcie_wishbone.wishbone)
+
+        # PCIe MMAP --------------------------------------------------------------------------------
+        if core_config["mmap"]:
+            platform.add_extension(get_axi_lite_mmap_ios(aw=32, dw=32))
+            wb = wishbone.Interface(data_width=32)
+            self.add_wb_slave(core_config["mmap_base"], wb, core_config["mmap_size"])
+            self.add_memory_region("mmap", core_config["mmap_base"], core_config["mmap_size"], type="io")
+            axi = AXILiteInterface(data_width=32, address_width=32)
+            wb2axi = Wishbone2AXILite(wb, axi)
+            self.submodules += wb2axi
+            mmap_ios = platform.request("mmap_axi_lite")
+            self.comb += [
+                # aw
+                mmap_ios.aw_valid.eq(axi.aw.valid),
+                axi.aw.ready.eq(mmap_ios.aw_ready),
+                mmap_ios.aw_addr.eq(axi.aw.addr),
+
+                # w
+                mmap_ios.w_valid.eq(axi.w.valid),
+                axi.w.ready.eq(mmap_ios.w_ready),
+                mmap_ios.w_strb.eq(axi.w.strb),
+                mmap_ios.w_data.eq(axi.w.data),
+
+                # b
+                axi.b.valid.eq(mmap_ios.b_valid),
+                mmap_ios.b_ready.eq(axi.b.ready),
+                axi.b.resp.eq(mmap_ios.b_resp),
+
+                # ar
+                mmap_ios.ar_valid.eq(axi.ar.valid),
+                axi.ar.ready.eq(mmap_ios.ar_ready),
+                mmap_ios.ar_addr.eq(axi.ar.addr),
+
+                # r
+                axi.r.valid.eq(mmap_ios.r_valid),
+                mmap_ios.r_ready.eq(axi.r.ready),
+                axi.r.resp.eq(mmap_ios.r_resp),
+            ]
 
         # PCIe DMA ---------------------------------------------------------------------------------
         pcie_dmas = []
