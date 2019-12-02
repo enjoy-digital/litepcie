@@ -57,19 +57,19 @@ def get_pcie_ios(phy_lanes=4):
         ),
     ]
 
-def get_dma_ios(_id, dw):
+def get_axi_dma_ios(_id, dw):
     return [
-        ("dma_writer", _id,
-            Subsignal("valid", Pins(1)),
-            Subsignal("ready", Pins(1)),
-            Subsignal("last",  Pins(1)),
-            Subsignal("data",  Pins(dw)),
+        ("dma{}_writer_axi".format(_id), 0,
+            Subsignal("tvalid", Pins(1)),
+            Subsignal("tready", Pins(1)),
+            Subsignal("tlast",  Pins(1)),
+            Subsignal("tdata",  Pins(dw)),
         ),
-        ("dma_reader", _id,
-            Subsignal("valid", Pins(1)),
-            Subsignal("ready", Pins(1)),
-            Subsignal("last",  Pins(1)),
-            Subsignal("data",  Pins(dw)),
+        ("dma{}_reader_axi".format(_id), 0,
+            Subsignal("tvalid", Pins(1)),
+            Subsignal("tready", Pins(1)),
+            Subsignal("tlast",  Pins(1)),
+            Subsignal("tdata",  Pins(dw)),
         ),
     ]
 
@@ -96,7 +96,7 @@ class LitePCIeCore(SoCMini):
         platform.add_extension(get_common_ios())
         platform.add_extension(get_pcie_ios(core_config["phy_lanes"]))
         for i in range(core_config["dma_channels"]):
-            platform.add_extension(get_dma_ios(i, 64))
+            platform.add_extension(get_axi_dma_ios(i, 64))
         sys_clk_freq = int(125e6)
 
         # SoCMini ----------------------------------------------------------------------------------
@@ -132,22 +132,22 @@ class LitePCIeCore(SoCMini):
                 with_monitor      = core_config["dma_monitor"])
             setattr(self.submodules, "pcie_dma" + str(i), pcie_dma)
             self.add_csr("pcie_dma{}".format(i))
-            dma_writer_ios = platform.request("dma_writer", i)
-            dma_reader_ios = platform.request("dma_reader", i)
+            dma_writer_ios = platform.request("dma{}_writer_axi".format(i))
+            dma_reader_ios = platform.request("dma{}_reader_axi".format(i))
             self.add_interrupt("pcie_dma{}_writer".format(i))
             self.add_interrupt("pcie_dma{}_reader".format(i))
             self.comb += [
-                # writer
-                dma_writer_ios.valid.eq(pcie_dma.source.valid),
-                pcie_dma.source.ready.eq(dma_writer_ios.ready),
-                dma_writer_ios.last.eq(pcie_dma.source.last),
-                dma_writer_ios.data.eq(pcie_dma.source.data),
+                # Writer IOs
+                pcie_dma.sink.valid.eq(dma_writer_ios.tvalid),
+                dma_writer_ios.tready.eq(pcie_dma.sink.ready),
+                pcie_dma.sink.last.eq(dma_writer_ios.tlast),
+                pcie_dma.sink.data.eq(dma_writer_ios.tdata),
 
-                # reader
-                pcie_dma.sink.valid.eq(dma_reader_ios.valid),
-                dma_reader_ios.ready.eq(pcie_dma.sink.ready),
-                pcie_dma.sink.last.eq(dma_reader_ios.last),
-                pcie_dma.sink.data.eq(dma_reader_ios.data)
+                # Reader IOs
+                dma_reader_ios.tvalid.eq(pcie_dma.source.valid),
+                pcie_dma.source.ready.eq(dma_reader_ios.tready),
+                dma_reader_ios.tlast.eq(pcie_dma.source.last),
+                dma_reader_ios.tdata.eq(pcie_dma.source.data),
             ]
 
         # PCIe MSI ---------------------------------------------------------------------------------
