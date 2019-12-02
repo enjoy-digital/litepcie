@@ -19,6 +19,9 @@ easily a custom configuration of the core.
 Current version of the generator is limited to Xilinx 7-Series FPGA / Altera Cyclone V.
 """
 
+import yaml
+import argparse
+
 from migen import *
 
 from litex.soc.interconnect.csr import *
@@ -168,20 +171,19 @@ class LitePCIeCore(SoCMini):
 # Build --------------------------------------------------------------------------------------------
 
 def main():
-    # FIXME: add YAML import and convertion to Python/LiteX objects
-    core_config                        = {}
+    parser = argparse.ArgumentParser(description="LitePCIe standalone core generator")
+    parser.add_argument("config", help="YAML config file")
+    args = parser.parse_args()
+    core_config = yaml.load(open(args.config).read(), Loader=yaml.Loader)
 
-    core_config["phy"]                 = "S7PCIEPHY"
-    core_config["phy_lanes"]           = 4
-    core_config["phy_data_width"]      = 128
+    # Convert YAML elements to Python/LiteX --------------------------------------------------------
+    for k, v in core_config.items():
+        replaces = {"False": False, "True": True, "None": None}
+        for r in replaces.keys():
+            if v == r:
+                core_config[k] = replaces[r]
 
-    core_config["dma_channels"]        = 4
-    core_config["dma_buffering"]       = 8192
-    core_config["dma_loopback"]        = True
-    core_config["dma_synchronizer"]    = True
-    core_config["dma_monitor"]         = True
-
-    # Generate core
+    # Generate core --------------------------------------------------------------------------------
     if core_config["phy"]  == "C5PCIEPHY":
         from litex.build.altera import AlteraPlatform
         from litepcie.phy.c5pciephy import C5PCIEPHY
