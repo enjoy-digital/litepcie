@@ -65,7 +65,7 @@ class CPLD(TLP):
         TLP.__init__(self, "CPLD", dwords)
 
 
-class CPL():
+class CPL(TLP):
     def __init__(self, dwords=[0, 0, 0]):
         TLP.__init__(self, "CPL", dwords)
 

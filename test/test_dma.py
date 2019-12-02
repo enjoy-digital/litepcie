@@ -6,16 +6,13 @@ import random
 
 from migen import *
 
-from litex.gen.sim import *
-
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream_sim import seed_to_data
 
 from litepcie.common import *
 from litepcie.core import LitePCIeEndpoint
 from litepcie.core.msi import LitePCIeMSI
-from litepcie.frontend.dma import (LitePCIeDMAWriter,
-                                   LitePCIeDMAReader)
+from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader
 
 from test.model.host import *
 
@@ -73,11 +70,11 @@ class MSIHandler(Module):
     def generator(self, dut):
         last_valid = 0
         while True:
-            yield from dut.msi.clear.write(0)
             yield self.sink.ready.eq(1)
             if (yield self.sink.valid):
                 # get vector
                 irq_vector = (yield dut.msi.vector.status)
+                irq_clear  = 0
 
                 # handle irq
                 if irq_vector & DMA_READER_IRQ:
@@ -85,16 +82,16 @@ class MSIHandler(Module):
                     if self.debug:
                         print("[MSI] dma_reader_irq (n: {:d})".format(self.dma_reader_irq_count))
                     # clear msi
-                    yield from dut.msi.clear.write((yield from dut.msi.clear.read()) |
-                                                   DMA_READER_IRQ)
+                    irq_clear |= DMA_READER_IRQ
 
                 if irq_vector & DMA_WRITER_IRQ:
                     self.dma_writer_irq_count += 1
                     if self.debug:
                         print("[MSI] dma_writer_irq (n: {:d})".format(self.dma_writer_irq_count))
                     # clear msi
-                    yield from dut.msi.clear.write((yield from dut.msi.clear.read()) |
-                                                   DMA_WRITER_IRQ)
+                    irq_clear |= DMA_WRITER_IRQ
+
+                yield from dut.msi.clear.write((yield from dut.msi.clear.read()) | irq_clear)
             yield
 
 
@@ -177,7 +174,3 @@ class TestDMA(unittest.TestCase):
 
     def test_dma_64b(self):
         self.dma_test(64)
-
-    def test_dma_128b(self):
-        self.dma_test(128)
-
