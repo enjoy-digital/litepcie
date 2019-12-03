@@ -19,6 +19,7 @@ setup(
     url="http://enjoy-digital.fr",
     download_url="https://github.com/enjoy-digital/litepcie",
     test_suite="test",
+    install_requires=['pyyaml'],
     license="BSD",
     platforms=["Any"],
     keywords="HDL ASIC FPGA hardware design",
