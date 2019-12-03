@@ -137,7 +137,7 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
                flush the CPU caches on architectures which require it. */
             if (remap_pfn_range(vma, vma->vm_start + i * DMA_BUFFER_SIZE, pfn,
                                 DMA_BUFFER_SIZE, vma->vm_page_prot)) {
-                printk(KERN_ERR LITEPCIE_NAME " remap_pfn_range failed\n");
+                pr_err("remap_pfn_range failed\n");
                 return -EAGAIN;
             }
         }
@@ -151,7 +151,7 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
         if (io_remap_pfn_range(vma, vma->vm_start, pfn,
                                vma->vm_end - vma->vm_start,
                                vma->vm_page_prot)) {
-            printk(KERN_ERR LITEPCIE_NAME " io_remap_pfn_range failed\n");
+            pr_err("io_remap_pfn_range failed\n");
             return -EAGAIN;
         }
     } else {
@@ -419,7 +419,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     uint8_t rev_id;
     int ret, minor, i;
 
-    printk(KERN_INFO LITEPCIE_NAME " Probing device\n");
+    dev_info(&dev->dev, "Probing device\n");
 
     /* find available minor */
     for(minor = 0; minor < LITEPCIE_MINOR_COUNT; minor++) {
@@ -427,14 +427,13 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
             break;
     }
     if (minor == LITEPCIE_MINOR_COUNT) {
-        printk(KERN_ERR LITEPCIE_NAME " Cannot allocate a minor\n");
+        dev_err(&dev->dev, "Cannot allocate a minor\n");
         ret = -ENODEV;
         goto fail1;
     }
 
     s = kzalloc(sizeof(LitePCIeState), GFP_KERNEL);
     if (!s) {
-        printk(KERN_ERR LITEPCIE_NAME " Cannot allocate memory\n");
         ret = -ENOMEM;
         goto fail1;
     }
@@ -444,50 +443,50 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
     ret = pci_enable_device(dev);
     if (ret != 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Cannot enable device\n");
+        dev_err(&dev->dev, "Cannot enable device\n");
         goto fail1;
     }
 
     /* check device version */
     pci_read_config_byte(dev, PCI_REVISION_ID, &rev_id);
     if (rev_id != 1) {
-        printk(KERN_ERR LITEPCIE_NAME " Unsupported device version %d\n", rev_id);
+        dev_err(&dev->dev, "Unsupported device version %d\n", rev_id);
         goto fail2;
     }
 
     if (pci_request_regions(dev, LITEPCIE_NAME) < 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Could not request regions\n");
+        dev_err(&dev->dev, "Could not request regions\n");
         goto fail2;
     }
 
     /* check BAR0 config */
     if (!(pci_resource_flags(dev, 0) & IORESOURCE_MEM)) {
-        printk(KERN_ERR LITEPCIE_NAME " Invalid BAR0 config\n");
+        dev_err(&dev->dev, "Invalid BAR0 config\n");
         goto fail3;
     }
 
     s->bar0_phys_addr = pci_resource_start(dev, 0);
     s->bar0_addr = pci_ioremap_bar(dev, 0);
     if (!s->bar0_addr) {
-        printk(KERN_ERR LITEPCIE_NAME " Could not map BAR0\n");
+        dev_err(&dev->dev, "Could not map BAR0\n");
         goto fail3;
     }
 
     pci_set_master(dev);
     ret = pci_set_dma_mask(dev, DMA_BIT_MASK(32));
     if (ret) {
-        printk(KERN_ERR LITEPCIE_NAME " Failed to set DMA mask\n");
+        dev_err(&dev->dev, "Failed to set DMA mask\n");
         goto fail4;
     };
 
     ret = pci_enable_msi(dev);
     if (ret) {
-        printk(KERN_ERR LITEPCIE_NAME " Failed to enable MSI\n");
+        dev_err(&dev->dev, "Failed to enable MSI\n");
         goto fail4;
     }
 
     if (request_irq(dev->irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, s) < 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Failed to allocate irq %d\n", dev->irq);
+        dev_err(&dev->dev, "Failed to allocate irq %d\n", dev->irq);
         goto fail5;
     }
 
@@ -495,7 +494,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     for(i = 0; i < PCIE_DMA_BUFFER_COUNT; i++) {
         s->dma_tx_bufs[i] = kzalloc(DMA_BUFFER_SIZE, GFP_KERNEL | GFP_DMA32);
         if (!s->dma_tx_bufs[i]) {
-            printk(KERN_ERR LITEPCIE_NAME " Failed to allocate dma_tx_buf\n");
+            dev_err(&dev->dev, "Failed to allocate dma_tx_buf\n");
             goto fail6;
         }
         s->dma_tx_bufs_addr[i] = pci_map_single(dev, s->dma_tx_bufs[i],
@@ -510,7 +509,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     for(i = 0; i < PCIE_DMA_BUFFER_COUNT; i++) {
         s->dma_rx_bufs[i] = kzalloc(DMA_BUFFER_SIZE, GFP_KERNEL | GFP_DMA32);
         if (!s->dma_rx_bufs[i]) {
-            printk(KERN_ERR LITEPCIE_NAME " Failed to allocate dma_rx_buf\n");
+            dev_err(&dev->dev, "Failed to allocate dma_rx_buf\n");
             goto fail6;
         }
 
@@ -526,7 +525,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     init_waitqueue_head(&s->dma_waitqueue);
 
     litepcie_minor_table[minor] = s;
-    printk(KERN_INFO LITEPCIE_NAME " Assigned to minor %d\n", minor);
+    dev_info(&dev->dev, "Assigned to minor %d\n", minor);
     return 0;
 
  fail6:
@@ -543,7 +542,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     ret = -EIO;
  fail1:
     kfree(s);
-    printk(KERN_ERR LITEPCIE_NAME " Error while probing device\n");
+    dev_err(&dev->dev, "Error while probing device\n");
     return ret;
 }
 
@@ -572,7 +571,7 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 {
     LitePCIeState *s = pci_get_drvdata(dev);
 
-    printk(KERN_INFO LITEPCIE_NAME " Removing device\n");
+    pr_info("Removing device\n");
     litepcie_minor_table[s->minor] = NULL;
 
     litepcie_end(dev, s);
@@ -604,20 +603,20 @@ static int __init litepcie_module_init(void)
 
     ret = pci_register_driver(&litepcie_pci_driver);
     if (ret < 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Error while registering PCI driver\n");
+        pr_err("Error while registering PCI driver\n");
         goto fail1;
     }
 
     ret = alloc_chrdev_region(&litepcie_cdev, 0, LITEPCIE_MINOR_COUNT, LITEPCIE_NAME);
     if (ret < 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Could not allocate char device\n");
+        pr_err("Could not allocate char device\n");
         goto fail2;
     }
 
     cdev_init(&litepcie_cdev_struct, &litepcie_fops);
     ret = cdev_add(&litepcie_cdev_struct, litepcie_cdev, LITEPCIE_MINOR_COUNT);
     if (ret < 0) {
-        printk(KERN_ERR LITEPCIE_NAME " Could not register char device\n");
+        pr_err("Could not register char device\n");
         goto fail3;
     }
     return 0;
