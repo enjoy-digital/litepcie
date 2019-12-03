@@ -106,6 +106,9 @@ def get_axi_dma_ios(_id, dw):
         ),
     ]
 
+def get_msi_irqs_ios(width=16):
+    return [("msi_irqs", 0, Pins(width))]
+
 # CRG ----------------------------------------------------------------------------------------------
 
 class LitePCIeCRG(Module):
@@ -130,6 +133,8 @@ class LitePCIeCore(SoCMini):
         platform.add_extension(get_pcie_ios(core_config["phy_lanes"]))
         for i in range(core_config["dma_channels"]):
             platform.add_extension(get_axi_dma_ios(i, 64))
+        assert core_config["msi_irqs"] <= 16
+        platform.add_extension(get_msi_irqs_ios(width=core_config["msi_irqs"]))
         sys_clk_freq = int(125e6)
 
         # SoCMini ----------------------------------------------------------------------------------
@@ -222,7 +227,7 @@ class LitePCIeCore(SoCMini):
             ]
 
         # PCIe MSI ---------------------------------------------------------------------------------
-        self.submodules.pcie_msi = LitePCIeMSI()
+        self.submodules.pcie_msi = LitePCIeMSI(width=32)
         self.add_csr("pcie_msi")
         self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
         self.interrupts = {}
@@ -232,6 +237,8 @@ class LitePCIeCore(SoCMini):
         for i, (k, v) in enumerate(sorted(self.interrupts.items())):
             self.comb += self.pcie_msi.irqs[i].eq(v)
             self.add_constant(k.upper() + "_INTERRUPT", i)
+        assert len(self.interrupts.keys()) <= 16
+        self.comb += self.pcie_msi.irqs[16:16+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
 
     def generate_software_headers(self):
         csr_header = get_csr_header(self.csr_regions, self.constants, with_access_functions=False)

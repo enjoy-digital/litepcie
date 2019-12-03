@@ -18,4 +18,7 @@
     "dma_loopback":     True,      # Enable DMA loopback capability
     "dma_synchronizer": True,      # Enable DMA synchronizer capability
     "dma_monitor":      True,      # Enable DMA monitoring capability
+
+    # MSI IRQs -----------------------------------------------------------------
+    "msi_irqs": 16,                # Number or MSI IRQs
 }
