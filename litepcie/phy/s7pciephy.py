@@ -9,6 +9,7 @@ from migen.genlib.cdc import MultiReg
 from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
+from litepcie.phy.constraints import *
 
 # --------------------------------------------------------------------------------------------------
 
@@ -198,6 +199,16 @@ class S7PCIEPHY(Module, AutoCSR):
     def use_external_hard_ip(self, hard_ip_path):
         self.external_hard_ip = True
         self.add_sources(self.platform, hard_ip_path)
+
+    # Timing constraints ---------------------------------------------------------------------------
+    @staticmethod
+    def add_timing_constraints(platform):
+        if platform.device[:4] == "xc7a":
+            add_artix7_timing_constraints(platform)
+        elif platform.device[:4] == "xc7k":
+            add_kintex7_timing_constraints(platform)
+        else:
+            raise ValueError
 
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):

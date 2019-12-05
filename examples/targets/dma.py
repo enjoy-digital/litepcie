@@ -24,6 +24,8 @@ class PCIeDMASoC(SoCMini):
     mem_map = {"csr": 0x00000000}
     def __init__(self, platform):
         sys_clk_freq = int(125e6)
+
+        # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, sys_clk_freq, csr_data_width=32,
             ident="LitePCIe example design", ident_version=True)
 
@@ -32,6 +34,7 @@ class PCIeDMASoC(SoCMini):
 
         # PCIe PHY ---------------------------------------------------------------------------------
         self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x1"))
+        self.pcie_phy.add_timing_constraints(platform)
         self.add_csr("pcie_phy")
 
         # PCIe Endpoint ----------------------------------------------------------------------------
