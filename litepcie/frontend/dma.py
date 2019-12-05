@@ -538,9 +538,9 @@ class LitePCIeDMA(Module, AutoCSR):
     Optional buffering, loopback, synchronization and monitoring.
     """
     def __init__(self, phy, endpoint,
-        with_buffering    = False, buffering_depth = 256*8,
         with_loopback     = False,
         with_synchronizer = False,
+        with_buffering    = False, buffering_depth = 256*8,
         with_monitor      = False):
 
         # Writer/Reader ----------------------------------------------------------------------------
