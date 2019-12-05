@@ -496,9 +496,9 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
 # LitePCIeDMABuffering -----------------------------------------------------------------------------
 
 class LitePCIeDMABuffering(Module, AutoCSR):
-    """LitePCIe DMA Synchronizer
+    """LitePCIe DMA Buffering
 
-    Optional DMA buffering.
+    Optional DMA buffering with dynamically configurable depth.
 
     For some applications (Software Defined Radio, Video, ...), the user module consuming the datas
     from the DMA Reader works at fixed rate and does not handle backpressure. (The same also applies
@@ -507,24 +507,38 @@ class LitePCIeDMABuffering(Module, AutoCSR):
     of buffering is needed to make sure the gaps are smoothed and not propagated to user modules.
     """
     def __init__(self, data_width, depth):
+        self.sink        = stream.Endpoint(dma_layout(data_width))
+        self.source      = stream.Endpoint(dma_layout(data_width))
+
+        self.next_source = stream.Endpoint(dma_layout(data_width))
+        self.next_sink   = stream.Endpoint(dma_layout(data_width))
+
+        self.reader_fifo_depth = CSRStorage(bits_for(depth), reset=depth)
         self.reader_fifo_level = CSRStatus(bits_for(depth))
+        self.writer_fifo_depth = CSRStorage(bits_for(depth), reset=depth)
         self.writer_fifo_level = CSRStatus(bits_for(depth))
 
         # # #
+
+        depth_shift = log2_int(data_width//8)
 
         reader_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
         writer_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
         self.submodules += reader_fifo, writer_fifo
         self.comb += [
-            self.reader_fifo_level.status.eq(reader_fifo.level),
-            self.writer_fifo_level.status.eq(writer_fifo.level),
+            self.sink.connect(reader_fifo.sink, omit={"valid", "ready"}),
+            If(reader_fifo.level < self.reader_fifo_depth.storage[depth_shift:],
+                self.sink.connect(reader_fifo.sink, keep={"valid", "ready"})
+            ),
+            reader_fifo.source.connect(self.next_source),
+            self.next_sink.connect(writer_fifo.sink, omit={"valid", "ready"}),
+            If(writer_fifo.level < self.writer_fifo_depth.storage[depth_shift:],
+                self.next_sink.connect(writer_fifo.sink, keep={"valid", "ready"})
+            ),
+            writer_fifo.source.connect(self.source),
+            self.reader_fifo_level.status[depth_shift:].eq(reader_fifo.level),
+            self.writer_fifo_level.status[depth_shift:].eq(writer_fifo.level),
         ]
-
-        self.sink        = reader_fifo.sink
-        self.source      = writer_fifo.source
-
-        self.next_source = reader_fifo.source
-        self.next_sink   = writer_fifo.sink
 
 # LitePCIeDMA --------------------------------------------------------------------------------------
 
