@@ -9,30 +9,28 @@ from litepcie.common import *
 
 
 class LitePCIeWishboneBridge(Module):
-    def __init__(self, endpoint, address_decoder, shadow_base=0x00000000, qword_aligned=False):
+    def __init__(self, endpoint, address_decoder, base_address=0x00000000, qword_aligned=False):
         self.wishbone = wishbone.Interface()
 
         # # #
 
         port = endpoint.crossbar.get_slave_port(address_decoder)
-        self.submodules.fsm = fsm = FSM()
 
-        update_dat = Signal()
-
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             If(port.sink.valid & port.sink.first,
                 If(port.sink.we,
-                    NextState("WRITE"),
+                    NextState("WRITE")
                 ).Else(
                     NextState("READ")
                 )
             ).Else(
-                port.sink.ready.eq(port.sink.valid)
+                port.sink.ready.eq(1)
             )
         )
         self.sync += [
             self.wishbone.sel.eq(0xf),
-            self.wishbone.adr.eq(port.sink.adr[2:] | (shadow_base >> 2)),
+            self.wishbone.adr.eq(port.sink.adr[2:] + (base_address >> 2)),
             If(qword_aligned,
                 If(port.sink.adr[2],
                     self.wishbone.dat_w.eq(port.sink.dat[:32])
@@ -40,7 +38,7 @@ class LitePCIeWishboneBridge(Module):
                     self.wishbone.dat_w.eq(port.sink.dat[32:])
                 )
             ).Else(
-                self.wishbone.dat_w.eq(port.sink.dat[:32]),
+                self.wishbone.dat_w.eq(port.sink.dat[:32])
             )
         ]
         fsm.act("WRITE",
@@ -48,9 +46,11 @@ class LitePCIeWishboneBridge(Module):
             self.wishbone.we.eq(1),
             self.wishbone.cyc.eq(1),
             If(self.wishbone.ack,
-                NextState("TERMINATE")
+                port.sink.ready.eq(1),
+                NextState("IDLE")
             )
         )
+        update_dat = Signal()
         fsm.act("READ",
             self.wishbone.stb.eq(1),
             self.wishbone.we.eq(0),
@@ -76,11 +76,7 @@ class LitePCIeWishboneBridge(Module):
         fsm.act("COMPLETION",
             port.source.valid.eq(1),
             If(port.source.ready,
-                NextState("TERMINATE")
+                port.sink.ready.eq(1),
+                NextState("IDLE")
             )
         )
-        fsm.act("TERMINATE",
-            port.sink.ready.eq(1),
-            NextState("IDLE")
-        )
-
