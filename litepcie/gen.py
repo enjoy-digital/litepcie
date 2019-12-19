@@ -23,6 +23,7 @@ import yaml
 import argparse
 
 from migen import *
+from migen.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.soc.interconnect.csr import *
 from litex.soc.interconnect import wishbone
@@ -119,10 +120,12 @@ class LitePCIeCRG(Module):
         # # #
 
         clk125 = platform.request("clk125")
+        rst125 = platform.request("rst125")
         platform.add_period_constraint(clk125, 1e9/125e6)
 
         self.clock_domains.cd_sys = ClockDomain()
         self.comb += self.cd_sys.clk.eq(clk125)
+        self.specials += AsyncResetSynchronizer(self.cd_sys, rst125)
 
 # Core ---------------------------------------------------------------------------------------------
 
