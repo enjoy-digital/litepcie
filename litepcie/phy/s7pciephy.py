@@ -190,7 +190,9 @@ class S7PCIEPHY(Module, AutoCSR):
     def add_sources(platform, phy_path):
         platform.add_source_dir(os.path.join(phy_path, "common"))
         platform.add_source(os.path.join(phy_path, "common", "xpm_cdc.sv"))
-        if platform.device[:4] == "xc7k":
+        if platform.device[:4] == "xc7v":
+            platform.add_source_dir(os.path.join(phy_path, "virtex7"))
+        elif platform.device[:4] == "xc7k":
             platform.add_source_dir(os.path.join(phy_path, "kintex7"))
         elif platform.device[:4] == "xc7a":
             platform.add_source_dir(os.path.join(phy_path, "artix7"))
@@ -203,10 +205,12 @@ class S7PCIEPHY(Module, AutoCSR):
     # Timing constraints ---------------------------------------------------------------------------
     @staticmethod
     def add_timing_constraints(platform):
-        if platform.device[:4] == "xc7a":
-            add_artix7_timing_constraints(platform)
+        if platform.device[:4] == "xc7v":
+            add_virtex7_timing_constraints(platform)
         elif platform.device[:4] == "xc7k":
             add_kintex7_timing_constraints(platform)
+        elif platform.device[:4] == "xc7a":
+            add_artix7_timing_constraints(platform)
         else:
             raise ValueError
 
