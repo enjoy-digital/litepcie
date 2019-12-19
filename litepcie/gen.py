@@ -30,7 +30,7 @@ from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.axi import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
-from litex.soc.integration.export import get_csr_header, get_soc_header
+from litex.soc.integration.export import get_csr_header, get_soc_header, get_mem_header
 
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMA
@@ -249,6 +249,8 @@ class LitePCIeCore(SoCMini):
         tools.write_to_file(os.path.join("csr.h"), csr_header)
         soc_header = get_soc_header(self.constants, with_access_functions=False)
         tools.write_to_file(os.path.join("soc.h"), soc_header)
+        mem_header = get_mem_header(self.mem_regions)
+        tools.write_to_file(os.path.join("mem.h"), mem_header)
 
 # Build --------------------------------------------------------------------------------------------
 
