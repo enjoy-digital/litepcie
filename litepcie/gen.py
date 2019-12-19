@@ -138,7 +138,8 @@ class LitePCIeCore(SoCMini):
         sys_clk_freq = int(125e6)
 
         # SoCMini ----------------------------------------------------------------------------------
-        SoCMini.__init__(self, platform, clk_freq=sys_clk_freq, csr_data_width=32)
+        SoCMini.__init__(self, platform, clk_freq=sys_clk_freq, csr_data_width = 32,
+            ident="LitePCIe generated core", ident_version=True)
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = LitePCIeCRG(platform, sys_clk_freq)
