@@ -271,7 +271,6 @@ def main():
         from litepcie.phy.c5pciephy import C5PCIEPHY
         platform = AlteraPlatform("", io=[])
         core_config["phy"]           = C5PCIEPHY
-        core_config["phy_bar0_size"] = 0x20000
         core_config["qword_aligned"] = True
         core_config["endianness"]    = "little"
     elif core_config["phy"] == "S7PCIEPHY":
@@ -279,7 +278,6 @@ def main():
         from litepcie.phy.s7pciephy import S7PCIEPHY
         platform = XilinxPlatform("xc7a", io=[])
         core_config["phy"]           = S7PCIEPHY
-        core_config["phy_bar0_size"] = 0x20000
         core_config["qword_aligned"] = False
         core_config["endianness"]    = "big"
     else:

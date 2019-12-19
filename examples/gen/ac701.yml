@@ -6,11 +6,12 @@
     "phy":            "S7PCIEPHY", # Type of PCIe PHY
     "phy_lanes":      4,           # Number of lanes
     "phy_data_width": 128,         # Bus data_width
+    "phy_bar0_size":  0x40000,     # BAR0 size
 
     # MMAP ---------------------------------------------------------------------
     "mmap":      True,
-    "mmap_base": 0x10000000,
-    "mmap_size": 0x00100000,
+    "mmap_base": 0x00020000,
+    "mmap_size": 0x00020000,
 
     # DMA channels -------------------------------------------------------------
     "dma_channels":     4,         # Number of DMA channels
