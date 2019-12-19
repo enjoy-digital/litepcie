@@ -141,8 +141,8 @@ class LitePCIeCore(SoCMini):
         sys_clk_freq = int(125e6)
 
         # SoCMini ----------------------------------------------------------------------------------
-        SoCMini.__init__(self, platform, clk_freq=sys_clk_freq, csr_data_width = 32,
-            ident="LitePCIe generated core", ident_version=True)
+        SoCMini.__init__(self, platform, clk_freq=sys_clk_freq, csr_data_width=32,
+            ident="LitePCIe standalone core", ident_version=True)
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = LitePCIeCRG(platform, sys_clk_freq)
@@ -150,12 +150,12 @@ class LitePCIeCore(SoCMini):
 
         # PCIe PHY ---------------------------------------------------------------------------------
         self.submodules.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
-            data_width=core_config["phy_data_width"], bar0_size=0x20000)
+            data_width=core_config["phy_data_width"], bar0_size=core_config["phy_bar0_size"])
         self.pcie_phy.use_external_hard_ip("./")
         self.add_csr("pcie_phy")
 
         # PCIe Endpoint ----------------------------------------------------------------------------
-        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, endianness="little")
+        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, endianness=core_config["endianness"])
 
         # PCIe Wishbone bridge ---------------------------------------------------------------------
         pcie_wishbone = LitePCIeWishboneBridge(self.pcie_endpoint, lambda a: 1,
@@ -271,13 +271,17 @@ def main():
         from litepcie.phy.c5pciephy import C5PCIEPHY
         platform = AlteraPlatform("", io=[])
         core_config["phy"]           = C5PCIEPHY
+        core_config["phy_bar0_size"] = 0x20000
         core_config["qword_aligned"] = True
+        core_config["endianness"]    = "little"
     elif core_config["phy"] == "S7PCIEPHY":
         from litex.build.xilinx import XilinxPlatform
         from litepcie.phy.s7pciephy import S7PCIEPHY
         platform = XilinxPlatform("xc7a", io=[])
         core_config["phy"]           = S7PCIEPHY
+        core_config["phy_bar0_size"] = 0x20000
         core_config["qword_aligned"] = False
+        core_config["endianness"]    = "big"
     else:
         raise ValueError("Unsupported PCIe PHY: {}".format(core_config["phy"]))
     soc      = LitePCIeCore(platform, core_config)
