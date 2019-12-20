@@ -87,6 +87,7 @@ def get_axi_lite_mmap_ios(aw, dw):
             # r
             Subsignal("r_valid", Pins(1)),
             Subsignal("r_ready", Pins(1)),
+            Subsignal("r_data",  Pins(dw)),
             Subsignal("r_resp",  Pins(2)),
         ),
     ]
@@ -198,6 +199,7 @@ class LitePCIeCore(SoCMini):
                 # r
                 axi.r.valid.eq(mmap_ios.r_valid),
                 mmap_ios.r_ready.eq(axi.r.ready),
+                axi.r.data.eq(mmap_ios.r_data),
                 axi.r.resp.eq(mmap_ios.r_resp),
             ]
 
