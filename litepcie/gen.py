@@ -205,6 +205,7 @@ class LitePCIeCore(SoCMini):
 
         # PCIe DMA ---------------------------------------------------------------------------------
         pcie_dmas = []
+        self.add_constant("DMA_CHANNELS", core_config["dma_channels"])
         for i in range(core_config["dma_channels"]):
             pcie_dma = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
                 with_buffering    = core_config["dma_buffering"] != 0,
