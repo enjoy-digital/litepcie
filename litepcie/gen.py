@@ -136,7 +136,7 @@ class LitePCIeCore(SoCMini):
         platform.add_extension(get_common_ios())
         platform.add_extension(get_pcie_ios(core_config["phy_lanes"]))
         for i in range(core_config["dma_channels"]):
-            platform.add_extension(get_axi_dma_ios(i, 64))
+            platform.add_extension(get_axi_dma_ios(i, core_config["phy_data_width"]))
         assert core_config["msi_irqs"] <= 16
         platform.add_extension(get_msi_irqs_ios(width=core_config["msi_irqs"]))
         sys_clk_freq = int(125e6)
