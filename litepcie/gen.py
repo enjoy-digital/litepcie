@@ -64,31 +64,31 @@ def get_axi_lite_mmap_ios(aw, dw):
     return [
         ("mmap_axi_lite", 0,
             # aw
-            Subsignal("aw_valid", Pins(1)),
-            Subsignal("aw_ready", Pins(1)),
-            Subsignal("aw_addr",  Pins(aw)),
+            Subsignal("awvalid", Pins(1)),
+            Subsignal("awready", Pins(1)),
+            Subsignal("awaddr",  Pins(aw)),
 
             # w
-            Subsignal("w_valid", Pins(1)),
-            Subsignal("w_ready", Pins(1)),
-            Subsignal("w_strb",  Pins(dw//8)),
-            Subsignal("w_data",  Pins(dw)),
+            Subsignal("wvalid", Pins(1)),
+            Subsignal("wready", Pins(1)),
+            Subsignal("wstrb",  Pins(dw//8)),
+            Subsignal("wdata",  Pins(dw)),
 
             # b
-            Subsignal("b_valid", Pins(1)),
-            Subsignal("b_ready", Pins(1)),
-            Subsignal("b_resp",  Pins(2)),
+            Subsignal("bvalid", Pins(1)),
+            Subsignal("bready", Pins(1)),
+            Subsignal("bresp",  Pins(2)),
 
             # ar
-            Subsignal("ar_valid", Pins(1)),
-            Subsignal("ar_ready", Pins(1)),
-            Subsignal("ar_addr",  Pins(aw)),
+            Subsignal("arvalid", Pins(1)),
+            Subsignal("arready", Pins(1)),
+            Subsignal("araddr",  Pins(aw)),
 
             # r
-            Subsignal("r_valid", Pins(1)),
-            Subsignal("r_ready", Pins(1)),
-            Subsignal("r_data",  Pins(dw)),
-            Subsignal("r_resp",  Pins(2)),
+            Subsignal("rvalid", Pins(1)),
+            Subsignal("rready", Pins(1)),
+            Subsignal("rdata",  Pins(dw)),
+            Subsignal("rresp",  Pins(2)),
         ),
     ]
 
@@ -176,31 +176,31 @@ class LitePCIeCore(SoCMini):
             mmap_ios = platform.request("mmap_axi_lite")
             self.comb += [
                 # aw
-                mmap_ios.aw_valid.eq(axi.aw.valid),
-                axi.aw.ready.eq(mmap_ios.aw_ready),
-                mmap_ios.aw_addr.eq(axi.aw.addr),
+                mmap_ios.awvalid.eq(axi.aw.valid),
+                axi.aw.ready.eq(mmap_ios.awready),
+                mmap_ios.awaddr.eq(axi.aw.addr),
 
                 # w
-                mmap_ios.w_valid.eq(axi.w.valid),
-                axi.w.ready.eq(mmap_ios.w_ready),
-                mmap_ios.w_strb.eq(axi.w.strb),
-                mmap_ios.w_data.eq(axi.w.data),
+                mmap_ios.wvalid.eq(axi.w.valid),
+                axi.w.ready.eq(mmap_ios.wready),
+                mmap_ios.wstrb.eq(axi.w.strb),
+                mmap_ios.wdata.eq(axi.w.data),
 
                 # b
-                axi.b.valid.eq(mmap_ios.b_valid),
-                mmap_ios.b_ready.eq(axi.b.ready),
-                axi.b.resp.eq(mmap_ios.b_resp),
+                axi.b.valid.eq(mmap_ios.bvalid),
+                mmap_ios.bready.eq(axi.b.ready),
+                axi.b.resp.eq(mmap_ios.bresp),
 
                 # ar
-                mmap_ios.ar_valid.eq(axi.ar.valid),
-                axi.ar.ready.eq(mmap_ios.ar_ready),
-                mmap_ios.ar_addr.eq(axi.ar.addr),
+                mmap_ios.arvalid.eq(axi.ar.valid),
+                axi.ar.ready.eq(mmap_ios.arready),
+                mmap_ios.araddr.eq(axi.ar.addr),
 
                 # r
-                axi.r.valid.eq(mmap_ios.r_valid),
-                mmap_ios.r_ready.eq(axi.r.ready),
-                axi.r.data.eq(mmap_ios.r_data),
-                axi.r.resp.eq(mmap_ios.r_resp),
+                axi.r.valid.eq(mmap_ios.rvalid),
+                mmap_ios.rready.eq(axi.r.ready),
+                axi.r.data.eq(mmap_ios.rdata),
+                axi.r.resp.eq(mmap_ios.rresp),
             ]
 
         # PCIe DMA ---------------------------------------------------------------------------------
