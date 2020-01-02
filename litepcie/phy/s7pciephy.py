@@ -132,9 +132,6 @@ class S7PCIEPHY(Module, AutoCSR):
         m_axis_rx_tuser = Signal(32)
         self.pcie_phy_params = dict(
             p_C_DATA_WIDTH            = 64,
-            p_C_PCIE_GT_DEVICE        = {
-                "xc7k": "GTX",
-                "xc7a": "GTP"}[platform.device[:4]],
             p_C_BAR0                  = get_bar_mask(bar0_size),
 
             i_sys_clk                 = pcie_refclk,
