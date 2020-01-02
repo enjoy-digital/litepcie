@@ -280,7 +280,7 @@ def main():
     elif core_config["phy"] == "S7PCIEPHY":
         from litex.build.xilinx import XilinxPlatform
         from litepcie.phy.s7pciephy import S7PCIEPHY
-        platform = XilinxPlatform("xc7a", io=[])
+        platform = XilinxPlatform("", io=[], toolchain="vivado")
         core_config["phy"]           = S7PCIEPHY
         core_config["qword_aligned"] = False
         core_config["endianness"]    = "big"
