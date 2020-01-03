@@ -111,6 +111,18 @@ def get_axi_dma_ios(_id, dw):
 def get_msi_irqs_ios(width=16):
     return [("msi_irqs", 0, Pins(width))]
 
+def get_flash_ios():
+    return [
+        ("flash", 0,
+            Subsignal("clk",  Pins(1)),
+            Subsignal("cs_n", Pins(1)),
+            Subsignal("mosi", Pins(1)),
+            Subsignal("miso", Pins(1)),
+            Subsignal("vpp",  Pins(1)),
+            Subsignal("hold", Pins(1)),
+        ),
+    ]
+
 # CRG ----------------------------------------------------------------------------------------------
 
 class LitePCIeCRG(Module):
@@ -247,6 +259,22 @@ class LitePCIeCore(SoCMini):
         assert len(self.interrupts.keys()) <= 16
         self.comb += self.pcie_msi.irqs[16:16+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
 
+        # 7-Series specific monitoring/flashing features -------------------------------------------
+        if platform.device[:3] == "xc7":
+            from litex.soc.cores.dna  import DNA
+            from litex.soc.cores.xadc import XADC
+            from litex.soc.cores.icap import ICAP
+            from litex.soc.cores.spi_flash import S7SPIFlash
+            self.submodules.dna = DNA()
+            self.add_csr("dna")
+            self.submodules.xadc = XADC()
+            self.add_csr("xadc")
+            self.submodules.icap = ICAP()
+            self.add_csr("icap")
+            platform.add_extension(get_flash_ios())
+            self.submodules.flash = S7SPIFlash(platform.request("flash"), sys_clk_freq, 25e6)
+            self.add_csr("flash")
+
     def generate_software_headers(self):
         csr_header = get_csr_header(self.csr_regions, self.constants, with_access_functions=False)
         tools.write_to_file(os.path.join("csr.h"), csr_header)
@@ -281,7 +309,7 @@ def main():
     elif core_config["phy"] == "S7PCIEPHY":
         from litex.build.xilinx import XilinxPlatform
         from litepcie.phy.s7pciephy import S7PCIEPHY
-        platform = XilinxPlatform("", io=[], toolchain="vivado")
+        platform = XilinxPlatform("xc7", io=[], toolchain="vivado")
         core_config["phy"]           = S7PCIEPHY
         core_config["qword_aligned"] = False
         core_config["endianness"]    = "big"
