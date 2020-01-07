@@ -186,7 +186,6 @@ class S7PCIEPHY(Module, AutoCSR):
     @staticmethod
     def add_sources(platform, phy_path):
         platform.add_source_dir(os.path.join(phy_path, "common"))
-        platform.add_source(os.path.join(phy_path, "common", "xpm_cdc.sv"))
         if platform.device[:4] == "xc7v":
             platform.add_source_dir(os.path.join(phy_path, "virtex7"))
         elif platform.device[:4] == "xc7k":
