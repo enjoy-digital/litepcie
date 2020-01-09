@@ -43,8 +43,8 @@ from litex.build.generic_platform import *
 def get_common_ios():
     return [
         # clk / rst
-        ("clk125", 0, Pins(1)),
-        ("rst125", 0, Pins(1))
+        ("clk", 0, Pins(1)),
+        ("rst", 0, Pins(1))
     ]
 
 def get_pcie_ios(phy_lanes=4):
@@ -127,18 +127,17 @@ def get_flash_ios():
 
 class LitePCIeCRG(Module):
     def __init__(self, platform, sys_clk_freq):
-        assert sys_clk_freq == 125e6
         self.rst = CSR() # not used
 
         # # #
 
-        clk125 = platform.request("clk125")
-        rst125 = platform.request("rst125")
-        platform.add_period_constraint(clk125, 1e9/125e6)
+        clk = platform.request("clk")
+        rst = platform.request("rst")
+        platform.add_period_constraint(clk, 1e9/sys_clk_freq)
 
         self.clock_domains.cd_sys = ClockDomain()
-        self.comb += self.cd_sys.clk.eq(clk125)
-        self.specials += AsyncResetSynchronizer(self.cd_sys, rst125)
+        self.comb += self.cd_sys.clk.eq(clk)
+        self.specials += AsyncResetSynchronizer(self.cd_sys, rst)
 
 # Core ---------------------------------------------------------------------------------------------
 
@@ -151,7 +150,7 @@ class LitePCIeCore(SoCMini):
             platform.add_extension(get_axi_dma_ios(i, core_config["phy_data_width"]))
         assert core_config["msi_irqs"] <= 16
         platform.add_extension(get_msi_irqs_ios(width=core_config["msi_irqs"]))
-        sys_clk_freq = int(125e6)
+        sys_clk_freq = int(float(core_config.get("sys_clk_freq")))
 
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq, csr_data_width=32,
