@@ -84,7 +84,6 @@ class LitePCIeSoC(SoCMini):
 def load():
     prog = VivadoProgrammer()
     prog.load_bitstream("build/gateware/kc705.bit")
-    exit()
 
 # Build --------------------------------------------------------------------------------------------
 
@@ -94,19 +93,13 @@ def main():
     parser.add_argument("--load",  action="store_true", help="load bitstream (to SRAM)")
     args = parser.parse_args()
 
-    if not args.build and not args.load:
-        parser.print_help()
-
-    if args.build:
-        print("[build]...")
-        platform = kc705.Platform()
-        soc     = LitePCIeSoC(platform)
-        builder = Builder(soc, output_dir="build")
-        builder.build(build_name="kc705")
-        soc.generate_software_headers()
+    platform = kc705.Platform()
+    soc     = LitePCIeSoC(platform)
+    builder = Builder(soc, output_dir="build")
+    builder.build(build_name="kc705", run=args.build)
+    soc.generate_software_headers()
 
     if args.load:
-        print("[load]...")
         load()
 
 if __name__ == "__main__":
