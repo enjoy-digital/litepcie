@@ -3,10 +3,10 @@
          / /__/ / __/ -_) ___/ /___/ // -_)
         /____/_/\__/\__/_/   \___/___/\__/
 
-        Copyright 2015-2019 / EnjoyDigital
+        Copyright 2015-2020 / EnjoyDigital
 
      A small footprint and configurable PCIe core
-               powered by Migen & LiteX
+              powered by Migen & LiteX
 
 [> Intro
 --------
@@ -25,7 +25,9 @@ design flow by generating the verilog rtl that you will use as a standard core.
 -----------
 PHY:
   - Xilinx 7-Series (up to PCIe Gen2 X4)
-  - Intel Cyclone5 (up to PCIe Gen2 X4)
+  - Intel Cyclone5  (up to PCIe Gen2 X4)
+  - 64-bit/128-bit datapath.
+  - Clock domain crossing.
 Core:
   - TLP layer
   - Reordering
