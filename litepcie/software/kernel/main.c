@@ -23,6 +23,7 @@
 #include <linux/slab.h>
 #include <linux/pci.h>
 #include <linux/pci_regs.h>
+#include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include <linux/version.h>
