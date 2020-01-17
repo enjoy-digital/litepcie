@@ -442,7 +442,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     s->dev = dev;
     pci_set_drvdata(dev, s);
 
-    ret = pci_enable_device(dev);
+    ret = pcim_enable_device(dev);
     if (ret != 0) {
         dev_err(&dev->dev, "Cannot enable device\n");
         goto fail1;
@@ -533,13 +533,11 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     litepcie_end(dev, s);
     free_irq(dev->irq, s);
  fail5:
-    pci_disable_msi(dev);
  fail4:
     pci_iounmap(dev, s->bar0_addr);
  fail3:
     pci_release_regions(dev);
  fail2:
-    pci_disable_device(dev);
     ret = -EIO;
  fail1:
     kfree(s);
@@ -577,9 +575,7 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 
     litepcie_end(dev, s);
     free_irq(dev->irq, s);
-    pci_disable_msi(dev);
     pci_iounmap(dev, s->bar0_addr);
-    pci_disable_device(dev);
     pci_release_regions(dev);
     kfree(s);
 };
