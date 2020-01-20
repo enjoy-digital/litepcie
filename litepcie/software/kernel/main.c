@@ -498,9 +498,10 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         goto fail4;
     }
 
-    if (request_irq(dev->irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, s) < 0) {
+    if (devm_request_irq(&dev->dev, dev->irq, litepcie_interrupt, 
+                         IRQF_SHARED, LITEPCIE_NAME, s) < 0) {
         dev_err(&dev->dev, "Failed to allocate irq %d\n", dev->irq);
-        goto fail5;
+        goto fail4;
     }
 
     /* allocate DMA buffers */
@@ -542,8 +543,6 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
  fail6:
     litepcie_end(dev, s);
-    free_irq(dev->irq, s);
- fail5:
  fail4:
     pci_iounmap(dev, s->bar0_addr);
  fail3:
@@ -587,7 +586,6 @@ static void litepcie_pci_remove(struct pci_dev *dev)
     litepcie_minor_table[s->minor] = NULL;
 
     litepcie_end(dev, s);
-    free_irq(dev->irq, s);
     pci_iounmap(dev, s->bar0_addr);
     pci_release_regions(dev);
     device_destroy(litepcie_class, MKDEV(MAJOR(litepcie_cdev), s->minor));
