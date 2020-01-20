@@ -508,7 +508,6 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     for(i = 0; i < PCIE_DMA_BUFFER_COUNT; i++) {
         s->dma_tx_bufs[i] = kzalloc(DMA_BUFFER_SIZE, GFP_KERNEL | GFP_DMA32);
         if (!s->dma_tx_bufs[i]) {
-            dev_err(&dev->dev, "Failed to allocate dma_tx_buf\n");
             goto fail6;
         }
         s->dma_tx_bufs_addr[i] = pci_map_single(dev, s->dma_tx_bufs[i],
