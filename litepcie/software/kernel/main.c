@@ -50,6 +50,7 @@
 typedef struct {
     int minor;
     struct pci_dev *dev;
+    struct cdev cdev_struct;
 
     phys_addr_t bar0_phys_addr;
     uint8_t *bar0_addr; /* virtual address of BAR0 */
@@ -64,8 +65,8 @@ typedef struct {
 } LitePCIeState;
 
 static dev_t litepcie_cdev;
-static struct cdev litepcie_cdev_struct;
 static LitePCIeState *litepcie_minor_table[LITEPCIE_MINOR_COUNT];
+static struct class *litepcie_class;
 
 static void litepcie_end(struct pci_dev *dev, LitePCIeState *s);
 static int litepcie_dma_stop(LitePCIeState *s);
@@ -99,13 +100,8 @@ static void litepcie_disable_interrupt(LitePCIeState *s, int irq_num)
 static int litepcie_open(struct inode *inode, struct file *file)
 {
     LitePCIeState *s;
-    int minor;
 
-    /* find PCI device */
-    minor = iminor(inode);
-    if (minor < 0 || minor >= LITEPCIE_MINOR_COUNT)
-        return -ENODEV;
-    s = litepcie_minor_table[minor];
+    s = container_of(inode->i_cdev, LitePCIeState, cdev_struct);
     if (!s)
         return -ENODEV;
     file->private_data = s;
@@ -419,8 +415,13 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     LitePCIeState *s = NULL;
     uint8_t rev_id;
     int ret, minor, i;
+    struct device *clsdev;
 
     dev_info(&dev->dev, "Probing device\n");
+
+    s = devm_kzalloc(&dev->dev, sizeof(LitePCIeState), GFP_KERNEL);
+    if (!s)
+        return -ENOMEM;
 
     /* find available minor */
     for(minor = 0; minor < LITEPCIE_MINOR_COUNT; minor++) {
@@ -429,18 +430,29 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     }
     if (minor == LITEPCIE_MINOR_COUNT) {
         dev_err(&dev->dev, "Cannot allocate a minor\n");
-        ret = -ENODEV;
-        goto fail1;
+        return -ENODEV;
     }
 
-    s = kzalloc(sizeof(LitePCIeState), GFP_KERNEL);
-    if (!s) {
-        ret = -ENOMEM;
-        goto fail1;
-    }
     s->minor = minor;
     s->dev = dev;
     pci_set_drvdata(dev, s);
+
+    cdev_init(&s->cdev_struct, &litepcie_fops);
+    s->cdev_struct.owner = THIS_MODULE;
+    ret = cdev_add(&s->cdev_struct, MKDEV(MAJOR(litepcie_cdev), minor), 1);
+    if (ret) {
+        dev_err(&dev->dev, "Could not register char device\n");
+        return ret;
+    }
+
+    clsdev = device_create(litepcie_class, NULL,
+                           MKDEV(MAJOR(litepcie_cdev), minor),
+                           NULL, LITEPCIE_NAME "%d", minor);
+    if (IS_ERR(clsdev)) {
+        dev_err(&dev->dev, "device_create\n");
+        ret = -PTR_ERR(clsdev);
+        goto fail_dev_create;
+    }
 
     ret = pcim_enable_device(dev);
     if (ret != 0) {
@@ -510,7 +522,6 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     for(i = 0; i < PCIE_DMA_BUFFER_COUNT; i++) {
         s->dma_rx_bufs[i] = kzalloc(DMA_BUFFER_SIZE, GFP_KERNEL | GFP_DMA32);
         if (!s->dma_rx_bufs[i]) {
-            dev_err(&dev->dev, "Failed to allocate dma_rx_buf\n");
             goto fail6;
         }
 
@@ -540,7 +551,9 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
  fail2:
     ret = -EIO;
  fail1:
-    kfree(s);
+    device_destroy(litepcie_class, MKDEV(MAJOR(litepcie_cdev), minor));
+ fail_dev_create:
+    cdev_del(&s->cdev_struct);
     dev_err(&dev->dev, "Error while probing device\n");
     return ret;
 }
@@ -570,14 +583,15 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 {
     LitePCIeState *s = pci_get_drvdata(dev);
 
-    pr_info("Removing device\n");
+    dev_info(&dev->dev, "Removing device\n");
     litepcie_minor_table[s->minor] = NULL;
 
     litepcie_end(dev, s);
     free_irq(dev->irq, s);
     pci_iounmap(dev, s->bar0_addr);
     pci_release_regions(dev);
-    kfree(s);
+    device_destroy(litepcie_class, MKDEV(MAJOR(litepcie_cdev), s->minor));
+    cdev_del(&s->cdev_struct);
 };
 
 static const struct pci_device_id litepcie_pci_ids[] = {
@@ -598,39 +612,40 @@ static int __init litepcie_module_init(void)
 {
     int	ret;
 
-    ret = pci_register_driver(&litepcie_pci_driver);
-    if (ret < 0) {
-        pr_err("Error while registering PCI driver\n");
-        goto fail1;
-    }
-
     ret = alloc_chrdev_region(&litepcie_cdev, 0, LITEPCIE_MINOR_COUNT, LITEPCIE_NAME);
     if (ret < 0) {
         pr_err("Could not allocate char device\n");
-        goto fail2;
+        return ret;
     }
 
-    cdev_init(&litepcie_cdev_struct, &litepcie_fops);
-    ret = cdev_add(&litepcie_cdev_struct, litepcie_cdev, LITEPCIE_MINOR_COUNT);
-    if (ret < 0) {
-        pr_err("Could not register char device\n");
-        goto fail3;
+    litepcie_class = class_create(THIS_MODULE, LITEPCIE_NAME);
+    if (IS_ERR(litepcie_class)) {
+        pr_err("Error creating class\n");
+        ret = PTR_ERR(litepcie_class);
+        goto fail_class;
     }
+
+    ret = pci_register_driver(&litepcie_pci_driver);
+    if (ret < 0) {
+        pr_err("Error while registering PCI driver\n");
+        goto fail_register;
+    }
+
     return 0;
- fail3:
-    unregister_chrdev_region(litepcie_cdev, LITEPCIE_MINOR_COUNT);
- fail2:
-    pci_unregister_driver(&litepcie_pci_driver);
- fail1:
+
+ fail_register:
+    class_destroy(litepcie_class);
+ fail_class:
+ 	unregister_chrdev_region(litepcie_cdev, LITEPCIE_MINOR_COUNT);
+
     return ret;
 }
 
 static void __exit litepcie_module_exit(void)
 {
-    cdev_del(&litepcie_cdev_struct);
-    unregister_chrdev_region(litepcie_cdev, LITEPCIE_MINOR_COUNT);
-
     pci_unregister_driver(&litepcie_pci_driver);
+    class_destroy(litepcie_class);
+    unregister_chrdev_region(litepcie_cdev, LITEPCIE_MINOR_COUNT);
 }
 
 
