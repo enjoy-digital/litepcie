@@ -45,7 +45,6 @@ class LitePCIeSoC(SoCMini):
 
         # PCIe PHY ---------------------------------------------------------------------------------
         self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x1"))
-        self.pcie_phy.add_timing_constraints(platform)
         self.add_csr("pcie_phy")
 
         # PCIe Endpoint ----------------------------------------------------------------------------
