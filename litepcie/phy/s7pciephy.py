@@ -1,4 +1,4 @@
-# This file is Copyright (c) 2015-2019 Florent Kermarrec <florent@enjoy-digital.fr>
+# This file is Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
 import os
@@ -9,7 +9,6 @@ from migen.genlib.cdc import MultiReg
 from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
-from litepcie.phy.constraints import *
 
 # --------------------------------------------------------------------------------------------------
 
