@@ -169,8 +169,6 @@ class LitePCIeCore(SoCMini):
             data_width = core_config["phy_data_width"],
             bar0_size  = core_config["phy_bar0_size"],
             cd         = "pcie")
-        self.pcie_phy.cd_pcie.clk.attr.add("keep")
-        self.pcie_phy.use_external_hard_ip("./")
         self.add_csr("pcie_phy")
 
         # PCIe Endpoint ----------------------------------------------------------------------------
@@ -186,6 +184,7 @@ class LitePCIeCore(SoCMini):
         if core_config["mmap"]:
             platform.add_extension(get_axi_lite_mmap_ios(aw=32, dw=32))
             wb = wishbone.Interface(data_width=32)
+            self.mem_map["mmap"] = core_config["mmap_base"]
             self.add_wb_slave(core_config["mmap_base"], wb, core_config["mmap_size"])
             self.add_memory_region("mmap", core_config["mmap_base"], core_config["mmap_size"], type="io")
             axi = AXILiteInterface(data_width=32, address_width=32)
@@ -315,7 +314,7 @@ def main():
     elif core_config["phy"] == "S7PCIEPHY":
         from litex.build.xilinx import XilinxPlatform
         from litepcie.phy.s7pciephy import S7PCIEPHY
-        platform = XilinxPlatform("xc7", io=[], toolchain="vivado")
+        platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
         core_config["phy"]           = S7PCIEPHY
         core_config["qword_aligned"] = False
         core_config["endianness"]    = "big"

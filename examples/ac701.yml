@@ -4,6 +4,7 @@
 {
     # PHY ----------------------------------------------------------------------
     "phy":            "S7PCIEPHY", # Type of PCIe PHY
+    "phy_device":     "xc7a",      # Type of Device
     "phy_lanes":      4,           # Number of lanes
     "phy_data_width": 128,         # Bus data_width
     "phy_bar0_size":  0x40000,     # BAR0 size
