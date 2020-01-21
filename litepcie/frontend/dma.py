@@ -1,4 +1,4 @@
-# This file is Copyright (c) 2015-2019 Florent Kermarrec <florent@enjoy-digital.fr>
+# This file is Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
 from migen import *
@@ -227,6 +227,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
     A MSI IRQ can be generated when a descriptor has been executed.
     """
     def __init__(self, endpoint, port, table_depth=256):
+        self.port   = port
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq    = Signal()
         self.enable = CSRStorage()
@@ -326,6 +327,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
     A MSI IRQ can be generated when a descriptor has been executed.
     """
     def __init__(self, endpoint, port, table_depth=256):
+        self.port   = port
         self.sink   = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq    = Signal()
         self.enable = CSRStorage()
