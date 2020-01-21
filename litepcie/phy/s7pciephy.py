@@ -41,16 +41,17 @@ class S7PCIEPHY(Module, AutoCSR):
 
         # # #
 
-        nlanes = len(pads.tx_p)
+        self.nlanes = nlanes = len(pads.tx_p)
 
         # Clocking ---------------------------------------------------------------------------------
         pcie_refclk = Signal()
         self.specials += Instance("IBUFDS_GTE2",
-            i_CEB=0,
-            i_I=pads.clk_p,
-            i_IB=pads.clk_n,
-            o_O=pcie_refclk
+            i_CEB = 0,
+            i_I   = pads.clk_p,
+            i_IB  = pads.clk_n,
+            o_O   = pcie_refclk
         )
+        platform.add_period_constraint(pads.clk_p, 1e9/100e6)
         self.clock_domains.cd_pcie = ClockDomain()
 
         # TX CDC (FPGA --> HOST) -------------------------------------------------------------------
@@ -355,38 +356,23 @@ class S7PCIEPHY(Module, AutoCSR):
         )
 
     # Hard IP sources ------------------------------------------------------------------------------
-    @staticmethod
-    def add_sources(platform, phy_path):
-        platform.add_source_dir(os.path.join(phy_path, "common"))
-        if platform.device[:4] == "xc7v":
-            platform.add_source_dir(os.path.join(phy_path, "virtex7"))
-        elif platform.device[:4] == "xc7k":
-            platform.add_source_dir(os.path.join(phy_path, "kintex7"))
-        elif platform.device[:4] == "xc7a":
-            platform.add_source_dir(os.path.join(phy_path, "artix7"))
+    def add_sources(self, platform, phy_path, phy_filename):
+        platform.add_ip(os.path.join(phy_path, phy_filename))
+        platform.add_source(os.path.join(phy_path, "pcie_pipe_clock.v"))
+        platform.add_source(os.path.join(phy_path, "pcie_s7_x{}_support.v".format(self.nlanes)))
 
     # External Hard IP -----------------------------------------------------------------------------
-    def use_external_hard_ip(self, hard_ip_path):
+    def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
         self.external_hard_ip = True
-        self.add_sources(self.platform, hard_ip_path)
-
-    # Timing constraints ---------------------------------------------------------------------------
-    @staticmethod
-    def add_timing_constraints(platform):
-        if platform.device[:4] == "xc7v":
-            add_virtex7_timing_constraints(platform)
-        elif platform.device[:4] == "xc7k":
-            add_kintex7_timing_constraints(platform)
-        elif platform.device[:4] == "xc7a":
-            add_artix7_timing_constraints(platform)
-        else:
-            raise ValueError
+        self.add_sources(self.platform, hard_ip_path, hard_ip_filename)
 
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_hard_ip:
-            self.add_sources(self.platform, os.path.join(
-                os.path.abspath(os.path.dirname(__file__)),
-                "xilinx",
-                "7-series"))
+            phy_path     = "xilinx_s7_x{}".format(self.nlanes)
+            phy_filename = "pcie_s7_x{}.xci".format(self.nlanes)
+            self.add_sources(self.platform,
+                phy_path     = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
+                phy_filename = "pcie_s7_x{}.xci".format(self.nlanes)
+            )
         self.specials += Instance("pcie_support", **self.pcie_phy_params)
