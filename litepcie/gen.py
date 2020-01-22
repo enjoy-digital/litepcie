@@ -41,7 +41,14 @@ from litex.build.generic_platform import *
 
 # IOs/Interfaces -----------------------------------------------------------------------------------
 
-def get_common_ios():
+def get_clkin_ios():
+    return [
+        # clk / rst
+        ("clk", 0, Pins(1)),
+        ("rst", 0, Pins(1))
+    ]
+
+def get_clkout_ios():
     return [
         # clk / rst
         ("clk125", 0, Pins(1)),
@@ -127,48 +134,50 @@ def get_flash_ios():
 # CRG ----------------------------------------------------------------------------------------------
 
 class LitePCIeCRG(Module):
-    def __init__(self, platform):
+    def __init__(self, platform, clk_external):
         self.clock_domains.cd_sys = ClockDomain()
         self.rst = CSR() # not used
 
         # # #
 
-        clk125 = platform.request("clk125")
-        rst125 = platform.request("rst125")
-
-        self.comb += self.cd_sys.clk.eq(ClockSignal("pcie"))
-        self.specials += AsyncResetSynchronizer(self.cd_sys, ResetSignal("pcie"))
-        self.comb += [
-            clk125.eq(ClockSignal()),
-            rst125.eq(ResetSignal()),
-        ]
+        if clk_external:
+            platform.add_extension(get_clkin_ios())
+            self.comb += self.cd_sys.clk.eq(platform.request("clk"))
+            self.comb += self.cd_sys.rst.eq(platform.request("rst"))
+        else:
+            platform.add_extension(get_clkout_ios())
+            self.comb += self.cd_sys.clk.eq(ClockSignal("pcie"))
+            self.specials += AsyncResetSynchronizer(self.cd_sys, ResetSignal("pcie"))
+            self.comb += [
+                platform.request("clk125").eq(ClockSignal()),
+                platform.request("rst125").eq(ResetSignal()),
+            ]
 
 # Core ---------------------------------------------------------------------------------------------
 
 class LitePCIeCore(SoCMini):
     SoCMini.mem_map["csr"] = 0x00000000
     def __init__(self, platform, core_config):
-        platform.add_extension(get_common_ios())
         platform.add_extension(get_pcie_ios(core_config["phy_lanes"]))
         for i in range(core_config["dma_channels"]):
             platform.add_extension(get_axi_dma_ios(i, core_config["phy_data_width"]))
         assert core_config["msi_irqs"] <= 16
         platform.add_extension(get_msi_irqs_ios(width=core_config["msi_irqs"]))
-        sys_clk_freq = int(125e6)
+        sys_clk_freq = float(core_config.get("clk_freq", 125e6))
 
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq, csr_data_width=32,
             ident="LitePCIe standalone core", ident_version=True)
 
         # CRG --------------------------------------------------------------------------------------
-        self.submodules.crg = LitePCIeCRG(platform)
+        clk_external = core_config.get("clk_external", False)
+        self.submodules.crg = LitePCIeCRG(platform, clk_external)
         self.add_csr("crg")
 
         # PCIe PHY ---------------------------------------------------------------------------------
         self.submodules.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
             data_width = core_config["phy_data_width"],
-            bar0_size  = core_config["phy_bar0_size"],
-            cd         = "pcie")
+            bar0_size  = core_config["phy_bar0_size"])
         self.add_csr("pcie_phy")
 
         # PCIe Endpoint ----------------------------------------------------------------------------

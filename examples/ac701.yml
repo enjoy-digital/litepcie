@@ -9,6 +9,10 @@
     "phy_data_width": 128,         # Bus data_width
     "phy_bar0_size":  0x40000,     # BAR0 size
 
+    # Clocking -----------------------------------------------------------------
+    "clk_freq":     125e6,         # User Clk Freq (AXI MMAP/DMA)
+    "clk_external": False,         # Use external User provided Clk
+
     # MMAP ---------------------------------------------------------------------
     "mmap":      True,
     "mmap_base": 0x00020000,
