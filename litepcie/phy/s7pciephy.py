@@ -52,6 +52,7 @@ class S7PCIEPHY(Module, AutoCSR):
         )
         platform.add_period_constraint(pads.clk_p, 1e9/100e6)
         self.clock_domains.cd_pcie = ClockDomain()
+        platform.add_period_constraint(self.cd_pcie.clk, 1e9/125e6 if nlanes <= 2 else 1e9/250e6)
 
         # TX CDC (FPGA --> HOST) -------------------------------------------------------------------
         if (cd == "pcie") and (data_width == 64):
