@@ -9,7 +9,7 @@ from litepcie.common import *
 
 
 class LitePCIeWishboneBridge(Module):
-    def __init__(self, endpoint, address_decoder, base_address=0x00000000, qword_aligned=False):
+    def __init__(self, endpoint, address_decoder=lambda a: 1, base_address=0x00000000, qword_aligned=False):
         self.wishbone = wishbone.Interface()
 
         # # #

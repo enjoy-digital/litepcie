@@ -184,8 +184,7 @@ class LitePCIeCore(SoCMini):
         self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, endianness=core_config["endianness"])
 
         # PCIe Wishbone bridge ---------------------------------------------------------------------
-        pcie_wishbone = LitePCIeWishboneBridge(self.pcie_endpoint, lambda a: 1,
-            qword_aligned = core_config["qword_aligned"])
+        pcie_wishbone = LitePCIeWishboneBridge(self.pcie_endpoint, qword_aligned=core_config["qword_aligned"])
         self.submodules += pcie_wishbone
         self.add_wb_master(pcie_wishbone.wishbone)
 
