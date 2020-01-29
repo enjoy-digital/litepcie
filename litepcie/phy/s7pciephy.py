@@ -58,38 +58,43 @@ class S7PCIEPHY(Module, AutoCSR):
         if (cd == "pcie") and (data_width == 64):
             s_axis_tx = self.sink
         else:
-            tx_buffer    = stream.Buffer(phy_layout(data_width))
-            tx_buffer    = ClockDomainsRenamer(cd)(tx_buffer)
-            tx_cdc       = stream.AsyncFIFO(phy_layout(data_width), 4)
-            tx_cdc       = ClockDomainsRenamer({"write": cd, "read": "pcie"})(tx_cdc)
-            tx_converter = stream.StrideConverter(phy_layout(data_width), phy_layout(64))
-            tx_converter = ClockDomainsRenamer("pcie")(tx_converter)
-            self.submodules += tx_buffer, tx_cdc, tx_converter
+            tx_pipe_valid = stream.PipeValid(phy_layout(data_width))
+            tx_pipe_valid = ClockDomainsRenamer(cd)(tx_pipe_valid)
+            tx_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
+            tx_cdc        = ClockDomainsRenamer({"write": cd, "read": "pcie"})(tx_cdc)
+            tx_converter  = stream.StrideConverter(phy_layout(data_width), phy_layout(64))
+            tx_converter  = ClockDomainsRenamer("pcie")(tx_converter)
+            tx_pipe_ready = stream.PipeValid(phy_layout(64))
+            tx_pipe_ready = ClockDomainsRenamer("pcie")(tx_pipe_ready)
+            self.submodules += tx_pipe_valid, tx_cdc, tx_converter, tx_pipe_ready
             self.comb += [
-                self.sink.connect(tx_buffer.sink),
-                tx_buffer.source.connect(tx_cdc.sink),
+                self.sink.connect(tx_pipe_valid.sink),
+                tx_pipe_valid.source.connect(tx_cdc.sink),
                 tx_cdc.source.connect(tx_converter.sink),
+                tx_converter.source.connect(tx_pipe_ready.sink)
             ]
-            s_axis_tx = tx_converter.source
+            s_axis_tx = tx_pipe_ready.source
 
         # RX CDC (HOST --> FPGA) -------------------------------------------------------------------
         if (cd == "pcie") and (data_width == 64):
             m_axis_rx = self.source
         else:
-            rx_converter    = stream.StrideConverter(phy_layout(64), phy_layout(data_width))
-            rx_converter    = ClockDomainsRenamer("pcie")(rx_converter)
-            rx_cdc          = stream.AsyncFIFO(phy_layout(data_width), 4)
-            rx_cdc          = ClockDomainsRenamer({"write": "pcie", "read": cd})(rx_cdc)
-            rx_buffer       = stream.Buffer(phy_layout(data_width))
-            rx_buffer       = ClockDomainsRenamer(cd)(rx_buffer)
-            self.submodules += rx_converter, rx_buffer, rx_cdc
+            rx_pipe_ready = stream.PipeReady(phy_layout(64))
+            rx_pipe_ready = ClockDomainsRenamer("pcie")(rx_pipe_ready)
+            rx_converter  = stream.StrideConverter(phy_layout(64), phy_layout(data_width))
+            rx_converter  = ClockDomainsRenamer("pcie")(rx_converter)
+            rx_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
+            rx_cdc        = ClockDomainsRenamer({"write": "pcie", "read": cd})(rx_cdc)
+            rx_pipe_valid = stream.PipeValid(phy_layout(data_width))
+            rx_pipe_valid = ClockDomainsRenamer(cd)(rx_pipe_valid)
+            self.submodules += rx_pipe_ready, rx_converter, rx_pipe_valid, rx_cdc
             self.comb += [
+                rx_pipe_ready.source.connect(rx_converter.sink),
                 rx_converter.source.connect(rx_cdc.sink),
-                rx_cdc.source.connect(rx_buffer.sink),
-                rx_buffer.source.connect(self.source),
+                rx_cdc.source.connect(rx_pipe_valid.sink),
+                rx_pipe_valid.source.connect(self.source),
             ]
-            m_axis_rx = rx_converter.sink
-
+            m_axis_rx = rx_pipe_ready.sink
 
         # MSI CDC (FPGA --> HOST) ------------------------------------------------------------------
         if cd == "pcie":
