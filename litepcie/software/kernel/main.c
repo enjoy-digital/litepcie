@@ -498,7 +498,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         goto fail4;
     }
 
-    if (devm_request_irq(&dev->dev, dev->irq, litepcie_interrupt, 
+    if (devm_request_irq(&dev->dev, dev->irq, litepcie_interrupt,
                          IRQF_SHARED, LITEPCIE_NAME, s) < 0) {
         dev_err(&dev->dev, "Failed to allocate irq %d\n", dev->irq);
         goto fail4;
@@ -592,7 +592,9 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 };
 
 static const struct pci_device_id litepcie_pci_ids[] = {
-    { PCI_DEVICE(PCI_FPGA_VENDOR_ID, PCI_FPGA_DEVICE_ID), },
+    { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID_X1 ), },
+    { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID_X2 ), },
+    { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID_X4 ), },
     { 0, }
 };
 MODULE_DEVICE_TABLE(pci, litepcie_pci_ids);
