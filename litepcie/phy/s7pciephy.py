@@ -13,7 +13,7 @@ from litepcie.common import *
 # --------------------------------------------------------------------------------------------------
 
 class S7PCIEPHY(Module, AutoCSR):
-    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys"):
+    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=64):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
@@ -29,6 +29,7 @@ class S7PCIEPHY(Module, AutoCSR):
         # Parameters/Locals ------------------------------------------------------------------------
         self.platform         = platform
         self.data_width       = data_width
+        self.pcie_data_width  = pcie_data_width
 
         self.id               = Signal(16)
         self.bar0_size        = bar0_size
@@ -52,19 +53,20 @@ class S7PCIEPHY(Module, AutoCSR):
         )
         platform.add_period_constraint(pads.clk_p, 1e9/100e6)
         self.clock_domains.cd_pcie = ClockDomain()
-        platform.add_period_constraint(self.cd_pcie.clk, 1e9/125e6 if nlanes <= 2 else 1e9/250e6)
+        pcie_clk_freq = max(125e6, nlanes*62.5e6*64/pcie_data_width)
+        platform.add_period_constraint(self.cd_pcie.clk, 1e9/pcie_clk_freq)
 
         # TX CDC (FPGA --> HOST) -------------------------------------------------------------------
-        if (cd == "pcie") and (data_width == 64):
+        if (cd == "pcie") and (data_width == pcie_data_width):
             s_axis_tx = self.sink
         else:
             tx_pipe_valid = stream.PipeValid(phy_layout(data_width))
             tx_pipe_valid = ClockDomainsRenamer(cd)(tx_pipe_valid)
             tx_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
             tx_cdc        = ClockDomainsRenamer({"write": cd, "read": "pcie"})(tx_cdc)
-            tx_converter  = stream.StrideConverter(phy_layout(data_width), phy_layout(64))
+            tx_converter  = stream.StrideConverter(phy_layout(data_width), phy_layout(pcie_data_width))
             tx_converter  = ClockDomainsRenamer("pcie")(tx_converter)
-            tx_pipe_ready = stream.PipeValid(phy_layout(64))
+            tx_pipe_ready = stream.PipeValid(phy_layout(pcie_data_width))
             tx_pipe_ready = ClockDomainsRenamer("pcie")(tx_pipe_ready)
             self.submodules += tx_pipe_valid, tx_cdc, tx_converter, tx_pipe_ready
             self.comb += [
@@ -76,12 +78,12 @@ class S7PCIEPHY(Module, AutoCSR):
             s_axis_tx = tx_pipe_ready.source
 
         # RX CDC (HOST --> FPGA) -------------------------------------------------------------------
-        if (cd == "pcie") and (data_width == 64):
+        if (cd == "pcie") and (data_width == pcie_data_width):
             m_axis_rx = self.source
         else:
-            rx_pipe_ready = stream.PipeReady(phy_layout(64))
+            rx_pipe_ready = stream.PipeReady(phy_layout(pcie_data_width))
             rx_pipe_ready = ClockDomainsRenamer("pcie")(rx_pipe_ready)
-            rx_converter  = stream.StrideConverter(phy_layout(64), phy_layout(data_width))
+            rx_converter  = stream.StrideConverter(phy_layout(pcie_data_width), phy_layout(data_width))
             rx_converter  = ClockDomainsRenamer("pcie")(rx_converter)
             rx_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
             rx_cdc        = ClockDomainsRenamer({"write": "pcie", "read": cd})(rx_cdc)
@@ -142,11 +144,11 @@ class S7PCIEPHY(Module, AutoCSR):
         self.pcie_phy_params = dict(
             # Parameters ---------------------------------------------------------------------------
             p_LINK_CAP_MAX_LINK_WIDTH                    = nlanes,
-            p_C_DATA_WIDTH                               = 64,
-            p_KEEP_WIDTH                                 = 64//8,
+            p_C_DATA_WIDTH                               = pcie_data_width,
+            p_KEEP_WIDTH                                 = pcie_data_width//8,
             p_PCIE_REFCLK_FREQ                           = 0, # 100MHz refclk
             p_PCIE_USERCLK1_FREQ                         = 3 if nlanes <= 2 else 4,
-            p_PCIE_USERCLK2_FREQ                         = 3 if nlanes <= 2 else 4,
+            p_PCIE_USERCLK2_FREQ                         = 3 if (pcie_clk_freq == 125e6) else 4,
             p_PCIE_GT_DEVICE                             = {"xc7a": "GTP",
                                                             "xc7k": "GTX",
                                                             "xc7v": "GTX"}[platform.device[:4]],
@@ -197,11 +199,11 @@ class S7PCIEPHY(Module, AutoCSR):
             i_rx_np_ok                                   = 1,
             i_rx_np_req                                  = 1,
             o_m_axis_rx_tvalid                           = m_axis_rx.valid,
-            o_m_axis_rx_tlast                            = m_axis_rx.last,
+            o_m_axis_rx_tlast                            = m_axis_rx_tlast,
             i_m_axis_rx_tready                           = m_axis_rx.ready,
             o_m_axis_rx_tdata                            = m_axis_rx.dat,
             o_m_axis_rx_tkeep                            = m_axis_rx.be,
-            #o_m_axis_rx_tuser                           = ,
+            o_m_axis_rx_tuser                            = m_axis_rx_tuser,
 
             # Flow Control
             o_fc_cpld                                    = Open(),
@@ -360,6 +362,13 @@ class S7PCIEPHY(Module, AutoCSR):
             o_pcie_drp_rdy                               = Open(),
             o_pcie_drp_do                                = Open(),
         )
+        self.comb += [
+            If(pcie_data_width == 128,
+                m_axis_rx.last.eq(m_axis_rx_tuser[21])
+            ).Else(
+                m_axis_rx.last.eq(m_axis_rx_tlast)
+            )
+        ]
 
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename):
