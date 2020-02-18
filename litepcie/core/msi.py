@@ -30,10 +30,14 @@ class LitePCIeMSI(Module, AutoCSR):
         # Generate MSI -----------------------------------------------------------------------------
         msi = Signal(width)
         self.sync += [
-            If(self.source.ready,
-                msi.eq(self.irqs)
+            If(enable,
+                If(self.source.ready,
+                    msi.eq(self.irqs)
+                ).Else(
+                    msi.eq(msi | self.irqs)
+                )
             ).Else(
-                msi.eq(msi | self.irqs)
+                msi.eq(0)
             )
         ]
         self.comb += self.source.valid.eq(msi != 0)
