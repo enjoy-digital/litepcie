@@ -16,15 +16,15 @@ MB = 1024*KB
 GB = 1024*MB
 
 def get_bar_mask(size):
-            mask = 0
-            found = 0
-            for i in range(32):
-                if size%2:
-                    found = 1
-                if found:
-                    mask |= (1 << i)
-                size = size >> 1
-            return mask
+    mask = 0
+    found = 0
+    for i in range(32):
+        if size%2:
+            found = 1
+        if found:
+            mask |= (1 << i)
+        size = size >> 1
+    return mask
 
 # Layouts ------------------------------------------------------------------------------------------
 
