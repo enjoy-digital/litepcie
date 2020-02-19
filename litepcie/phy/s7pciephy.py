@@ -10,7 +10,50 @@ from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 
-# --------------------------------------------------------------------------------------------------
+# AXISRX128BAligner --------------------------------------------------------------------------------
+
+class AXISRX128BAligner(Module):
+    def __init__(self):
+        self.sink   = sink   = stream.Endpoint(phy_layout(128))
+        self.source = source = stream.Endpoint(phy_layout(128))
+        self.first_dword = Signal(2)
+
+        # # #
+
+        dat_last = Signal(64)
+        be_last  = Signal(8)
+        self.sync += [
+            If(sink.valid & sink.ready,
+                dat_last.eq(sink.dat[64:]),
+                be_last.eq( sink.be[8:]),
+            )
+        ]
+
+        self.submodules.fsm = fsm = FSM(reset_state="ALIGNED")
+        fsm.act("ALIGNED",
+            sink.connect(source, omit={"first"}),
+            # If "first" on DWORD2 and "last" on the same cycle, switch to UNALIGNED.
+            If(sink.valid & sink.last & sink.first & (self.first_dword == 2),
+                source.be[8:].eq(0),
+                If(source.ready,
+                    NextState("UNALIGNED")
+                )
+            )
+        )
+        fsm.act("UNALIGNED",
+            sink.connect(source, omit={"first", "dat", "be"}),
+            source.dat.eq(Cat(dat_last, sink.dat)),
+            source.be.eq( Cat(be_last,  sink.be)),
+            # If "last" and not "first" on the same cycle, switch to ALIGNED.
+            If(sink.valid & sink.last & ~sink.first,
+                source.be[8:].eq(0),
+                If(source.ready,
+                    NextState("ALIGNED")
+                )
+            )
+        )
+
+# S7PCIEPHY ----------------------------------------------------------------------------------------
 
 class S7PCIEPHY(Module, AutoCSR):
     def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=64):
@@ -60,7 +103,7 @@ class S7PCIEPHY(Module, AutoCSR):
         pcie_clk_freq = max(125e6, nlanes*62.5e6*64/pcie_data_width)
         platform.add_period_constraint(self.cd_pcie.clk, 1e9/pcie_clk_freq)
 
-        # TX CDC (FPGA --> HOST) -------------------------------------------------------------------
+        # TX (FPGA --> HOST) CDC / Data Width Convertion -------------------------------------------
         if (cd == "pcie") and (data_width == pcie_data_width):
             s_axis_tx = self.sink
         else:
@@ -81,7 +124,7 @@ class S7PCIEPHY(Module, AutoCSR):
             ]
             s_axis_tx = tx_pipe_ready.source
 
-        # RX CDC (HOST --> FPGA) -------------------------------------------------------------------
+        # RX (HOST --> FPGA) CDC / Data Width Convertion -------------------------------------------
         if (cd == "pcie") and (data_width == pcie_data_width):
             m_axis_rx = self.source
         else:
@@ -101,6 +144,12 @@ class S7PCIEPHY(Module, AutoCSR):
                 rx_pipe_valid.source.connect(self.source),
             ]
             m_axis_rx = rx_pipe_ready.sink
+        if pcie_data_width == 128:
+            rx_aligner = AXISRX128BAligner()
+            rx_aligner = ClockDomainsRenamer("pcie")(rx_aligner)
+            self.submodules += rx_aligner
+            self.comb += rx_aligner.source.connect(m_axis_rx)
+            m_axis_rx = rx_aligner.sink
 
         # MSI CDC (FPGA --> HOST) ------------------------------------------------------------------
         if cd == "pcie":
@@ -366,13 +415,19 @@ class S7PCIEPHY(Module, AutoCSR):
             o_pcie_drp_rdy                               = Open(),
             o_pcie_drp_do                                = Open(),
         )
-        self.comb += [
-            If(pcie_data_width == 128,
-                m_axis_rx.last.eq(m_axis_rx_tuser[21])
-            ).Else(
-                m_axis_rx.last.eq(m_axis_rx_tlast)
-            )
-        ]
+        if pcie_data_width == 128:
+            rx_is_sof = m_axis_rx_tuser[10:15] # Start of a new packet header in m_axis_rx_tdata.
+            rx_is_eof = m_axis_rx_tuser[17:22] # End of a packet in m_axis_rx_tdata.
+            self.comb += [
+                m_axis_rx.first.eq(rx_is_sof[-1]),
+                m_axis_rx.last.eq( rx_is_eof[-1]),
+                If(rx_is_sof == 0b11000, rx_aligner.first_dword.eq(2)),
+            ]
+        else:
+            self.comb += [
+                m_axis_rx.first.eq(0),
+                m_axis_rx.last.eq(m_axis_rx_tlast),
+            ]
 
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename):
