@@ -68,38 +68,6 @@ def get_pcie_ios(phy_lanes=4):
         ),
     ]
 
-def get_axi_lite_mmap_ios(aw, dw):
-    return [
-        ("mmap_axi_lite", 0,
-            # aw
-            Subsignal("awvalid", Pins(1)),
-            Subsignal("awready", Pins(1)),
-            Subsignal("awaddr",  Pins(aw)),
-
-            # w
-            Subsignal("wvalid", Pins(1)),
-            Subsignal("wready", Pins(1)),
-            Subsignal("wstrb",  Pins(dw//8)),
-            Subsignal("wdata",  Pins(dw)),
-
-            # b
-            Subsignal("bvalid", Pins(1)),
-            Subsignal("bready", Pins(1)),
-            Subsignal("bresp",  Pins(2)),
-
-            # ar
-            Subsignal("arvalid", Pins(1)),
-            Subsignal("arready", Pins(1)),
-            Subsignal("araddr",  Pins(aw)),
-
-            # r
-            Subsignal("rvalid", Pins(1)),
-            Subsignal("rready", Pins(1)),
-            Subsignal("rdata",  Pins(dw)),
-            Subsignal("rresp",  Pins(2)),
-        ),
-    ]
-
 def get_axi_dma_ios(_id, dw):
     return [
         ("dma{}_writer_axi".format(_id), 0,
@@ -190,7 +158,6 @@ class LitePCIeCore(SoCMini):
 
         # PCIe MMAP --------------------------------------------------------------------------------
         if core_config["mmap"]:
-            platform.add_extension(get_axi_lite_mmap_ios(aw=32, dw=32))
             wb = wishbone.Interface(data_width=32)
             self.mem_map["mmap"] = core_config["mmap_base"]
             self.add_wb_slave(core_config["mmap_base"], wb, core_config["mmap_size"])
@@ -198,35 +165,9 @@ class LitePCIeCore(SoCMini):
             axi = AXILiteInterface(data_width=32, address_width=32)
             wb2axi = Wishbone2AXILite(wb, axi)
             self.submodules += wb2axi
-            mmap_ios = platform.request("mmap_axi_lite")
-            self.comb += [
-                # aw
-                mmap_ios.awvalid.eq(axi.aw.valid),
-                axi.aw.ready.eq(mmap_ios.awready),
-                mmap_ios.awaddr.eq(axi.aw.addr),
-
-                # w
-                mmap_ios.wvalid.eq(axi.w.valid),
-                axi.w.ready.eq(mmap_ios.wready),
-                mmap_ios.wstrb.eq(axi.w.strb),
-                mmap_ios.wdata.eq(axi.w.data),
-
-                # b
-                axi.b.valid.eq(mmap_ios.bvalid),
-                mmap_ios.bready.eq(axi.b.ready),
-                axi.b.resp.eq(mmap_ios.bresp),
-
-                # ar
-                mmap_ios.arvalid.eq(axi.ar.valid),
-                axi.ar.ready.eq(mmap_ios.arready),
-                mmap_ios.araddr.eq(axi.ar.addr),
-
-                # r
-                axi.r.valid.eq(mmap_ios.rvalid),
-                mmap_ios.rready.eq(axi.r.ready),
-                axi.r.data.eq(mmap_ios.rdata),
-                axi.r.resp.eq(mmap_ios.rresp),
-            ]
+            platform.add_extension(axi.get_ios("mmap_axi_lite"))
+            axi_pads = platform.request("mmap_axi_lite")
+            self.comb += axi.connect_to_pads(axi_pads, mode="slave")
 
         # PCIe DMA ---------------------------------------------------------------------------------
         pcie_dmas = []
