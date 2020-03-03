@@ -469,7 +469,7 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
 
         # # #
 
-        synced = Signal()
+        self.synced = synced = Signal()
 
         self.sync += [
             If(~self.enable.storage,
