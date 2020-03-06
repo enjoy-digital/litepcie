@@ -167,7 +167,7 @@ class LitePCIeCore(SoCMini):
             self.submodules += wb2axi
             platform.add_extension(axi.get_ios("mmap_axi_lite"))
             axi_pads = platform.request("mmap_axi_lite")
-            self.comb += axi.connect_to_pads(axi_pads, mode="slave")
+            self.comb += axi.connect_to_pads(axi_pads, mode="master")
 
         # PCIe DMA ---------------------------------------------------------------------------------
         pcie_dmas = []
