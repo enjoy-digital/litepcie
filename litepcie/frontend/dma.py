@@ -54,25 +54,34 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
         self.source = source = stream.Endpoint(descriptor_layout())
 
         self.value = CSRStorage(64, fields=[
-            CSRField("address", size=32),
-            CSRField("length",  size=24),
-            CSRField("control", size=8)
-            ], description="64-bit DMA descriptor to be writter to the table")
-        self.we = CSRStorage(description="A write to this register writes descriptor to table")
-        self.loop_prog_n = CSRStorage(description="PROG(0) / LOOP(1) mode")
+            CSRField("address",      size=32, description="32-bit Address of the descriptor (bytes-aligned)."),
+            CSRField("length",       size=24, description="24-bit Length  of the descriptor (in bytes)."),
+            CSRField("irq_disable",  size=1,  description="IRQ Disable Control of the descriptor."),
+            CSRField("last_disable", size=1,  description="Last Disable Control of the descriptor.")
+            ], description="64-bit DMA descriptor to be written to the table.")
+        self.we = CSRStorage(description="A write to this register adds the descriptor to table.")
+        self.loop_prog_n = CSRStorage(description="""Mode Selection.\n
+            ``0``: **PROG** mode / ``1``: **LOOP** mode.\n
+            **PROG** mode should be used to program the table by software and for cases where automatic
+            refill of the table is not needed: A descriptor is only executed once and when all the
+            descriptors have been executed (ie the table is empty), the DMA just stops until the next
+            software refill.\n
+            **LOOP** mode should be used once the table has been filled by software in **PROG** mode
+            and allow continuous Scatter-Gather DMA: Each descriptor sent to the DMA is refilled to the table.
+            """)
         self.loop_status = CSRStatus(fields=[
-            CSRField("index", size=16, offset= 0),
-            CSRField("count", size=16, offset=16),
-            ], description="Loop monitoring for software synchronization")
-        self.level = CSRStatus(log2_int(depth), description="Table FIFO level")
-        self.flush = CSRStorage(description="A write to this register flushes the table")
+            CSRField("index", size=16, description= "Index of the last descriptor executed in the DMA descriptor table."),
+            CSRField("count", size=16, description= "Loops of the DMA descriptor table since started."),
+            ], description="Loop monitoring for software synchronization.")
+        self.level = CSRStatus(log2_int(depth), description="Number descriptors in the table.")
+        self.flush = CSRStorage(description="A write to this register flushes the table.")
 
         # # #
 
         # CSRs -------------------------------------------------------------------------------------
         address     = self.value.fields.address
         length      = self.value.fields.length
-        control     = self.value.fields.control
+        control     = Cat(self.value.fields.irq_disable, self.value.fields.last_disable)
         we          = self.we.storage & self.we.re
         loop_prog_n = self.loop_prog_n.storage
         loop_status = self.loop_status
@@ -230,7 +239,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.port   = port
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq    = Signal()
-        self.enable = CSRStorage()
+        self.enable = CSRStorage(description="DMA Reader Control. Write ``1`` to enable DMA Reader.")
 
         # # #
 
@@ -330,7 +339,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.port   = port
         self.sink   = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq    = Signal()
-        self.enable = CSRStorage()
+        self.enable = CSRStorage(description="DMA Writer Control. Write ``1`` to enable DMA Writer.")
 
         # # #
 
@@ -425,7 +434,8 @@ class LitePCIeDMALoopback(Module, AutoCSR):
     goes for user data stream to the DMA Writer that is no longer consumed.
     """
     def __init__(self, data_width):
-        self.enable      = CSRStorage()
+        self.enable      = CSRStorage(description="""DMA Loopback Enable Control.\n
+         Write ``1`` to enable DMA internal loopback (DMA Reader to DMA Writer).""")
 
         self.sink        = stream.Endpoint(dma_layout(data_width))
         self.source      = stream.Endpoint(dma_layout(data_width))
@@ -515,10 +525,14 @@ class LitePCIeDMABuffering(Module, AutoCSR):
         self.next_source = stream.Endpoint(dma_layout(data_width))
         self.next_sink   = stream.Endpoint(dma_layout(data_width))
 
-        self.reader_fifo_depth = CSRStorage(bits_for(depth), reset=depth)
-        self.reader_fifo_level = CSRStatus(bits_for(depth))
-        self.writer_fifo_depth = CSRStorage(bits_for(depth), reset=depth)
-        self.writer_fifo_level = CSRStatus(bits_for(depth))
+        self.reader_fifo_depth = CSRStorage(bits_for(depth), reset=depth,
+            description="DMA Reader FIFO depth (in {}-bit words).".format(data_width))
+        self.reader_fifo_level = CSRStatus(bits_for(depth),
+            description="DMA Reader FIFO level (in {}-bit words).".format(data_width))
+        self.writer_fifo_depth = CSRStorage(bits_for(depth), reset=depth,
+            description="DMA Writer FIFO depth (in {}-bit words).".format(data_width))
+        self.writer_fifo_level = CSRStatus(bits_for(depth),
+            description="DMA Writer FIFO level (in {}-bit words).".format(data_width))
 
         # # #
 
