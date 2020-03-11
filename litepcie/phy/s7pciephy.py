@@ -63,11 +63,11 @@ class S7PCIEPHY(Module, AutoCSR):
         self.msi    = stream.Endpoint(msi_layout())
 
         # Registers --------------------------------------------------------------------------------
-        self._lnk_up            = CSRStatus()
-        self._msi_enable        = CSRStatus()
-        self._bus_master_enable = CSRStatus()
-        self._max_request_size  = CSRStatus(16)
-        self._max_payload_size  = CSRStatus(16)
+        self._link_up           = CSRStatus(description="Link Up Status. ``1``: Link is Up.")
+        self._msi_enable        = CSRStatus(description="MSI Enable Status. ``1``: MSI is enabled.")
+        self._bus_master_enable = CSRStatus(description="Bus Mastering Status. ``1``: Bus Mastering enabled.")
+        self._max_request_size  = CSRStatus(16, description="Negiotiated Max Request Size (in bytes).")
+        self._max_payload_size  = CSRStatus(16, description="Negiotiated Max Payload Size (in bytes).")
 
         # Parameters/Locals ------------------------------------------------------------------------
         self.platform         = platform
@@ -170,8 +170,8 @@ class S7PCIEPHY(Module, AutoCSR):
                 value = min(value*2, max_size)
             return Case(command, cases)
 
-        lnk_up          = Signal()
-        msienable       = Signal()
+        link_up         = Signal()
+        msi_enable      = Signal()
         bus_number      = Signal(8)
         device_number   = Signal(5)
         function_number = Signal(3)
@@ -183,9 +183,9 @@ class S7PCIEPHY(Module, AutoCSR):
             self.id.eq(Cat(function_number, device_number, bus_number))
         ]
         self.specials += [
-            MultiReg(lnk_up, self._lnk_up.status),
+            MultiReg(link_up, self._link_up.status),
             MultiReg(command[2], self._bus_master_enable.status),
-            MultiReg(msienable, self._msi_enable.status),
+            MultiReg(msi_enable, self._msi_enable.status),
             MultiReg(self.max_request_size, self._max_request_size.status),
             MultiReg(self.max_payload_size, self._max_payload_size.status)
         ]
@@ -233,7 +233,7 @@ class S7PCIEPHY(Module, AutoCSR):
             # Common
             o_user_clk_out                               = ClockSignal("pcie"),
             o_user_reset_out                             = ResetSignal("pcie"),
-            o_user_lnk_up                                = lnk_up,
+            o_user_lnk_up                                = link_up,
             o_user_app_rdy                               = Open(),
 
             # TX
@@ -325,7 +325,7 @@ class S7PCIEPHY(Module, AutoCSR):
             i_cfg_interrupt_di                           = cfg_msi.dat,
             o_cfg_interrupt_do                           = Open(),
             o_cfg_interrupt_mmenable                     = Open(),
-            o_cfg_interrupt_msienable                    = msienable,
+            o_cfg_interrupt_msi_enable                   = msi_enable,
             o_cfg_interrupt_msixenable                   = Open(),
             o_cfg_interrupt_msixfm                       = Open(),
             i_cfg_interrupt_stat                         = 0,
