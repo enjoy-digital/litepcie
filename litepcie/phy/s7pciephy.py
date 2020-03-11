@@ -325,7 +325,7 @@ class S7PCIEPHY(Module, AutoCSR):
             i_cfg_interrupt_di                           = cfg_msi.dat,
             o_cfg_interrupt_do                           = Open(),
             o_cfg_interrupt_mmenable                     = Open(),
-            o_cfg_interrupt_msi_enable                   = msi_enable,
+            o_cfg_interrupt_msienable                    = msi_enable,
             o_cfg_interrupt_msixenable                   = Open(),
             o_cfg_interrupt_msixfm                       = Open(),
             i_cfg_interrupt_stat                         = 0,
