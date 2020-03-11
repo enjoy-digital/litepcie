@@ -11,9 +11,12 @@ class LitePCIeMSI(Module, AutoCSR):
         self.irqs   = Signal(width)
         self.source = stream.Endpoint(msi_layout())
 
-        self.enable = CSRStorage(width)
-        self.clear  = CSR(width)
-        self.vector = CSRStatus(width)
+        self.enable = CSRStorage(width, description="""MSI Enable Control.\n
+           Write bit(s) to ``1`` to enable corresponding MSI IRQ(s).""")
+        self.clear  = CSRStorage(width, description="""MSI Clear Control.\n
+           Write bit(s) to ``1`` to clear corresponding MSI IRQ(s).""")
+        self.vector = CSRStatus(width,  description="""MSI Vector Status.\n
+           Current MSI IRQs vector value.""")
 
         # # #
 
@@ -22,7 +25,7 @@ class LitePCIeMSI(Module, AutoCSR):
         vector = Signal(width)
 
         # Memorize and clear IRQ Vector ------------------------------------------------------------
-        self.comb += If(self.clear.re, clear.eq(self.clear.r))
+        self.comb += If(self.clear.re, clear.eq(self.clear.storage))
         self.comb += enable.eq(self.enable.storage)
         self.comb += self.vector.status.eq(vector)
         self.sync += vector.eq(enable & ((vector & ~clear) | self.irqs))
