@@ -250,6 +250,10 @@ class LitePCIeDMAReader(Module, AutoCSR):
         max_pending_words     = endpoint.max_pending_requests*max_words_per_request
         fifo_depth            = 4*max_pending_words
 
+        pending_words         = Signal(max=fifo_depth + 1)
+        pending_words_queue   = Signal.like(pending_words)
+        pending_words_dequeue = Signal.like(pending_words)
+
         # Table / Splitter -----------------------------------------------------------------
         # Descriptors from Table are splitted in descriptors of max_request_size. (negociated at link-up)
         table    = LitePCIeDMAScatterGather(table_depth)
@@ -287,7 +291,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             If(splitter.source.valid,
-                If(fifo.level < (fifo_depth - max_words_per_request),
+                If(pending_words < (fifo_depth - max_words_per_request),
                     NextState("REQUEST"),
                 )
             )
@@ -310,6 +314,23 @@ class LitePCIeDMAReader(Module, AutoCSR):
                 NextState("IDLE"),
             )
         )
+
+        # Pending words ----------------------------------------------------------------------------
+        self.comb += [
+            If(splitter.source.valid & splitter.source.ready,
+                pending_words_queue.eq(splitter.source.length[log2_int(endpoint.phy.data_width//8):])
+            ),
+            If(fifo.source.valid & fifo.source.ready,
+                pending_words_dequeue.eq(1)
+            ),
+        ]
+        self.sync += [
+            If(~self.enable.storage,
+                pending_words.eq(0)
+            ).Else(
+                pending_words.eq(pending_words + pending_words_queue - pending_words_dequeue)
+            )
+        ]
 
         # IRQ --------------------------------------------------------------------------------------
         self.comb += self.irq.eq(
