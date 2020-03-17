@@ -36,7 +36,7 @@ class LitePCIeEndpoint(Module):
         else:
             # Separate Request/Completion channels
             cmp_depacketizer = LitePCIeTLPDepacketizer(phy.data_width, endianness, phy.bar0_mask)
-            req_depacktizer  = LitePCIeTLPDepacketizer(phy.data_width, endianness, phy.bar0_mask)
+            req_depacketizer = LitePCIeTLPDepacketizer(phy.data_width, endianness, phy.bar0_mask)
             cmp_packetizer   = LitePCIeTLPPacketizer(phy.data_width, endianness)
             req_packetizer   = LitePCIeTLPPacketizer(phy.data_width, endianness)
             self.submodules.cmp_depacketizer = cmp_depacketizer
