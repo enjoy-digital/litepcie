@@ -101,7 +101,7 @@ def get_flash_ios():
 
 # CRG ----------------------------------------------------------------------------------------------
 
-class LitePCIeCRG(Module):
+class LitePCIeCRG(Module, AutoCSR):
     def __init__(self, platform, clk_external):
         self.clock_domains.cd_sys = ClockDomain()
         self.rst = CSR() # not used
