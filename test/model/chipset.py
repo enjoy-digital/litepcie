@@ -58,7 +58,7 @@ class Chipset(Module):
         wr32.type         = 0b00000
         wr32.length       = len(data)
         wr32.first_be     = 0xf
-        wr32.address      = adr
+        wr32.address      = adr*4
         wr32.requester_id = self.root_id
         dwords = wr32.encode_dwords(data)
         if self.debug:
@@ -72,7 +72,7 @@ class Chipset(Module):
         rd32.type         = 0b00000
         rd32.length       = length
         rd32.first_be     = 0xf
-        rd32.address      = adr
+        rd32.address      = adr*4
         rd32.requester_id = self.root_id
         dwords = rd32.encode_dwords()
         if self.debug:

@@ -57,7 +57,7 @@ class Host(Module):
 
     def callback(self, msg):
         if isinstance(msg, WR32):
-            address = msg.address*4
+            address = msg.address
             self.write_mem(address, msg.data)
         elif isinstance(msg, RD32):
             self.rd32_queue.append(msg)
@@ -67,7 +67,7 @@ class Host(Module):
         while True:
             if len(self.rd32_queue):
                 msg     = self.rd32_queue.pop(0)
-                address = msg.address*4
+                address = msg.address
                 length  = msg.length*4
                 data    = self.read_mem(address, length)
                 self.chipset.cmp(msg.requester_id, data,
