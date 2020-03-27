@@ -191,7 +191,7 @@ class LitePCIeTLPPacketizer(Module):
                 tlp_req.last_be.eq(0x0)
             ),
             tlp_req.first_be.eq(0xf),
-            tlp_req.address.eq(req_sink.adr[2:]),
+            tlp_req.address.eq(req_sink.adr),
 
             tlp_req.dat.eq(req_sink.dat),
             If(req_sink.we,

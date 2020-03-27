@@ -54,7 +54,7 @@ tlp_request_header_fields = {
     "last_be":      HeaderField(1*4,  4,  4),
     "first_be":     HeaderField(1*4,  0,  4),
 
-    "address":      HeaderField(2*4,  2, 30),
+    "address":      HeaderField(2*4,  0, 32),
 }
 tlp_request_header = Header(tlp_request_header_fields,
                             tlp_request_header_length,

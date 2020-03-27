@@ -184,7 +184,7 @@ class LitePCIeTLPDepacketizer(Module):
             tlp_req.ready.eq(req_source.ready),
             req_source.first.eq(tlp_req.first),
             req_source.last.eq(tlp_req.last),
-            req_source.adr.eq(Cat(Signal(2), tlp_req.address & (~address_mask))),
+            req_source.adr.eq(tlp_req.address & ~address_mask),
             req_source.len.eq(tlp_req.length),
             req_source.req_id.eq(tlp_req.requester_id),
             req_source.tag.eq(tlp_req.tag),
