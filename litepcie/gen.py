@@ -158,12 +158,15 @@ class LitePCIeCore(SoCMini):
 
         # PCIe MMAP --------------------------------------------------------------------------------
         if core_config["mmap"]:
+            mmap_base        = core_config["mmap_base"]
+            mmap_size        = core_config["mmap_size"]
+            mmap_translation = core_config.get("mmap_translation", 0x00000000)
             wb = wishbone.Interface(data_width=32)
-            self.mem_map["mmap"] = core_config["mmap_base"]
-            self.add_wb_slave(core_config["mmap_base"], wb, core_config["mmap_size"])
-            self.add_memory_region("mmap", core_config["mmap_base"], core_config["mmap_size"], type="io")
+            self.mem_map["mmap"] = mmap_base
+            self.add_wb_slave(mmap_base, wb, mmap_size)
+            self.add_memory_region("mmap", mmap_base, mmap_size, type="io")
             axi = AXILiteInterface(data_width=32, address_width=32)
-            wb2axi = Wishbone2AXILite(wb, axi)
+            wb2axi = Wishbone2AXILite(wb, axi, base_address=-mmap_translation)
             self.submodules += wb2axi
             platform.add_extension(axi.get_ios("mmap_axi_lite"))
             axi_pads = platform.request("mmap_axi_lite")
