@@ -86,7 +86,7 @@ class S7PCIEPHY(Module, AutoCSR):
 
         self.nlanes = nlanes = len(pads.tx_p)
 
-        assert nlanes          in [1, 2, 4]
+        assert nlanes          in [1, 2, 4, 8]
         assert data_width      in [64, 128]
         assert pcie_data_width in [64, 128]
 
