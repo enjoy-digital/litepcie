@@ -12,6 +12,7 @@ from litex.boards.platforms import kc705
 from litex.build.generic_platform import tools
 from litex.build.xilinx import VivadoProgrammer
 
+from litex.soc.cores.clock import *
 from litex.soc.interconnect.csr import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
@@ -25,15 +26,23 @@ from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 # CRG ----------------------------------------------------------------------------------------------
 
 class _CRG(Module, AutoCSR):
-    def __init__(self, platform):
-        self.clock_domains.cd_sys = ClockDomain("sys")
-        self.comb += self.cd_sys.clk.eq(ClockSignal("pcie"))
+    def __init__(self, platform, sys_clk_freq):
+        self.reset = CSR() # FIXME: not used for now
+
+        self.clock_domains.cd_sys = ClockDomain()
+
+        # # #
+
+        self.submodules.pll = pll = S7MMCM(speedgrade=-2)
+        self.comb += pll.reset.eq(platform.request("cpu_reset"))
+        pll.register_clkin(platform.request("clk200"), 200e6)
+        pll.create_clkout(self.cd_sys, sys_clk_freq)
 
 # LitePCIeSoC --------------------------------------------------------------------------------------
 
 class LitePCIeSoC(SoCMini):
     mem_map = {"csr": 0x00000000}
-    def __init__(self, platform):
+    def __init__(self, platform, nlanes=1):
         sys_clk_freq = int(125e6)
 
         # SoCMini ----------------------------------------------------------------------------------
@@ -41,10 +50,11 @@ class LitePCIeSoC(SoCMini):
             ident="LitePCIe example design", ident_version=True)
 
         # CRG --------------------------------------------------------------------------------------
-        self.submodules.crg = _CRG(platform)
+        self.submodules.crg = _CRG(platform, sys_clk_freq)
+        self.add_csr("crg")
 
         # PCIe PHY ---------------------------------------------------------------------------------
-        self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x1"))
+        self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x" + str(nlanes)))
         self.add_csr("pcie_phy")
 
         # PCIe Endpoint ----------------------------------------------------------------------------
@@ -90,10 +100,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build", action="store_true", help="build bitstream")
     parser.add_argument("--load",  action="store_true", help="load bitstream (to SRAM)")
+    parser.add_argument("--nlanes",default=1,           help="Number of Gen2 PCIe lanes (1, 4 or 8)")
     args = parser.parse_args()
 
     platform = kc705.Platform()
-    soc     = LitePCIeSoC(platform)
+    soc     = LitePCIeSoC(platform, nlanes=int(args.nlanes))
     builder = Builder(soc, output_dir="build")
     builder.build(build_name="kc705", run=args.build)
     soc.generate_software_headers()
