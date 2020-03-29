@@ -13,10 +13,13 @@
     "clk_freq":     125e6,         # User Clk Freq (AXI MMAP/DMA)
     "clk_external": False,         # Use external User provided Clk
 
-    # MMAP ---------------------------------------------------------------------
+    # MMAP Master --------------------------------------------------------------
     "mmap":      True,
     "mmap_base": 0x00020000,
     "mmap_size": 0x00020000,
+
+    # MMAP Slave ---------------------------------------------------------------
+    "mmap_slave": True,
 
     # DMA channels -------------------------------------------------------------
     "dma_channels":     4,         # Number of DMA channels
