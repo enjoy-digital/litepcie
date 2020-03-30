@@ -157,7 +157,7 @@ class LitePCIeCore(SoCMini):
         self.add_wb_master(pcie_wishbone_master.wishbone)
 
         # PCIe MMAP Master -------------------------------------------------------------------------
-        if core_config["mmap"]:
+        if core_config.get("mmap", False):
             mmap_base        = core_config["mmap_base"]
             mmap_size        = core_config["mmap_size"]
             mmap_translation = core_config.get("mmap_translation", 0x00000000)
@@ -173,7 +173,7 @@ class LitePCIeCore(SoCMini):
             self.comb += axi.connect_to_pads(axi_pads, mode="master")
 
         # PCIe MMAP Slave --------------------------------------------------------------------------
-        if core_config["mmap_slave"]:
+        if core_config.get("mmap_slave", False):
             platform.add_extension(axi.get_ios("mmap_slave_axi_lite"))
             axi_pads = platform.request("mmap_slave_axi_lite")
             axi = AXILiteInterface(data_width=32, address_width=32)
