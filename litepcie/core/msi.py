@@ -4,7 +4,7 @@ from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 
-# --------------------------------------------------------------------------------------------------
+# LitePCIeMSI --------------------------------------------------------------------------------------
 
 class LitePCIeMSI(Module, AutoCSR):
     def __init__(self, width=32):
@@ -44,3 +44,34 @@ class LitePCIeMSI(Module, AutoCSR):
             )
         ]
         self.comb += self.source.valid.eq(msi != 0)
+
+# LitePCIeMSIMultiVector ---------------------------------------------------------------------------
+
+class LitePCIeMSIMultiVector(Module, AutoCSR):
+  def __init__(self, width=32):
+        self.irqs   = Signal(width)
+        self.source = stream.Endpoint(msi_layout())
+
+        self.enable = CSRStorage(width, description="""MSI Enable Control.\n
+           Write bit(s) to ``1`` to enable corresponding MSI IRQ(s).""")
+
+        # # #
+
+        enable = Signal(width)
+        clear  = Signal(width)
+        vector = Signal(width)
+
+        # Memorize and clear IRQ Vector ------------------------------------------------------------
+        self.comb += enable.eq(self.enable.storage)
+        self.sync += vector.eq(enable & ((vector & ~clear) | self.irqs))
+
+        # Generate MSI -----------------------------------------------------------------------------
+        for i in reversed(range(width)): # Priority given to lower indexes.
+            self.comb += [
+                If(vector[i],
+                    self.source.valid.eq(i),
+                    If(self.source.ready,
+                        clear.eq(1 << i)
+                    )
+                )
+            ]
