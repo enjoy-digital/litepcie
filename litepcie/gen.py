@@ -125,6 +125,12 @@ class LitePCIeCRG(Module, AutoCSR):
 
 class LitePCIeCore(SoCMini):
     SoCMini.mem_map["csr"] = 0x00000000
+    SoCMini.csr_map = {
+        "ctrl":     0,
+        "crg" :     1,
+        "pcie_phy": 2,
+        "pcie_msi": 3,
+    }
     def __init__(self, platform, core_config):
         platform.add_extension(get_pcie_ios(core_config["phy_lanes"]))
         for i in range(core_config["dma_channels"]):
@@ -140,13 +146,11 @@ class LitePCIeCore(SoCMini):
         # CRG --------------------------------------------------------------------------------------
         clk_external = core_config.get("clk_external", False)
         self.submodules.crg = LitePCIeCRG(platform, clk_external)
-        self.add_csr("crg")
 
         # PCIe PHY ---------------------------------------------------------------------------------
         self.submodules.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
             data_width = core_config["phy_data_width"],
             bar0_size  = core_config["phy_bar0_size"])
-        self.add_csr("pcie_phy")
 
         # PCIe Endpoint ----------------------------------------------------------------------------
         self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, endianness=core_config["endianness"])
@@ -219,7 +223,6 @@ class LitePCIeCore(SoCMini):
             self.submodules.pcie_msi = LitePCIeMSIMultiVector(width=32)
         else:
             self.submodules.pcie_msi = LitePCIeMSI(width=32)
-        self.add_csr("pcie_msi")
         self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
         self.interrupts = {}
         for i in range(core_config["dma_channels"]):
