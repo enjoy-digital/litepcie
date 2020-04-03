@@ -69,7 +69,8 @@ class LitePCIeMSIMultiVector(Module, AutoCSR):
         for i in reversed(range(width)): # Priority given to lower indexes.
             self.comb += [
                 If(vector[i],
-                    self.source.valid.eq(i),
+                    self.source.valid.eq(1),
+                    self.source.dat.eq(i),
                     If(self.source.ready,
                         clear.eq(1 << i)
                     )
