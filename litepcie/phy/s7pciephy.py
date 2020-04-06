@@ -20,8 +20,8 @@ class AXISRX128BAligner(Module):
 
         # # #
 
-        dat_last = Signal(64)
-        be_last  = Signal(8)
+        dat_last = Signal(64, reset_less=True)
+        be_last  = Signal(8, reset_less=True)
         self.sync += [
             If(sink.valid & sink.ready,
                 dat_last.eq(sink.dat[64:]),
@@ -74,11 +74,11 @@ class S7PCIEPHY(Module, AutoCSR):
         self.data_width       = data_width
         self.pcie_data_width  = pcie_data_width
 
-        self.id               = Signal(16)
+        self.id               = Signal(16, reset_less=True)
         self.bar0_size        = bar0_size
         self.bar0_mask        = get_bar_mask(bar0_size)
-        self.max_request_size = Signal(16)
-        self.max_payload_size = Signal(16)
+        self.max_request_size = Signal(16, reset_less=True)
+        self.max_payload_size = Signal(16, reset_less=True)
 
         self.external_hard_ip = False
 

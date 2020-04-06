@@ -25,11 +25,11 @@ class C5PCIEPHY(Module, AutoCSR):
         self.platform         = platform
         self.data_width       = data_width
 
-        self.id               = Signal(16)
+        self.id               = Signal(16, reset_less=True)
         self.bar0_size        = bar0_size
         self.bar0_mask        = get_bar_mask(bar0_size)
-        self.max_request_size = Signal(16)
-        self.max_payload_size = Signal(16)
+        self.max_request_size = Signal(16, reset_less=True)
+        self.max_payload_size = Signal(16, reset_less=True)
 
         self.external_hard_ip = False
 
