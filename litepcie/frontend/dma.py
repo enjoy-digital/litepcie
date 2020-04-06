@@ -53,7 +53,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
     def __init__(self, depth):
         self.source = source = stream.Endpoint(descriptor_layout())
 
-        self.value = CSRStorage(64, fields=[
+        self.value = CSRStorage(64, reset_less=True, fields=[
             CSRField("address",      size=32, description="32-bit Address of the descriptor (bytes-aligned)."),
             CSRField("length",       size=24, description="24-bit Length  of the descriptor (in bytes)."),
             CSRField("irq_disable",  size=1,  description="IRQ Disable Control of the descriptor."),
