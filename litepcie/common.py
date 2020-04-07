@@ -7,7 +7,7 @@ from litex.gen import *
 
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream import *
-from litex.soc.interconnect.stream_packet import *
+from litex.soc.interconnect.packet import *
 
 # Constants/Helpers --------------------------------------------------------------------------------
 
