@@ -46,8 +46,12 @@ class LitePCIeSoC(SoCMini):
         sys_clk_freq = int(125e6)
 
         # SoCMini ----------------------------------------------------------------------------------
-        SoCMini.__init__(self, platform, sys_clk_freq, csr_data_width=32,
-            ident="LitePCIe example design", ident_version=True)
+        SoCMini.__init__(self, platform, sys_clk_freq,
+            csr_data_width = 32,
+            ident          = "LitePCIe example design",
+            ident_version  = True,
+            with_uart      = True,
+            uart_name      = "bridge")
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
@@ -58,7 +62,7 @@ class LitePCIeSoC(SoCMini):
         self.add_csr("pcie_phy")
 
         # PCIe Endpoint ----------------------------------------------------------------------------
-        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy)
+        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, endianness="big")
 
         # PCIe Wishbone bridge ---------------------------------------------------------------------
         self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint)
@@ -105,7 +109,7 @@ def main():
 
     platform = kc705.Platform()
     soc     = LitePCIeSoC(platform, nlanes=int(args.nlanes))
-    builder = Builder(soc, output_dir="build")
+    builder = Builder(soc, output_dir="build", csr_csv="csr.csv")
     builder.build(build_name="kc705", run=args.build)
     soc.generate_software_headers()
 
