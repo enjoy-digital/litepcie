@@ -1,12 +1,17 @@
-           __   _ __      ___  _________
-          / /  (_) /____ / _ \/ ___/  _/__
-         / /__/ / __/ -_) ___/ /___/ // -_)
-        /____/_/\__/\__/_/   \___/___/\__/
+```
+                                  __   _ __      ___  _________
+                                 / /  (_) /____ / _ \/ ___/  _/__
+                                / /__/ / __/ -_) ___/ /___/ // -_)
+                               /____/_/\__/\__/_/   \___/___/\__/
 
-        Copyright 2015-2020 / EnjoyDigital
+                               Copyright 2015-2020 / EnjoyDigital
 
-     A small footprint and configurable PCIe core
-              powered by Migen & LiteX
+                            A small footprint and configurable PCIe core
+                                     powered by Migen & LiteX
+```
+
+[![](https://travis-ci.com/enjoy-digital/litepcie.svg?branch=master)](https://travis-ci.com/enjoy-digital/litepcie) ![License](https://img.shields.io/badge/License-BSD%202--Clause-orange.svg)
+
 
 [> Intro
 --------
@@ -29,9 +34,11 @@ PHY:
   - Intel Cyclone5  (up to PCIe Gen2 X4)
   - 64-bit/128-bit datapath.
   - Clock domain crossing.
+
 Core:
   - TLP layer
   - Reordering
+
 Frontend:
   - DMA (with Scatter-Gather)
   - Wishbone bridge
@@ -49,7 +56,6 @@ LitePCIe is already used in commercial and open-source designs:
 ------------------------
 - add standardized interfaces (AXI, Avalon-ST)
 - add support for PCIe Gen2 X8
-- add Xilinx Ultrascale support
 - add Intel Stratix support
 - add Lattice support
 - add more documentation
@@ -60,14 +66,18 @@ enjoy-digital.fr.
 
 [> Getting started
 ------------------
-1. Install Python 3.5, Migen and FPGA vendor's development tools.
-   Get Migen from: https://github.com/m-labs/migen
+1. Install Python 3.6+ and FPGA vendor's development tools.
+2. Install Migen/LiteX and the LiteX's cores:
 
-2. Obtain LiteX and install it:
-  git clone https://github.com/enjoy-digital/litex --recursive
-  cd litex
-  python3 setup.py develop
-  cd ..
+```sh
+$ wget https://raw.githubusercontent.com/enjoy-digital/litex/master/litex_setup.py
+$ chmod +x litex_setup.py
+$ ./litex_setup.py init install --user (--user to install to user directory)
+```
+  Later, if you need to update all repositories:
+```sh
+$ ./litex_setup.py update
+```
 
 3. TODO: add/describe examples
 
@@ -75,9 +85,14 @@ enjoy-digital.fr.
 --------
 Unit tests are available in ./test/.
 To run all the unit tests:
-  ./setup.py test
+```sh
+$ ./setup.py test
+```
+
 Tests can also be run individually:
-  python3 -m unittest test.test_name
+```sh
+$ python3 -m unittest test.test_name
+```
 
 [> License
 ----------
