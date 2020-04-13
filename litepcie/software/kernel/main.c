@@ -592,10 +592,10 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 };
 
 static const struct pci_device_id litepcie_pci_ids[] = {
-    { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID_X1 ), },
-    { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID_X2 ), },
-    { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID_X4 ), },
-    { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID_X8 ), },
+    { PCI_DEVICE(PCI_FPGA_VENDOR_ID, PCI_FPGA_DEVICE_ID_X1 ), },
+    { PCI_DEVICE(PCI_FPGA_VENDOR_ID, PCI_FPGA_DEVICE_ID_X2 ), },
+    { PCI_DEVICE(PCI_FPGA_VENDOR_ID, PCI_FPGA_DEVICE_ID_X4 ), },
+    { PCI_DEVICE(PCI_FPGA_VENDOR_ID, PCI_FPGA_DEVICE_ID_X8 ), },
     { 0, }
 };
 MODULE_DEVICE_TABLE(pci, litepcie_pci_ids);
