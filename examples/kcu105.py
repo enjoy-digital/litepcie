@@ -7,6 +7,7 @@ import os
 import argparse
 
 from migen import *
+from migen.genlib.misc import WaitTimer
 
 from litex.boards.platforms import kcu105
 from litex.build.generic_platform import tools
@@ -27,13 +28,20 @@ from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
 class _CRG(Module, AutoCSR):
     def __init__(self, platform, sys_clk_freq):
-        self.reset = CSR() # FIXME: not used for now
+        self.rst = CSR()
 
         self.clock_domains.cd_sys = ClockDomain()
 
         # # #
 
+        # Delay software reset by 10us to ensure write has been acked on PCIe.
+        rst_delay = WaitTimer(int(10e-6*sys_clk_freq))
+        self.submodules += rst_delay
+        self.sync += If(self.rst.re, rst_delay.wait.eq(1))
+
+        # PLL
         self.submodules.pll = pll = USPLL()
+        self.comb += pll.reset.eq(rst_delay.done)
         pll.register_clkin(platform.request("clk125"), 125e6)
         pll.create_clkout(self.cd_sys, sys_clk_freq)
 

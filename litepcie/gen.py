@@ -24,6 +24,7 @@ import argparse
 
 from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
+from migen.genlib.misc import WaitTimer
 
 from litex.soc.cores.clock import *
 from litex.soc.interconnect.csr import *
@@ -102,20 +103,25 @@ def get_flash_ios():
 # CRG ----------------------------------------------------------------------------------------------
 
 class LitePCIeCRG(Module, AutoCSR):
-    def __init__(self, platform, clk_external):
+    def __init__(self, platform, sys_clk_freq, clk_external):
         self.clock_domains.cd_sys = ClockDomain()
-        self.rst = CSR() # not used
+        self.rst = CSR()
 
         # # #
+
+        # Delay software reset by 10us to ensure write has been acked on PCIe.
+        rst_delay = WaitTimer(int(10e-6*sys_clk_freq))
+        self.submodules += rst_delay
+        self.sync += If(self.rst.re, rst_delay.wait.eq(1))
 
         if clk_external:
             platform.add_extension(get_clkin_ios())
             self.comb += self.cd_sys.clk.eq(platform.request("clk"))
-            self.comb += self.cd_sys.rst.eq(platform.request("rst"))
+            self.specials += AsyncResetSynchronizer(self.cd_sys, platform.request("rst") | rst_delay.done)
         else:
             platform.add_extension(get_clkout_ios())
             self.comb += self.cd_sys.clk.eq(ClockSignal("pcie"))
-            self.specials += AsyncResetSynchronizer(self.cd_sys, ResetSignal("pcie"))
+            self.specials += AsyncResetSynchronizer(self.cd_sys, rst_delay.done)
             self.comb += [
                 platform.request("clk125").eq(ClockSignal()),
                 platform.request("rst125").eq(ResetSignal()),
@@ -145,7 +151,7 @@ class LitePCIeCore(SoCMini):
 
         # CRG --------------------------------------------------------------------------------------
         clk_external = core_config.get("clk_external", False)
-        self.submodules.crg = LitePCIeCRG(platform, clk_external)
+        self.submodules.crg = LitePCIeCRG(platform, sys_clk_freq, clk_external)
 
         # PCIe PHY ---------------------------------------------------------------------------------
         self.submodules.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
