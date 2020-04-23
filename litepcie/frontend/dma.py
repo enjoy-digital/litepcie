@@ -588,15 +588,23 @@ class LitePCIeDMA(Module, AutoCSR):
 
     Optional buffering, loopback, synchronization and monitoring.
     """
-    def __init__(self, phy, endpoint,
+    def __init__(self, phy, endpoint, table_depth=256,
         with_loopback     = False,
         with_synchronizer = False,
         with_buffering    = False, buffering_depth = 256*8,
         with_monitor      = False):
 
         # Writer/Reader ----------------------------------------------------------------------------
-        writer = LitePCIeDMAWriter(endpoint, endpoint.crossbar.get_master_port(write_only=True))
-        reader = LitePCIeDMAReader(endpoint, endpoint.crossbar.get_master_port(read_only=True))
+        writer = LitePCIeDMAWriter(
+            endpoint    = endpoint,
+            port        = endpoint.crossbar.get_master_port(write_only=True),
+            table_depth = table_depth,
+        )
+        reader = LitePCIeDMAReader(
+            endpoint    = endpoint,
+            port        = endpoint.crossbar.get_master_port(read_only=True),
+            table_depth = table_depth,
+        )
         self.submodules.writer = writer
         self.submodules.reader = reader
         self.sink, self.source = writer.sink, reader.source
@@ -618,8 +626,8 @@ class LitePCIeDMA(Module, AutoCSR):
 
         # Monitor ----------------------------------------------------------------------------------
         if with_monitor:
-            self.submodules.writer_monitor = stream.Monitor(self.sink, with_overflows=True)
-            self.submodules.reader_monitor = stream.Monitor(self.source, with_underflows=True)
+            self.submodules.writer_monitor = stream.Monitor(self.sink,   with_overflows  = True)
+            self.submodules.reader_monitor = stream.Monitor(self.source, with_underflows = True)
 
     def add_plugin_module(self, m):
         self.comb += [
