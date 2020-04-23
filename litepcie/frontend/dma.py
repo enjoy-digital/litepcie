@@ -539,28 +539,28 @@ class LitePCIeDMABuffering(Module, AutoCSR):
     appears in the streams and our Writes/Reads can't be absorbed/produced at a fixed rate. A minimum
     of buffering is needed to make sure the gaps are smoothed and not propagated to user modules.
     """
-    def __init__(self, data_width, depth):
+    def __init__(self, data_width, writer_depth, reader_depth):
         self.sink        = stream.Endpoint(dma_layout(data_width))
         self.source      = stream.Endpoint(dma_layout(data_width))
 
         self.next_source = stream.Endpoint(dma_layout(data_width))
         self.next_sink   = stream.Endpoint(dma_layout(data_width))
 
-        self.reader_fifo_depth = CSRStorage(bits_for(depth), reset=depth,
+        self.reader_fifo_depth = CSRStorage(bits_for(reader_depth), reset=reader_depth,
             description="DMA Reader FIFO depth (in {}-bit words).".format(data_width))
-        self.reader_fifo_level = CSRStatus(bits_for(depth),
+        self.reader_fifo_level = CSRStatus(bits_for(reader_depth),
             description="DMA Reader FIFO level (in {}-bit words).".format(data_width))
-        self.writer_fifo_depth = CSRStorage(bits_for(depth), reset=depth,
+        self.writer_fifo_depth = CSRStorage(bits_for(writer_depth), reset=writer_depth,
             description="DMA Writer FIFO depth (in {}-bit words).".format(data_width))
-        self.writer_fifo_level = CSRStatus(bits_for(depth),
+        self.writer_fifo_level = CSRStatus(bits_for(writer_depth),
             description="DMA Writer FIFO level (in {}-bit words).".format(data_width))
 
         # # #
 
         depth_shift = log2_int(data_width//8)
 
-        reader_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
-        writer_fifo = SyncFIFO(dma_layout(data_width), depth//(data_width//8), buffered=True)
+        reader_fifo = SyncFIFO(dma_layout(data_width), reader_depth//(data_width//8), buffered=True)
+        writer_fifo = SyncFIFO(dma_layout(data_width), writer_depth//(data_width//8), buffered=True)
         self.submodules += reader_fifo, writer_fifo
         self.comb += [
             self.sink.connect(reader_fifo.sink, omit={"valid", "ready"}),
@@ -589,10 +589,10 @@ class LitePCIeDMA(Module, AutoCSR):
     Optional buffering, loopback, synchronization and monitoring.
     """
     def __init__(self, phy, endpoint, table_depth=256,
-        with_loopback     = False,
-        with_synchronizer = False,
-        with_buffering    = False, buffering_depth = 256*8,
-        with_monitor      = False):
+        with_loopback      = False,
+        with_synchronizer  = False,
+        with_buffering     = False, buffering_depth=256*8, writer_buffering_depth=None, reader_buffering_depth=None,
+        with_monitor       = False):
 
         # Writer/Reader ----------------------------------------------------------------------------
         writer = LitePCIeDMAWriter(
@@ -621,7 +621,12 @@ class LitePCIeDMA(Module, AutoCSR):
 
         # Buffering --------------------------------------------------------------------------------
         if with_buffering:
-            self.submodules.buffering = LitePCIeDMABuffering(phy.data_width, buffering_depth)
+            writer_depth = writer_buffering_depth if writer_buffering_depth is not None else buffering_depth
+            reader_depth = reader_buffering_depth if reader_buffering_depth is not None else buffering_depth
+            self.submodules.buffering = LitePCIeDMABuffering(
+                data_width   = phy.data_width,
+                writer_depth = writer_depth,
+                reader_depth = reader_depth)
             self.add_plugin_module(self.buffering)
 
         # Monitor ----------------------------------------------------------------------------------
