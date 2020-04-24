@@ -73,7 +73,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
             CSRField("index", size=16, description= "Index of the last descriptor executed in the DMA descriptor table."),
             CSRField("count", size=16, description= "Loops of the DMA descriptor table since started."),
             ], description="Loop monitoring for software synchronization.")
-        self.level = CSRStatus(log2_int(depth), description="Number descriptors in the table.")
+        self.level = CSRStatus(bits_for(depth), description="Number descriptors in the table.")
         self.flush = CSRStorage(description="A write to this register flushes the table.")
 
         # # #
