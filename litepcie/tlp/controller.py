@@ -13,7 +13,7 @@ class LitePCIeTLPController(Module):
 
     Arbitrate/throttle TLP requests and reorder/assemble/redirect completions.
     """
-    def __init__(self, data_width, max_pending_requests):
+    def __init__(self, data_width, max_pending_requests, cmp_bufs_buffered=True):
         self.master_in = LitePCIeMasterInternalPort(data_width)
         self.master_out = LitePCIeMasterInternalPort(data_width)
 
@@ -79,7 +79,7 @@ class LitePCIeTLPController(Module):
         cmp_read_cases = {}
         for i in range(max_pending_requests):
             cmp_buf_depth = int(4*max_request_size/(data_width/8))
-            cmp_buf = SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=True)
+            cmp_buf = SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered)
             self.submodules += cmp_buf
             cmp_write_cases[i] = [cmp_reorder.connect(cmp_buf.sink)]
             cmp_read_cases[i] = [cmp_buf.source.connect(cmp_source)]
