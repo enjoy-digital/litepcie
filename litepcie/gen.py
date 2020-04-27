@@ -155,8 +155,9 @@ class LitePCIeCore(SoCMini):
 
         # PCIe PHY ---------------------------------------------------------------------------------
         self.submodules.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
-            data_width = core_config["phy_data_width"],
-            bar0_size  = core_config["phy_bar0_size"])
+            pcie_data_width = core_config.get("phy_pcie_data_width", 64),
+            data_width      = core_config["phy_data_width"],
+            bar0_size       = core_config["phy_bar0_size"])
 
         # PCIe Endpoint ----------------------------------------------------------------------------
         self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, endianness=core_config["endianness"])
