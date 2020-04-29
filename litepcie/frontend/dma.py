@@ -631,8 +631,8 @@ class LitePCIeDMA(Module, AutoCSR):
 
         # Monitor ----------------------------------------------------------------------------------
         if with_monitor:
-            self.submodules.writer_monitor = stream.Monitor(self.sink,   with_overflows  = True)
-            self.submodules.reader_monitor = stream.Monitor(self.source, with_underflows = True)
+            self.submodules.writer_monitor = stream.Monitor(self.sink,   count_width=16, with_overflows  = True)
+            self.submodules.reader_monitor = stream.Monitor(self.source, count_width=16, with_underflows = True)
 
     def add_plugin_module(self, m):
         self.comb += [
