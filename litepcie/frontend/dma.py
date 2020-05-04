@@ -162,10 +162,10 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
     - Maximum Payload Size for Writes.
     - Maximum Request Size for Reads.
 
-    Descriptors from LitePCIeDMAScatterGather have a maximum length of 16mB (24-bits). It is not
+    Descriptors from LitePCIeDMAScatterGather have a maximum length of 16Mb (24-bits). It is not
     possible to do such long Writes/Reads on the PCIe bus. At the PCIe enumeration, Maximum Payload
-    and Request Sizes are negociated between the Host and the Device. Writes are limited to Maximum
-    Payload Size, Reads are limited to Maximum Rquest Size. Each descriptor is then splitted in
+    and Request Sizes are negotiated between the Host and the Device. Writes are limited to Maximum
+    Payload Size, Reads are limited to Maximum Request Size. Each descriptor is then split in
     several shorter descriptors.
     """
     def __init__(self, max_size):
@@ -227,11 +227,11 @@ class LitePCIeDMAReader(Module, AutoCSR):
     Generates a data stream from Host's memory.
 
     This module allows Scatter-Gather DMAs from Host's memory to data stream in the FPGA. The DMA
-    descriptors, stored in a software programmable table, are splitted and executed as Read Requests
+    descriptors, stored in a software programmable table, are split and executed as Read Requests
     on the PCIe bus.
 
     A Read Request is only sent to the Host when enough space is available in the Data FIFO to store
-    the requested datas.
+    the requested data.
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
@@ -348,10 +348,10 @@ class LitePCIeDMAWriter(Module, AutoCSR):
     Stores a data stream to Host's memory.
 
     This module allows Scatter-Gather DMAs from a data stream in the FPGA to Host's memory. The DMA
-    descriptors, stored in a software programmable table, are splitted and executed as Write Requests
+    descriptors, stored in a software programmable table, are split and executed as Write Requests
     on the PCIe bus.
 
-    A Write Request is only sent to the Host when enough datas are available for the current splitted
+    A Write Request is only sent to the Host when enough data are available for the current split
     descriptor.
 
     A MSI IRQ can be generated when a descriptor has been executed.
@@ -533,9 +533,9 @@ class LitePCIeDMABuffering(Module, AutoCSR):
 
     Optional DMA buffering with dynamically configurable depth.
 
-    For some applications (Software Defined Radio, Video, ...), the user module consuming the datas
+    For some applications (Software Defined Radio, Video, ...), the user module consuming the data
     from the DMA Reader works at fixed rate and does not handle backpressure. (The same also applies
-    to the user module generating the datas to the DMA Writer). Since the PCIe bus is shared, gaps
+    to the user module generating the data to the DMA Writer). Since the PCIe bus is shared, gaps
     appears in the streams and our Writes/Reads can't be absorbed/produced at a fixed rate. A minimum
     of buffering is needed to make sure the gaps are smoothed and not propagated to user modules.
     """
