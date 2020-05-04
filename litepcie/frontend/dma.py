@@ -255,7 +255,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         pending_words_dequeue = Signal.like(pending_words)
 
         # Table / Splitter -----------------------------------------------------------------
-        # Descriptors from Table are splitted in descriptors of max_request_size. (negociated at link-up)
+        # Descriptors from Table are splitted in descriptors of max_request_size (negotiated at link-up)
         table    = LitePCIeDMAScatterGather(table_depth)
         splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_request_size)
         splitter = ResetInserter()(splitter)
@@ -373,7 +373,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         fifo_depth            = 4*max_words_per_request
 
         # Table/Splitter ---------------------------------------------------------------------------
-        # Descriptors from table are splitted in descriptors of max_payload_size. (negociated at link-up)
+        # Descriptors from table are splitted in descriptors of max_payload_size (negotiated at link-up)
         table    = LitePCIeDMAScatterGather(table_depth)
         splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_payload_size)
         splitter = ResetInserter()(splitter)
