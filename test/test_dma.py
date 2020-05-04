@@ -3,17 +3,13 @@
 
 # In this high level test, LitePCIeEndpoint is connected to LitePCIeDMAReader and LitePCIeDMAWriter
 # frontends with Reader's source connected to Writer's sink. Our Host model is used to emulate a Host
-# memory with the Reader and Writer are reading/writing datas from/to this memory. The Host memory
-# is initially filled with random datas, that are read by the Reader, re-directed to the Writer and
-# then re-written in another memory location of the Host. The test then checks that the initial datas
-# and re-written datas are identical.
+# memory with the Reader and Writer are reading/writing data from/to this memory. The Host memory
+# is initially filled with random data, that are read by the Reader, re-directed to the Writer and
+# then re-written in another memory location of the Host. The test then checks that the initial data
+# and re-written data are identical.
 
 import unittest
-import random
 
-from migen import *
-
-from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream_sim import seed_to_data
 
 from litepcie.common import *
@@ -72,14 +68,13 @@ class MSIHandler(Module):
         self.dma_writer_irq_count = 0
 
     def clear_dma_reader_irq_count(self):
-        self.dma_writer_irq_count = 0
+        self.dma_reader_irq_count = 0
 
     def clear_dma_writer_irq_count(self):
         self.dma_writer_irq_count = 0
 
     @passive
     def generator(self, dut):
-        last_valid = 0
         while True:
             yield self.sink.ready.eq(1)
             if (yield self.sink.valid):
@@ -106,8 +101,8 @@ class MSIHandler(Module):
 
 class TestDMA(unittest.TestCase):
     def dma_test(self, data_width, test_size=1024):
-        host_datas     = [seed_to_data(i, True) for i in range(test_size//4)]
-        loopback_datas = []
+        host_data     = [seed_to_data(i, True) for i in range(test_size//4)]
+        loopback_data = []
 
         def main_generator(dut, nreads=8, nwrites=8):
             # Allocate Host's memory
@@ -117,7 +112,7 @@ class TestDMA(unittest.TestCase):
             dut.host.chipset.enable()
 
             # Fill initial Host's memory
-            dut.host.write_mem(0x00000000, host_datas)
+            dut.host.write_mem(0x00000000, host_data)
 
             # DMA Reader/Writer control models
             dma_reader_driver = DMADriver("dma_reader", dut)
@@ -129,7 +124,7 @@ class TestDMA(unittest.TestCase):
             for i in range(nreads):
                 yield from dma_reader_driver.program_descriptor((test_size//8)*i, test_size//8)
 
-            # Program DMA Writer descriptos
+            # Program DMA Writer descriptors
             yield from dma_writer_driver.set_prog_mode()
             yield from dma_writer_driver.flush()
             for i in range(nwrites):
@@ -142,16 +137,16 @@ class TestDMA(unittest.TestCase):
             yield from dma_reader_driver.enable()
             yield from dma_writer_driver.enable()
 
-            # Wait we received all Writes
+            # Wait for all writes
             while dut.msi_handler.dma_writer_irq_count != nwrites:
                 yield
 
-            # Delay to ensure all datas have been written
+            # Delay to ensure all the data has been written
             for i in range(1024):
                 yield
 
             for data in dut.host.read_mem(test_size, test_size):
-                loopback_datas.append(data)
+                loopback_data.append(data)
 
 
         class DUT(Module):
@@ -195,7 +190,7 @@ class TestDMA(unittest.TestCase):
         }
         clocks = {"sys": 10}
         run_simulation(dut, generators, clocks, vcd_name="test_dma.vcd")
-        self.assertEqual(host_datas, loopback_datas)
+        self.assertEqual(host_data, loopback_data)
 
     def test_dma_64b(self):
         self.dma_test(64)
