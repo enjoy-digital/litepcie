@@ -194,6 +194,7 @@ class S7PCIEPHY(Module, AutoCSR):
         class Open(Signal): pass
         m_axis_rx_tlast = Signal()
         m_axis_rx_tuser = Signal(32)
+        self.pcie_gt_device  = {"xc7a": "GTP", "xc7k": "GTX", "xc7v": "GTX"}[platform.device[:4]]
         self.pcie_phy_params = dict(
             # Parameters ---------------------------------------------------------------------------
             p_LINK_CAP_MAX_LINK_WIDTH                    = nlanes,
@@ -202,9 +203,7 @@ class S7PCIEPHY(Module, AutoCSR):
             p_PCIE_REFCLK_FREQ                           = 0, # 100MHz refclk
             p_PCIE_USERCLK1_FREQ                         = 3 if nlanes <= 2 else 4,
             p_PCIE_USERCLK2_FREQ                         = 3 if (pcie_clk_freq == 125e6) else 4,
-            p_PCIE_GT_DEVICE                             = {"xc7a": "GTP",
-                                                            "xc7k": "GTX",
-                                                            "xc7v": "GTX"}[platform.device[:4]],
+            p_PCIE_GT_DEVICE                             = self.pcie_gt_device,
             p_PCIE_USE_MODE                              = "1.0",
 
             # PCI Express Interface ----------------------------------------------------------------
@@ -431,14 +430,55 @@ class S7PCIEPHY(Module, AutoCSR):
 
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename):
-        platform.add_ip(os.path.join(phy_path, phy_filename))
         platform.add_source(os.path.join(phy_path, "pcie_pipe_clock.v"))
         platform.add_source(os.path.join(phy_path, "pcie_s7_x{}_support.v".format(self.nlanes)))
+        platform.add_ip(os.path.join(phy_path, phy_filename), disable_constraints=True)
 
     # External Hard IP -----------------------------------------------------------------------------
     def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
         self.external_hard_ip = True
         self.add_sources(self.platform, hard_ip_path, hard_ip_filename)
+
+    # Timing constraints ---------------------------------------------------------------------------
+    def add_timing_constraints(self, platform):
+        platform.add_platform_command("""
+# PCIe 100MHz input clock.
+create_clock -name pcie_phy_clk -period 10 [get_pins -hierarchical \
+    -filter {{NAME=~*pcie_support/pcie_i/inst/inst/gt_top_i/pipe_wrapper_i/pipe_lane[0].gt_wrapper_i/gtX_channel.gtXe2_channel_i/TXOUTCLK}}]
+
+# False paths (through).
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/PLPHYLNKUPN}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/PLRECEIVEDHOTRST}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/RXELECIDLE}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/TXPHINITDONE}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/TXPHALIGNDONE}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/TXDLYSRESETDONE}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/RXDLYSRESETDONE}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/RXPHALIGNDONE}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/RXCDRLOCK}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/CFGMSGRECEIVEDPMETO}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/PLL0LOCK}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/RXPMARESETDONE}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/RXSYNCDONE}}]
+set_false_path -through [get_pins -hierarchical -filter {{NAME=~*/TXSYNCDONE}}]
+
+# False path (to).
+set_false_path -to [get_pins -hierarchical -filter {{NAME=~*pcie_support/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/S0}}]
+set_false_path -to [get_pins -hierarchical -filter {{NAME=~*pcie_support/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/S1}}]
+
+# Generated clocks.
+create_generated_clock -name clk_125mhz_phy [get_pins -hierarchical -filter {{NAME=~*pcie_support/pipe_clock_i/mmcm_i/CLKOUT0}}]
+create_generated_clock -name clk_250mhz_phy [get_pins -hierarchical -filter {{NAME=~*pcie_support/pipe_clock_i/mmcm_i/CLKOUT1}}]
+create_generated_clock -name clk_125mhz_mux_phy \
+    -source [get_pins -hierarchical -filter {{NAME=~*pcie_support/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/I0}}] \
+    -divide_by 1 \
+    [get_pins -hierarchical -filter {{NAME=~*pcie_support/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/O}}]
+create_generated_clock -name clk_250mhz_mux_phy \
+    -source [get_pins -hierarchical -filter {{NAME=~*pcie_support/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/I1}}] \
+    -divide_by 1 -add -master_clock [get_clocks -of [get_pins -hierarchical -filter {{NAME=~*pcie_support/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/I1}}]] \
+    [get_pins -hierarchical -filter {{NAME=~*pcie_support/pipe_clock_i/pclk_i1_bufgctrl.pclk_i1/O}}]
+set_clock_groups -name pcieclkmux -physically_exclusive -group clk_125mhz_mux_phy -group clk_250mhz_mux_phy
+        """.replace("gtX", self.pcie_gt_device.lower()))
 
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
