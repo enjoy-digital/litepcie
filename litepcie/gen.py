@@ -21,6 +21,7 @@ Current version of the generator is limited to Xilinx 7-Series FPGA / Altera Cyc
 
 import yaml
 import argparse
+import subprocess
 
 from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
@@ -251,11 +252,19 @@ class LitePCIeCore(SoCMini):
         mem_header = get_mem_header(self.mem_regions)
         tools.write_to_file(os.path.join("mem.h"), mem_header)
 
+    def generate_documentation(self, build_name, **kwargs):
+        from litex.soc.doc import generate_docs
+        generate_docs(self, "documentation".format(build_name),
+            project_name = "LitePCIe standalone core",
+            author       = "Enjoy-Digital")
+        os.system("sphinx-build -M html documentation/ documentation/_build".format(build_name, build_name))
+
 # Build --------------------------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(description="LitePCIe standalone core generator")
     parser.add_argument("config", help="YAML config file")
+    parser.add_argument("--doc",  action="store_true", help="Build documentation")
     args = parser.parse_args()
     core_config = yaml.load(open(args.config).read(), Loader=yaml.Loader)
 
@@ -287,6 +296,8 @@ def main():
     builder  = Builder(soc, output_dir="build", compile_gateware=False)
     vns      = builder.build(build_name="litepcie_core", regular_comb=True)
     soc.generate_software_headers()
+    if args.doc:
+        soc.generate_documentation("litepcie_core")
 
 if __name__ == "__main__":
     main()
