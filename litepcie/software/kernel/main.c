@@ -590,9 +590,10 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 
     litepcie_end(dev, s);
     pci_iounmap(dev, s->bar0_addr);
-    pci_release_regions(dev);
     device_destroy(litepcie_class, MKDEV(MAJOR(litepcie_cdev), s->minor));
     cdev_del(&s->cdev_struct);
+	/* There is no need to call pci_release_regions() as it is handled
+	 * by the kernel since we used pcim_enable_device() */
 };
 
 static const struct pci_device_id litepcie_pci_ids[] = {
