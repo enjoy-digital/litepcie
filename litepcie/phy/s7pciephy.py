@@ -429,15 +429,15 @@ class S7PCIEPHY(Module, AutoCSR):
             ]
 
     # Hard IP sources ------------------------------------------------------------------------------
-    def add_sources(self, platform, phy_path, phy_filename):
+    def add_sources(self, platform, phy_path, phy_filename, disable_constraints=True):
         platform.add_source(os.path.join(phy_path, "pcie_pipe_clock.v"))
         platform.add_source(os.path.join(phy_path, "pcie_s7_x{}_support.v".format(self.nlanes)))
-        platform.add_ip(os.path.join(phy_path, phy_filename), disable_constraints=True)
+        platform.add_ip(os.path.join(phy_path, phy_filename), disable_constraints=disable_constraints)
 
     # External Hard IP -----------------------------------------------------------------------------
-    def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
+    def use_external_hard_ip(self, hard_ip_path, hard_ip_filename, disable_constraints=True):
         self.external_hard_ip = True
-        self.add_sources(self.platform, hard_ip_path, hard_ip_filename)
+        self.add_sources(self.platform, hard_ip_path, hard_ip_filename, disable_constraints)
 
     # Timing constraints ---------------------------------------------------------------------------
     def add_timing_constraints(self, platform):
