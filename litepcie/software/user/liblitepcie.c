@@ -130,7 +130,7 @@ void litepcie_release_dma_writer(int fd) {
     ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
 }
 
-#if 0
+#ifdef CSR_FLASH_BASE
 /* flash */
 
 //#define FLASH_FULL_ERASE

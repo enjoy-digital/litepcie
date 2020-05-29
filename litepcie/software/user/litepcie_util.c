@@ -69,10 +69,13 @@ static void info(void)
     for(i=0; i<256; i++)
         fpga_identification[i] = litepcie_readl(fd, CSR_IDENTIFIER_MEM_BASE + 4*i);
     printf("FPGA identification: %s\n", fpga_identification);
+#ifdef CSR_DNA_BASE
     printf("FPGA dna: 0x%08x%08x\n",
         litepcie_readl(fd, CSR_DNA_ID_ADDR + 4*0),
         litepcie_readl(fd, CSR_DNA_ID_ADDR + 4*1)
     );
+#endif
+#ifdef CSR_XADC_BASE
     printf("FPGA temperature: %0.1f °C\n",
            (double)litepcie_readl(fd, CSR_XADC_TEMPERATURE_ADDR) * 503.975/4096 - 273.15);
     printf("FPGA vccint: %0.2f V\n",
@@ -81,10 +84,11 @@ static void info(void)
            (double)litepcie_readl(fd, CSR_XADC_VCCAUX_ADDR) / 4096 * 3);
     printf("FPGA vccbram: %0.2f V\n",
            (double)litepcie_readl(fd, CSR_XADC_VCCBRAM_ADDR) / 4096 * 3);
+#endif
     close(fd);
 }
 
-#if 0
+#ifdef CSR_FLASH_BASE
 /* flash */
 
 static void flash_progress(void *opaque, const char *fmt, ...)
@@ -446,6 +450,7 @@ void scratch_test(void)
     close(fd);
 }
 
+#ifdef CSR_UART_BASE
 void uart_test(void)
 {
     int fd;
@@ -466,6 +471,7 @@ void uart_test(void)
 
     close(fd);
 }
+#endif
 
 static void help(void)
 {
@@ -481,11 +487,15 @@ static void help(void)
            "info                              Board information\n"
            "dma_test                          Test DMA  (loopback in FPGA)\n"
            "scratch_test                      Test Scratch register\n"
+#ifdef CSR_UART_BASE
            "uart_test                         Test CPU Crossover UART\n"
+#endif
            "\n"
+#ifdef CSR_FLASH_BASE
            "flash_update filename [offset]    Update FPGA gateware\n"
            "flash_dump filename size [offset] Dump FPGA gateware\n"
            "flash_reload                      Reload FPGA gateware\n"
+#endif
            );
     exit(1);
 }
@@ -531,9 +541,11 @@ int main(int argc, char **argv)
         dma_test();
     else if (!strcmp(cmd, "scratch_test"))
         scratch_test();
+#ifdef CSR_UART_BASE
     else if (!strcmp(cmd, "uart_test"))
         uart_test();
-#if 0
+#endif
+#if CSR_FLASH_BASE
     else if (!strcmp(cmd, "flash_update")) {
         const char *filename;
         uint32_t offset = 0;
@@ -560,6 +572,7 @@ int main(int argc, char **argv)
         flash_reload();
 #endif
     else
+        goto show_help;
 show_help:
         help();
 

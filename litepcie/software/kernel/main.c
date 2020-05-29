@@ -626,7 +626,7 @@ static unsigned int litepcie_poll(struct file *file, poll_table *wait)
     return mask;
 }
 
-#if 0
+#ifdef CSR_FLASH_BASE
 /* SPI */
 
 #define SPI_TIMEOUT 100000 /* in us */
@@ -682,7 +682,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
             }
         }
         break;
-#if 0
+#ifdef CSR_FLASH_BASE
     case LITEPCIE_IOCTL_FLASH:
         {
             struct litepcie_ioctl_flash m;
@@ -701,6 +701,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
         }
         break;
 #endif
+#ifdef CSR_ICAP_BASE
     case LITEPCIE_IOCTL_ICAP:
         {
             struct litepcie_ioctl_icap m;
@@ -715,6 +716,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 			litepcie_writel(chan->litepcie_dev, CSR_ICAP_SEND_ADDR, 1);
         }
         break;
+#endif
     case LITEPCIE_IOCTL_DMA:
         {
             struct litepcie_ioctl_dma m;
