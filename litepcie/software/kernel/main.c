@@ -210,7 +210,7 @@ static int litepcie_dma_init(struct litepcie_device *s)
             /* check */
             if(!dmachan->writer_addr[j]
                || !dmachan->reader_addr[j]) {
-                pr_err("Failed to allocate dma buffers\n");
+                dev_err(&s->dev->dev,"Failed to allocate dma buffers\n");
                 ret = -ENOMEM;
                 goto fail;
             }
@@ -506,7 +506,7 @@ static ssize_t litepcie_read(struct file *file, char __user *data, size_t size, 
     }
 
     if (overflows)
-        printk(KERN_INFO LITEPCIE_NAME " Reading too late, %d buffers lost\n", overflows);
+        pr_debug("Reading too late, %d buffers lost\n", overflows);
 
 #ifdef DEBUG_READ
     pr_debug("read: read %ld bytes out of %ld\n", size - len, size);
@@ -556,7 +556,7 @@ static ssize_t litepcie_write(struct file *file, const char __user *data, size_t
     }
 
     if (underflows)
-        printk(KERN_INFO LITEPCIE_NAME " Writing too late, %d buffers lost\n", underflows);
+        pr_debug("Writing too late, %d buffers lost\n", underflows);
 
 #ifdef DEBUG_WRITE
     pr_debug("write: write %ld bytes out of %ld\n", size - len, size);
@@ -912,14 +912,14 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
         s->chan[i].cdev = cdev_alloc();
         if(!s->chan[i].cdev) {
             ret = -ENOMEM;
-            pr_err("Failed to allocate cdev\n");
+            dev_err(&s->dev->dev, "Failed to allocate cdev\n");
             goto fail_alloc;
         }
 
         cdev_init(s->chan[i].cdev, &litepcie_fops);
         ret = cdev_add(s->chan[i].cdev, MKDEV(litepcie_major, index), 1);
         if(ret < 0) {
-            pr_err("Failed to allocate cdev\n");
+            dev_err(&s->dev->dev, "Failed to allocate cdev\n");
             goto fail_alloc;
         }
         index++;
@@ -927,10 +927,10 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
 
     index = litepcie_minor_idx;
     for(i = 0; i < s->channels; i++) {
-        printk(KERN_INFO LITEPCIE_NAME " Creating /dev/litepcie%d\n", index);
+        dev_info(&s->dev->dev, "Creating /dev/litepcie%d\n", index);
         if(!device_create(litepcie_class, NULL, MKDEV(litepcie_major, index), NULL, "litepcie%d", index)) {
             ret = -EINVAL;
-            pr_err("Failed to create device\n");
+            dev_err(&s->dev->dev, "Failed to create device\n");
             goto fail_create;
         }
         index++;
@@ -1019,11 +1019,11 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
     struct litepcie_device *litepcie_dev = NULL;
 
-    printk(KERN_INFO LITEPCIE_NAME " \e[1m[Probing device]\e[0m\n");
+    dev_info(&dev->dev, "\e[1m[Probing device]\e[0m\n");
 
     litepcie_dev = kzalloc(sizeof(struct litepcie_device), GFP_KERNEL);
     if(!litepcie_dev) {
-        pr_err("Cannot allocate memory\n");
+        dev_err(&dev->dev, "Cannot allocate memory\n");
         ret = -ENOMEM;
         goto fail1;
     }
@@ -1035,25 +1035,25 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
     ret = pci_enable_device(dev);
     if (ret != 0) {
-        pr_err("Cannot enable device\n");
+        dev_err(&dev->dev, "Cannot enable device\n");
         goto fail1;
     }
 
     /* check device version */
     pci_read_config_byte(dev, PCI_REVISION_ID, &rev_id);
     if (rev_id != 0) {
-        pr_err("Unsupported device version %d\n", rev_id);
+        dev_err(&dev->dev, "Unsupported device version %d\n", rev_id);
         goto fail2;
     }
 
     if (pci_request_regions(dev, LITEPCIE_NAME) < 0) {
-        pr_err("Could not request regions\n");
+        dev_err(&dev->dev, "Could not request regions\n");
         goto fail2;
     }
 
     /* check bar0 config */
     if (!(pci_resource_flags(dev, 0) & IORESOURCE_MEM)) {
-        pr_err("Invalid BAR0 configuration\n");
+        dev_err(&dev->dev, "Invalid BAR0 configuration\n");
         goto fail3;
     }
 
@@ -1061,30 +1061,30 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     litepcie_dev->bar0_size = pci_resource_len(dev, 0);
     litepcie_dev->bar0_phys_addr = pci_resource_start(dev, 0);
     if (!litepcie_dev->bar0_addr) {
-        pr_err("Could not map BAR0\n");
+        dev_err(&dev->dev, "Could not map BAR0\n");
         goto fail3;
     }
 
     /* show identifier */
     for(i=0; i < 256; i++)
         fpga_identifier[i] = litepcie_readl(litepcie_dev, CSR_IDENTIFIER_MEM_BASE + i*4);
-    printk(KERN_INFO LITEPCIE_NAME " Version %s\n", fpga_identifier);
+    dev_info(&dev->dev, "Version %s\n", fpga_identifier);
 
     pci_set_master(dev);
     ret = pci_set_dma_mask(dev, DMA_BIT_MASK(32));
     if (ret) {
-        pr_err("Failed to set DMA mask\n");
+        dev_err(&dev->dev, "Failed to set DMA mask\n");
         goto fail4;
     };
 
     ret = pci_enable_msi(dev);
     if (ret) {
-        pr_err("Failed to enable MSI\n");
+        dev_err(&dev->dev, "Failed to enable MSI\n");
         goto fail4;
     }
 
     if (request_irq(dev->irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, litepcie_dev) < 0) {
-        pr_err("Failed to allocate IRQ %d\n", dev->irq);
+        dev_err(&dev->dev, "Failed to allocate IRQ %d\n", dev->irq);
         goto fail5;
     }
 
@@ -1097,7 +1097,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     /* create all chardev in /dev */
     ret = litepcie_alloc_chdev(litepcie_dev);
     if(ret){
-        pr_err("Failed to allocate character device\n");
+        dev_err(&dev->dev, "Failed to allocate character device\n");
         goto fail5;
     }
 
@@ -1130,7 +1130,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     /* allocate all dma buffers */
     ret = litepcie_dma_init(litepcie_dev);
     if(ret){
-        pr_err("Failed to allocate DMA\n");
+        dev_err(&dev->dev, "Failed to allocate DMA\n");
         goto fail6;
     }
 
@@ -1150,7 +1150,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         &current_gateware_revision.mm,
         &current_gateware_revision.dd);
     if (compare_revisions(minimal_gateware_revision, current_gateware_revision) > 0)
-        printk(KERN_INFO LITEPCIE_NAME " \e[1mHW needs update to gateware revision %04d-%02d-%02d\e[0m\n",
+        dev_info(&dev->dev, "\e[1mHW needs update to gateware revision %04d-%02d-%02d\e[0m\n",
             minimal_gateware_revision.yy,
             minimal_gateware_revision.mm,
             minimal_gateware_revision.dd);
@@ -1181,7 +1181,7 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 
     litepcie_dev = pci_get_drvdata(dev);
 
-    printk(KERN_INFO LITEPCIE_NAME " \e[1m[Removing device]\e[0m\n");
+    dev_info(&dev->dev, "\e[1m[Removing device]\e[0m\n");
 
     if(litepcie_dev){
         litepcie_stop_dma(litepcie_dev);
