@@ -11,7 +11,6 @@ from migen.genlib.misc import WaitTimer
 
 from litex.boards.platforms import kcu105
 from litex.build.generic_platform import tools
-from litex.build.xilinx import VivadoProgrammer
 
 from litex.soc.cores.clock import USPLL
 from litex.soc.interconnect.csr import *
@@ -48,7 +47,6 @@ class _CRG(Module, AutoCSR):
 # LitePCIeSoC --------------------------------------------------------------------------------------
 
 class LitePCIeSoC(SoCMini):
-    mem_map = {"csr": 0x00000000}
     def __init__(self, platform, nlanes=4):
         sys_clk_freq = int(125e6)
 
@@ -64,28 +62,51 @@ class LitePCIeSoC(SoCMini):
         self.submodules.crg = _CRG(platform, sys_clk_freq)
         self.add_csr("crg")
 
-        # PCIe PHY ---------------------------------------------------------------------------------
-        self.submodules.pcie_phy = USPCIEPHY(platform, platform.request("pcie_x" + str(nlanes)))
+
+        # PCIe -------------------------------------------------------------------------------------
+        # PHY
+        self.submodules.pcie_phy = USPCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
+            data_width = 128,
+            bar0_size  = 0x20000
+        )
+        #self.pcie_phy.add_timing_constraints(platform) # FIXME
+        #platform.add_false_path_constraints(self.crg.cd_sys.clk, self.pcie_phy.cd_pcie.clk)
         self.add_csr("pcie_phy")
 
-        # PCIe Endpoint ----------------------------------------------------------------------------
-        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, endianness="little")
+        # Endpoint
+        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
+			endianness="little",
+			max_pending_requests=8
+		)
 
-        # PCIe Wishbone bridge ---------------------------------------------------------------------
-        self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint)
+        # Wishbone bridge
+        self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint,
+            base_address = self.mem_map["csr"])
         self.add_wb_master(self.pcie_bridge.wishbone)
 
-        # PCIe DMA ---------------------------------------------------------------------------------
-        self.submodules.pcie_dma = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint, with_loopback=True)
-        self.add_csr("pcie_dma")
+        # DMA0
+        self.submodules.pcie_dma0 = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
+            with_buffering = True, buffering_depth=1024,
+            with_loopback  = True)
+        self.add_csr("pcie_dma0")
 
-        # PCIe MSI ---------------------------------------------------------------------------------
+        # DMA1
+        self.submodules.pcie_dma1 = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
+            with_buffering = True, buffering_depth=1024,
+            with_loopback  = True)
+        self.add_csr("pcie_dma1")
+
+        self.add_constant("DMA_CHANNELS", 2)
+
+        # MSI
         self.submodules.pcie_msi = LitePCIeMSI()
         self.add_csr("pcie_msi")
         self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
         self.interrupts = {
-            "PCIE_DMA_WRITER":    self.pcie_dma.writer.irq,
-            "PCIE_DMA_READER":    self.pcie_dma.reader.irq
+            "PCIE_DMA0_WRITER":    self.pcie_dma0.writer.irq,
+            "PCIE_DMA0_READER":    self.pcie_dma0.reader.irq,
+            "PCIE_DMA1_WRITER":    self.pcie_dma1.writer.irq,
+            "PCIE_DMA1_READER":    self.pcie_dma1.reader.irq,
         }
         for i, (k, v) in enumerate(sorted(self.interrupts.items())):
             self.comb += self.pcie_msi.irqs[i].eq(v)
@@ -93,35 +114,30 @@ class LitePCIeSoC(SoCMini):
 
     def generate_software_headers(self):
         csr_header = get_csr_header(self.csr_regions, self.constants, with_access_functions=False)
-        tools.write_to_file(os.path.join("build", "csr.h"), csr_header)
+        tools.write_to_file("csr.h", csr_header)
         soc_header = get_soc_header(self.constants, with_access_functions=False)
-        tools.write_to_file(os.path.join("build", "soc.h"), soc_header)
+        tools.write_to_file("soc.h", soc_header)
         mem_header = get_mem_header(self.mem_regions)
-        tools.write_to_file(os.path.join("build", "mem.h"), mem_header)
-
-# Load ---------------------------------------------------------------------------------------------
-
-def load():
-    prog = VivadoProgrammer()
-    prog.load_bitstream("build/gateware/kcu105.bit")
+        tools.write_to_file("mem.h", mem_header)
 
 # Build --------------------------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--build", action="store_true", help="build bitstream")
-    parser.add_argument("--load",  action="store_true", help="load bitstream (to SRAM)")
+    parser = argparse.ArgumentParser(description="LitePCIe SoC on KCU105")
+    parser.add_argument("--build", action="store_true", help="Build bitstream")
+    parser.add_argument("--load",  action="store_true", help="Load bitstream (to SRAM)")
     parser.add_argument("--nlanes",default=1,           help="Number of Gen2 PCIe lanes (1, 4 or 8)")
     args = parser.parse_args()
 
     platform = kcu105.Platform()
-    soc     = LitePCIeSoC(platform, nlanes=int(args.nlanes))
-    builder = Builder(soc, output_dir="build", csr_csv="csr.csv")
-    builder.build(build_name="kcu105", run=args.build)
+    soc      = LitePCIeSoC(platform, nlanes=int(args.nlanes))
+    builder  = Builder(soc, csr_csv="csr.csv")
+    builder.build(run=args.build)
     soc.generate_software_headers()
 
     if args.load:
-        load()
+        prog = soc.platform.create_programmer()
+        prog.load_bitstream(os.path.join(builder.gateware_dir, soc.build_name + ".bit"))
 
 if __name__ == "__main__":
     main()
