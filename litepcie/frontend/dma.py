@@ -308,8 +308,8 @@ class LitePCIeDMAReader(Module, AutoCSR):
             port.source.dat.eq(0),
         ]
         fsm.act("REQUEST",
-            port.source.valid.eq(1),
-            If(port.source.ready,
+            port.source.valid.eq(enable),
+            If(port.source.ready | ~enable,
                 splitter.source.ready.eq(1),
                 NextState("IDLE"),
             )
