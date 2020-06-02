@@ -3,11 +3,14 @@ LDFLAGS=-g
 CC=gcc
 AR=ar
 
-PROGS=litepcie_util
+PROGS=litepcie_util litepcie_test
 
 all: $(PROGS)
 
-litepcie_util: litepcie_util.o litepcie_lib.o
+litepcie_util: liblitepcie.o litepcie_util.o
+	$(CC) $(LDFLAGS) -o $@ $^ -lrt -lm
+
+litepcie_test: liblitepcie.o litepcie_test.o
 	$(CC) $(LDFLAGS) -o $@ $^ -lrt -lm
 
 clean:

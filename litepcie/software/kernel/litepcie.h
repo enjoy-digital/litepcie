@@ -1,53 +1,98 @@
-// This file is Copyright (c) 2015-2019 Florent Kermarrec <florent@enjoy-digital.fr>
-// License: BSD
-
 /*
  * LitePCIe driver
  *
+ * Copyright (C) 2018-2020 / EnjoyDigital  / florent@enjoy-digital.fr
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
+
 #ifndef _LINUX_LITEPCIE_H
 #define _LINUX_LITEPCIE_H
 
 #include <linux/types.h>
 
-struct litepcie_ioctl_mmap_info {
-    unsigned long reg_offset;
-    unsigned long reg_size;
+#include "csr.h"
+#include "config.h"
 
-    unsigned long dma_tx_buf_offset;
-    unsigned long dma_tx_buf_size;
-    unsigned long dma_tx_buf_count;
-
-    unsigned long dma_rx_buf_offset;
-    unsigned long dma_rx_buf_size;
-    unsigned long dma_rx_buf_count;
+struct litepcie_ioctl_reg {
+    uint32_t addr;
+    uint32_t val;
+    uint8_t is_write;
 };
 
-struct litepcie_ioctl_dma_start {
-    __u32 dma_flags; /* see LITEPCIE_DMA_FLAGS_x */
-    __u32 tx_buf_size; /* in bytes, must be < dma_buf_pitch. 0 means no TX */
-    __u32 tx_buf_count;
-    __u32 rx_buf_size; /* in bytes, must be < dma_buf_pitch. 0 means no RX */
-    __u32 rx_buf_count;
+struct litepcie_ioctl_flash {
+    int tx_len; /* 8 to 40 */
+    __u64 tx_data; /* 8 to 40 bits */
+    __u64 rx_data; /* 40 bits */
 };
 
-/* if tx_wait is true, wait until the current TX bufffer is
-   different from tx_buf_num. If tx_wait is false, wait until the
-   current RX buffer is different from rx_buf_num. Return the last
-   TX buffer in tx_buf_num and the last RX buffer in
-   rx_buf_num. */
-struct litepcie_ioctl_dma_wait {
-    __s32 timeout; /* in ms. Return -EAGAIN if timeout occured without event */
-    __u32 tx_wait;
-    __u32 tx_buf_num; /* read/write */
-    __u32 rx_buf_num; /* read/write */
+struct litepcie_ioctl_icap {
+    uint8_t addr;
+    uint32_t data;
+};
+
+struct litepcie_ioctl_dma {
+    uint8_t loopback_enable;
+};
+
+struct litepcie_ioctl_dma_writer {
+    uint8_t enable;
+    int64_t hw_count;
+    int64_t sw_count;
+};
+
+struct litepcie_ioctl_dma_reader {
+    uint8_t enable;
+    int64_t hw_count;
+    int64_t sw_count;
+};
+
+struct litepcie_ioctl_lock {
+    uint8_t dma_reader_request;
+    uint8_t dma_writer_request;
+    uint8_t dma_reader_release;
+    uint8_t dma_writer_release;
+    uint8_t dma_reader_status;
+    uint8_t dma_writer_status;
+};
+
+struct litepcie_ioctl_mmap_dma_info {
+    uint64_t dma_tx_buf_offset;
+    uint64_t dma_tx_buf_size;
+    uint64_t dma_tx_buf_count;
+
+    uint64_t dma_rx_buf_offset;
+    uint64_t dma_rx_buf_size;
+    uint64_t dma_rx_buf_count;
+};
+
+struct litepcie_ioctl_mmap_dma_update {
+    int64_t sw_count;
 };
 
 #define LITEPCIE_IOCTL 'S'
 
-#define LITEPCIE_IOCTL_GET_MMAP_INFO _IOR(LITEPCIE_IOCTL, 0, struct litepcie_ioctl_mmap_info)
-#define LITEPCIE_IOCTL_DMA_START _IOW(LITEPCIE_IOCTL, 1, struct litepcie_ioctl_dma_start)
-#define LITEPCIE_IOCTL_DMA_STOP  _IO(LITEPCIE_IOCTL, 2)
-#define LITEPCIE_IOCTL_DMA_WAIT  _IOWR(LITEPCIE_IOCTL, 3, struct litepcie_ioctl_dma_wait)
+#define LITEPCIE_IOCTL_REG               _IOWR(LITEPCIE_IOCTL,  0, struct litepcie_ioctl_reg)
+#define LITEPCIE_IOCTL_FLASH             _IOWR(LITEPCIE_IOCTL,  1, struct litepcie_ioctl_flash)
+#define LITEPCIE_IOCTL_ICAP              _IOWR(LITEPCIE_IOCTL,  2, struct litepcie_ioctl_icap)
+
+#define LITEPCIE_IOCTL_DMA                       _IOW(LITEPCIE_IOCTL,  20, struct litepcie_ioctl_dma)
+#define LITEPCIE_IOCTL_DMA_WRITER                _IOWR(LITEPCIE_IOCTL, 21, struct litepcie_ioctl_dma_writer)
+#define LITEPCIE_IOCTL_DMA_READER                _IOWR(LITEPCIE_IOCTL, 22, struct litepcie_ioctl_dma_reader)
+#define LITEPCIE_IOCTL_MMAP_DMA_INFO             _IOR(LITEPCIE_IOCTL,  24, struct litepcie_ioctl_mmap_dma_info)
+#define LITEPCIE_IOCTL_LOCK                      _IOWR(LITEPCIE_IOCTL, 25, struct litepcie_ioctl_lock)
+#define LITEPCIE_IOCTL_MMAP_DMA_WRITER_UPDATE    _IOW(LITEPCIE_IOCTL,  26, struct litepcie_ioctl_mmap_dma_update)
+#define LITEPCIE_IOCTL_MMAP_DMA_READER_UPDATE    _IOW(LITEPCIE_IOCTL,  27, struct litepcie_ioctl_mmap_dma_update)
 
 #endif /* _LINUX_LITEPCIE_H */
