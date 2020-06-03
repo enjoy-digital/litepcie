@@ -10,18 +10,17 @@ from migen import *
 from migen.genlib.misc import WaitTimer
 
 from litex.boards.platforms import kc705
-from litex.build.generic_platform import tools
 
 from litex.soc.cores.clock import S7MMCM
 from litex.soc.interconnect.csr import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
-from litex.soc.integration.export import get_csr_header, get_soc_header, get_mem_header
 
 from litepcie.phy.s7pciephy import S7PCIEPHY
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
+from litepcie.software import generate_litepcie_software
 
 # CRG ----------------------------------------------------------------------------------------------
 
@@ -110,28 +109,23 @@ class LitePCIeSoC(SoCMini):
             self.comb += self.pcie_msi.irqs[i].eq(v)
             self.add_constant(k + "_INTERRUPT", i)
 
-    def generate_software_headers(self):
-        csr_header = get_csr_header(self.csr_regions, self.constants, with_access_functions=False)
-        tools.write_to_file("csr.h", csr_header)
-        soc_header = get_soc_header(self.constants, with_access_functions=False)
-        tools.write_to_file("soc.h", soc_header)
-        mem_header = get_mem_header(self.mem_regions)
-        tools.write_to_file("mem.h", mem_header)
-
 # Build --------------------------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(description="LitePCIe SoC on KC705")
-    parser.add_argument("--build", action="store_true", help="Build bitstream")
-    parser.add_argument("--load",  action="store_true", help="Load bitstream (to SRAM)")
-    parser.add_argument("--nlanes",default=1,           help="Number of Gen2 PCIe lanes (1, 4 or 8)")
+    parser.add_argument("--build",  action="store_true", help="Build bitstream")
+    parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
+    parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
+    parser.add_argument("--nlanes", default=1,           help="Number of Gen2 PCIe lanes (1, 4 or 8)")
     args = parser.parse_args()
 
     platform = kc705.Platform()
     soc      = LitePCIeSoC(platform, nlanes=int(args.nlanes))
     builder  = Builder(soc, csr_csv="csr.csv")
     builder.build(run=args.build)
-    soc.generate_software_headers()
+
+    if args.driver:
+        generate_litepcie_software(soc, os.path.join(builder.output_dir, "driver"))
 
     if args.load:
         prog = soc.platform.create_programmer()
