@@ -33,11 +33,11 @@ from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.axi import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
-from litex.soc.integration.export import get_csr_header, get_soc_header, get_mem_header
 
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI, LitePCIeMSIMultiVector
 from litepcie.frontend.dma import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneMaster, LitePCIeWishboneSlave
+from litepcie.software import generate_litepcie_software_headers
 
 from litex.build.generic_platform import *
 
@@ -244,14 +244,6 @@ class LitePCIeCore(SoCMini):
         assert len(self.interrupts.keys()) <= 16
         self.comb += self.pcie_msi.irqs[16:16+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
 
-    def generate_software_headers(self):
-        csr_header = get_csr_header(self.csr_regions, self.constants, with_access_functions=False)
-        tools.write_to_file(os.path.join("csr.h"), csr_header)
-        soc_header = get_soc_header(self.constants, with_access_functions=False)
-        tools.write_to_file(os.path.join("soc.h"), soc_header)
-        mem_header = get_mem_header(self.mem_regions)
-        tools.write_to_file(os.path.join("mem.h"), mem_header)
-
     def generate_documentation(self, build_name, **kwargs):
         from litex.soc.doc import generate_docs
         generate_docs(self, "documentation".format(build_name),
@@ -294,8 +286,9 @@ def main():
         raise ValueError("Unsupported PCIe PHY: {}".format(core_config["phy"]))
     soc      = LitePCIeCore(platform, core_config)
     builder  = Builder(soc, output_dir="build", compile_gateware=False)
-    vns      = builder.build(build_name="litepcie_core", regular_comb=True)
-    soc.generate_software_headers()
+    builder.build(build_name="litepcie_core", regular_comb=True)
+    generate_litepcie_software_headers(soc, "./")
+
     if args.doc:
         soc.generate_documentation("litepcie_core")
 
