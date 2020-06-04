@@ -8,10 +8,10 @@ class TestExamples(unittest.TestCase):
     def target_test(self, target):
         os.system("rm -rf examples/build")
         os.system("cd examples && python3 {}.py".format(target))
-        self.assertEqual(os.path.isfile("examples/build/gateware/{}.v".format(target)), True)
-        self.assertEqual(os.path.isfile("examples/build/csr.h"), True)
-        self.assertEqual(os.path.isfile("examples/build/soc.h"), True)
-        self.assertEqual(os.path.isfile("examples/build/mem.h"), True)
+        self.assertEqual(os.path.isfile("examples/build/{}/gateware/{}.v".format(target, target)), True)
+        self.assertEqual(os.path.isfile("examples/build/{}/software/include/generated/csr.h".format(target)), True)
+        self.assertEqual(os.path.isfile("examples/build/{}/software/include/generated/soc.h".format(target)), True)
+        self.assertEqual(os.path.isfile("examples/build/{}/software/include/generated/mem.h".format(target)), True)
 
     def test_kc705_target(self):
         self.target_test("kc705")
