@@ -95,6 +95,7 @@ struct litepcie_device {
     struct list_head list;
     spinlock_t lock;
     int minor_base;
+    int irqs;
     int channels;
 };
 
@@ -345,8 +346,22 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
     uint32_t clear_mask, irq_vector, irq_enable;
     int i;
 
+/* Single MSI */
+#ifdef CSR_PCIE_MSI_CLEAR_ADDR
     irq_vector = litepcie_readl(s, CSR_PCIE_MSI_VECTOR_ADDR);
     irq_enable = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
+/* Multi-Vector MSI */
+#else
+    irq_vector = 0;
+    for (i=0; i<s->irqs; i++) {
+        if (irq == pci_irq_vector(s->dev, i)) {
+           irq_vector = (1 << i);
+           break;
+        }
+    }
+    irq_enable = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
+#endif
+
 #ifdef DEBUG_MSI
     pr_debug("MSI: 0x%x 0x%x\n", irq_vector, irq_enable);
 #endif
@@ -387,7 +402,9 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
         }
     }
 
+#ifdef CSR_PCIE_MSI_CLEAR_ADDR
     litepcie_writel(s, CSR_PCIE_MSI_CLEAR_ADDR, clear_mask);
+#endif
 
     return IRQ_HANDLED;
 }
@@ -1011,6 +1028,7 @@ int compare_revisions(struct revision d1, struct revision d2)
 static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
     int ret=0;
+    int irqs=0;
     uint8_t rev_id;
     int i;
     char fpga_identifier[256];
@@ -1077,15 +1095,25 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         goto fail4;
     };
 
-    ret = pci_enable_msi(dev);
-    if (ret) {
+    irqs = pci_alloc_irq_vectors(dev, 1, 32, PCI_IRQ_MSI);
+    if (irqs < 0) {
         dev_err(&dev->dev, "Failed to enable MSI\n");
         goto fail4;
     }
+    dev_info(&dev->dev, "%d MSI IRQs allocated.\n", irqs);
 
-    if (request_irq(dev->irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, litepcie_dev) < 0) {
-        dev_err(&dev->dev, "Failed to allocate IRQ %d\n", dev->irq);
-        goto fail5;
+    litepcie_dev->irqs = 0;
+    for(i=0; i <irqs; i++) {
+        int irq = pci_irq_vector(dev, i);
+        if (request_irq(irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, litepcie_dev) < 0) {
+            dev_err(&dev->dev, " Failed to allocate IRQ %d\n", dev->irq);
+            while (--i >= 0) {
+                irq = pci_irq_vector(dev, i);
+                free_irq(irq, dev);
+            }
+            goto fail5;
+        }
+        litepcie_dev->irqs += 1;
     }
 
     /* soft reset */
@@ -1160,7 +1188,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 fail6:
     litepcie_free_chdev(litepcie_dev);
 fail5:
-    pci_disable_msi(dev);
+    pci_free_irq_vectors(dev);
 fail4:
     pci_iounmap(dev, litepcie_dev->bar0_addr);
 fail3:
@@ -1177,25 +1205,39 @@ fail1:
 
 static void litepcie_pci_remove(struct pci_dev *dev)
 {
+    int i;
     struct litepcie_device *litepcie_dev;
 
     litepcie_dev = pci_get_drvdata(dev);
 
     dev_info(&dev->dev, "\e[1m[Removing device]\e[0m\n");
 
+    /* Stop the DMAs */
     if(litepcie_dev){
         litepcie_stop_dma(litepcie_dev);
-        free_irq(dev->irq, litepcie_dev);
-        litepcie_free_chdev(litepcie_dev);
     }
 
-    /* disable all interrupts */
+    /* Disable all interrupts */
     litepcie_writel(litepcie_dev, CSR_PCIE_MSI_ENABLE_ADDR, 0);
 
-    pci_disable_msi(dev);
+    /* Free all interrupts */
+    if(litepcie_dev){
+        for (i=0; i<litepcie_dev->irqs; i++) {
+            int irq = pci_irq_vector(dev, i);
+            free_irq(irq, litepcie_dev);
+        }
+        litepcie_free_chdev(litepcie_dev);
+    }
+    pci_free_irq_vectors(dev);
+
+    /* Unmap BAR0 */
     if(litepcie_dev)
         pci_iounmap(dev, litepcie_dev->bar0_addr);
+
+    /* Disable device */
     pci_disable_device(dev);
+
+    /* Release Regions and DMA buffers */
     pci_release_regions(dev);
     if(litepcie_dev){
         litepcie_dma_free(litepcie_dev);
