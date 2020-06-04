@@ -34,7 +34,7 @@ from litex.soc.interconnect.axi import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 
-from litepcie.core import LitePCIeEndpoint, LitePCIeMSI, LitePCIeMSIMultiVector
+from litepcie.core import LitePCIeEndpoint, LitePCIeMSI, LitePCIeMSIMultiVector, LitePCIeMSIX
 from litepcie.frontend.dma import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneMaster, LitePCIeWishboneSlave
 from litepcie.software import generate_litepcie_software_headers
@@ -229,6 +229,8 @@ class LitePCIeCore(SoCMini):
             ]
 
         # PCIe MSI ---------------------------------------------------------------------------------
+        if core_config.get("msi_x", False):
+             self.submodules.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=32)
         if core_config.get("msi_multivector", False):
             self.submodules.pcie_msi = LitePCIeMSIMultiVector(width=32)
         else:
