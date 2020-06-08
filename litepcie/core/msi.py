@@ -81,11 +81,15 @@ class LitePCIeMSIMultiVector(Module, AutoCSR):
 # LitePCIeMSIX -------------------------------------------------------------------------------------
 
 class LitePCIeMSIX(Module, AutoCSR):
-  def __init__(self, endpoint, width=32):
-        self.irqs         = Signal(width)
-        self.enable       = CSRStorage(width, description="""MSI-X Enable Control.\n
+    def __init__(self, endpoint, width=32):
+        assert width <= 64
+        self.irqs           = Signal(width)
+        self.enable         = CSRStorage(32, description="""MSI-X Enable Control.\n
            Write bit(s) to ``1`` to enable corresponding MSI-X IRQ(s).""")
-        self.specials.mem = Memory(64, width)
+        self.reserved0      = CSRStorage() # For 64-bit alignment.
+        self.pba            = CSRStatus(32, description="""MSI-X PBA Table.""")
+        self.reserved1      = CSRStorage() # For 64-bit alignment.
+        self.specials.table = Memory(4*32, width) # MSI-X Table.
 
         # # #
 
@@ -96,6 +100,7 @@ class LitePCIeMSIX(Module, AutoCSR):
         # Memorize and clear IRQ Vector ------------------------------------------------------------
         self.comb += enable.eq(self.enable.storage)
         self.sync += vector.eq(enable & ((vector & ~clear) | self.irqs))
+        self.comb += self.pba.status.eq(vector)
 
         # Generate MSI-X ---------------------------------------------------------------------------
         msix_valid = Signal()
@@ -115,13 +120,13 @@ class LitePCIeMSIX(Module, AutoCSR):
 
         # Send MSI-X as TLP-Write ------------------------------------------------------------------
         port     = endpoint.crossbar.get_master_port()
-        mem_port = self.mem.get_port(has_re=True)
-        self.specials += mem_port
+        table_port = self.table.get_port(has_re=True)
+        self.specials += table_port
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            mem_port.adr.eq(msix_num),
-            mem_port.re.eq(1),
+            table_port.adr.eq(msix_num),
+            table_port.re.eq(1),
             If(msix_valid,
                 NextState("ISSUE-WRITE")
             )
@@ -130,11 +135,11 @@ class LitePCIeMSIX(Module, AutoCSR):
             port.source.channel.eq(port.channel),
             port.source.first.eq(1),
             port.source.last.eq(1),
-            port.source.adr[2:].eq(mem_port.dat_r[32:]), # CHECKME: LSB/MSB
+            port.source.adr.eq(table_port.dat_r[96:128]), # Lower Address from table.
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(1),
-            port.source.dat.eq(mem_port.dat_r[:32]), # CHECKME: LSB/MSB
+            port.source.dat.eq(table_port.dat_r[32:64]), # Message Data from table.
         ]
         fsm.act("ISSUE-WRITE",
             port.source.valid.eq(1),

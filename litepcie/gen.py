@@ -133,10 +133,11 @@ class LitePCIeCRG(Module, AutoCSR):
 class LitePCIeCore(SoCMini):
     SoCMini.mem_map["csr"] = 0x00000000
     SoCMini.csr_map = {
-        "ctrl":     0,
-        "crg" :     1,
-        "pcie_phy": 2,
-        "pcie_msi": 3,
+        "ctrl":           0,
+        "crg" :           1,
+        "pcie_phy":       2,
+        "pcie_msi":       3,
+        "pcie_msi_table": 4,
     }
     def __init__(self, platform, core_config):
         platform.add_extension(get_pcie_ios(core_config["phy_lanes"]))
@@ -230,12 +231,13 @@ class LitePCIeCore(SoCMini):
 
         # PCIe MSI ---------------------------------------------------------------------------------
         if core_config.get("msi_x", False):
-             self.submodules.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=32)
-        if core_config.get("msi_multivector", False):
-            self.submodules.pcie_msi = LitePCIeMSIMultiVector(width=32)
+            self.submodules.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=32)
         else:
-            self.submodules.pcie_msi = LitePCIeMSI(width=32)
-        self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
+            if core_config.get("msi_multivector", False):
+                self.submodules.pcie_msi = LitePCIeMSIMultiVector(width=32)
+            else:
+                self.submodules.pcie_msi = LitePCIeMSI(width=32)
+            self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
         self.interrupts = {}
         for i in range(core_config["dma_channels"]):
             self.interrupts["pcie_dma" + str(i) + "_writer"] = getattr(self, "pcie_dma" + str(i)).writer.irq
