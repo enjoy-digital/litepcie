@@ -38,6 +38,7 @@ PHY:
 Core:
   - TLP layer
   - Reordering
+  - MSI/MSI-X
 
 Frontend:
   - DMA (with Scatter-Gather)
