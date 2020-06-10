@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# This file is Copyright (c) 2019 Florent Kermarrec <florent@enjoy-digital.fr>
+# This file is Copyright (c) 2019-2020 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
 """
@@ -16,7 +16,10 @@ for some use cases it could be interesting to generate a standalone verilog file
 The standalone core is generated from a YAML configuration file that allows the user to generate
 easily a custom configuration of the core.
 
-Current version of the generator is limited to Xilinx 7-Series FPGA / Altera Cyclone V.
+Current version of the generator is limited to:
+- Xilinx 7-Series.
+- Xilinx Ultrascale.
+- Altera Cyclone V.
 """
 
 import yaml
@@ -286,6 +289,13 @@ def main():
         core_config["phy"]           = S7PCIEPHY
         core_config["qword_aligned"] = False
         core_config["endianness"]    = "big"
+    elif core_config["phy"] == "USPCIEPHY":
+        from litex.build.xilinx import XilinxPlatform
+        from litepcie.phy.uspciephy import USPCIEPHY
+        platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
+        core_config["phy"]           = USPCIEPHY
+        core_config["qword_aligned"] = False
+        core_config["endianness"]    = "little"
     else:
         raise ValueError("Unsupported PCIe PHY: {}".format(core_config["phy"]))
     soc      = LitePCIeCore(platform, core_config)
