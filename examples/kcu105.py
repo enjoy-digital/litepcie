@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# This file is Copyright (c) 2020 Enjoy-Digital <enjoy-digital.fr>
+# This file is Copyright (c) 2020 Florent Kermarrec <florent@enjoy-digital.fr>
 # License: BSD
 
 import os
@@ -69,14 +69,14 @@ class LitePCIeSoC(SoCMini):
             bar0_size  = 0x20000
         )
         #self.pcie_phy.add_timing_constraints(platform) # FIXME
-        #platform.add_false_path_constraints(self.crg.cd_sys.clk, self.pcie_phy.cd_pcie.clk)
+        platform.add_false_path_constraints(self.crg.cd_sys.clk, self.pcie_phy.cd_pcie.clk)
         self.add_csr("pcie_phy")
 
         # Endpoint
         self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
-			endianness="little",
-			max_pending_requests=8
-		)
+            endianness           = "little",
+            max_pending_requests = 8
+        )
 
         # Wishbone bridge
         self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint,
@@ -118,7 +118,7 @@ def main():
     parser.add_argument("--build",  action="store_true", help="Build bitstream")
     parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
     parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
-    parser.add_argument("--nlanes", default=1,           help="Number of Gen2 PCIe lanes (1, 4 or 8)")
+    parser.add_argument("--nlanes", default=4,           help="Number of Gen2 PCIe lanes (4)")
     args = parser.parse_args()
 
     platform = kcu105.Platform()
