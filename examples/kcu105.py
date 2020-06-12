@@ -38,7 +38,7 @@ class _CRG(Module, AutoCSR):
         self.sync += If(self.rst.re, rst_delay.wait.eq(1))
 
         # PLL
-        self.submodules.pll = pll = USPLL()
+        self.submodules.pll = pll = USPLL(speedgrade=-2)
         self.comb += pll.reset.eq(rst_delay.done)
         pll.register_clkin(platform.request("clk125"), 125e6)
         pll.create_clkout(self.cd_sys, sys_clk_freq)

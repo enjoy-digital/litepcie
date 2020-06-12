@@ -63,18 +63,19 @@ class LitePCIeSoC(SoCMini):
 
         # PCIe -------------------------------------------------------------------------------------
         # PHY
-        self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x4"),
+        self.submodules.pcie_phy = USPCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
             data_width = 128,
-            bar0_size  = 0x20000)
+            bar0_size  = 0x20000
+        )
         self.pcie_phy.add_timing_constraints(platform)
         platform.add_false_path_constraints(self.crg.cd_sys.clk, self.pcie_phy.cd_pcie.clk)
         self.add_csr("pcie_phy")
 
         # Endpoint
         self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
-			endianness="big",
-			max_pending_requests=8
-		)
+            endianness           = "big",
+            max_pending_requests = 8
+        )
 
         # Wishbone bridge
         self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint,
