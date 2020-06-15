@@ -38,6 +38,8 @@
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include <linux/log2.h>
+#include <linux/poll.h>
+#include <linux/cdev.h>
 
 #include "litepcie.h"
 #include "csr.h"
