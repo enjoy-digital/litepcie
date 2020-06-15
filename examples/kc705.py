@@ -63,7 +63,7 @@ class LitePCIeSoC(SoCMini):
 
         # PCIe -------------------------------------------------------------------------------------
         # PHY
-        self.submodules.pcie_phy = USPCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
+        self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
             data_width = 128,
             bar0_size  = 0x20000
         )
