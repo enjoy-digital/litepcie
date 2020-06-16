@@ -80,12 +80,14 @@ def get_axi_dma_ios(_id, dw):
             Subsignal("tready", Pins(1)),
             Subsignal("tlast",  Pins(1)),
             Subsignal("tdata",  Pins(dw)),
+            Subsignal("tuser",  Pins(1)), # first
         ),
         ("dma{}_reader_axi".format(_id), 0,
             Subsignal("tvalid", Pins(1)),
             Subsignal("tready", Pins(1)),
             Subsignal("tlast",  Pins(1)),
             Subsignal("tdata",  Pins(dw)),
+            Subsignal("tuser",  Pins(1)), # first
         ),
     ]
 
@@ -224,12 +226,14 @@ class LitePCIeCore(SoCMini):
                 dma_writer_ios.tready.eq(pcie_dma.sink.ready),
                 pcie_dma.sink.last.eq(dma_writer_ios.tlast),
                 pcie_dma.sink.data.eq(dma_writer_ios.tdata),
+                pcie_dma.sink.first.eq(dma_writer_ios.tuser),
 
                 # Reader IOs
                 dma_reader_ios.tvalid.eq(pcie_dma.source.valid),
                 pcie_dma.source.ready.eq(dma_reader_ios.tready),
                 dma_reader_ios.tlast.eq(pcie_dma.source.last),
                 dma_reader_ios.tdata.eq(pcie_dma.source.data),
+                dma_reader_ios.tuser.eq(pcie_dma.source.first),
             ]
 
         # PCIe MSI ---------------------------------------------------------------------------------
