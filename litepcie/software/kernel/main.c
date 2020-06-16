@@ -78,7 +78,7 @@ struct litepcie_dma_chan {
 struct litepcie_chan {
     struct litepcie_device *litepcie_dev;
     struct litepcie_dma_chan dma;
-    struct cdev *cdev;
+    struct cdev cdev;
     uint32_t block_size;
     uint32_t core_base;
     wait_queue_head_t wait_rd; /* to wait for an ongoing read */
@@ -94,7 +94,6 @@ struct litepcie_device {
     phys_addr_t bar0_phys_addr;
     uint8_t *bar0_addr; /* virtual address of BAR0 */
     struct litepcie_chan chan[DMA_CHANNEL_COUNT];
-    struct list_head list;
     spinlock_t lock;
     int minor_base;
     int irqs;
@@ -106,8 +105,6 @@ struct litepcie_chan_priv {
     bool reader;
     bool writer;
 };
-
-static LIST_HEAD(litepcie_list);
 
 static int litepcie_major;
 static int litepcie_minor_idx;
@@ -148,47 +145,11 @@ static void litepcie_disable_interrupt(struct litepcie_device *s, int irq_num)
     litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
 }
 
-static int litepcie_dma_free(struct litepcie_device *s)
-{
-    int i, j;
-    struct litepcie_dma_chan *dmachan;
-
-    if(!s)
-        return -ENODEV;
-
-    /* for each dma channel */
-    for(i = 0; i < s->channels; i++) {
-        dmachan = &s->chan[i].dma;
-        /* for each dma buffer */
-        for(j = 0; j < DMA_BUFFER_COUNT; j++) {
-            /* free rd */
-            if(dmachan->reader_addr[j]) {
-                dma_free_coherent(&s->dev->dev, DMA_BUFFER_SIZE,
-                                  dmachan->reader_addr[j],
-                                  dmachan->reader_handle[j]);
-                dmachan->reader_addr[j] = NULL;
-                dmachan->reader_handle[j] = 0;
-            }
-            /* free wr */
-            if(dmachan->writer_addr[j]) {
-                dma_free_coherent(&s->dev->dev, DMA_BUFFER_SIZE,
-                                  dmachan->writer_addr[j],
-                                  dmachan->writer_handle[j]);
-                dmachan->writer_addr[j] = NULL;
-                dmachan->writer_handle[j] = 0;
-            }
-        }
-    }
-
-    return 0;
-}
-
 static int litepcie_dma_init(struct litepcie_device *s)
 {
 
     int i, j;
     struct litepcie_dma_chan *dmachan;
-    int ret;
 
     if(!s)
         return -ENODEV;
@@ -199,13 +160,13 @@ static int litepcie_dma_init(struct litepcie_device *s)
         /* for each dma buffer */
         for(j = 0; j < DMA_BUFFER_COUNT; j++) {
             /* allocate rd */
-            dmachan->reader_addr[j] = dma_alloc_coherent(
+            dmachan->reader_addr[j] = dmam_alloc_coherent(
                 &s->dev->dev,
                 DMA_BUFFER_SIZE,
                 &dmachan->reader_handle[j],
                 GFP_KERNEL | GFP_DMA32);
             /* allocate wr */
-            dmachan->writer_addr[j] = dma_alloc_coherent(
+            dmachan->writer_addr[j] = dmam_alloc_coherent(
                 &s->dev->dev,
                 DMA_BUFFER_SIZE,
                 &dmachan->writer_handle[j],
@@ -213,17 +174,12 @@ static int litepcie_dma_init(struct litepcie_device *s)
             /* check */
             if(!dmachan->writer_addr[j]
                || !dmachan->reader_addr[j]) {
-                dev_err(&s->dev->dev,"Failed to allocate dma buffers\n");
-                ret = -ENOMEM;
-                goto fail;
+                return -ENOMEM;
             }
         }
     }
 
     return 0;
-fail:
-    litepcie_dma_free(s);
-    return ret;
 }
 
 static void litepcie_dma_writer_start(struct litepcie_device *s, int chan_num)
@@ -413,43 +369,29 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 
 static int litepcie_open(struct inode *inode, struct file *file)
 {
-    int subminor;
-    struct litepcie_device *litepcie;
-    struct litepcie_chan *chan;
+    struct litepcie_chan *chan = container_of(inode->i_cdev, struct litepcie_chan, cdev);
 
     struct litepcie_chan_priv *chan_priv = kzalloc(sizeof(*chan_priv),
             GFP_KERNEL);
     if (!chan_priv)
         return -ENOMEM;
 
-    subminor = iminor(inode);
+    chan_priv->chan = chan;
+    file->private_data = chan_priv;
 
-    list_for_each_entry(litepcie, &litepcie_list, list) {
-        if( (litepcie->minor_base <= subminor) &&
-            (subminor < litepcie->minor_base + litepcie->channels) ) {
-
-            chan = &litepcie->chan[subminor - litepcie->minor_base];
-            chan_priv->chan = chan;
-            file->private_data = chan_priv;
-
-            if (chan->dma.reader_enable == 0) { /* clear only if disabled */
-                chan->dma.reader_hw_count = 0;
-                chan->dma.reader_hw_count_last = 0;
-                chan->dma.reader_sw_count = 0;
-            }
-
-            if (chan->dma.writer_enable == 0) { /* clear only if disabled */
-                chan->dma.writer_hw_count = 0;
-                chan->dma.writer_hw_count_last = 0;
-                chan->dma.writer_sw_count = 0;
-            }
-
-            return 0;
-        }
+    if (chan->dma.reader_enable == 0) { /* clear only if disabled */
+        chan->dma.reader_hw_count = 0;
+        chan->dma.reader_hw_count_last = 0;
+        chan->dma.reader_sw_count = 0;
     }
 
-    kfree(chan_priv);
-    return -1;
+    if (chan->dma.writer_enable == 0) { /* clear only if disabled */
+        chan->dma.writer_hw_count = 0;
+        chan->dma.writer_hw_count_last = 0;
+        chan->dma.writer_sw_count = 0;
+    }
+
+    return 0;
 }
 
 static int litepcie_release(struct inode *inode, struct file *file)
@@ -928,17 +870,10 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
     index = litepcie_minor_idx;
     s->minor_base = litepcie_minor_idx;
     for(i = 0; i < s->channels; i++) {
-        s->chan[i].cdev = cdev_alloc();
-        if(!s->chan[i].cdev) {
-            ret = -ENOMEM;
-            dev_err(&s->dev->dev, "Failed to allocate cdev\n");
-            goto fail_alloc;
-        }
-
-        cdev_init(s->chan[i].cdev, &litepcie_fops);
-        ret = cdev_add(s->chan[i].cdev, MKDEV(litepcie_major, index), 1);
+        cdev_init(&s->chan[i].cdev, &litepcie_fops);
+        ret = cdev_add(&s->chan[i].cdev, MKDEV(litepcie_major, index), 1);
         if(ret < 0) {
-            dev_err(&s->dev->dev, "Failed to allocate cdev\n");
+            dev_err(&s->dev->dev, "Failed to add cdev\n");
             goto fail_alloc;
         }
         index++;
@@ -953,7 +888,6 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
             goto fail_create;
         }
         index++;
-
     }
 
     litepcie_minor_idx = index;
@@ -966,12 +900,8 @@ fail_create:
     }
 
 fail_alloc:
-    for(i = 0; i < s->channels;i++) {
-        if(s->chan[i].cdev) {
-            cdev_del(s->chan[i].cdev);
-            s->chan[i].cdev=NULL;
-        }
-    }
+    for(i = 0; i < s->channels; i++)
+        cdev_del(&s->chan[i].cdev);
 
     return ret;
 }
@@ -982,10 +912,7 @@ static void litepcie_free_chdev(struct litepcie_device *s)
 
     for(i = 0; i < s->channels; i++){
         device_destroy(litepcie_class, MKDEV(litepcie_major, s->minor_base + i));
-        if(s->chan[i].cdev) {
-            cdev_del(s->chan[i].cdev);
-            s->chan[i].cdev=NULL;
-        }
+        cdev_del(&s->chan[i].cdev);
     }
 }
 
@@ -1041,9 +968,8 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
     dev_info(&dev->dev, "\e[1m[Probing device]\e[0m\n");
 
-    litepcie_dev = kzalloc(sizeof(struct litepcie_device), GFP_KERNEL);
+    litepcie_dev = devm_kzalloc(&dev->dev, sizeof(struct litepcie_device), GFP_KERNEL);
     if(!litepcie_dev) {
-        dev_err(&dev->dev, "Cannot allocate memory\n");
         ret = -ENOMEM;
         goto fail1;
     }
@@ -1051,9 +977,8 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     pci_set_drvdata(dev, litepcie_dev);
     litepcie_dev->dev = dev;
     spin_lock_init(&litepcie_dev->lock);
-    list_add_tail(&(litepcie_dev->list), &(litepcie_list));
 
-    ret = pci_enable_device(dev);
+    ret = pcim_enable_device(dev);
     if (ret != 0) {
         dev_err(&dev->dev, "Cannot enable device\n");
         goto fail1;
@@ -1105,14 +1030,11 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     dev_info(&dev->dev, "%d MSI IRQs allocated.\n", irqs);
 
     litepcie_dev->irqs = 0;
-    for(i=0; i <irqs; i++) {
+    for(i=0; i < irqs; i++) {
         int irq = pci_irq_vector(dev, i);
-        if (request_irq(irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, litepcie_dev) < 0) {
+        if (devm_request_irq(&dev->dev, irq, litepcie_interrupt, IRQF_SHARED, 
+            LITEPCIE_NAME, litepcie_dev) < 0) {
             dev_err(&dev->dev, "Failed to allocate IRQ %d\n", dev->irq);
-            while (--i >= 0) {
-                irq = pci_irq_vector(dev, i);
-                free_irq(irq, dev);
-            }
             goto fail5;
         }
         litepcie_dev->irqs += 1;
@@ -1159,10 +1081,8 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
     /* allocate all dma buffers */
     ret = litepcie_dma_init(litepcie_dev);
-    if(ret){
-        dev_err(&dev->dev, "Failed to allocate DMA\n");
+    if (ret)
         goto fail6;
-    }
 
     /* check minimal gateware revision */
     sfind(MINIMAL_GATEWARE_REVISION, "%d-%d-%d",
@@ -1196,55 +1116,35 @@ fail4:
 fail3:
     pci_release_regions(dev);
 fail2:
-    pci_disable_device(dev);
 fail1:
-    if(litepcie_dev){
-        list_del(&litepcie_dev->list);
-        kfree(litepcie_dev);
-    }
     return ret;
 }
 
 static void litepcie_pci_remove(struct pci_dev *dev)
 {
-    int i;
     struct litepcie_device *litepcie_dev;
 
     litepcie_dev = pci_get_drvdata(dev);
 
+    if (!litepcie_dev)
+        return;
+    
     dev_info(&dev->dev, "\e[1m[Removing device]\e[0m\n");
 
     /* Stop the DMAs */
-    if(litepcie_dev){
-        litepcie_stop_dma(litepcie_dev);
-    }
+    litepcie_stop_dma(litepcie_dev);
 
     /* Disable all interrupts */
     litepcie_writel(litepcie_dev, CSR_PCIE_MSI_ENABLE_ADDR, 0);
 
-    /* Free all interrupts */
-    if(litepcie_dev){
-        for (i=0; i<litepcie_dev->irqs; i++) {
-            int irq = pci_irq_vector(dev, i);
-            free_irq(irq, litepcie_dev);
-        }
-        litepcie_free_chdev(litepcie_dev);
-    }
+    litepcie_free_chdev(litepcie_dev);
     pci_free_irq_vectors(dev);
 
     /* Unmap BAR0 */
-    if(litepcie_dev)
-        pci_iounmap(dev, litepcie_dev->bar0_addr);
-
-    /* Disable device */
-    pci_disable_device(dev);
+    pci_iounmap(dev, litepcie_dev->bar0_addr);
 
     /* Release Regions and DMA buffers */
     pci_release_regions(dev);
-    if(litepcie_dev){
-        litepcie_dma_free(litepcie_dev);
-        kfree(litepcie_dev);
-    }
 }
 
 static const struct pci_device_id litepcie_pci_ids[] = {
