@@ -164,13 +164,13 @@ static int litepcie_dma_init(struct litepcie_device *s)
                 &s->dev->dev,
                 DMA_BUFFER_SIZE,
                 &dmachan->reader_handle[j],
-                GFP_KERNEL | GFP_DMA32);
+                GFP_KERNEL);
             /* allocate wr */
             dmachan->writer_addr[j] = dmam_alloc_coherent(
                 &s->dev->dev,
                 DMA_BUFFER_SIZE,
                 &dmachan->writer_handle[j],
-                GFP_KERNEL | GFP_DMA32);
+                GFP_KERNEL);
             /* check */
             if(!dmachan->writer_addr[j]
                || !dmachan->reader_addr[j]) {
