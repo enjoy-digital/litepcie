@@ -94,18 +94,6 @@ def get_axi_dma_ios(_id, dw):
 def get_msi_irqs_ios(width=16):
     return [("msi_irqs", 0, Pins(width))]
 
-def get_flash_ios():
-    return [
-        ("flash", 0,
-            Subsignal("clk",  Pins(1)),
-            Subsignal("cs_n", Pins(1)),
-            Subsignal("mosi", Pins(1)),
-            Subsignal("miso", Pins(1)),
-            Subsignal("vpp",  Pins(1)),
-            Subsignal("hold", Pins(1)),
-        ),
-    ]
-
 # CRG ----------------------------------------------------------------------------------------------
 
 class LitePCIeCRG(Module, AutoCSR):
