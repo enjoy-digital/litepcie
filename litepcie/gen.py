@@ -136,7 +136,6 @@ class LitePCIeCore(SoCMini):
         platform.add_extension(get_pcie_ios(core_config["phy_lanes"]))
         for i in range(core_config["dma_channels"]):
             platform.add_extension(get_axi_dma_ios(i, core_config["phy_data_width"]))
-        assert core_config["msi_irqs"] <= 16
         platform.add_extension(get_msi_irqs_ios(width=core_config["msi_irqs"]))
         sys_clk_freq = float(core_config.get("clk_freq", 125e6))
 
@@ -226,13 +225,17 @@ class LitePCIeCore(SoCMini):
 
         # PCIe MSI ---------------------------------------------------------------------------------
         if core_config.get("msi_x", False):
-            self.submodules.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=32)
+            assert core_config["msi_irqs"] <= 32
+            self.submodules.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=64)
+            self.comb += self.pcie_msi.irqs[32:32+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
         else:
+            assert core_config["msi_irqs"] <= 16
             if core_config.get("msi_multivector", False):
                 self.submodules.pcie_msi = LitePCIeMSIMultiVector(width=32)
             else:
                 self.submodules.pcie_msi = LitePCIeMSI(width=32)
             self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
+            self.comb += self.pcie_msi.irqs[16:16+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
         self.interrupts = {}
         for i in range(core_config["dma_channels"]):
             self.interrupts["pcie_dma" + str(i) + "_writer"] = getattr(self, "pcie_dma" + str(i)).writer.irq
@@ -241,7 +244,6 @@ class LitePCIeCore(SoCMini):
             self.comb += self.pcie_msi.irqs[i].eq(v)
             self.add_constant(k.upper() + "_INTERRUPT", i)
         assert len(self.interrupts.keys()) <= 16
-        self.comb += self.pcie_msi.irqs[16:16+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
 
     def generate_documentation(self, build_name, **kwargs):
         from litex.soc.doc import generate_docs
