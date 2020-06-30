@@ -7,7 +7,6 @@ import os
 import argparse
 
 from migen import *
-from migen.genlib.misc import WaitTimer
 
 from litex.boards.platforms import kcu105
 
@@ -24,22 +23,14 @@ from litepcie.software import generate_litepcie_software
 
 # CRG ----------------------------------------------------------------------------------------------
 
-class _CRG(Module, AutoCSR):
+class _CRG(Module):
     def __init__(self, platform, sys_clk_freq):
-        self.rst = CSR()
-
         self.clock_domains.cd_sys = ClockDomain()
 
         # # #
 
-        # Delay software reset by 10us to ensure write has been acked on PCIe.
-        rst_delay = WaitTimer(int(10e-6*sys_clk_freq))
-        self.submodules += rst_delay
-        self.sync += If(self.rst.re, rst_delay.wait.eq(1))
-
         # PLL
         self.submodules.pll = pll = USPLL(speedgrade=-2)
-        self.comb += pll.reset.eq(rst_delay.done)
         pll.register_clkin(platform.request("clk125"), 125e6)
         pll.create_clkout(self.cd_sys, sys_clk_freq)
 
