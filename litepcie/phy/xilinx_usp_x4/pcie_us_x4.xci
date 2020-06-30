@@ -232,7 +232,7 @@
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.PF0_BAR5_CONTROL">0x0</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.PF0_CAPABILITY_POINTER">0x40</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.PF0_CLASS_CODE">0x058000</spirit:configurableElementValue>
-        <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.PF0_DEVICE_ID">0x7024</spirit:configurableElementValue>
+        <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.PF0_DEVICE_ID">0x9024</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.PF0_DEV_CAP2_128B_CAS_ATOMIC_COMPLETER_SUPPORT">FALSE</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.PF0_DEV_CAP2_32B_ATOMIC_COMPLETER_SUPPORT">FALSE</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.PF0_DEV_CAP2_64B_ATOMIC_COMPLETER_SUPPORT">FALSE</spirit:configurableElementValue>
@@ -605,7 +605,7 @@
         <spirit:configurableElementValue spirit:referenceId="PARAM_VALUE.PCIE_BOARD_INTERFACE">Custom</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="PARAM_VALUE.PF0_AER_CAP_ECRC_GEN_AND_CHECK_CAPABLE">false</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="PARAM_VALUE.PF0_CLASS_CODE">058000</spirit:configurableElementValue>
-        <spirit:configurableElementValue spirit:referenceId="PARAM_VALUE.PF0_DEVICE_ID">7024</spirit:configurableElementValue>
+        <spirit:configurableElementValue spirit:referenceId="PARAM_VALUE.PF0_DEVICE_ID">9024</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="PARAM_VALUE.PF0_DEV_CAP2_128B_CAS_ATOMIC_COMPLETER_SUPPORT">false</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="PARAM_VALUE.PF0_DEV_CAP2_32B_ATOMIC_COMPLETER_SUPPORT">false</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="PARAM_VALUE.PF0_DEV_CAP2_64B_ATOMIC_COMPLETER_SUPPORT">false</spirit:configurableElementValue>
