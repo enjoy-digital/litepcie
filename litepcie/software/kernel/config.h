@@ -4,8 +4,6 @@
 #include "soc.h"
 #include "mem.h"
 
-#define MINIMAL_GATEWARE_REVISION "2020-05-19"
-
 /* pcie */
 #define PCIE_FPGA_VENDOR_ID 0x10ee
 

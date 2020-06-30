@@ -1032,8 +1032,6 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     uint8_t rev_id;
     int i;
     char fpga_identifier[256];
-    struct revision minimal_gateware_revision;
-    struct revision current_gateware_revision;
 
     struct litepcie_device *litepcie_dev = NULL;
 
@@ -1165,27 +1163,6 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         dev_err(&dev->dev, "Failed to allocate DMA\n");
         goto fail6;
     }
-
-    /* check minimal gateware revision */
-    sfind(MINIMAL_GATEWARE_REVISION, "%d-%d-%d",
-        &minimal_gateware_revision.yy,
-        &minimal_gateware_revision.mm,
-        &minimal_gateware_revision.dd);
-    for(i=0; i < 256; i++) {
-        if (fpga_identifier[i] == '-') {
-            i -= 5;
-            break;
-        }
-    }
-    sfind(fpga_identifier + i, "%d-%d-%d",
-        &current_gateware_revision.yy,
-        &current_gateware_revision.mm,
-        &current_gateware_revision.dd);
-    if (compare_revisions(minimal_gateware_revision, current_gateware_revision) > 0)
-        dev_info(&dev->dev, "\e[1mHW needs update to gateware revision %04d-%02d-%02d\e[0m\n",
-            minimal_gateware_revision.yy,
-            minimal_gateware_revision.mm,
-            minimal_gateware_revision.dd);
 
     return 0;
 
