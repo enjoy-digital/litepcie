@@ -1116,9 +1116,11 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         litepcie_dev->irqs += 1;
     }
 
+#ifdef CSR_CRG_RST_ADDR
     /* soft reset */
     litepcie_writel(litepcie_dev, CSR_CRG_RST_ADDR, 1);
     udelay(1000);
+#endif
 
     litepcie_dev->channels = DMA_CHANNELS;
 
