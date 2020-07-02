@@ -29,20 +29,21 @@ design flow by generating the verilog rtl that you will use as a standard core.
 [> Features
 -----------
 PHY:
-  - Xilinx Ultrascale (up to PCIe Gen2 X4)
+  - Xilinx Ultrascale(+) (up to PCIe Gen2 X4)
   - Xilinx 7-Series (up to PCIe Gen2 X4)
   - Intel Cyclone5  (up to PCIe Gen2 X4)
-  - 64-bit/128-bit datapath.
-  - Clock domain crossing.
+  - 64-bit/128-bit datapath
+  - Clock domain crossing
 
 Core:
   - TLP layer
   - Reordering
-  - MSI/MSI-X
+  - MSI (Single, Multi-vector)/MSI-X
 
 Frontend:
   - DMA (with Scatter-Gather)
   - Wishbone bridge
+
 Software:
   - Linux Driver (DMA and Sysfs)
 
