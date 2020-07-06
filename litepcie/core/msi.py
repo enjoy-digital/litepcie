@@ -86,9 +86,11 @@ class LitePCIeMSIX(Module, AutoCSR):
         self.irqs           = Signal(width)
         self.enable         = CSRStorage(width, description="""MSI-X Enable Control.\n
            Write bit(s) to ``1`` to enable corresponding MSI-X IRQ(s).""")
-        self.reserved0      = CSRStorage() # For 64-bit alignment.
+        if width <= 32:
+            self.reserved0 = CSRStorage() # For 64-bit alignment.
         self.pba            = CSRStatus(width, description="""MSI-X PBA Table.""")
-        self.reserved1      = CSRStorage() # For 64-bit alignment.
+        if width <= 32:
+            self.reserved1 = CSRStorage() # For 64-bit alignment.
         self.specials.table = Memory(4*32, width) # MSI-X Table.
 
         # # #
