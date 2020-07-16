@@ -96,30 +96,22 @@ def get_msi_irqs_ios(width=16):
 
 # CRG ----------------------------------------------------------------------------------------------
 
-class LitePCIeCRG(Module, AutoCSR):
+class LitePCIeCRG(Module):
     def __init__(self, platform, sys_clk_freq, clk_external):
         self.clock_domains.cd_sys = ClockDomain()
-        self.rst = CSR()
 
         # # #
-
-        # Delay software reset by 10us to ensure write has been acked on PCIe.
-        rst_delay = WaitTimer(int(10e-6*sys_clk_freq))
-        self.submodules += rst_delay
-        self.sync += If(self.rst.re, rst_delay.wait.eq(1))
 
         if clk_external:
             platform.add_extension(get_clkin_ios())
             self.comb += self.cd_sys.clk.eq(platform.request("clk"))
-            self.specials += AsyncResetSynchronizer(self.cd_sys, platform.request("rst") | rst_delay.done)
+            self.specials += AsyncResetSynchronizer(self.cd_sys, platform.request("rst"))
         else:
             platform.add_extension(get_clkout_ios())
             self.comb += self.cd_sys.clk.eq(ClockSignal("pcie"))
-            self.specials += AsyncResetSynchronizer(self.cd_sys, rst_delay.done)
-            self.comb += [
-                platform.request("clk125").eq(ClockSignal()),
-                platform.request("rst125").eq(ResetSignal()),
-            ]
+            self.comb += self.cd_sys.rst.eq(ResetSignal("pcie"))
+            self.comb += platform.request("clk125").eq(ClockSignal("pcie"))
+            self.comb += platform.request("rst125").eq(ResetSignal("pcie"))
 
 # Core ---------------------------------------------------------------------------------------------
 
