@@ -410,6 +410,7 @@ static void dma_test(void)
                     writer_sw_count,
                     reader_sw_count - writer_sw_count,
                     errors);
+            errors = 0;
             last_time = get_time_ms();
             reader_sw_count_last = reader_sw_count;
         }
