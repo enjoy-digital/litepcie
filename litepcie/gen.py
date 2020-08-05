@@ -132,8 +132,12 @@ class LitePCIeCore(SoCMini):
         sys_clk_freq = float(core_config.get("clk_freq", 125e6))
 
         # SoCMini ----------------------------------------------------------------------------------
-        SoCMini.__init__(self, platform, clk_freq=sys_clk_freq, csr_data_width=32,
-            ident="LitePCIe standalone core", ident_version=True)
+        SoCMini.__init__(self, platform, clk_freq=sys_clk_freq,
+            csr_data_width = 32,
+            csr_ordering   = core_config.get("csr_ordering", "big"),
+            ident          = "LitePCIe standalone core",
+            ident_version  = True
+        )
 
         # CRG --------------------------------------------------------------------------------------
         clk_external = core_config.get("clk_external", False)
