@@ -69,19 +69,8 @@ enjoy-digital.fr.
 [> Getting started
 ------------------
 1. Install Python 3.6+ and FPGA vendor's development tools.
-2. Install Migen/LiteX and the LiteX's cores:
-
-```sh
-$ wget https://raw.githubusercontent.com/enjoy-digital/litex/master/litex_setup.py
-$ chmod +x litex_setup.py
-$ ./litex_setup.py init install --user (--user to install to user directory)
-```
-  Later, if you need to update all repositories:
-```sh
-$ ./litex_setup.py update
-```
-
-3. TODO: add/describe examples
+2. Install LiteX and the cores by following the LiteX's wiki [installation guide](https://github.com/enjoy-digital/litex/wiki/Installation).
+3. You can find examples of integration of the core with LiteX in LiteX-Boards and in the examples directory.
 
 [> Tests
 --------
