@@ -1,5 +1,8 @@
-# This file is Copyright (c) 2015-2018 Florent Kermarrec <florent@enjoy-digital.fr>
-# License: BSD
+#
+# This file is part of LitePCIe.
+#
+# Copyright (c) 2015-2018 Florent Kermarrec <florent@enjoy-digital.fr>
+# SPDX-License-Identifier: BSD-2-Clause
 
 # In this high level test, LitePCIeEndpoint is connected to LitePCIeWishboneBridge frontend, itself
 # connected to a Wishbone SRAM and our Host software model is used to generate Write/Read TLPs.

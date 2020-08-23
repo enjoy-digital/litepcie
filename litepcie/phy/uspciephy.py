@@ -1,5 +1,8 @@
-# This file is Copyright (c) 2020 Enjoy-Digital <enjoy-digital.fr>
-# License: BSD
+#
+# This file is part of LitePCIe.
+#
+# Copyright (c) 2020 Enjoy-Digital <enjoy-digital.fr>
+# SPDX-License-Identifier: BSD-2-Clause
 
 import os
 

@@ -1,5 +1,8 @@
-# This file is Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
-# License: BSD
+#
+# This file is part of LitePCIe.
+#
+# Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
 from migen.genlib.misc import chooser, displacer
