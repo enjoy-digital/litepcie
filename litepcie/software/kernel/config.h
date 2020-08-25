@@ -1,8 +1,6 @@
 #ifndef __HW_CONFIG_H
 #define __HW_CONFIG_H
-#include "csr.h"
 #include "soc.h"
-#include "mem.h"
 
 /* pcie */
 #define PCIE_FPGA_VENDOR_ID 0x10ee
