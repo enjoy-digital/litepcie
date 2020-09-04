@@ -441,7 +441,7 @@ void scratch_test(void)
     close(fd);
 }
 
-#ifdef CSR_UART_BASE
+#ifdef CSR_UART_XOVER_RXTX_ADDR
 void uart_test(void)
 {
     int fd;
@@ -478,7 +478,7 @@ static void help(void)
            "info                              Board information\n"
            "dma_test                          Test DMA  (loopback in FPGA)\n"
            "scratch_test                      Test Scratch register\n"
-#ifdef CSR_UART_BASE
+#ifdef CSR_UART_XOVER_RXTX_ADDR
            "uart_test                         Test CPU Crossover UART\n"
 #endif
            "\n"
@@ -532,7 +532,7 @@ int main(int argc, char **argv)
         dma_test();
     else if (!strcmp(cmd, "scratch_test"))
         scratch_test();
-#ifdef CSR_UART_BASE
+#ifdef CSR_UART_XOVER_RXTX_ADDR
     else if (!strcmp(cmd, "uart_test"))
         uart_test();
 #endif
