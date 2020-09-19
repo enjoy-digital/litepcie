@@ -129,6 +129,167 @@ class LitePCIeTLPHeaderExtracter128b(Module):
             source.be[4*1:4*2].eq(convert_bits(sink.be[4*2:4*3], endianness))
         ]
 
+# LitePCIeTLPHeaderExtracter256b -------------------------------------------------------------------
+
+class LitePCIeTLPHeaderExtracter256b(Module):
+    def __init__(self, endianness):
+        self.sink   = sink   = stream.Endpoint(phy_layout(256))
+        self.source = source = stream.Endpoint(tlp_raw_layout(256))
+
+        # # #
+
+        first = Signal()
+        last  = Signal()
+        dat   = Signal(256, reset_less=True)
+        be    = Signal(256//8, reset_less=True)
+        self.sync += \
+            If(sink.valid & sink.ready,
+                dat.eq(sink.dat),
+                be.eq(sink.be)
+            )
+
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        fsm.act("IDLE",
+            NextValue(first, 1),
+            NextValue(last, 0),
+            If(sink.valid,
+                NextState("HEADER")
+            )
+        )
+        fsm.act("HEADER",
+            sink.ready.eq(1),
+            If(sink.valid,
+                NextValue(source.header[32*0:32*1], sink.dat[32*0:32*1]),
+                NextValue(source.header[32*1:32*2], sink.dat[32*1:32*2]),
+                NextValue(source.header[32*2:32*3], sink.dat[32*2:32*3]),
+                NextValue(source.header[32*3:32*4], sink.dat[32*3:32*4]),
+                If(sink.last,
+                    NextValue(last, 1)
+                ),
+                NextState("COPY")
+            )
+        )
+        fsm.act("COPY",
+            source.valid.eq(sink.valid | last),
+            source.first.eq(first),
+            source.last.eq(sink.last | last),
+            If(source.valid & source.ready,
+                NextValue(first, 0),
+                sink.ready.eq(1 & ~last), # already acked when last is 1
+                If(source.last,
+                    NextState("IDLE")
+                )
+            )
+        )
+        self.comb += [
+            source.dat[32*0:32*1].eq(convert_bytes(dat[32*3:32*4], endianness)),
+            source.dat[32*1:32*2].eq(convert_bytes(dat[32*4:32*5], endianness)),
+            source.dat[32*2:32*3].eq(convert_bytes(dat[32*5:32*6], endianness)),
+            source.dat[32*3:32*4].eq(convert_bytes(dat[32*6:32*7], endianness)),
+            source.dat[32*4:32*5].eq(convert_bytes(dat[32*7:32*8], endianness)),
+            source.dat[32*5:32*6].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
+            source.dat[32*6:32*7].eq(convert_bytes(sink.dat[32*1:32*2], endianness)),
+            source.dat[32*7:32*8].eq(convert_bytes(sink.dat[32*2:32*3], endianness)),
+
+            source.be[4*0:4*1].eq(convert_bits(be[4*3:4*4], endianness)),
+            source.be[4*1:4*2].eq(convert_bits(be[4*4:4*5], endianness)),
+            source.be[4*2:4*3].eq(convert_bits(be[4*5:4*6], endianness)),
+            source.be[4*3:4*4].eq(convert_bits(be[4*6:4*7], endianness)),
+            source.be[4*4:4*5].eq(convert_bits(be[4*7:4*8], endianness)),
+            source.be[4*5:4*6].eq(convert_bits(sink.be[4*0:4*1], endianness)),
+            source.be[4*6:4*7].eq(convert_bits(sink.be[4*1:4*2], endianness)),
+            source.be[4*7:4*8].eq(convert_bits(sink.be[4*2:4*3], endianness))
+        ]
+
+# LitePCIeTLPHeaderExtracter512b -------------------------------------------------------------------
+
+class LitePCIeTLPHeaderExtracter512b(Module):
+    def __init__(self, endianness):
+        self.sink   = sink   = stream.Endpoint(phy_layout(512))
+        self.source = source = stream.Endpoint(tlp_raw_layout(512))
+
+        # # #
+
+        first = Signal()
+        last  = Signal()
+        dat   = Signal(512, reset_less=True)
+        be    = Signal(512//8, reset_less=True)
+        self.sync += \
+            If(sink.valid & sink.ready,
+                dat.eq(sink.dat),
+                be.eq(sink.be)
+            )
+
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        fsm.act("IDLE",
+            NextValue(first, 1),
+            NextValue(last, 0),
+            If(sink.valid,
+                NextState("HEADER")
+            )
+        )
+        fsm.act("HEADER",
+            sink.ready.eq(1),
+            If(sink.valid,
+                NextValue(source.header[32*0:32*1], sink.dat[32*0:32*1]),
+                NextValue(source.header[32*1:32*2], sink.dat[32*1:32*2]),
+                NextValue(source.header[32*2:32*3], sink.dat[32*2:32*3]),
+                NextValue(source.header[32*3:32*4], sink.dat[32*3:32*4]),
+                If(sink.last,
+                    NextValue(last, 1)
+                ),
+                NextState("COPY")
+            )
+        )
+        fsm.act("COPY",
+            source.valid.eq(sink.valid | last),
+            source.first.eq(first),
+            source.last.eq(sink.last | last),
+            If(source.valid & source.ready,
+                NextValue(first, 0),
+                sink.ready.eq(1 & ~last), # already acked when last is 1
+                If(source.last,
+                    NextState("IDLE")
+                )
+            )
+        )
+        self.comb += [
+            source.dat[32*0:32*1].eq(convert_bytes(dat[32*3:32*4], endianness)),
+            source.dat[32*1:32*2].eq(convert_bytes(dat[32*4:32*5], endianness)),
+            source.dat[32*2:32*3].eq(convert_bytes(dat[32*5:32*6], endianness)),
+            source.dat[32*3:32*4].eq(convert_bytes(dat[32*6:32*7], endianness)),
+            source.dat[32*4:32*5].eq(convert_bytes(dat[32*7:32*8], endianness)),
+            source.dat[32*5:32*6].eq(convert_bytes(dat[32*8:32*9], endianness)),
+            source.dat[32*6:32*7].eq(convert_bytes(dat[32*9:32*10], endianness)),
+            source.dat[32*7:32*8].eq(convert_bytes(dat[32*10:32*11], endianness)),
+            source.dat[32*8:32*9].eq(convert_bytes(dat[32*11:32*12], endianness)),
+            source.dat[32*9:32*10].eq(convert_bytes(dat[32*12:32*13], endianness)),
+            source.dat[32*10:32*11].eq(convert_bytes(dat[32*13:32*14], endianness)),
+            source.dat[32*11:32*12].eq(convert_bytes(dat[32*14:32*15], endianness)),
+            source.dat[32*12:32*13].eq(convert_bytes(dat[32*15:32*16], endianness)),
+            source.dat[32*13:32*14].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
+            source.dat[32*14:32*15].eq(convert_bytes(sink.dat[32*1:32*2], endianness)),
+            source.dat[32*15:32*16].eq(convert_bytes(sink.dat[32*2:32*3], endianness)),
+
+
+            source.be[4*0:4*1].eq(convert_bits(be[4*3:4*4], endianness)),
+            source.be[4*1:4*2].eq(convert_bits(be[4*4:4*5], endianness)),
+            source.be[4*2:4*3].eq(convert_bits(be[4*5:4*6], endianness)),
+            source.be[4*3:4*4].eq(convert_bits(be[4*6:4*7], endianness)),
+            source.be[4*4:4*5].eq(convert_bits(be[4*7:4*8], endianness)),
+            source.be[4*5:4*6].eq(convert_bits(be[4*8:4*9], endianness)),
+            source.be[4*6:4*7].eq(convert_bits(be[4*9:4*10], endianness)),
+            source.be[4*7:4*8].eq(convert_bits(be[4*10:4*11], endianness)),
+            source.be[4*8:4*9].eq(convert_bits(be[4*11:4*12], endianness)),
+            source.be[4*9:4*10].eq(convert_bits(be[4*12:4*13], endianness)),
+            source.be[4*10:4*11].eq(convert_bits(be[4*13:4*14], endianness)),
+            source.be[4*11:4*12].eq(convert_bits(be[4*14:4*15], endianness)),
+            source.be[4*12:4*13].eq(convert_bits(be[4*15:4*16], endianness)),
+            source.be[4*13:4*14].eq(convert_bits(sink.be[4*0:4*1], endianness)),
+            source.be[4*14:4*15].eq(convert_bits(sink.be[4*1:4*2], endianness)),
+            source.be[4*15:4*16].eq(convert_bits(sink.be[4*2:4*3], endianness)),
+        ]
+
 # LitePCIeTLPDepacketizer --------------------------------------------------------------------------
 
 class LitePCIeTLPDepacketizer(Module):
@@ -143,6 +304,8 @@ class LitePCIeTLPDepacketizer(Module):
         header_extracter_cls = {
              64 : LitePCIeTLPHeaderExtracter64b,
             128 : LitePCIeTLPHeaderExtracter128b,
+            256 : LitePCIeTLPHeaderExtracter256b,
+            512 : LitePCIeTLPHeaderExtracter512b,
         }
         header_extracter = header_extracter_cls[data_width](endianness)
         self.submodules += header_extracter
@@ -187,7 +350,7 @@ class LitePCIeTLPDepacketizer(Module):
             tlp_req.ready.eq(req_source.ready),
             req_source.first.eq(tlp_req.first),
             req_source.last.eq(tlp_req.last),
-            req_source.adr.eq(tlp_req.address & ~address_mask),
+            req_source.adr.eq(tlp_req.address & (~address_mask)),
             req_source.len.eq(tlp_req.length),
             req_source.req_id.eq(tlp_req.requester_id),
             req_source.tag.eq(tlp_req.tag),
