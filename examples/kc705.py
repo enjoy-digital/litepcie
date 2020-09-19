@@ -46,7 +46,7 @@ class LitePCIeSoC(SoCMini):
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, sys_clk_freq,
             csr_data_width = 32,
-            ident          = "LitePCIe example design",
+            ident          = "LitePCIe example design on KC705",
             ident_version  = True,
             with_uart      = True,
             uart_name      = "bridge")

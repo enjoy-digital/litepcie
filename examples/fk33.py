@@ -11,14 +11,14 @@ import argparse
 
 from migen import *
 
-from litex.boards.platforms import kcu105
+from litex_boards.platforms import fk33
 
-from litex.soc.cores.clock import USPLL
+from litex.soc.cores.clock import USPPLL
 from litex.soc.interconnect.csr import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 
-from litepcie.phy.uspciephy import USPCIEPHY
+from litepcie.phy.usppciephy import USPPCIEPHY
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
@@ -33,34 +33,33 @@ class _CRG(Module):
         # # #
 
         # PLL
-        self.submodules.pll = pll = USPLL(speedgrade=-2)
-        pll.register_clkin(platform.request("clk125"), 125e6)
+        self.submodules.pll = pll = USPPLL(speedgrade=-2)
+        pll.register_clkin(platform.request("clk200"), 200e6)
         pll.create_clkout(self.cd_sys, sys_clk_freq)
 
 # LitePCIeSoC --------------------------------------------------------------------------------------
 
 class LitePCIeSoC(SoCMini):
-    def __init__(self, platform, nlanes=4):
+    def __init__(self, platform, nlanes=2):
         sys_clk_freq = int(125e6)
 
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, sys_clk_freq,
             csr_data_width = 32,
-            ident          = "LitePCIe example design on KCU105",
+            ident          = "LitePCIe example design on FK33",
             ident_version  = True,
-            with_uart      = True,
-            uart_name      = "bridge")
+            with_uart      = False)
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
         self.add_csr("crg")
 
-
         # PCIe -------------------------------------------------------------------------------------
         # PHY
-        self.submodules.pcie_phy = USPCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
-            data_width = 128,
-            bar0_size  = 0x20000
+        self.submodules.pcie_phy = USPPCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
+            data_width      = 128,
+            pcie_data_width = 128,
+            bar0_size       = 0x20000
         )
         #self.pcie_phy.add_timing_constraints(platform) # FIXME
         platform.add_false_path_constraints(self.crg.cd_sys.clk, self.pcie_phy.cd_pcie.clk)
@@ -108,14 +107,14 @@ class LitePCIeSoC(SoCMini):
 # Build --------------------------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="LitePCIe SoC on KCU105")
+    parser = argparse.ArgumentParser(description="LitePCIe SoC on FK33")
     parser.add_argument("--build",  action="store_true", help="Build bitstream")
     parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
     parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
-    parser.add_argument("--nlanes", default=4,           help="Number of Gen2 PCIe lanes (4)")
+    parser.add_argument("--nlanes", default=2,           help="Number of Gen3 PCIe lanes (4)")
     args = parser.parse_args()
 
-    platform = kcu105.Platform()
+    platform = fk33.Platform()
     soc      = LitePCIeSoC(platform, nlanes=int(args.nlanes))
     builder  = Builder(soc, csr_csv="csr.csv")
     builder.build(run=args.build)
