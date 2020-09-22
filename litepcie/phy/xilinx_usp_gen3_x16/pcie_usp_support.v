@@ -173,7 +173,7 @@ endmodule
 //----------------------------------------------------------------------------------------------------------------//
 
 (* DowngradeIPIdentifiedWarnings = "yes" *)
-module pcie3_support # (
+module pcie_support # (
   parameter LINK_CAP_MAX_LINK_WIDTH = 4,                       // PCIe Lane Width
   parameter C_DATA_WIDTH            = 128,                     // AXI interface data width
   parameter KEEP_WIDTH              = C_DATA_WIDTH / 8,        // TSTRB width
