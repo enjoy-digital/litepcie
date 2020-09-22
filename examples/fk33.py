@@ -18,7 +18,7 @@ from litex.soc.interconnect.csr import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 
-from litepcie.phy.usppciephy import USPPCIEPHY
+from litepcie.phy.usppciephy import USPHBMPCIEPHY
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
@@ -62,7 +62,7 @@ class LitePCIeSoC(SoCMini):
 
         # PCIe -------------------------------------------------------------------------------------
         # PHY
-        self.submodules.pcie_phy = USPPCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
+        self.submodules.pcie_phy = USPHBMPCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
             speed      = speed,
             data_width = data_width,
             bar0_size  = 0x20000,
