@@ -136,7 +136,7 @@
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.AXISTEN_IF_CCIX_TX_REGISTERED_TREADY">FALSE</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.AXISTEN_IF_CC_ALIGNMENT_MODE">0x0</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.AXISTEN_IF_CQ_ALIGNMENT_MODE">0x0</spirit:configurableElementValue>
-        <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.AXISTEN_IF_ENABLE_CLIENT_TAG">FALSE</spirit:configurableElementValue>
+        <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.AXISTEN_IF_ENABLE_CLIENT_TAG">TRUE</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.AXISTEN_IF_ENABLE_INTERNAL_MSIX_TABLE">FALSE</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.AXISTEN_IF_ENABLE_MSG_ROUTE">0x00000</spirit:configurableElementValue>
         <spirit:configurableElementValue spirit:referenceId="MODELPARAM_VALUE.AXISTEN_IF_EXT_512_CC_STRADDLE">FALSE</spirit:configurableElementValue>
