@@ -40,13 +40,19 @@ class _CRG(Module):
 # LitePCIeSoC --------------------------------------------------------------------------------------
 
 class LitePCIeSoC(SoCMini):
-    def __init__(self, platform, nlanes=2):
-        sys_clk_freq = int(125e6)
+    configs = {
+        # Gen2  data_width, sys_clk_freq
+        "gen2:x4": (64,  int(200e6)),
+        # Gen3  data_width, sys_clk_freq
+        "gen3:x4": (128, int(200e6)),
+    }
+    def __init__(self, platform, speed="gen2", nlanes=4):
+        data_width, sys_clk_freq = self.configs[speed + ":x{}".format(nlanes)]
 
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, sys_clk_freq,
             csr_data_width = 32,
-            ident          = "LitePCIe example design on XCU1525",
+            ident          = "LitePCIe example design on XCU1525 ({}:x{})".format(speed, nlanes),
             ident_version  = True,
             with_uart      = True,
             uart_name      = "bridge")
@@ -55,13 +61,12 @@ class LitePCIeSoC(SoCMini):
         self.submodules.crg = _CRG(platform, sys_clk_freq)
         self.add_csr("crg")
 
-
         # PCIe -------------------------------------------------------------------------------------
         # PHY
         self.submodules.pcie_phy = USPPCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
-            data_width      = 128,
-            pcie_data_width = 128,
-            bar0_size       = 0x20000
+            speed      = speed,
+            data_width = data_width,
+            bar0_size  = 0x20000,
         )
         #self.pcie_phy.add_timing_constraints(platform) # FIXME
         platform.add_false_path_constraints(self.crg.cd_sys.clk, self.pcie_phy.cd_pcie.clk)
@@ -113,11 +118,12 @@ def main():
     parser.add_argument("--build",  action="store_true", help="Build bitstream")
     parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
     parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
-    parser.add_argument("--nlanes", default=2,           help="Number of Gen3 PCIe lanes (4)")
+    parser.add_argument("--speed",  default="gen2",      help="PCIe speed: gen2 (default) or gen3")
+    parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 4 (default) or 8")
     args = parser.parse_args()
 
     platform = xcu1525.Platform()
-    soc      = LitePCIeSoC(platform, nlanes=int(args.nlanes))
+    soc      = LitePCIeSoC(platform, speed=args.speed, nlanes=int(args.nlanes))
     builder  = Builder(soc, csr_csv="csr.csv")
     builder.build(run=args.build)
 
