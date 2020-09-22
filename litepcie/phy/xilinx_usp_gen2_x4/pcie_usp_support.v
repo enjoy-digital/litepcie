@@ -888,7 +888,7 @@ module pcie_support # (
   //   Core instance                                                                                                //
   //----------------------------------------------------------------------------------------------------------------//
 
-  pcie_us_x4  pcie_us_x4_i (
+  pcie_usp  pcie_usp_i (
 
     //---------------------------------------------------------------------------------------//
     //  PCI Express (pci_exp) Interface                                                      //
@@ -901,11 +901,6 @@ module pcie_support # (
     // Rx
     .pci_exp_rxn                                    ( pci_exp_rxn ),
     .pci_exp_rxp                                    ( pci_exp_rxp ),
-
-    //---------- Shared Logic Internal -------------------------
-    .int_qpll1lock_out                              (  ),
-    .int_qpll1outrefclk_out                         (  ),
-    .int_qpll1outclk_out                            (  ),
 
     //---------------------------------------------------------------------------------------//
     //  AXI Interface                                                                        //
@@ -947,10 +942,6 @@ module pcie_support # (
     //---------------------------------------------------------------------------------------//
     //  Configuration (CFG) Interface                                                        //
     //---------------------------------------------------------------------------------------//
-    .pcie_rq_seq_num                                ( pcie_rq_seq_num ),
-    .pcie_rq_seq_num_vld                            ( pcie_rq_seq_num_vld ),
-    .pcie_rq_tag                                    ( pcie_rq_tag ),
-    .pcie_rq_tag_vld                                ( pcie_rq_tag_vld ),
     .pcie_cq_np_req_count                           ( pcie_cq_np_req_count ),
     .pcie_cq_np_req                                 ( pcie_cq_np_req ),
     .pcie_rq_tag_av                                 ( pcie_rq_tag_av ),
@@ -973,10 +964,8 @@ module pcie_support # (
     .cfg_err_cor_out                                ( cfg_err_cor_out ),
     .cfg_err_nonfatal_out                           ( cfg_err_nonfatal_out ),
     .cfg_err_fatal_out                              ( cfg_err_fatal_out ),
-    .cfg_ltr_enable                                 ( cfg_ltr_enable ),
     .cfg_ltssm_state                                ( cfg_ltssm_state ),
     .cfg_rcb_status                                 ( cfg_rcb_status ),
-    .cfg_dpa_substate_change                        ( cfg_dpa_substate_change ),
     .cfg_obff_enable                                ( cfg_obff_enable ),
     .cfg_pl_status_change                           ( cfg_pl_status_change ),
 
@@ -995,7 +984,8 @@ module pcie_support # (
     .cfg_mgmt_read                                  ( cfg_mgmt_rd_en ),
     .cfg_mgmt_read_data                             ( cfg_mgmt_do ),
     .cfg_mgmt_read_write_done                       ( cfg_mgmt_rd_wr_done ),
-    .cfg_mgmt_type1_cfg_reg_access                  ( 1'b0 ),                    //This input has no effect when the core is in the Endpoint mode
+    .cfg_mgmt_function_number                       ( 8'b0 ),
+    .cfg_mgmt_debug_access                          ( 1'b0 ),
 
     //-------------------------------------------------------------------------------//
     // Flow control                                                                  //
@@ -1020,9 +1010,6 @@ module pcie_support # (
     .cfg_fc_cpld                                    ( cfg_fc_cpld ),
     .cfg_fc_sel                                     ( cfg_fc_sel ),
 
-    .cfg_per_func_status_control                    ( cfg_per_func_status_control ), //Request only for PF#0
-    .cfg_per_func_status_data                       ( cfg_per_func_status_data ),
-
     //-----------------------------------------------------------------------------//
     // Configuration Control Interface                                             //
     // ----------------------------------------------------------------------------//
@@ -1030,10 +1017,6 @@ module pcie_support # (
     // Hot reset enable
     .cfg_hot_reset_in                               ( pl_transmit_hot_rst ),
     .cfg_hot_reset_out                              ( pl_received_hot_rst ),
-
-    .cfg_per_function_number                        ( 4'b0 ),
-    .cfg_per_function_output_request                ( 1'b0 ),  // Do not request configuration status update
-    .cfg_per_function_update_done                   (  ),
 
     //Power state change interupt
     .cfg_power_state_change_ack                     ( cfg_power_state_change_ack ),
@@ -1046,9 +1029,12 @@ module pcie_support # (
     .cfg_flr_done                                   ( {2'b0,cfg_flr_done} ),
     .cfg_vf_flr_in_process                          ( cfg_vf_flr_in_process ),
     .cfg_vf_flr_done                                ( {2'b0,cfg_vf_flr_done} ),
-    .cfg_local_error                                ( ),
+    .cfg_vf_flr_func_num                            ( 8'b0 ),
 
     .cfg_link_training_enable                       ( 1'b1 ),  // Always enable LTSSM to bring up the Link
+
+    .cfg_pm_aspm_l1_entry_reject                    ( 1'b0 ),
+    .cfg_pm_aspm_tx_l0s_entry_disable               ( 1'b0 ),
 
     // EP only
     .cfg_config_space_enable                        ( 1'b1 ),  //ref pcie_app_uscale
@@ -1061,9 +1047,7 @@ module pcie_support # (
     .cfg_dsn                                        ( cfg_dsn ),
     .cfg_ds_bus_number                              ( cfg_ds_bus_number ),
     .cfg_ds_device_number                           ( cfg_ds_device_number ),
-    .cfg_ds_function_number                         ( cfg_ds_function_number ),
     .cfg_ds_port_number                             ( cfg_ds_port_number ),
-    .cfg_subsys_vend_id                             ( cfg_subsys_vend_id ),
 
     //-------------------------------------------------------------------------------//
     // Interrupt Interface Signals
@@ -1077,7 +1061,6 @@ module pcie_support # (
     .cfg_interrupt_msi_sent                         ( cfg_interrupt_msi_sent ),
     .cfg_interrupt_msi_fail                         ( cfg_interrupt_msi_fail ),
 
-    .cfg_interrupt_msi_vf_enable                    ( cfg_interrupt_msi_vf_enable ),
     .cfg_interrupt_msi_mmenable                     ( cfg_interrupt_msi_mmenable ),
     .cfg_interrupt_msi_mask_update                  ( cfg_interrupt_msi_mask_update ),
     .cfg_interrupt_msi_data                         ( cfg_interrupt_msi_data ),
@@ -1090,14 +1073,6 @@ module pcie_support # (
     .cfg_interrupt_msi_pending_status_function_num  ( 4'b0 ),
     .cfg_interrupt_msi_pending_status_data_enable   ( 1'b0 ),
     .cfg_interrupt_msi_function_number              ( 4'b0 ),
-
-    //--------------------------------------------------------------------------------------//
-    // Reset Pass Through Signals
-    //  - Only used for PCIe_X0Y0
-    //--------------------------------------------------------------------------------------//
-    .pcie_perstn0_out       (),
-    .pcie_perstn1_in        (1'b0),
-    .pcie_perstn1_out       (),
 
     //--------------------------------------------------------------------------------------//
     //  System(SYS) Interface                                                               //

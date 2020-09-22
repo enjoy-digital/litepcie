@@ -395,7 +395,7 @@ class S7PCIEPHY(Module, AutoCSR):
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename, disable_constraints=True):
         platform.add_source(os.path.join(phy_path, "pcie_pipe_clock.v"))
-        platform.add_source(os.path.join(phy_path, "pcie_s7_x{}_support.v".format(self.nlanes)))
+        platform.add_source(os.path.join(phy_path, "pcie_s7_support.v"))
         platform.add_ip(os.path.join(phy_path, phy_filename), disable_constraints=disable_constraints)
 
     # External Hard IP -----------------------------------------------------------------------------
@@ -447,10 +447,9 @@ set_clock_groups -name pcieclkmux -physically_exclusive -group clk_125mhz_mux_ph
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_hard_ip:
-            phy_path     = "xilinx_s7_x{}".format(self.nlanes)
-            phy_filename = "pcie_s7_x{}.xci".format(self.nlanes)
+            phy_path     = "xilinx_s7_gen2_x{}".format(self.nlanes)
             self.add_sources(self.platform,
                 phy_path     = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
-                phy_filename = "pcie_s7_x{}.xci".format(self.nlanes)
+                phy_filename = "pcie_s7.xci"
             )
         self.specials += Instance("pcie_support", **self.pcie_phy_params)

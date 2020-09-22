@@ -404,7 +404,7 @@ class USPPCIEPHY(Module, AutoCSR):
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename):
         platform.add_ip(os.path.join(phy_path, phy_filename))
-        platform.add_source(os.path.join(phy_path, "pcie_us_x{}_support.v".format(self.nlanes)))
+        platform.add_source(os.path.join(phy_path, "pcie_usp_support.v"))
 
     # External Hard IP -----------------------------------------------------------------------------
     def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
@@ -414,14 +414,13 @@ class USPPCIEPHY(Module, AutoCSR):
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_hard_ip:
-            phy_path = "xilinx_usp{}_x{}".format(
+            phy_path = "xilinx_usp{}_gen2_x{}".format(
                  "_hbm" if isinstance(self, USPHBMPCIEPHY) else "",
                  self.nlanes
             )
-            phy_filename = "pcie_us_x{}.xci".format(self.nlanes)
             self.add_sources(self.platform,
                 phy_path     = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
-                phy_filename = "pcie_us_x{}.xci".format(self.nlanes)
+                phy_filename = "pcie_usp.xci"
             )
         self.specials += Instance("pcie_support", **self.pcie_phy_params)
 

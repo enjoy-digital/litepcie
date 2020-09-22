@@ -403,7 +403,7 @@ pcie_pipe_clock #
 
 
 
-pcie_s7_x1 pcie_i
+pcie_s7 pcie_i
 (
     .pci_exp_txn(pci_exp_txn),
     .pci_exp_txp(pci_exp_txp),
