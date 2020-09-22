@@ -16,7 +16,7 @@ from litepcie.phy.common import *
 # USPPCIEPHY ----------------------------------------------------------------------------------------
 
 class USPPCIEPHY(Module, AutoCSR):
-    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=64):
+    def __init__(self, platform, pads, speed="gen2", data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
         self.cmp_sink   = stream.Endpoint(phy_layout(data_width))
@@ -32,6 +32,7 @@ class USPPCIEPHY(Module, AutoCSR):
         self._max_payload_size  = CSRStatus(16, description="Negiotiated Max Payload Size (in bytes).")
 
         # Parameters/Locals ------------------------------------------------------------------------
+        if pcie_data_width is None: pcie_data_width = data_width
         self.platform         = platform
         self.data_width       = data_width
         self.pcie_data_width  = pcie_data_width
@@ -47,11 +48,13 @@ class USPPCIEPHY(Module, AutoCSR):
 
         # # #
 
+        self.speed  = speed
         self.nlanes = nlanes = len(pads.tx_p)
 
-        assert nlanes          in [1, 2, 4]
-        assert data_width      in [64, 128]
-        assert pcie_data_width in [64, 128]
+        assert speed           in ["gen2", "gen3"]
+        assert nlanes          in [1, 2, 4, 8]
+        assert data_width      in [64, 128, 256]
+        assert pcie_data_width in [64, 128, 256]
 
         # Clocking ---------------------------------------------------------------------------------
         pcie_refclk = Signal()
@@ -69,13 +72,13 @@ class USPPCIEPHY(Module, AutoCSR):
         pcie_clk_freq = max(250e6, nlanes*62.5e6*64/pcie_data_width)
         platform.add_period_constraint(self.cd_pcie.clk, 1e9/pcie_clk_freq)
 
-        # TX (FPGA --> HOST) CDC / Data Width Convertion -------------------------------------------
+        # TX (FPGA --> HOST) CDC / Data Width Conversion -------------------------------------------
         if (cd == "pcie") and (data_width == pcie_data_width):
             s_axis_cc = self.cmp_sink
         else:
             cc_pipe_valid = stream.PipeValid(phy_layout(data_width))
             cc_pipe_valid = ClockDomainsRenamer(cd)(cc_pipe_valid)
-            cc_cdc        = stream.AsyncFIFO(phy_layout(data_width), 8)
+            cc_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
             cc_cdc        = ClockDomainsRenamer({"write": cd, "read": "pcie"})(cc_cdc)
             cc_converter  = stream.StrideConverter(phy_layout(data_width), phy_layout(pcie_data_width))
             cc_converter  = ClockDomainsRenamer("pcie")(cc_converter)
@@ -110,7 +113,7 @@ class USPPCIEPHY(Module, AutoCSR):
             ]
             s_axis_rq = rq_pipe_ready.source
 
-        # RX (HOST --> FPGA) CDC / Data Width Convertion -------------------------------------------
+        # RX (HOST --> FPGA) CDC / Data Width Conversion -------------------------------------------
         if (cd == "pcie") and (data_width == pcie_data_width):
             m_axis_cq = self.req_source
         else:
@@ -118,7 +121,7 @@ class USPPCIEPHY(Module, AutoCSR):
             cq_pipe_ready = ClockDomainsRenamer("pcie")(cq_pipe_ready)
             cq_converter  = stream.StrideConverter(phy_layout(pcie_data_width), phy_layout(data_width))
             cq_converter  = ClockDomainsRenamer("pcie")(cq_converter)
-            cq_cdc        = stream.AsyncFIFO(phy_layout(data_width), 8)
+            cq_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
             cq_cdc        = ClockDomainsRenamer({"write": "pcie", "read": cd})(cq_cdc)
             cq_pipe_valid = stream.PipeValid(phy_layout(data_width))
             cq_pipe_valid = ClockDomainsRenamer(cd)(cq_pipe_valid)
@@ -212,7 +215,7 @@ class USPPCIEPHY(Module, AutoCSR):
         self.s_axis_rq = s_axis_rq
         self.m_axis_rc = m_axis_rc
 
-        debug  = Signal(8)
+        debug  = Signal(16)
         self.debug = debug
 
         # Hard IP ----------------------------------------------------------------------------------
@@ -414,8 +417,9 @@ class USPPCIEPHY(Module, AutoCSR):
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_hard_ip:
-            phy_path = "xilinx_usp{}_gen2_x{}".format(
+            phy_path = "xilinx_usp{}_{}_x{}".format(
                  "_hbm" if isinstance(self, USPHBMPCIEPHY) else "",
+                 self.speed,
                  self.nlanes
             )
             self.add_sources(self.platform,
