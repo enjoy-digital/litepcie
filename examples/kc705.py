@@ -26,7 +26,7 @@ from litepcie.software import generate_litepcie_software
 
 # CRG ----------------------------------------------------------------------------------------------
 
-class _CRG(Module, AutoCSR):
+class _CRG(Module):
     def __init__(self, platform, sys_clk_freq):
         self.clock_domains.cd_sys = ClockDomain()
 
@@ -40,13 +40,19 @@ class _CRG(Module, AutoCSR):
 # LitePCIeSoC --------------------------------------------------------------------------------------
 
 class LitePCIeSoC(SoCMini):
-    def __init__(self, platform, nlanes=1):
-        sys_clk_freq = int(125e6)
+    configs = {
+        # Gen2  data_width, sys_clk_freq
+        "gen2:x1": (64,   int(125e6)),
+        "gen2:x4": (128,  int(200e6)),
+        "gen2:x8": (128,  int(200e6)),
+    }
+    def __init__(self, platform, speed="gen2", nlanes=4):
+        data_width, sys_clk_freq = self.configs[speed + ":x{}".format(nlanes)]
 
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, sys_clk_freq,
             csr_data_width = 32,
-            ident          = "LitePCIe example design on KC705",
+            ident          = "LitePCIe example design on KC705 ({}:x{})".format(speed, nlanes),
             ident_version  = True,
             with_uart      = True,
             uart_name      = "bridge")
@@ -58,8 +64,8 @@ class LitePCIeSoC(SoCMini):
         # PCIe -------------------------------------------------------------------------------------
         # PHY
         self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
-            data_width = 128,
-            bar0_size  = 0x20000
+            data_width = data_width,
+            bar0_size  = 0x20000,
         )
         self.pcie_phy.add_timing_constraints(platform)
         platform.add_false_path_constraints(self.crg.cd_sys.clk, self.pcie_phy.cd_pcie.clk)
@@ -111,7 +117,7 @@ def main():
     parser.add_argument("--build",  action="store_true", help="Build bitstream")
     parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
     parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
-    parser.add_argument("--nlanes", default=1,           help="Number of Gen2 PCIe lanes (1, 4 or 8)")
+    parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 1, 4 (default) or 8")
     args = parser.parse_args()
 
     platform = kc705.Platform()
