@@ -32,6 +32,9 @@
 
 #include "liblitepcie.h"
 
+#define DMA_CHECK_DATA
+#define DMA_RANDOM_DATA
+
 static char litepcie_device[1024];
 static int litepcie_device_num;
 static bool force_flash = false;
@@ -260,7 +263,7 @@ static inline uint32_t add_mod_int(uint32_t a, uint32_t b, uint32_t m)
 
 static inline uint32_t seed_to_data(uint32_t seed)
 {
-#if 1
+#ifdef DMA_RANDOM_DATA
     return seed * 69069 + 1;
 #else
     return seed;
@@ -329,7 +332,9 @@ static void dma_test(void)
     memset(buf_rd, 0, DMA_BUFFER_TOTAL_SIZE);
     memset(buf_wr, 0, DMA_BUFFER_TOTAL_SIZE);
 
+#ifdef DMA_CHECK_DATA
     write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_TOTAL_SIZE/4, &seed_wr);
+#endif
 
     fds.fd = open(litepcie_device, O_RDWR | O_CLOEXEC);
     fds.events = POLLIN | POLLOUT;
@@ -377,9 +382,11 @@ static void dma_test(void)
             len = read(fds.fd, buf_rd, DMA_BUFFER_TOTAL_SIZE);
             if(len >= 0) {
                 uint32_t check_errors;
+#ifdef DMA_CHECK_DATA
                 check_errors = check_pn_data((uint32_t *) buf_rd, len/4, &seed_rd);
                 if (writer_hw_count > DMA_BUFFER_COUNT)
                     errors += check_errors;
+#endif
             }
         }
 
