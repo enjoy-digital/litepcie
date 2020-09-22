@@ -17,7 +17,7 @@ from litepcie.phy.common import *
 # S7PCIEPHY ----------------------------------------------------------------------------------------
 
 class S7PCIEPHY(Module, AutoCSR):
-    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=64):
+    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
@@ -32,6 +32,7 @@ class S7PCIEPHY(Module, AutoCSR):
         self._max_payload_size  = CSRStatus(16, description="Negiotiated Max Payload Size (in bytes).")
 
         # Parameters/Locals ------------------------------------------------------------------------
+        if pcie_data_width is None: pcie_data_width = data_width
         self.platform         = platform
         self.data_width       = data_width
         self.pcie_data_width  = pcie_data_width
