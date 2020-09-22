@@ -57,26 +57,24 @@
 
 `timescale 1ns / 1ps
 
-// Adaptation from/to Xilinx format to/from standardized TLPs Copyright (c) 2020 Enjoy-Digital <enjoy-digital.fr>
-
 //----------------------------------------------------------------------------------------------------------------//
 // AXIS FIFO                                                                                                      //
 //----------------------------------------------------------------------------------------------------------------//
 
-module axis_iff
+module axis_iff  
    #(
         parameter           DAT_B  = 32
     )
-    (
+    (         
         input               clk,
         input               rst,
-
+   
         input               i_vld,
         output              o_rdy,
         input               i_sop,
         input               i_eop,
         input  [DAT_B-1:0]  i_dat,
-
+        
 
         output              o_vld,
         input               i_rdy,
@@ -94,7 +92,7 @@ module axis_iff
     reg [FF_B:0]   ff_len;
 
     wire           ff_wr, ff_rd;
-
+    
     reg [FF_B-1:0] wrcnt;
     always @(posedge clk)
         if (rst) wrcnt <= {FF_B{1'b0}};
@@ -102,16 +100,16 @@ module axis_iff
 
     always @(posedge clk)
         if (rst) ff_len <= {FF_B+1{1'b0}};
-        else
+        else 
             case ({ff_wr, ff_rd})
-                2'b10: ff_len <= ff_len + 1;
+                2'b10: ff_len <= ff_len + 1; 
                 2'b01: ff_len <= ff_len - 1;
                 default: ff_len <= ff_len;
             endcase
 
     wire [FF_B-1:0] rdcnt;
     assign          rdcnt = wrcnt - ff_len[FF_B-1:0];
-
+           
     wire [FF_B-1:0] rda, wra;
     assign          rda = ff_rd ? (rdcnt + 1) : rdcnt;
     assign          wra = wrcnt;
@@ -119,7 +117,7 @@ module axis_iff
     wire [DAT_B+1:0] ff_wdat;
     wire [DAT_B+1:0] ff_rdat;
     assign           ff_wdat = {i_sop, i_eop, i_dat};
-    assign           {o_sop, o_eop, o_dat} = ff_rdat;
+    assign           {o_sop, o_eop, o_dat} = ff_rdat;    
     assign           o_rdy = !(ff_len[FF_B] | pktcnt[3]);
     assign           o_vld = (pktcnt > 0);
 
@@ -130,11 +128,11 @@ module axis_iff
     ///////////////////////////////////////////////////////////////////////////
     //Single dual port RAM 1-clock
 
-    (* ram_style="block" *)
+    (* ram_style="block" *) 
     reg [DAT_B+1:0] ram [FF_L-1:0];
 
-    always @(posedge clk)
-        if (ff_wr) ram[wra] <= ff_wdat;
+    always @(posedge clk) 
+        if (ff_wr) ram[wra] <= ff_wdat; 
 
     reg [DAT_B+1:0]  ff_rdat_m;
     always @(posedge clk)
@@ -145,12 +143,12 @@ module axis_iff
 
     wire              readsame = ff_wr & (wra == rda);
     reg               readsame1;
-    always @(posedge clk)
+    always @(posedge clk) 
         if (rst) readsame1 <= 1'b0;
         else readsame1 <= readsame;
 
     reg [DAT_B+1:0] ff_wdat1;
-    always @(posedge clk)
+    always @(posedge clk) 
         ff_wdat1 <= ff_wdat;
 
     assign            ff_rdat = readsame1 ? ff_wdat1 : ff_rdat_m;
@@ -175,7 +173,7 @@ endmodule
 //----------------------------------------------------------------------------------------------------------------//
 
 (* DowngradeIPIdentifiedWarnings = "yes" *)
-module pcie_support # (
+module pcie3_support # (
   parameter LINK_CAP_MAX_LINK_WIDTH = 4,                       // PCIe Lane Width
   parameter C_DATA_WIDTH            = 128,                     // AXI interface data width
   parameter KEEP_WIDTH              = C_DATA_WIDTH / 8,        // TSTRB width
@@ -203,12 +201,12 @@ module pcie_support # (
   //----------------------------------------------------------------------------------------------------------------//
   // AXI-S Interface                                                                                                //
   //----------------------------------------------------------------------------------------------------------------//
-
+  
   output                                     user_clk_out,
   output                                     user_reset_out,
   output                                     user_lnk_up,
   output                                     user_app_rdy,
-
+  
   //Requester Request
   output   [1:0]                             pcie_tfc_nph_av,   //Transmit flow control non-posted header credit & data available
   output   [1:0]                             pcie_tfc_npd_av,
@@ -251,7 +249,7 @@ module pcie_support # (
   //----------------------------------------------------------------------------------------------------------------//
   // Sequence & Tag Report                                                                                          //
   //----------------------------------------------------------------------------------------------------------------//
-
+  
 
   input                                      pcie_cq_np_req,
   output                           [5:0]     pcie_cq_np_req_count,
@@ -259,7 +257,7 @@ module pcie_support # (
   //----------------------------------------------------------------------------------------------------------------//
   // Error Reporting Interface                                                                                      //
   //----------------------------------------------------------------------------------------------------------------//
-
+  
   output                                     cfg_phy_link_down,
   output                            [1:0]    cfg_phy_link_status,
   output                            [3:0]    cfg_negotiated_width,
@@ -336,7 +334,7 @@ module pcie_support # (
   output                                      cfg_power_state_change_interrupt,
 
   // Indentication & Routing                                                                                        //
-
+  
   input                            [63:0]     cfg_dsn,            //Device Serial Number
   input                             [7:0]     cfg_ds_bus_number,
   input                             [4:0]     cfg_ds_device_number,
@@ -377,7 +375,7 @@ module pcie_support # (
 
   wire                             [2:0]     cfg_per_func_status_control = 3'b0; //request only function #0
   wire                             [15:0]    cfg_per_func_status_data;
-
+  
   //----------------------------------------------------------------------------------------------------------------//
   //   Function Level Reset Handle                                                                                  //
   //----------------------------------------------------------------------------------------------------------------//
@@ -409,18 +407,18 @@ module pcie_support # (
   assign cfg_flr_done[0] = ~cfg_flr_done_reg1[0] && cfg_flr_done_reg0[0];
   assign cfg_flr_done[1] = ~cfg_flr_done_reg1[1] && cfg_flr_done_reg0[1];
 
-  assign cfg_vf_flr_done[0] = ~cfg_vf_flr_done_reg1[0] && cfg_vf_flr_done_reg0[0];
-  assign cfg_vf_flr_done[1] = ~cfg_vf_flr_done_reg1[1] && cfg_vf_flr_done_reg0[1];
-  assign cfg_vf_flr_done[2] = ~cfg_vf_flr_done_reg1[2] && cfg_vf_flr_done_reg0[2];
-  assign cfg_vf_flr_done[3] = ~cfg_vf_flr_done_reg1[3] && cfg_vf_flr_done_reg0[3];
-  assign cfg_vf_flr_done[4] = ~cfg_vf_flr_done_reg1[4] && cfg_vf_flr_done_reg0[4];
+  assign cfg_vf_flr_done[0] = ~cfg_vf_flr_done_reg1[0] && cfg_vf_flr_done_reg0[0]; 
+  assign cfg_vf_flr_done[1] = ~cfg_vf_flr_done_reg1[1] && cfg_vf_flr_done_reg0[1]; 
+  assign cfg_vf_flr_done[2] = ~cfg_vf_flr_done_reg1[2] && cfg_vf_flr_done_reg0[2]; 
+  assign cfg_vf_flr_done[3] = ~cfg_vf_flr_done_reg1[3] && cfg_vf_flr_done_reg0[3]; 
+  assign cfg_vf_flr_done[4] = ~cfg_vf_flr_done_reg1[4] && cfg_vf_flr_done_reg0[4]; 
   assign cfg_vf_flr_done[5] = ~cfg_vf_flr_done_reg1[5] && cfg_vf_flr_done_reg0[5];
 
   // Device Information
   wire  [15:0]                               cfg_vend_id = 16'h10EE;
   wire  [15:0]                               cfg_dev_id = 16'h7021;
-  wire  [15:0]                               cfg_subsys_id = 16'h0007;
-  wire  [7:0]                                cfg_rev_id = 8'h00;
+  wire  [15:0]                               cfg_subsys_id = 16'h0007;                                
+  wire  [7:0]                                cfg_rev_id = 8'h00; 
 
   //----------------------------------------------------------------------------------------------------------------//
   //   AXIS Adaption Logic                                                                                          //
@@ -430,23 +428,26 @@ module pcie_support # (
   wire          s_axis_rq_tready_ff,
                 s_axis_rq_tvalid_ff,
                 s_axis_rq_tlast_ff;
-  wire [3:0]    s_axis_rq_tkeep_or = {|s_axis_rq_tkeep[15:12], |s_axis_rq_tkeep[11:8], |s_axis_rq_tkeep[7:4], |s_axis_rq_tkeep[3:0]};
+  wire [15:0]   s_axis_rq_tkeep_or = {s_axis_rq_tkeep[60], s_axis_rq_tkeep[56], s_axis_rq_tkeep[52], s_axis_rq_tkeep[48],
+                                      s_axis_rq_tkeep[44], s_axis_rq_tkeep[40], s_axis_rq_tkeep[36], s_axis_rq_tkeep[32],
+                                      s_axis_rq_tkeep[28], s_axis_rq_tkeep[24], s_axis_rq_tkeep[20], s_axis_rq_tkeep[16],
+                                      s_axis_rq_tkeep[12], s_axis_rq_tkeep[8], s_axis_rq_tkeep[4], s_axis_rq_tkeep[0]};
 
   wire [3:0]    s_axis_rq_tuser_ff;
-  wire [3:0]    s_axis_rq_tkeep_ff;
-  wire [127:0]  s_axis_rq_tdata_ff;
+  wire [15:0]    s_axis_rq_tkeep_ff;
+  wire [511:0]  s_axis_rq_tdata_ff;
 
-  axis_iff #(.DAT_B(128+4+4))  s_axis_rq_iff
-  (
+  axis_iff #(.DAT_B(512+16+4))  s_axis_rq_iff
+  (         
         .clk    (user_clk_out),
         .rst    (user_reset_out),
-
+   
         .i_vld  (s_axis_rq_tvalid),
         .o_rdy  (s_axis_rq_tready),
         .i_sop  (1'b0),
         .i_eop  (s_axis_rq_tlast),
         .i_dat  ({s_axis_rq_tuser, s_axis_rq_tkeep_or, s_axis_rq_tdata}),
-
+        
         .o_vld  (s_axis_rq_tvalid_ff),
         .i_rdy  (s_axis_rq_tready_ff),
         .o_sop  (),
@@ -467,7 +468,7 @@ module pcie_support # (
   wire            s_axis_rq_tfirst = (s_axis_rq_cnt == 0) && (!s_axis_rq_tlast_lat);
   wire            s_axis_rq_tsecond = s_axis_rq_cnt == 1;
 
-  //processing for tlast: generate new last in case write & last num of dword = 5, 9, 13, ...
+  //processing for tlast: generate new last in case write & last num of dword = 13 + i*16
   wire            s_axis_rq_read = (s_axis_rq_tdata_ff[31:30] == 2'b0);  //Read request
   wire            s_axis_rq_write = !s_axis_rq_read;
   reg             s_axis_rq_tlast_dly_en;
@@ -475,37 +476,27 @@ module pcie_support # (
   wire [3:0]      s_axis_rq_tready_a;
   always @(posedge user_clk_out)
       if (user_reset_out) s_axis_rq_tlast_dly_en <= 1'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst && s_axis_rq_tready_ff && s_axis_rq_write) s_axis_rq_tlast_dly_en <= (s_axis_rq_tdata_ff[1:0] == 2'd1);
+      else if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst && s_axis_rq_write) s_axis_rq_tlast_dly_en <= (s_axis_rq_tdata_ff[3:0] == 5'd13);
+
+  wire [10:0]     s_axis_rq_dwlen;
 
   always @(posedge user_clk_out)
       if (user_reset_out) s_axis_rq_tlast_lat <= 1'd0;
       else if (s_axis_rq_tlast_lat && s_axis_rq_tready_a[0]) s_axis_rq_tlast_lat <= 1'd0;
       else if (s_axis_rq_tvalid_ff && s_axis_rq_tlast_ff && s_axis_rq_tready_a[0])
           begin
-          if (s_axis_rq_tfirst) s_axis_rq_tlast_lat <= s_axis_rq_write ? 1'b1 : 1'b0; //write 1-dword
+          if (s_axis_rq_tfirst) s_axis_rq_tlast_lat <= s_axis_rq_write ? (s_axis_rq_dwlen == 11'd13) : 1'b0; //write 13 dwords
           else s_axis_rq_tlast_lat <= s_axis_rq_tlast_dly_en;
           end
 
-  wire            s_axis_rq_tlast_a  = s_axis_rq_tfirst       ? s_axis_rq_read :
+  wire            s_axis_rq_tlast_a  = s_axis_rq_tfirst       ? (s_axis_rq_read | (s_axis_rq_dwlen < 11'd13)) : 
                                        s_axis_rq_tlast_dly_en ? s_axis_rq_tlast_lat : s_axis_rq_tlast_ff;
 
   //Generae ready for TLP
   assign          s_axis_rq_tready_ff = s_axis_rq_tready_a[0] && (!s_axis_rq_tlast_lat);
-
-   //latch valid because it is uncontigous when coming from TLP request
-  reg             s_axis_rq_tvalid_lat;
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_tvalid_lat <= 1'b0;
-      else if (s_axis_rq_tvalid_lat && s_axis_rq_tready_a[0])
-          begin
-          if (s_axis_rq_tlast_dly_en) s_axis_rq_tvalid_lat <= !s_axis_rq_tlast_lat;
-          else s_axis_rq_tvalid_lat <= !(s_axis_rq_tlast_ff && s_axis_rq_tvalid_ff);
-          end
-      else if (s_axis_rq_tvalid_ff & s_axis_rq_tfirst & s_axis_rq_write) s_axis_rq_tvalid_lat <= 1'b1;   //latche input valid (required by PCIe IP)
-
   wire            s_axis_rq_tvalid_a = s_axis_rq_tvalid_ff | s_axis_rq_tlast_lat;
 
-  wire [10:0]     s_axis_rq_dwlen = {1'b0, s_axis_rq_tdata_ff[9:0]};
+  assign          s_axis_rq_dwlen = {1'b0, s_axis_rq_tdata_ff[9:0]};
   wire [3:0]      s_axis_rq_reqtype = {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0000000 ? 4'b0000 :  //Mem read Request
                                       {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0000001 ? 4'b0111 :  //Mem Read request-locked
                                       {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0100000 ? 4'b0001 :  //Mem write request
@@ -551,19 +542,20 @@ module pcie_support # (
   reg [31:0]       s_axis_rq_tdata_l;
   always @(posedge user_clk_out)
       if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
-          s_axis_rq_tdata_l <= s_axis_rq_tdata_ff[127:96];
+          s_axis_rq_tdata_l <= s_axis_rq_tdata_ff[511:480];
 
-  wire [127:0]    s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_header, 32'b0, s_axis_rq_tdata_ff[95:64]} : {s_axis_rq_tdata_ff[95:0], s_axis_rq_tdata_l[31:0]};
-  wire [3:0]      s_axis_rq_tkeep_a  = s_axis_rq_tlast_lat ? 4'b0001 : 4'b1111;
-  wire [59:0]     s_axis_rq_tuser_a;
-  assign          s_axis_rq_tuser_a[59:8] = {32'b0, 4'b0, 1'b0, 8'b0, 2'b0, 1'b0, s_axis_rq_tuser_ff[3], 3'b0};
-  assign          s_axis_rq_tuser_a[7:0]  = s_axis_rq_tfirst ? {s_axis_rq_lastbe, s_axis_rq_firstbe} : {s_axis_rq_lastbe_l, s_axis_rq_firstbe_l};
+  wire [511:0]    s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_ff[479:96], s_axis_rq_tdata_header, 32'b0, s_axis_rq_tdata_ff[95:64]} : 
+                                                          {s_axis_rq_tdata_ff[479:0], s_axis_rq_tdata_l[31:0]};
+  wire [15:0]     s_axis_rq_tkeep_a  = s_axis_rq_tlast_lat ? 16'h1 : {s_axis_rq_tkeep_ff[14:0], 1'b1};
+  wire [136:0]    s_axis_rq_tuser_a;
+  assign          s_axis_rq_tuser_a[36] = s_axis_rq_tuser_ff[3]; //discontinue
+  assign          s_axis_rq_tuser_a[15:0]  = {4'b0, s_axis_rq_lastbe, 4'b0, s_axis_rq_firstbe};
 
   //----------------------------------------------------- RC AXIS --------------------------------------------------//
   wire            m_axis_rc_tvalid_a;
   wire            m_axis_rc_tready_a;
-  wire [3:0]      m_axis_rc_tkeep_a;
-  wire [127:0]    m_axis_rc_tdata_a;
+  wire [15:0]     m_axis_rc_tkeep_a;
+  wire [511:0]    m_axis_rc_tdata_a;
   wire [74:0]     m_axis_rc_tuser_a;
   wire            m_axis_rc_tlast_a;
 
@@ -604,19 +596,19 @@ module pcie_support # (
   wire [7:0]      m_axis_rc_tag = m_axis_rc_tdata_a[71:64];
   wire [15:0]     m_axis_rc_requesterid = m_axis_rc_tdata_a[63:48];
 
-  assign          {m_axis_rc_fmt,
+  assign          {m_axis_rc_fmt, 
                    m_axis_rc_type} = m_axis_rc_tdata_a[29] ? ((m_axis_rc_bytecnt == 0) ? 8'b000_01011 :    //Read-Locked Completion w/o data
                                                                                          8'b010_01011) :   //Read-Locked Completion w/ data
                                                              ((m_axis_rc_bytecnt == 0) ? 8'b000_01010 :    //Completion w/o data
                                                                                          8'b010_01010);    //Completion w/ data
-
+  
   wire [63:0]     m_axis_rc_header0 = {m_axis_rc_completerid,
                                        m_axis_rc_cmpstatus,
                                        m_axis_rc_bmc,
                                        m_axis_rc_bytecnt,
                                        m_axis_rc_fmt[2:0], m_axis_rc_type,
                                        1'b0, m_axis_rc_tc, 4'b0,
-                                       m_axis_rc_td, m_axis_rc_ep, m_axis_rc_attr,
+                                       m_axis_rc_td, m_axis_rc_ep, m_axis_rc_attr, 
                                        2'b0, m_axis_rc_dwlen};
   wire [63:0]     m_axis_rc_header1 = {m_axis_rc_tdata_a[127:96],
                                        m_axis_rc_requesterid,
@@ -626,30 +618,27 @@ module pcie_support # (
   assign          m_axis_rc_tvalid = m_axis_rc_tvalid_a;
   assign          m_axis_rc_tready_a = m_axis_rc_tready;
   assign          m_axis_rc_tlast = m_axis_rc_tlast_a;
-  assign          m_axis_rc_tdata = m_axis_rc_sop ? {m_axis_rc_header1, m_axis_rc_header0} : m_axis_rc_tdata_a;
-  assign          m_axis_rc_tkeep = m_axis_rc_sop ? 16'hFFFF : m_axis_rc_tuser_a[15:0];
+  assign          m_axis_rc_tdata = m_axis_rc_sop ? {m_axis_rc_tdata_a[511:128], m_axis_rc_header1, m_axis_rc_header0} : m_axis_rc_tdata_a;
+  assign          m_axis_rc_tkeep = m_axis_rc_sop ? {m_axis_rc_tuser_a[63:12], 12'hFFF} : m_axis_rc_tuser_a[63:0];
   assign          m_axis_rc_tuser = {
-                                     5'd0,                         //m_axis_rc_tlast_a, 4'b0,      //rx_is_eof only for 128-bit I/F
+                                     5'b0,                         //rx_is_eof only for 128-bit I/F
                                      2'b0,                         //reserved
-                                     m_axis_rc_sop, 4'b0,          //m_axis_rc_tuser_a[32],4'b0,   //rx_is_sof, only for 128-bit I/F  ?????????????????????
+                                     5'b0,                         //m_axis_rc_tuser_a[32],4'b0,   //rx_is_sof, only for 128-bit I/F  ?????????????????????
                                      8'b0,                         //BAR hit no equivalent for RC
                                      m_axis_rc_sop ? m_axis_rc_poisoning : m_axis_rc_poisoning_l,  //rx_err_fwd mapped to Poisoned completion
                                      m_axis_rc_tuser_a[42]         //ECRC mapped to discontinue
                                      };
 
-  wire [3:0]      rc_errcode = m_axis_rc_tdata_a[15:12];
-  wire            rc_status_err = ((m_axis_rc_cmpstatus != 3'b0) | (rc_errcode != 4'b0)) && m_axis_rc_tvalid && m_axis_rc_tready && m_axis_rc_sop;
-
   //----------------------------------------------------- CQ AXIS --------------------------------------------------//
   wire            m_axis_cq_tvalid_a;
   wire            m_axis_cq_tready_a;
-  wire [3:0]      m_axis_cq_tkeep_a;
-  wire [127:0]    m_axis_cq_tdata_a;
-  wire [84:0]     m_axis_cq_tuser_a;
+  wire [15:0]     m_axis_cq_tkeep_a;
+  wire [511:0]    m_axis_cq_tdata_a;
+  wire [96:0]     m_axis_cq_tuser_a;
   wire            m_axis_cq_tlast_a;
-
+  
   //dword counter: //0-2 & latch
-  reg [1:0]       m_axis_cq_cnt;
+  reg [1:0]       m_axis_cq_cnt;  
   always @(posedge user_clk_out)
       if (user_reset_out) m_axis_cq_cnt <= 2'd0;
       else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
@@ -658,27 +647,23 @@ module pcie_support # (
               else if (!m_axis_cq_cnt[1]) m_axis_cq_cnt <= m_axis_cq_cnt + 1;
           end
 
-  wire            m_axis_cq_sop    = (m_axis_cq_cnt == 0) && (!m_axis_cq_tlast_lat); //m_axis_cq_tuser_a[40]
+  wire            m_axis_cq_sop    = (m_axis_cq_cnt == 0) && (!m_axis_cq_tlast_lat);
   wire            m_axis_cq_second = m_axis_cq_cnt == 1;
 
+  reg             m_axis_cq_rdwr_l;
+  always @(posedge user_clk_out)
+      if (user_reset_out) m_axis_cq_rdwr_l <= 1'd0;
+      else if (m_axis_cq_tvalid_a && m_axis_cq_sop) m_axis_cq_rdwr_l <= m_axis_cq_tlast_a;
+
+  //processing for tlast: generate new last in case write & last num of dword != 13 + i*16
   wire            m_axis_cq_read = (m_axis_cq_fmt[1:0] == 2'b0);  //Read request
   wire            m_axis_cq_write = !m_axis_cq_read;
-  reg             m_axis_cq_read_l;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_read_l <= 1'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_sop) m_axis_cq_read_l <= m_axis_cq_read;
-
-  //processing for tlast
   wire [9:0]      m_axis_cq_dwlen;
   reg             m_axis_cq_tlast_dly_en;
   always @(posedge user_clk_out)
       if (user_reset_out) m_axis_cq_tlast_dly_en <= 1'd0;
       else if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_dly_en <= 1'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_sop)
-         begin
-         if (m_axis_cq_read) m_axis_cq_tlast_dly_en <= 1'b1;
-         else m_axis_cq_tlast_dly_en <= (m_axis_cq_dwlen[1:0] != 2'd1);
-         end
+      else if (m_axis_cq_tvalid_a && m_axis_cq_sop) m_axis_cq_tlast_dly_en <= m_axis_cq_tlast_a | (m_axis_cq_dwlen[3:0] != 4'd13);
 
   reg             m_axis_cq_tlast_lat;
   always @(posedge user_clk_out)
@@ -686,7 +671,7 @@ module pcie_support # (
       else if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_lat <= 1'd0;
       else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a && m_axis_cq_tlast_a)
           begin
-          if (m_axis_cq_sop) m_axis_cq_tlast_lat <= 1'd1; //read
+          if (m_axis_cq_sop) m_axis_cq_tlast_lat <= 1'b1;  //read or write
           else if (m_axis_cq_tlast_dly_en) m_axis_cq_tlast_lat <= 1'b1;
           end
 
@@ -699,13 +684,13 @@ module pcie_support # (
 
 
   ////keep address (low) or data (high), not header
-  reg [127:0]     m_axis_cq_tdata_a1;
-  reg [15:0]      m_axis_cq_tlast_be1;
+  reg [511:0]     m_axis_cq_tdata_a1;
+  reg [63:0]      m_axis_cq_tlast_be1;
   always @(posedge user_clk_out)
      if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
           begin
           m_axis_cq_tdata_a1 <= m_axis_cq_tdata_a;
-          m_axis_cq_tlast_be1 <= m_axis_cq_tuser_a[23:8];
+          m_axis_cq_tlast_be1 <= m_axis_cq_tuser_a[79:16];
           end
 
   //data processing
@@ -718,7 +703,7 @@ module pcie_support # (
   wire [2:0]      m_axis_cq_tc = m_axis_cq_tdata_hdr[59:57];
   wire [4:0]      m_axis_cq_type;
   wire [2:0]      m_axis_cq_fmt;
-  wire [7:0]      m_axis_cq_be = m_axis_cq_tuser_a[7:0];
+  wire [7:0]      m_axis_cq_be = {m_axis_cq_tuser_a[11:8], m_axis_cq_tuser_a[3:0]};
   wire [7:0]      m_axis_cq_tag = m_axis_cq_tdata_hdr[39:32];
   wire [15:0]     m_axis_cq_requesterid = m_axis_cq_tdata_hdr[31:16];
 
@@ -738,12 +723,6 @@ module pcie_support # (
       if (m_axis_cq_tvalid_a && m_axis_cq_sop)
           m_axis_cq_tuser_barhit <= {1'b0, m_axis_cq_tdata_hdr[50:48], m_axis_cq_tdata_hdr[14:11]};  //only valid @sop
 
-  reg              m_axis_cq_ecrc;
-  always @(posedge user_clk_out)
-      begin
-          m_axis_cq_ecrc <= m_axis_cq_tuser_a[41];
-      end
-
   reg [63:0]       m_axis_cq_header;
   always @(posedge user_clk_out)
       if (m_axis_cq_tvalid_a && m_axis_cq_sop)
@@ -752,48 +731,50 @@ module pcie_support # (
                               m_axis_cq_be,
                               m_axis_cq_fmt, m_axis_cq_type,
                               1'b0, m_axis_cq_tc, 4'b0,
-                              m_axis_cq_td, m_axis_cq_ep, m_axis_cq_attr,
+                              m_axis_cq_td, m_axis_cq_ep, m_axis_cq_attr, 
                               2'b0, m_axis_cq_dwlen};
 
-  wire [31:0]     m_axis_cq_hiaddr_mask = m_axis_cq_read_l ? 32'b0 : m_axis_cq_tdata_a[31:0];
-  assign          m_axis_cq_tdata = (m_axis_cq_read_l | m_axis_cq_second) ? {m_axis_cq_hiaddr_mask, m_axis_cq_tdata_a1[31:0], m_axis_cq_header} :
-                                                                            {m_axis_cq_tdata_a[31:0], m_axis_cq_tdata_a1[127:32]};
-
-  assign          m_axis_cq_tkeep = m_axis_cq_read_l    ? 16'h0FFF :
-                                    m_axis_cq_tlast_lat ? {4'b0, m_axis_cq_tlast_be1[15:4]} : 16'hFFFF;
-
-
+  assign          m_axis_cq_tdata = (m_axis_cq_rdwr_l | m_axis_cq_second) ? {m_axis_cq_tdata_a[31:0], m_axis_cq_tdata_a1[511:128], m_axis_cq_tdata_a1[31:0], m_axis_cq_header} : 
+                                                                            {m_axis_cq_tdata_a[31:0], m_axis_cq_tdata_a1[511:32]};
+  assign          m_axis_cq_tkeep = m_axis_cq_rdwr_l    ? {4'b0, m_axis_cq_tlast_be1[63:16], 12'hFFF} : 
+                                    m_axis_cq_tlast_lat ? {4'b0, m_axis_cq_tlast_be1[63:4]} : {64{1'b1}};
   assign          m_axis_cq_tuser = {
                                      5'b0,                     //rx_is_eof only for 128-bit I/F
                                      2'b0,                     //reserved
-                                     5'b0,                     //m_axis_cq_tuser_a[40],4'b0,     //rx_is_sof only for 128-bit I/F
+                                     5'b0,                     //rx_is_sof only for 128-bit I/F
                                      m_axis_cq_tuser_barhit,
                                      1'b0,                    //rx_err_fwd -> no equivalent
-                                     m_axis_cq_ecrc           //ECRC mapped to discontinue
+                                     m_axis_cq_tuser_a[96]    //ECRC mapped to discontinue
                                      };
 
   //----------------------------------------------------- CC AXIS --------------------------------------------------//
   wire          s_axis_cc_tready_ff,
                 s_axis_cc_tvalid_ff,
                 s_axis_cc_tlast_ff;
-  wire [3:0]    s_axis_cc_tkeep_or = {|s_axis_cc_tkeep[15:12], |s_axis_cc_tkeep[11:8],
-                                      |s_axis_cc_tkeep[7:4], |s_axis_cc_tkeep[3:0]};
+  wire [15:0]   s_axis_cc_tkeep_or = {s_axis_cc_tkeep[60], s_axis_cc_tkeep[56],
+                                      s_axis_cc_tkeep[52], s_axis_cc_tkeep[48],
+                                      s_axis_cc_tkeep[44], s_axis_cc_tkeep[40],
+                                      s_axis_cc_tkeep[36], s_axis_cc_tkeep[32],
+                                      s_axis_cc_tkeep[28], s_axis_cc_tkeep[24],
+                                      s_axis_cc_tkeep[20], s_axis_cc_tkeep[16],
+                                      s_axis_cc_tkeep[12], s_axis_cc_tkeep[8],
+                                      s_axis_cc_tkeep[4], s_axis_cc_tkeep[0]};
 
   wire [3:0]    s_axis_cc_tuser_ff;
-  wire [3:0]    s_axis_cc_tkeep_ff;
-  wire [127:0]  s_axis_cc_tdata_ff;
+  wire [15:0]   s_axis_cc_tkeep_ff;
+  wire [511:0]  s_axis_cc_tdata_ff;
 
-  axis_iff #(.DAT_B(128+4+4))  s_axis_cc_iff
-  (
+  axis_iff #(.DAT_B(512+16+4))  s_axis_cc_iff
+  (         
         .clk    (user_clk_out),
         .rst    (user_reset_out),
-
+   
         .i_vld  (s_axis_cc_tvalid),
         .o_rdy  (s_axis_cc_tready),
         .i_sop  (1'b0),
         .i_eop  (s_axis_cc_tlast),
         .i_dat  ({s_axis_cc_tuser, s_axis_cc_tkeep_or, s_axis_cc_tdata}),
-
+        
         .o_vld  (s_axis_cc_tvalid_ff),
         .i_rdy  (s_axis_cc_tready_ff),
         .o_sop  (),
@@ -809,7 +790,7 @@ module pcie_support # (
               if (s_axis_cc_tlast_ff) s_axis_cc_cnt <= 2'd0;
               else if (!s_axis_cc_cnt[1]) s_axis_cc_cnt <= s_axis_cc_cnt + 1;
           end
-
+  
   wire            s_axis_cc_tfirst = s_axis_cc_cnt == 0;
   wire            s_axis_cc_tsecond = s_axis_cc_cnt == 1;
 
@@ -832,10 +813,10 @@ module pcie_support # (
   wire            s_axis_cc_td = s_axis_cc_tdata_ff[15] | s_axis_cc_tuser_ff[0];  //ECRC @sop
 
 
-  wire [63:0]     s_axis_cc_header0 = {s_axis_cc_requesterid,
+  wire [63:0]     s_axis_cc_header0 = {s_axis_cc_requesterid,                                       
                                        1'b0, s_axis_cc_poison, s_axis_cc_cmpstatus, s_axis_cc_dwordcnt,
                                        2'b0, s_axis_cc_lockedrdcmp, s_axis_cc_bytecnt,
-                                       6'b0, s_axis_cc_at,
+                                       6'b0, s_axis_cc_at, 
                                        1'b0, s_axis_cc_lowaddr};
   wire [63:0]     s_axis_cc_header1 = {s_axis_cc_tdata_ff[127:96],
                                        s_axis_cc_td, s_axis_cc_attr, s_axis_cc_tc, s_axis_cc_completerid_en,
@@ -843,38 +824,19 @@ module pcie_support # (
                                        s_axis_cc_tag
                                        };
 
-  reg  [3:0]      s_axis_cc_firstbe;
-  reg  [3:0]      s_axis_cc_lastbe;
-
-  reg             s_axis_cc_tvalid_ff_lat;
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_cc_tvalid_ff_lat <= 1'd0;
-      else if (s_axis_cc_tvalid_ff && s_axis_cc_tready_ff)
-          begin
-              if (s_axis_cc_tlast_ff) s_axis_cc_tvalid_ff_lat <= 1'd0;
-              else if (s_axis_cc_tfirst) s_axis_cc_tvalid_ff_lat <= 1'd1;
-          end
-
   wire            s_axis_cc_tvalid_a = s_axis_cc_tvalid_ff;
+
   assign          s_axis_cc_tready_ff = s_axis_cc_tready_a[0];
-  wire [127:0]    s_axis_cc_tdata_a  = s_axis_cc_tfirst ? {s_axis_cc_header1, s_axis_cc_header0} : s_axis_cc_tdata_ff;
+  wire [511:0]    s_axis_cc_tdata_a  = s_axis_cc_tfirst ? {s_axis_cc_tdata_ff[511:128], s_axis_cc_header1, s_axis_cc_header0} : s_axis_cc_tdata_ff;
   wire            s_axis_cc_tlast_a = s_axis_cc_tlast_ff;
-  wire [3:0]      s_axis_cc_tkeep_a = s_axis_cc_tkeep_ff;
+  wire [15:0]     s_axis_cc_tkeep_a = s_axis_cc_tkeep_ff;
   wire [32:0]     s_axis_cc_tuser_a  = {32'b0, s_axis_cc_tuser_ff[3]};    //{parity, discontinue}
-
-  wire            cc_status_err = (s_axis_cc_cmpstatus != 3'b0) && s_axis_cc_tvalid_ff && s_axis_cc_tready_ff && s_axis_cc_tfirst;
-
-  reg [31:0]      cccnt;
-  always @(posedge user_clk_out)
-      if (user_reset_out) cccnt <= 16'b0;
-      else if (s_axis_cc_tvalid_a && s_axis_cc_tready_a[0] && s_axis_cc_tfirst) cccnt <= cccnt + s_axis_cc_dwordcnt;
 
   //----------------------------------------------------------------------------------------------------------------//
   //Debug only
 
   //Condition trigger
   wire            cmperr_trigger = (m_axis_rc_tdata_a[15:12] != 4'b0) & m_axis_rc_tvalid_a & m_axis_rc_tready_a & m_axis_rc_sop;
-  assign          debug  = {m_axis_rc_tdata_a[15:12], cmperr_trigger};
 
   //----------------------------------------------------------------------------------------------------------------//
   //   MSI Adaption Logic                                                                                          //
@@ -890,7 +852,7 @@ module pcie_support # (
           3'd1 : cfg_interrupt_msi_int_enc <= 32'h0000_0002;
           3'd2 : cfg_interrupt_msi_int_enc <= 32'h0000_0010;
           3'd3 : cfg_interrupt_msi_int_enc <= 32'h0000_0100;
-          3'd4 : cfg_interrupt_msi_int_enc <= 32'h0001_0000;
+          3'd4: cfg_interrupt_msi_int_enc <= 32'h0001_0000;
           default: cfg_interrupt_msi_int_enc <= 32'h8000_0000;
        endcase
 
@@ -904,7 +866,7 @@ module pcie_support # (
   //latch int_enc
   reg [31:0]      cfg_interrupt_msi_int_enc_lat = 32'b0;
   always @(posedge user_clk_out)
-      if (cfg_interrupt_msi_int_valid_edge) cfg_interrupt_msi_int_enc_lat <= cfg_interrupt_msi_int_enc;
+      if (cfg_interrupt_msi_int_valid_edge) cfg_interrupt_msi_int_enc_lat <= cfg_interrupt_msi_int_enc; 
       else if (cfg_interrupt_msi_sent) cfg_interrupt_msi_int_enc_lat <= 32'b0;
 
 
@@ -918,7 +880,7 @@ module pcie_support # (
   //   Core instance                                                                                                //
   //----------------------------------------------------------------------------------------------------------------//
 
-  pcie_usp  pcie_usp_i (
+  pcie3_usp_x16  pcie3_usp_x16_i (
 
     //---------------------------------------------------------------------------------------//
     //  PCI Express (pci_exp) Interface                                                      //
@@ -940,7 +902,7 @@ module pcie_support # (
     .user_reset                                     ( user_reset_out ),
     .user_lnk_up                                    ( user_lnk_up ),
     .phy_rdy_out                                    ( user_app_rdy ),
-
+  
     .s_axis_rq_tlast                                ( s_axis_rq_tlast_a ),
     .s_axis_rq_tdata                                ( s_axis_rq_tdata_a ),
     .s_axis_rq_tuser                                ( s_axis_rq_tuser_a ),
