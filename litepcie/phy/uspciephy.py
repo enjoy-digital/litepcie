@@ -82,7 +82,7 @@ class USPCIEPHY(Module, AutoCSR):
             cc_cdc        = ClockDomainsRenamer({"write": cd, "read": "pcie"})(cc_cdc)
             cc_converter  = stream.StrideConverter(phy_layout(data_width), phy_layout(pcie_data_width))
             cc_converter  = ClockDomainsRenamer("pcie")(cc_converter)
-            cc_pipe_ready = stream.PipeValid(phy_layout(pcie_data_width))
+            cc_pipe_ready = stream.PipeReady(phy_layout(pcie_data_width))
             cc_pipe_ready = ClockDomainsRenamer("pcie")(cc_pipe_ready)
             self.submodules += cc_pipe_valid, cc_cdc, cc_converter, cc_pipe_ready
             self.comb += [
