@@ -66,53 +66,21 @@ class S7PCIEPHY(Module, AutoCSR):
         pcie_clk_freq = max(125e6, nlanes*62.5e6*64/pcie_data_width)
         platform.add_period_constraint(self.cd_pcie.clk, 1e9/pcie_clk_freq)
 
-        # TX (FPGA --> HOST) CDC / Data Width Convertion -------------------------------------------
-        if (cd == "pcie") and (data_width == pcie_data_width):
-            s_axis_tx = self.sink
-        else:
-            tx_pipe_valid = stream.PipeValid(phy_layout(data_width))
-            tx_pipe_valid = ClockDomainsRenamer(cd)(tx_pipe_valid)
-            tx_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
-            tx_cdc        = ClockDomainsRenamer({"write": cd, "read": "pcie"})(tx_cdc)
-            tx_converter  = stream.StrideConverter(phy_layout(data_width), phy_layout(pcie_data_width))
-            tx_converter  = ClockDomainsRenamer("pcie")(tx_converter)
-            tx_pipe_ready = stream.PipeReady(phy_layout(pcie_data_width))
-            tx_pipe_ready = ClockDomainsRenamer("pcie")(tx_pipe_ready)
-            self.submodules += tx_pipe_valid, tx_cdc, tx_converter, tx_pipe_ready
-            self.comb += [
-                self.sink.connect(tx_pipe_valid.sink),
-                tx_pipe_valid.source.connect(tx_cdc.sink),
-                tx_cdc.source.connect(tx_converter.sink),
-                tx_converter.source.connect(tx_pipe_ready.sink)
-            ]
-            s_axis_tx = tx_pipe_ready.source
+        # TX (FPGA --> HOST) CDC / Data Width Conversion -------------------------------------------
+        self.submodules.tx_datapath = PHYTXDatapath(
+            core_data_width = data_width,
+            pcie_data_width = pcie_data_width,
+            clock_domain    = cd)
+        self.comb += self.sink.connect(self.tx_datapath.sink)
+        s_axis_tx = self.tx_datapath.source
 
-        # RX (HOST --> FPGA) CDC / Data Width Convertion -------------------------------------------
-        if (cd == "pcie") and (data_width == pcie_data_width):
-            m_axis_rx = self.source
-        else:
-            rx_pipe_ready = stream.PipeReady(phy_layout(pcie_data_width))
-            rx_pipe_ready = ClockDomainsRenamer("pcie")(rx_pipe_ready)
-            rx_converter  = stream.StrideConverter(phy_layout(pcie_data_width), phy_layout(data_width))
-            rx_converter  = ClockDomainsRenamer("pcie")(rx_converter)
-            rx_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
-            rx_cdc        = ClockDomainsRenamer({"write": "pcie", "read": cd})(rx_cdc)
-            rx_pipe_valid = stream.PipeValid(phy_layout(data_width))
-            rx_pipe_valid = ClockDomainsRenamer(cd)(rx_pipe_valid)
-            self.submodules += rx_pipe_ready, rx_converter, rx_pipe_valid, rx_cdc
-            self.comb += [
-                rx_pipe_ready.source.connect(rx_converter.sink),
-                rx_converter.source.connect(rx_cdc.sink),
-                rx_cdc.source.connect(rx_pipe_valid.sink),
-                rx_pipe_valid.source.connect(self.source),
-            ]
-            m_axis_rx = rx_pipe_ready.sink
-        if pcie_data_width == 128:
-            rx_aligner = AXISRX128BAligner()
-            rx_aligner = ClockDomainsRenamer("pcie")(rx_aligner)
-            self.submodules += rx_aligner
-            self.comb += rx_aligner.source.connect(m_axis_rx)
-            m_axis_rx = rx_aligner.sink
+        # RX (HOST --> FPGA) CDC / Data Width Conversion -------------------------------------------
+        self.submodules.rx_datapath = PHYRXDatapath(
+            core_data_width = data_width,
+            pcie_data_width = pcie_data_width,
+            clock_domain    = cd)
+        m_axis_rx = self.rx_datapath.sink
+        self.comb += self.rx_datapath.source.connect(self.source)
 
         # MSI CDC (FPGA --> HOST) ------------------------------------------------------------------
         if cd == "pcie":
@@ -385,7 +353,7 @@ class S7PCIEPHY(Module, AutoCSR):
             self.comb += [
                 m_axis_rx.first.eq(rx_is_sof[-1]),
                 m_axis_rx.last.eq( rx_is_eof[-1]),
-                If(rx_is_sof == 0b11000, rx_aligner.first_dword.eq(2)),
+                If(rx_is_sof == 0b11000, self.rx_datapath.aligner.first_dword.eq(2)),
             ]
         else:
             self.comb += [

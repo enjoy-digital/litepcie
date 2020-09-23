@@ -73,98 +73,34 @@ class USPPCIEPHY(Module, AutoCSR):
         platform.add_period_constraint(self.cd_pcie.clk, 1e9/pcie_clk_freq)
 
         # TX (FPGA --> HOST) CDC / Data Width Conversion -------------------------------------------
-        if (cd == "pcie") and (data_width == pcie_data_width):
-            s_axis_cc = self.cmp_sink
-        else:
-            cc_pipe_valid = stream.PipeValid(phy_layout(data_width))
-            cc_pipe_valid = ClockDomainsRenamer(cd)(cc_pipe_valid)
-            cc_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
-            cc_cdc        = ClockDomainsRenamer({"write": cd, "read": "pcie"})(cc_cdc)
-            cc_converter  = stream.StrideConverter(phy_layout(data_width), phy_layout(pcie_data_width))
-            cc_converter  = ClockDomainsRenamer("pcie")(cc_converter)
-            cc_pipe_ready = stream.PipeReady(phy_layout(pcie_data_width))
-            cc_pipe_ready = ClockDomainsRenamer("pcie")(cc_pipe_ready)
-            self.submodules += cc_pipe_valid, cc_cdc, cc_converter, cc_pipe_ready
-            self.comb += [
-                self.cmp_sink.connect(cc_pipe_valid.sink),
-                cc_pipe_valid.source.connect(cc_cdc.sink),
-                cc_cdc.source.connect(cc_converter.sink),
-                cc_converter.source.connect(cc_pipe_ready.sink)
-            ]
-            s_axis_cc = cc_pipe_ready.source
+        self.submodules.cc_datapath = PHYTXDatapath(
+            core_data_width = data_width,
+            pcie_data_width = pcie_data_width,
+            clock_domain    = cd)
+        self.comb += self.cmp_sink.connect(self.cc_datapath.sink)
+        s_axis_cc = self.cc_datapath.source
 
-        if (cd == "pcie") and (data_width == pcie_data_width):
-            s_axis_rq = self.req_sink
-        else:
-            rq_pipe_valid = stream.PipeValid(phy_layout(data_width))
-            rq_pipe_valid = ClockDomainsRenamer(cd)(rq_pipe_valid)
-            rq_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
-            rq_cdc        = ClockDomainsRenamer({"write": cd, "read": "pcie"})(rq_cdc)
-            rq_converter  = stream.StrideConverter(phy_layout(data_width), phy_layout(pcie_data_width))
-            rq_converter  = ClockDomainsRenamer("pcie")(rq_converter)
-            rq_pipe_ready = stream.PipeValid(phy_layout(pcie_data_width))
-            rq_pipe_ready = ClockDomainsRenamer("pcie")(rq_pipe_ready)
-            self.submodules += rq_pipe_valid, rq_cdc, rq_converter, rq_pipe_ready
-            self.comb += [
-                self.req_sink.connect(rq_pipe_valid.sink),
-                rq_pipe_valid.source.connect(rq_cdc.sink),
-                rq_cdc.source.connect(rq_converter.sink),
-                rq_converter.source.connect(rq_pipe_ready.sink)
-            ]
-            s_axis_rq = rq_pipe_ready.source
+        self.submodules.rq_datapath = PHYTXDatapath(
+            core_data_width = data_width,
+            pcie_data_width = pcie_data_width,
+            clock_domain    = cd)
+        self.comb += self.req_sink.connect(self.rq_datapath.sink)
+        s_axis_rq = self.rq_datapath.source
 
         # RX (HOST --> FPGA) CDC / Data Width Conversion -------------------------------------------
-        if (cd == "pcie") and (data_width == pcie_data_width):
-            m_axis_cq = self.req_source
-        else:
-            cq_pipe_ready = stream.PipeReady(phy_layout(pcie_data_width))
-            cq_pipe_ready = ClockDomainsRenamer("pcie")(cq_pipe_ready)
-            cq_converter  = stream.StrideConverter(phy_layout(pcie_data_width), phy_layout(data_width))
-            cq_converter  = ClockDomainsRenamer("pcie")(cq_converter)
-            cq_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
-            cq_cdc        = ClockDomainsRenamer({"write": "pcie", "read": cd})(cq_cdc)
-            cq_pipe_valid = stream.PipeValid(phy_layout(data_width))
-            cq_pipe_valid = ClockDomainsRenamer(cd)(cq_pipe_valid)
-            self.submodules += cq_pipe_ready, cq_converter, cq_pipe_valid, cq_cdc
-            self.comb += [
-                cq_pipe_ready.source.connect(cq_converter.sink),
-                cq_converter.source.connect(cq_cdc.sink),
-                cq_cdc.source.connect(cq_pipe_valid.sink),
-                cq_pipe_valid.source.connect(self.req_source),
-            ]
-            m_axis_cq = cq_pipe_ready.sink
-        if pcie_data_width == 128:
-            cq_aligner = AXISRX128BAligner()
-            cq_aligner = ClockDomainsRenamer("pcie")(cq_aligner)
-            self.submodules += cq_aligner
-            self.comb += cq_aligner.source.connect(m_axis_cq)
-            m_axis_cq = cq_aligner.sink
+        self.submodules.cq_datapath = PHYRXDatapath(
+            core_data_width = data_width,
+            pcie_data_width = pcie_data_width,
+            clock_domain    = cd)
+        m_axis_cq = self.cq_datapath.sink
+        self.comb += self.cq_datapath.source.connect(self.req_source)
 
-        if (cd == "pcie") and (data_width == pcie_data_width):
-            m_axis_rc = self.cmp_source
-        else:
-            rc_pipe_ready = stream.PipeReady(phy_layout(pcie_data_width))
-            rc_pipe_ready = ClockDomainsRenamer("pcie")(rc_pipe_ready)
-            rc_converter  = stream.StrideConverter(phy_layout(pcie_data_width), phy_layout(data_width))
-            rc_converter  = ClockDomainsRenamer("pcie")(rc_converter)
-            rc_cdc        = stream.AsyncFIFO(phy_layout(data_width), 4)
-            rc_cdc        = ClockDomainsRenamer({"write": "pcie", "read": cd})(rc_cdc)
-            rc_pipe_valid = stream.PipeValid(phy_layout(data_width))
-            rc_pipe_valid = ClockDomainsRenamer(cd)(rc_pipe_valid)
-            self.submodules += rc_pipe_ready, rc_converter, rc_pipe_valid, rc_cdc
-            self.comb += [
-                rc_pipe_ready.source.connect(rc_converter.sink),
-                rc_converter.source.connect(rc_cdc.sink),
-                rc_cdc.source.connect(rc_pipe_valid.sink),
-                rc_pipe_valid.source.connect(self.cmp_source),
-            ]
-            m_axis_rc = rc_pipe_ready.sink
-        if pcie_data_width == 128:
-            rc_aligner = AXISRX128BAligner()
-            rc_aligner = ClockDomainsRenamer("pcie")(rc_aligner)
-            self.submodules += rc_aligner
-            self.comb += rc_aligner.source.connect(m_axis_rc)
-            m_axis_rc = rc_aligner.sink
+        self.submodules.rc_datapath = PHYRXDatapath(
+            core_data_width = data_width,
+            pcie_data_width = pcie_data_width,
+            clock_domain    = cd)
+        m_axis_rc = self.rc_datapath.sink
+        self.comb += self.rc_datapath.source.connect(self.cmp_source)
 
         # MSI CDC (FPGA --> HOST) ------------------------------------------------------------------
         if cd == "pcie":
