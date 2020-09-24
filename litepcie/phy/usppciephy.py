@@ -37,7 +37,6 @@ class USPPCIEPHY(Module, AutoCSR):
         self.data_width       = data_width
         self.pcie_data_width  = pcie_data_width
 
-        self.dsn              = Signal(64)
         self.id               = Signal(16)
         self.bar0_size        = bar0_size
         self.bar0_mask        = get_bar_mask(bar0_size)
@@ -61,11 +60,11 @@ class USPPCIEPHY(Module, AutoCSR):
         pcie_refclk_gt = Signal()
         self.specials += Instance("IBUFDS_GTE4",
             p_REFCLK_HROW_CK_SEL = 0,
-            i_CEB                = 0,
-            i_I                  = pads.clk_p,
-            i_IB                 = pads.clk_n,
-            o_O                  = pcie_refclk_gt,
-            o_ODIV2              = pcie_refclk
+            i_CEB   = 0,
+            i_I     = pads.clk_p,
+            i_IB    = pads.clk_n,
+            o_O     = pcie_refclk_gt,
+            o_ODIV2 = pcie_refclk
         )
         platform.add_period_constraint(pads.clk_p, 1e9/100e6)
         self.clock_domains.cd_pcie = ClockDomain()
@@ -133,10 +132,9 @@ class USPPCIEPHY(Module, AutoCSR):
         cfg_max_read_req     = Signal(3)
 
         self.sync.pcie += [
-            convert_size(cfg_max_read_req, self.max_request_size, max_size=512),
+            convert_size(cfg_max_read_req,     self.max_request_size, max_size=512),
             convert_size(cfg_max_payload_size, self.max_payload_size, max_size=512),
             self.id.eq(Cat(function_number, device_number, bus_number))
-            #self.dsn.eq(serial_number)
         ]
         self.specials += [
             MultiReg(link_up, self._link_up.status),
@@ -151,32 +149,12 @@ class USPPCIEPHY(Module, AutoCSR):
         self.s_axis_rq = s_axis_rq
         self.m_axis_rc = m_axis_rc
 
-        debug  = Signal(16)
-        self.debug = debug
-
         # Hard IP ----------------------------------------------------------------------------------
         class Open(Signal): pass
-
-        s_axis_rq_tuser = Signal(4)
-        s_axis_cc_tuser = Signal(4)
         m_axis_rc_tuser = Signal(22)
         m_axis_cq_tuser = Signal(22)
-
-        self.comb += [
-            s_axis_rq_tuser.eq(0),    #{Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)}
-            s_axis_cc_tuser.eq(0),
-            ]
-
-        """ m_axis_*.first & .m_axis_*.last """
         m_axis_rc_tlast = Signal()
         m_axis_cq_tlast = Signal()
-        self.comb += [
-            m_axis_cq.first.eq(m_axis_cq_tuser[14]),
-            m_axis_cq.last.eq (m_axis_cq_tlast),
-            m_axis_rc.first.eq(m_axis_rc_tuser[14]),
-            m_axis_rc.last.eq (m_axis_rc_tlast),
-            ]
-
         self.pcie_phy_params = dict(
             # Parameters ---------------------------------------------------------------------------
             p_LINK_CAP_MAX_LINK_WIDTH                    = nlanes,
@@ -186,8 +164,8 @@ class USPPCIEPHY(Module, AutoCSR):
             p_PCIE_USE_MODE                              = "2.0",
 
             # PCI Express Interface ----------------------------------------------------------------
-            i_sys_clk                                    = pcie_refclk,       #100MHz
-            i_sys_clk_gt                                 = pcie_refclk_gt,    #100MHz
+            i_sys_clk                                    = pcie_refclk,
+            i_sys_clk_gt                                 = pcie_refclk_gt,
             i_sys_rst_n                                  = 1 if not hasattr(pads, "rst_n") else pads.rst_n,
 
             # TX
@@ -204,8 +182,6 @@ class USPPCIEPHY(Module, AutoCSR):
             o_user_lnk_up                                = link_up,
             o_user_app_rdy                               = Open(),
 
-            o_debug                                      = debug,
-
             # (FPGA -> Host) Requester Request
             o_pcie_tfc_nph_av                            = Open(2),
             o_pcie_tfc_npd_av                            = Open(2),
@@ -219,7 +195,7 @@ class USPPCIEPHY(Module, AutoCSR):
             o_s_axis_rq_tready                           = s_axis_rq.ready,
             i_s_axis_rq_tdata                            = s_axis_rq.dat,
             i_s_axis_rq_tkeep                            = s_axis_rq.be,
-            i_s_axis_rq_tuser                            = s_axis_rq_tuser,
+            i_s_axis_rq_tuser                            = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
 
             # (Host -> FPGA) Completer Request
             i_pcie_cq_np_req                             = 1,
@@ -245,7 +221,7 @@ class USPPCIEPHY(Module, AutoCSR):
             o_s_axis_cc_tready                           = s_axis_cc.ready,
             i_s_axis_cc_tdata                            = s_axis_cc.dat,
             i_s_axis_cc_tkeep                            = s_axis_cc.be,
-            i_s_axis_cc_tuser                            = s_axis_cc_tuser,
+            i_s_axis_cc_tuser                            = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
 
             # Management Interface -----------------------------------------------------------------
             o_cfg_mgmt_do                                = Open(32),
@@ -263,7 +239,7 @@ class USPPCIEPHY(Module, AutoCSR):
             o_cfg_fc_nph                                 = Open(8),
             o_cfg_fc_pd                                  = Open(12),
             o_cfg_fc_ph                                  = Open(8),
-            i_cfg_fc_sel                                 = 0,           #PF#0
+            i_cfg_fc_sel                                 = 0, # Use PF0
 
             # Configuration Tx/Rx Message ----------------------------------------------------------
             o_cfg_msg_received                           = Open(),
@@ -287,7 +263,7 @@ class USPPCIEPHY(Module, AutoCSR):
             i_cfg_ds_device_number                       = device_number,
             i_cfg_ds_function_number                     = function_number,
             i_cfg_ds_port_number                         = 0,
-            i_cfg_subsys_vend_id                         = 0x10EE,
+            i_cfg_subsys_vend_id                         = 0x10ee,
 
             #  power-down request TLP
             i_cfg_power_state_change_ack                 = 0,
@@ -299,7 +275,7 @@ class USPPCIEPHY(Module, AutoCSR):
             i_cfg_interrupt_pending                      = 0,
             o_cfg_interrupt_sent                         = Open(),
 
-            o_cfg_interrupt_msi_enable                   = msi_enable,  #MSI = TRUE
+            o_cfg_interrupt_msi_enable                   = msi_enable,
             i_cfg_interrupt_msi_int_valid                = cfg_msi.valid,
             i_cfg_interrupt_msi_int                      = cfg_msi.dat,
             o_cfg_interrupt_msi_sent                     = cfg_msi.ready,
@@ -339,6 +315,12 @@ class USPPCIEPHY(Module, AutoCSR):
             o_cfg_vf_tph_requester_enable                = Open(8),
             o_cfg_vf_tph_st_mode                         = Open(24),
         )
+        self.comb += [
+            m_axis_cq.first.eq(m_axis_cq_tuser[14]),
+            m_axis_cq.last.eq (m_axis_cq_tlast),
+            m_axis_rc.first.eq(m_axis_rc_tuser[14]),
+            m_axis_rc.last.eq (m_axis_rc_tlast),
+        ]
 
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename):
