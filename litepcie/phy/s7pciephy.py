@@ -137,7 +137,6 @@ class S7PCIEPHY(Module, AutoCSR):
             p_PCIE_USERCLK1_FREQ                         = 3 if nlanes <= 2 else 4,
             p_PCIE_USERCLK2_FREQ                         = 3 if (pcie_clk_freq == 125e6) else 4,
             p_PCIE_GT_DEVICE                             = self.pcie_gt_device,
-            p_PCIE_USE_MODE                              = "1.0",
 
             # PCI Express Interface ----------------------------------------------------------------
             i_sys_clk                                    = pcie_refclk,
