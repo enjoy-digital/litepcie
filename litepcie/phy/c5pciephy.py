@@ -53,9 +53,10 @@ class C5PCIEPHY(Module, AutoCSR):
          # Clocking ---------------------------------------------------------------------------------
         pcie_refclk = Signal()
         self.specials += Instance("ALT_INBUF_DIFF",
-            i_i=pads.clk_p,
-            i_ibar=pads.clk_n,
-            o_o=pcie_refclk)
+            i_i    = pads.clk_p,
+            i_ibar = pads.clk_n,
+            o_o    = pcie_refclk
+        )
 
         self.clock_domains.cd_pcie = ClockDomain()
 

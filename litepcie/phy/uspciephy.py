@@ -68,8 +68,6 @@ class USPCIEPHY(Module, AutoCSR):
         )
         platform.add_period_constraint(pads.clk_p, 1e9/100e6)
         self.clock_domains.cd_pcie = ClockDomain()
-        pcie_clk_freq = max(250e6, nlanes*62.5e6*64/pcie_data_width)
-        platform.add_period_constraint(self.cd_pcie.clk, 1e9/pcie_clk_freq)
 
         # TX (FPGA --> HOST) CDC / Data Width Conversion -------------------------------------------
         self.submodules.cc_datapath = PHYTXDatapath(
