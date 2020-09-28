@@ -367,7 +367,10 @@ class S7PCIEPHY(Module, AutoCSR):
         platform.add_source(os.path.join(phy_path, "pcie_s7_support.v"))
         platform.add_ip(os.path.join(phy_path, phy_filename))
         # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (we only want to keep Timing constraints).
-        platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtp_common.gtpe2_common_i}}]")
+        if self.pcie_gt_device == "GTP":
+            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtp_common.gtpe2_common_i}}]")
+        else:
+            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtx_common.gtxe2_common_i}}]")
         platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*genblk*.bram36_tdp_bl.bram36_tdp_bl}}]")
 
     # External Hard IP -----------------------------------------------------------------------------
