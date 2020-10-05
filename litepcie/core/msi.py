@@ -39,18 +39,13 @@ class LitePCIeMSI(Module, AutoCSR):
 
         # Generate MSI -----------------------------------------------------------------------------
         msi = Signal(width)
+        self.comb += self.source.valid.eq(msi != 0)
         self.sync += [
-            If(enable,
-                If(self.source.ready,
-                    msi.eq(self.irqs)
-                ).Else(
-                    msi.eq(msi | self.irqs)
-                )
-            ).Else(
-                msi.eq(0)
+            msi.eq(msi | (self.irqs & enable)),
+            If(self.source.ready,
+                msi.eq(self.irqs & enable)
             )
         ]
-        self.comb += self.source.valid.eq(msi != 0)
 
 # LitePCIeMSIMultiVector ---------------------------------------------------------------------------
 
