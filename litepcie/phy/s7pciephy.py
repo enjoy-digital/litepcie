@@ -24,7 +24,23 @@ class S7PCIEPHY(Module, AutoCSR):
         self.msi    = stream.Endpoint(msi_layout())
 
         # Registers --------------------------------------------------------------------------------
-        self._link_up           = CSRStatus(description="Link Up Status. ``1``: Link is Up.")
+        self._link_status = CSRStatus(fields=[
+            CSRField("status", size=1, values=[
+                ("``0b0``", "Link Down."),
+                ("``0b1``", "Link Up."),
+            ]),
+            CSRField("rate", size=1, values=[
+                ("``0b0``", "2.5 Gb/s."),
+                ("``0b1``", "5.0 Gb/s."),
+            ]),
+            CSRField("width", size=2, values=[
+                ("``0b00``", "1-Lane link."),
+                ("``0b01``", "2-Lane link."),
+                ("``0b10``", "4-Lane link."),
+                ("``0b11``", "8-Lane link."),
+            ]),
+            CSRField("ltssm", size=6, description="LTSSM State"),
+        ])
         self._msi_enable        = CSRStatus(description="MSI Enable Status. ``1``: MSI is enabled.")
         self._msix_enable       = CSRStatus(description="MSI-X Enable Status. ``1``: MSI-X is enabled.")
         self._bus_master_enable = CSRStatus(description="Bus Mastering Status. ``1``: Bus Mastering enabled.")
@@ -103,9 +119,6 @@ class S7PCIEPHY(Module, AutoCSR):
                 value = min(value*2, max_size)
             return Case(command, cases)
 
-        link_up         = Signal()
-        msi_enable      = Signal()
-        msix_enable     = Signal()
         bus_number      = Signal(8)
         device_number   = Signal(5)
         function_number = Signal(3)
@@ -117,10 +130,7 @@ class S7PCIEPHY(Module, AutoCSR):
             self.id.eq(Cat(function_number, device_number, bus_number))
         ]
         self.specials += [
-            MultiReg(link_up, self._link_up.status),
             MultiReg(command[2],  self._bus_master_enable.status),
-            MultiReg(msi_enable,  self._msi_enable.status),
-            MultiReg(msix_enable, self._msix_enable.status),
             MultiReg(self.max_request_size, self._max_request_size.status),
             MultiReg(self.max_payload_size, self._max_payload_size.status)
         ]
@@ -166,7 +176,7 @@ class S7PCIEPHY(Module, AutoCSR):
             # Common
             o_user_clk_out                               = ClockSignal("pcie"),
             o_user_reset_out                             = ResetSignal("pcie"),
-            o_user_lnk_up                                = link_up,
+            o_user_lnk_up                                = self._link_status.fields.status,
             o_user_app_rdy                               = Open(),
 
             # TX
@@ -258,8 +268,8 @@ class S7PCIEPHY(Module, AutoCSR):
             i_cfg_interrupt_di                           = cfg_msi.dat,
             o_cfg_interrupt_do                           = Open(),
             o_cfg_interrupt_mmenable                     = Open(),
-            o_cfg_interrupt_msienable                    = msi_enable,
-            o_cfg_interrupt_msixenable                   = msix_enable,
+            o_cfg_interrupt_msienable                    = self._msi_enable.status,
+            o_cfg_interrupt_msixenable                   = self._msix_enable.status,
             o_cfg_interrupt_msixfm                       = Open(),
             i_cfg_interrupt_stat                         = 0,
             i_cfg_pciecap_interrupt_msgnum               = 0,
@@ -323,9 +333,9 @@ class S7PCIEPHY(Module, AutoCSR):
             i_pl_directed_link_speed                     = 0,
             i_pl_directed_link_auton                     = 0,
             i_pl_upstream_prefer_deemph                  = 1,
-            o_pl_sel_lnk_rate                            = Open(),
-            o_pl_sel_lnk_width                           = Open(),
-            o_pl_ltssm_state                             = Open(),
+            o_pl_sel_lnk_rate                            = self._link_status.fields.rate,
+            o_pl_sel_lnk_width                           = self._link_status.fields.width,
+            o_pl_ltssm_state                             = self._link_status.fields.ltssm,
             o_pl_lane_reversal_mode                      = Open(),
             o_pl_phy_lnk_up                              = Open(),
             o_pl_tx_pm_state                             = Open(),
