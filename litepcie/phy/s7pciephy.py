@@ -53,10 +53,13 @@ class S7PCIEPHY(Module, AutoCSR):
         assert data_width      in [64, 128]
         assert pcie_data_width in [64, 128]
 
-        # Clocking ---------------------------------------------------------------------------------
-        pcie_refclk = Signal()
+        # Clocking / Reset -------------------------------------------------------------------------
+        self.pcie_refclk = pcie_refclk = Signal()
+        self.pcie_rst_n  = pcie_rst_n  = Signal(reset=1)
+        if hasattr(pads, "rst_n"):
+            self.comb += pcie_rst_n.eq(pads.rst_n)
         self.specials += Instance("IBUFDS_GTE2",
-            i_CEB = 0,
+            i_CEB = ~pcie_rst_n,
             i_I   = pads.clk_p,
             i_IB  = pads.clk_n,
             o_O   = pcie_refclk
@@ -139,7 +142,7 @@ class S7PCIEPHY(Module, AutoCSR):
 
             # PCI Express Interface ----------------------------------------------------------------
             i_sys_clk                                    = pcie_refclk,
-            i_sys_rst_n                                  = 1 if not hasattr(pads, "rst_n") else pads.rst_n,
+            i_sys_rst_n                                  = pcie_rst_n,
             # TX
             o_pci_exp_txp                                = pads.tx_p,
             o_pci_exp_txn                                = pads.tx_n,
