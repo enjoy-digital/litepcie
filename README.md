@@ -57,7 +57,6 @@ LitePCIe is already used in commercial and open-source designs:
 [> Possible improvements
 ------------------------
 - add standardized interfaces (AXI, Avalon-ST)
-- add support for PCIe Gen2 X8
 - add Intel Stratix support
 - add Lattice support
 - add more documentation
