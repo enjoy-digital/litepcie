@@ -1288,6 +1288,8 @@ static const struct pci_device_id litepcie_pci_ids[] = {
   { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID_USP_GEN3_X8 ),  },
   { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID_USP_GEN3_X16 ), },
 
+  { PCI_DEVICE(PCIE_FPGA_VENDOR_ID, PCIE_FPGA_DEVICE_ID_USP_GEN4_X4 ), },
+
   { 0, }
 };
 MODULE_DEVICE_TABLE(pci, litepcie_pci_ids);

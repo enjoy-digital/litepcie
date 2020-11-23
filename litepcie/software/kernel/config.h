@@ -38,6 +38,8 @@
 #define PCIE_FPGA_DEVICE_ID_USP_GEN3_X8  0x9038
 #define PCIE_FPGA_DEVICE_ID_USP_GEN3_X16 0x903f
 
+#define PCIE_FPGA_DEVICE_ID_USP_GEN4_X4  0x9044
+
 /* /!\ keep in sync with csr.h  /!\ */
 
 /* dma */

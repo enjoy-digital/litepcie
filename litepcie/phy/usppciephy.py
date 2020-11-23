@@ -2,6 +2,7 @@
 # This file is part of LitePCIe.
 #
 # Copyright (c) 2020 Enjoy-Digital <enjoy-digital.fr>
+# Copyright (c) 2020 Antmicro <www.antmicro.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 import os
@@ -50,7 +51,7 @@ class USPPCIEPHY(Module, AutoCSR):
         self.speed  = speed
         self.nlanes = nlanes = len(pads.tx_p)
 
-        assert speed           in ["gen2", "gen3"]
+        assert speed           in ["gen2", "gen3", "gen4"]
         assert nlanes          in [1, 2, 4, 8, 16]
         assert data_width      in [64, 128, 256, 512]
         assert pcie_data_width in [64, 128, 256, 512]
@@ -336,8 +337,15 @@ class USPPCIEPHY(Module, AutoCSR):
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_hard_ip:
+            if isinstance(self, USPHBMPCIEPHY):
+                variant = "_hbm"
+            elif isinstance(self, USP19PPCIEPHY):
+                variant = "_19p"
+            else:
+                variant = ""
+
             phy_path = "xilinx_usp{}_{}_x{}".format(
-                 "_hbm" if isinstance(self, USPHBMPCIEPHY) else "",
+                 variant,
                  self.speed,
                  self.nlanes
             )
@@ -350,3 +358,5 @@ class USPPCIEPHY(Module, AutoCSR):
 # USPHBMPCIEPHY ------------------------------------------------------------------------------------
 
 class USPHBMPCIEPHY(USPPCIEPHY): pass
+
+class USP19PPCIEPHY(USPPCIEPHY): pass
