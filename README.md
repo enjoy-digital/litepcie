@@ -10,7 +10,7 @@
                                      powered by Migen & LiteX
 ```
 
-[![](https://travis-ci.com/enjoy-digital/litepcie.svg?branch=master)](https://travis-ci.com/enjoy-digital/litepcie) ![License](https://img.shields.io/badge/License-BSD%202--Clause-orange.svg)
+[![](https://github.com/enjoy-digital/litepcie/workflows/ci/badge.svg)](https://github.com/enjoy-digital/litepcie/actions) ![License](https://img.shields.io/badge/License-BSD%202--Clause-orange.svg)
 
 
 [> Intro
