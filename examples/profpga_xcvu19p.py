@@ -43,10 +43,10 @@ class _CRG(Module):
 class LitePCIeSoC(SoCMini):
     configs = {
         # Gen3  data_width, sys_clk_freq
-        "gen3:x4" : (128, int(125e6)),
-        "gen3:x8" : (256, int(125e6)),
+        "gen3:x4" : (128, int(200e6)),
+        "gen3:x8" : (256, int(200e6)),
         # Gen4  data_width, sys_clk_freq
-        "gen4:x4" : (256, int(125e6)),
+        "gen4:x4" : (256, int(200e6)),
     }
     def __init__(self, platform, speed="gen3", nlanes=4):
         data_width, sys_clk_freq = self.configs[speed + ":x{}".format(nlanes)]
@@ -56,8 +56,7 @@ class LitePCIeSoC(SoCMini):
             csr_data_width = 32,
             ident          = "LitePCIe example design on proFPGA XCVU19P ({}:x{})".format(speed, nlanes),
             ident_version  = True,
-            with_uart      = True,
-            uart_name      = "bridge")
+            with_uart      = False)
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
