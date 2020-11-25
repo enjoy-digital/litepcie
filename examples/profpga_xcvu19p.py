@@ -47,6 +47,7 @@ class LitePCIeSoC(SoCMini):
         "gen3:x8" : (256, int(200e6)),
         # Gen4  data_width, sys_clk_freq
         "gen4:x4" : (256, int(200e6)),
+        "gen4:x8" : (512, int(200e6)),
     }
     def __init__(self, platform, speed="gen3", nlanes=4):
         data_width, sys_clk_freq = self.configs[speed + ":x{}".format(nlanes)]
