@@ -4,6 +4,7 @@
 # This file is part of LitePCIe.
 #
 # Copyright (c) 2019-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2020 Antmicro <www.antmicro.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 """
@@ -148,6 +149,7 @@ class LitePCIeCore(SoCMini):
 
         # PCIe PHY ---------------------------------------------------------------------------------
         self.submodules.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
+            speed           = core_config.get("phy_speed", "gen2"),
             pcie_data_width = core_config.get("phy_pcie_data_width", 64),
             data_width      = core_config["phy_data_width"],
             bar0_size       = core_config["phy_bar0_size"])
@@ -294,6 +296,13 @@ def main():
         from litepcie.phy.uspciephy import USPPCIEPHY
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
         core_config["phy"]           = USPPCIEPHY
+        core_config["qword_aligned"] = False
+        core_config["endianness"]    = "little"
+    elif core_config["phy"] == "USP19PPCIEPHY":
+        from litex.build.xilinx import XilinxPlatform
+        from litepcie.phy.usppciephy import USP19PPCIEPHY
+        platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
+        core_config["phy"]           = USP19PPCIEPHY
         core_config["qword_aligned"] = False
         core_config["endianness"]    = "little"
     else:
