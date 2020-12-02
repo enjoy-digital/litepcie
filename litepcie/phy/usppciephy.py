@@ -50,7 +50,7 @@ class USPPCIEPHY(Module, AutoCSR):
         self.speed  = speed
         self.nlanes = nlanes = len(pads.tx_p)
 
-        assert speed           in ["gen2", "gen3"]
+        assert speed           in ["gen2", "gen3", "gen4"]
         assert nlanes          in [1, 2, 4, 8, 16]
         assert data_width      in [64, 128, 256, 512]
         assert pcie_data_width in [64, 128, 256, 512]
