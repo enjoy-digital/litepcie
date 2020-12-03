@@ -204,8 +204,6 @@ class LitePCIeCore(SoCMini):
             self.add_csr("pcie_dma{}".format(i))
             dma_writer_ios = platform.request("dma{}_writer_axi".format(i))
             dma_reader_ios = platform.request("dma{}_reader_axi".format(i))
-            self.add_interrupt("pcie_dma{}_writer".format(i))
-            self.add_interrupt("pcie_dma{}_reader".format(i))
             self.comb += [
                 # Writer IOs
                 pcie_dma.sink.valid.eq(dma_writer_ios.tvalid),
