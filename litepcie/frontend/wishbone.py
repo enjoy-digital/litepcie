@@ -136,6 +136,7 @@ class LitePCIeWishboneSlave(Module):
             port.source.valid.eq(1),
             port.source.we.eq(1),
             If(port.source.ready,
+                self.wishbone.ack.eq(1),
                 NextState("IDLE")
             )
         )
@@ -147,6 +148,7 @@ class LitePCIeWishboneSlave(Module):
             )
         )
         fsm.act("RECEIVE-READ-COMPLETION",
+            port.sink.ready.eq(1),
             If(port.sink.valid & port.sink.first,
                 map_wishbone_dat(
                     address       = port.sink.adr,
