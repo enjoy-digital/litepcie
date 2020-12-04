@@ -289,7 +289,7 @@ def main():
         core_config["endianness"]    = "little"
     elif core_config["phy"] == "USPPCIEPHY":
         from litex.build.xilinx import XilinxPlatform
-        from litepcie.phy.uspciephy import USPPCIEPHY
+        from litepcie.phy.usppciephy import USPPCIEPHY
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
         core_config["phy"]           = USPPCIEPHY
         core_config["qword_aligned"] = False
