@@ -180,6 +180,7 @@ class LitePCIeCore(SoCMini):
         if core_config.get("mmap_slave", False):
             platform.add_extension(axi.get_ios("mmap_slave_axi_lite"))
             axi_pads = platform.request("mmap_slave_axi_lite")
+            wb = wishbone.Interface(data_width=32)
             axi = AXILiteInterface(data_width=32, address_width=32)
             self.comb += axi.connect_to_pads(axi_pads, mode="slave")
             axi2wb = AXILite2Wishbone(axi, wb)
@@ -289,7 +290,7 @@ def main():
         core_config["endianness"]    = "little"
     elif core_config["phy"] == "USPPCIEPHY":
         from litex.build.xilinx import XilinxPlatform
-        from litepcie.phy.uspciephy import USPPCIEPHY
+        from litepcie.phy.usppciephy import USPPCIEPHY
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
         core_config["phy"]           = USPPCIEPHY
         core_config["qword_aligned"] = False
