@@ -180,6 +180,7 @@ class LitePCIeCore(SoCMini):
         if core_config.get("mmap_slave", False):
             platform.add_extension(axi.get_ios("mmap_slave_axi_lite"))
             axi_pads = platform.request("mmap_slave_axi_lite")
+            wb = wishbone.Interface(data_width=32)
             axi = AXILiteInterface(data_width=32, address_width=32)
             self.comb += axi.connect_to_pads(axi_pads, mode="slave")
             axi2wb = AXILite2Wishbone(axi, wb)
