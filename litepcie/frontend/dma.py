@@ -2,6 +2,7 @@
 # This file is part of LitePCIe.
 #
 # Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2020 Antmicro <www.antmicro.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
@@ -238,16 +239,16 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, table_depth=256):
+    def __init__(self, endpoint, port, table_depth=256, with_csr=True):
         self.port   = port
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq    = Signal()
         self.enable = CSRStorage(description="DMA Reader Control. Write ``1`` to enable DMA Reader.")
+        enable      = Signal()
 
         # # #
 
         # CSR/Parameters ---------------------------------------------------------------------------
-        enable = self.enable.storage
 
         max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
         max_pending_words     = endpoint.max_pending_requests*max_words_per_request
@@ -259,16 +260,25 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         # Table / Splitter -----------------------------------------------------------------
         # Descriptors from Table are splitted in descriptors of max_request_size (negotiated at link-up)
-        table    = LitePCIeDMAScatterGather(table_depth)
         splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_request_size)
         splitter = ResetInserter()(splitter)
         splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
-        self.submodules.table    = table
         self.submodules.splitter = splitter
-        self.comb += [
-            splitter.reset.eq(~enable),
-            table.source.connect(splitter.sink)
-        ]
+        self.comb += splitter.reset.eq(~enable)
+
+        if with_csr:
+            table = LitePCIeDMAScatterGather(table_depth)
+            self.submodules.table = table
+            self.comb += [
+                enable.eq(self.enable.storage),
+                table.source.connect(splitter.sink),
+            ]
+        else:
+            self.desc_sink = stream.Endpoint(descriptor_layout())
+            self.comb += [
+                enable.eq(1),
+                self.desc_sink.connect(splitter.sink),
+            ]
 
         # Data FIFO --------------------------------------------------------------------------------
         fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), fifo_depth, buffered=True)
@@ -328,7 +338,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
             ),
         ]
         self.sync += [
-            If(~self.enable.storage,
+            If(~enable,
                 pending_words.eq(0)
             ).Else(
                 pending_words.eq(pending_words + pending_words_queue - pending_words_dequeue)
@@ -359,34 +369,42 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, table_depth=256):
+    def __init__(self, endpoint, port, table_depth=256, with_csr=True):
         self.port   = port
         self.sink   = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
         self.irq    = Signal()
         self.enable = CSRStorage(description="DMA Writer Control. Write ``1`` to enable DMA Writer.")
+        enable      = Signal()
 
         # # #
 
         counter = Signal(max=(2**len(endpoint.phy.max_payload_size))//8)
 
         # CSR/Parameters ---------------------------------------------------------------------------
-        enable = self.enable.storage
-
         max_words_per_request = max_payload_size//(endpoint.phy.data_width//8)
         fifo_depth            = 4*max_words_per_request
 
         # Table/Splitter ---------------------------------------------------------------------------
         # Descriptors from table are splitted in descriptors of max_payload_size (negotiated at link-up)
-        table    = LitePCIeDMAScatterGather(table_depth)
         splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_payload_size)
         splitter = ResetInserter()(splitter)
         splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
-        self.submodules.table    = table
         self.submodules.splitter = splitter
-        self.comb += [
-            splitter.reset.eq(~enable),
-            table.source.connect(splitter.sink)
-        ]
+        self.comb += splitter.reset.eq(~enable)
+
+        if with_csr:
+            table = LitePCIeDMAScatterGather(table_depth)
+            self.submodules.table = table
+            self.comb += [
+                enable.eq(self.enable.storage),
+                table.source.connect(splitter.sink),
+            ]
+        else:
+            self.desc_sink = stream.Endpoint(descriptor_layout())
+            self.comb += [
+                enable.eq(1),
+                self.desc_sink.connect(splitter.sink),
+            ]
 
         # Data FIFO --------------------------------------------------------------------------------
         fifo = SyncFIFOBuffered(endpoint.phy.data_width + 1, fifo_depth)
