@@ -8,7 +8,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 """
-LitePCIE standalone core generator
+LitePCIe standalone core generator
 
 LitePCIe aims to be directly used as a python package when the SoC is created using LiteX. However,
 for some use cases it could be interesting to generate a standalone verilog file of the core:
