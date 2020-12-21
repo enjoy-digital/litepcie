@@ -36,12 +36,12 @@ class LitePCIeAXI4Slave(Module):
         self.submodules.writer = writer = LitePCIeDMAWriter(
             endpoint = endpoint,
             port     = port_wr,
-            with_csr = False)
+            with_table = False)
 
         self.submodules.reader = reader = LitePCIeDMAReader(
             endpoint = endpoint,
             port     = port_rd,
-            with_csr = False)
+            with_table = False)
 
         self.submodules.wr_fifo = wr_fifo = stream.SyncFIFO(descriptor_layout(), 16)
         self.submodules.rd_fifo = rd_fifo = stream.SyncFIFO(descriptor_layout(), 16)
@@ -116,7 +116,7 @@ class LitePCIeAXI4Slave(Module):
         fsm_wr.act("WRITE-MONITOR",
             writer_conv.sink.valid.eq(self.axi.w.valid),
             self.axi.w.ready.eq(writer_conv.sink.ready),
-            If(self.axi.w.valid & self.axi.w.ready & self.axi.w.last, 
+            If(self.axi.w.valid & self.axi.w.ready & self.axi.w.last,
                 NextState("WRITE-RESP"),
             )
         )
