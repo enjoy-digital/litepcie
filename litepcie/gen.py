@@ -43,7 +43,7 @@ from litex.soc.integration.builder import *
 
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI, LitePCIeMSIMultiVector, LitePCIeMSIX
 from litepcie.frontend.dma import LitePCIeDMA
-from litepcie.frontend.wishbone import LitePCIeWishboneMaster
+from litepcie.frontend.wishbone import LitePCIeWishboneMaster, LitePCIeWishboneSlave
 from litepcie.frontend.axi import LitePCIeAXISlave
 from litepcie.software import generate_litepcie_software_headers
 
@@ -180,11 +180,25 @@ class LitePCIeCore(SoCMini):
 
         # PCIe MMAP Slave --------------------------------------------------------------------------
         if core_config.get("mmap_slave", False):
-            pcie_axi_slave = LitePCIeAXISlave(self.pcie_endpoint, data_width=128)
-            self.submodules += pcie_axi_slave
-            platform.add_extension(pcie_axi_slave.axi.get_ios("mmap_slave_axi"))
-            axi_pads = platform.request("mmap_slave_axi")
-            self.comb += pcie_axi_slave.axi.connect_to_pads(axi_pads, mode="slave")
+            # AXI-Full
+            if core_config.get("mmap_slave_axi_full", False):
+                pcie_axi_slave = LitePCIeAXISlave(self.pcie_endpoint, data_width=128)
+                self.submodules += pcie_axi_slave
+                platform.add_extension(pcie_axi_slave.axi.get_ios("mmap_slave_axi"))
+                axi_pads = platform.request("mmap_slave_axi")
+                self.comb += pcie_axi_slave.axi.connect_to_pads(axi_pads, mode="slave")
+            # AXI-Lite
+            else:
+                platform.add_extension(axi.get_ios("mmap_slave_axi_lite"))
+                axi_pads = platform.request("mmap_slave_axi_lite")
+                wb = wishbone.Interface(data_width=32)
+                axi = AXILiteInterface(data_width=32, address_width=32)
+                self.comb += axi.connect_to_pads(axi_pads, mode="slave")
+                axi2wb = AXILite2Wishbone(axi, wb)
+                self.submodules += axi2wb
+                pcie_wishbone_slave = LitePCIeWishboneSlave(self.pcie_endpoint, qword_aligned=core_config["qword_aligned"])
+                self.submodules += pcie_wishbone_slave
+                self.comb += wb.connect(pcie_wishbone_slave.wishbone)
 
         # PCIe DMA ---------------------------------------------------------------------------------
         pcie_dmas = []
