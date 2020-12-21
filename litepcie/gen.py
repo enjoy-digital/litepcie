@@ -44,7 +44,7 @@ from litex.soc.integration.builder import *
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI, LitePCIeMSIMultiVector, LitePCIeMSIX
 from litepcie.frontend.dma import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneMaster
-from litepcie.frontend.axi import LitePCIeAXI4Slave
+from litepcie.frontend.axi import LitePCIeAXISlave
 from litepcie.software import generate_litepcie_software_headers
 
 from litex.build.generic_platform import *
@@ -180,7 +180,7 @@ class LitePCIeCore(SoCMini):
 
         # PCIe MMAP Slave --------------------------------------------------------------------------
         if core_config.get("mmap_slave", False):
-            pcie_axi_slave = LitePCIeAXI4Slave(self.pcie_endpoint, data_width=128)
+            pcie_axi_slave = LitePCIeAXISlave(self.pcie_endpoint, data_width=128)
             self.submodules += pcie_axi_slave
             platform.add_extension(pcie_axi_slave.axi.get_ios("mmap_slave_axi"))
             axi_pads = platform.request("mmap_slave_axi")
