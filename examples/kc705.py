@@ -11,7 +11,7 @@ import argparse
 
 from migen import *
 
-from litex.boards.platforms import kc705
+from litex_boards.platforms import kc705
 
 from litex.soc.cores.clock import S7MMCM
 from litex.soc.interconnect.csr import *

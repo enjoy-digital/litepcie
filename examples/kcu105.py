@@ -11,7 +11,7 @@ import argparse
 
 from migen import *
 
-from litex.boards.platforms import kcu105
+from litex_boards.platforms import kcu105
 
 from litex.soc.cores.clock import USPLL
 from litex.soc.interconnect.csr import *
