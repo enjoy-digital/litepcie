@@ -536,6 +536,9 @@ int main(int argc, char **argv)
 #endif
     else
         goto show_help;
+
+    return 0;
+
 show_help:
         help();
 
