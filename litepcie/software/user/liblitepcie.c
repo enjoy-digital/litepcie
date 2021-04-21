@@ -128,7 +128,7 @@ void litepcie_release_dma_writer(int fd) {
 
 static void flash_spi_cs(int fd, uint8_t cs_n)
 {
-    litepcie_writel(fd, CSR_FLASH_SPI_CS_ADDR, cs_n);
+    litepcie_writel(fd, CSR_FLASH_CS_N_OUT_ADDR, cs_n);
 }
 
 static uint64_t flash_spi(int fd, int tx_len, uint8_t cmd,
@@ -261,10 +261,10 @@ static int litepcie_flash_get_flash_program_size(int fd)
 {
     int software_cs = 1;
     /* if software cs control, program in blocks to speed up update */
-    litepcie_writel(fd, CSR_FLASH_SPI_CS_ADDR, 0);
-    software_cs &= ((litepcie_readl(fd, CSR_FLASH_SPI_CS_ADDR) & 0x1) == 0);
-    litepcie_writel(fd, CSR_FLASH_SPI_CS_ADDR, 1);
-    software_cs &= ((litepcie_readl(fd, CSR_FLASH_SPI_CS_ADDR) & 0x1) == 1);
+    litepcie_writel(fd, CSR_FLASH_CS_N_OUT_ADDR, 0);
+    software_cs &= ((litepcie_readl(fd, CSR_FLASH_CS_N_OUT_ADDR) & 0x1) == 0);
+    litepcie_writel(fd, CSR_FLASH_CS_N_OUT_ADDR, 1);
+    software_cs &= ((litepcie_readl(fd, CSR_FLASH_CS_N_OUT_ADDR) & 0x1) == 1);
     if (software_cs)
         return 256;
     else
