@@ -19,6 +19,15 @@ class TestExamples(unittest.TestCase):
     def test_kc705_target(self):
         self.target_test("kc705")
 
+    def test_kcu105_target(self):
+        self.target_test("kcu105")
+
+    def test_fk33_target(self):
+        self.target_test("fk33")
+
+    def test_xcu1525_target(self):
+        self.target_test("xcu1525")
+
     def gen_test(self, name):
         os.system("rm -rf examples/build")
         os.system("cd examples && python3 ../litepcie/gen.py {}.yml".format(name))
