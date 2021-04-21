@@ -37,7 +37,6 @@
 
 static char litepcie_device[1024];
 static int litepcie_device_num;
-static bool force_flash = false;
 
 sig_atomic_t keep_running = 1;
 
@@ -134,41 +133,11 @@ static void flash_program(uint32_t base, const uint8_t *buf1, int size1)
     close(fd);
 }
 
-static void flash_update(const char *filename, uint32_t offset)
+static void flash_write(const char *filename, uint32_t offset)
 {
     uint8_t *data;
     int size;
     FILE * f;
-    int i;
-
-    int fd = open(litepcie_device, O_RDWR);
-    if (fd < 0) {
-        fprintf(stderr, "Could not init driver\n");
-        exit(1);
-    }
-
-    char fpga_identification[256];
-    for(i=0; i<256; i++) {
-        char c = litepcie_readl(fd, CSR_IDENTIFIER_MEM_BASE + 4*i);
-        if (c == ' ') {
-            fpga_identification[i] = 0;
-            break;
-        }
-        fpga_identification[i] = tolower(c);
-    }
-    close(fd);
-
-    bool found_ident = !!strstr(filename, fpga_identification);
-    if (!found_ident) {
-        if (force_flash) {
-            printf("Warning: ident (%s) not found in filename (%s), continuing\n",
-                    fpga_identification, filename);
-        } else {
-            printf("Error: ident (%s) not found in filename (%s), aborting\n",
-                    fpga_identification, filename);
-            exit(1);
-        }
-    }
 
     f = fopen(filename, "rb");
     if (!f) {
@@ -193,7 +162,7 @@ static void flash_update(const char *filename, uint32_t offset)
     free(data);
 }
 
-static void flash_dump(const char *filename, uint32_t size, uint32_t offset)
+static void flash_read(const char *filename, uint32_t size, uint32_t offset)
 {
     int fd;
     FILE * f;
@@ -478,7 +447,6 @@ static void help(void)
            "\n"
            "options:\n"
            "-h                                Help\n"
-           "-f                                Force flashing when ident not found\n"
            "-c device_num                     Select the device (default = 0)\n"
            "\n"
            "available commands:\n"
@@ -490,9 +458,9 @@ static void help(void)
 #endif
            "\n"
 #ifdef CSR_FLASH_BASE
-           "flash_update filename [offset]    Update FPGA gateware\n"
-           "flash_dump filename size [offset] Dump FPGA gateware\n"
-           "flash_reload                      Reload FPGA gateware\n"
+           "flash_write filename [offset]     Write file contents to SPI Flash\n"
+           "flash_read filename size [offset] Read from SPI Flash and write contents to file.\n"
+           "flash_reload                      Reload FPGA Image.\n"
 #endif
            );
     exit(1);
@@ -513,9 +481,6 @@ int main(int argc, char **argv)
         switch(c) {
         case 'h':
             help();
-            break;
-        case 'f':
-            force_flash = true;
             break;
         case 'c':
             litepcie_device_num = atoi(optarg);
@@ -544,7 +509,7 @@ int main(int argc, char **argv)
         uart_test();
 #endif
 #if CSR_FLASH_BASE
-    else if (!strcmp(cmd, "flash_update")) {
+    else if (!strcmp(cmd, "flash_write")) {
         const char *filename;
         uint32_t offset = 0;
         if (optind + 1 > argc)
@@ -552,9 +517,9 @@ int main(int argc, char **argv)
         filename = argv[optind++];
         if (optind < argc)
             offset = strtoul(argv[optind++], NULL, 0);
-        flash_update(filename, offset);
+        flash_write(filename, offset);
     }
-    else if (!strcmp(cmd, "flash_dump")) {
+    else if (!strcmp(cmd, "flash_read")) {
         const char *filename;
         uint32_t size = 0;
         uint32_t offset = 0;
@@ -564,7 +529,7 @@ int main(int argc, char **argv)
         size = strtoul(argv[optind++], NULL, 0);
         if (optind < argc)
             offset = strtoul(argv[optind++], NULL, 0);
-        flash_dump(filename, size, offset);
+        flash_read(filename, size, offset);
     }
     else if (!strcmp(cmd, "flash_reload"))
         flash_reload();
