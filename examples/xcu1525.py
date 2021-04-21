@@ -61,7 +61,6 @@ class LitePCIeSoC(SoCMini):
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
-        self.add_csr("crg")
 
         # PCIe -------------------------------------------------------------------------------------
         # PHY
@@ -71,7 +70,6 @@ class LitePCIeSoC(SoCMini):
             bar0_size  = 0x20000,
         )
         platform.add_false_path_constraints(self.crg.cd_sys.clk, self.pcie_phy.cd_pcie.clk)
-        self.add_csr("pcie_phy")
 
         # Endpoint
         self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
@@ -88,19 +86,16 @@ class LitePCIeSoC(SoCMini):
         self.submodules.pcie_dma0 = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
             with_buffering = True, buffering_depth=1024,
             with_loopback  = True)
-        self.add_csr("pcie_dma0")
 
         # DMA1
         self.submodules.pcie_dma1 = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
             with_buffering = True, buffering_depth=1024,
             with_loopback  = True)
-        self.add_csr("pcie_dma1")
 
         self.add_constant("DMA_CHANNELS", 2)
 
         # MSI
         self.submodules.pcie_msi = LitePCIeMSI()
-        self.add_csr("pcie_msi")
         self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
         self.interrupts = {
             "PCIE_DMA0_WRITER":    self.pcie_dma0.writer.irq,
