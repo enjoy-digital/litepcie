@@ -622,7 +622,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
         reader_fifo_level_min = Signal.like(reader_fifo.level)
         self.sync += If(reader_fifo.level < reader_fifo_level_min, reader_fifo_level_min.eq(reader_fifo.level))
         # Clear on Status write or when in Instantaneous mode.
-        reader_fifo_level_clr = (self.reader_fifo_status.re | self.reader_fifo_control.fields.level_mode == 0)
+        reader_fifo_level_clr = (self.reader_fifo_status.re | (self.reader_fifo_control.fields.level_mode == 0))
         self.sync += If(reader_fifo_level_clr, reader_fifo_level_min.eq(2**len(reader_fifo_level_min)-1))
         # Return Reader FIFO level.
         self.comb += [
@@ -651,7 +651,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
         writer_fifo_level_max = Signal.like(writer_fifo.level)
         self.sync += If(writer_fifo.level > writer_fifo_level_max, writer_fifo_level_max.eq(writer_fifo.level))
         # Clear on Status write or when in Instantaneous mode.
-        writer_fifo_level_clr = (self.writer_fifo_status.re | self.writer_fifo_control.fields.level_mode == 0)
+        writer_fifo_level_clr = (self.writer_fifo_status.re | (self.writer_fifo_control.fields.level_mode == 0))
         self.sync += If(writer_fifo_level_clr, writer_fifo_level_max.eq(0))
         # Return Writer FIFO level.
         self.comb += [
