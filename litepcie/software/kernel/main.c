@@ -1047,6 +1047,8 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
         goto fail1;
     }
 
+    ret = -EIO;
+
     /* check device version */
     pci_read_config_byte(dev, PCI_REVISION_ID, &rev_id);
     if (rev_id != 0) {
@@ -1088,6 +1090,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     irqs = pci_alloc_irq_vectors(dev, 1, 32, PCI_IRQ_MSI);
     if (irqs < 0) {
         dev_err(&dev->dev, "Failed to enable MSI\n");
+        ret = irqs;
         goto fail4;
     }
     dev_info(&dev->dev, "%d MSI IRQs allocated.\n", irqs);
@@ -1095,7 +1098,8 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
     litepcie_dev->irqs = 0;
     for(i=0; i <irqs; i++) {
         int irq = pci_irq_vector(dev, i);
-        if (request_irq(irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, litepcie_dev) < 0) {
+        ret = request_irq(irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, litepcie_dev);
+        if (ret < 0) {
             dev_err(&dev->dev, " Failed to allocate IRQ %d\n", dev->irq);
             while (--i >= 0) {
                 irq = pci_irq_vector(dev, i);
