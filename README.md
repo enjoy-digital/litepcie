@@ -31,23 +31,24 @@ design flow by generating the verilog rtl that you will use as a standard core.
 [> Features
 -----------
 PHY:
-  - Xilinx Ultrascale(+) (up to PCIe Gen3 X16)
-  - Xilinx 7-Series (up to PCIe Gen2 X8)
-  - Intel Cyclone5  (up to PCIe Gen2 X4)
-  - 64/128/256/512-bit datapath
-  - Clock domain crossing
+  - Xilinx Ultrascale(+) (up to PCIe Gen3 X16).
+  - Xilinx 7-Series (up to PCIe Gen2 X8).
+  - Intel Cyclone5  (up to PCIe Gen2 X4).
+  - 64/128/256/512-bit datapath.
+  - Clock domain crossing.
 
 Core:
-  - TLP layer
-  - Reordering
-  - MSI (Single, Multi-vector)/MSI-X
+  - TLP layer.
+  - Reordering.
+  - MSI (Single, Multi-vector)/MSI-X.
+  - Crossbar.
 
 Frontend:
-  - DMA (with Scatter-Gather)
-  - Wishbone bridge
+  - DMA (with Scatter-Gather).
+  - MMAP (AXI/Wishbone Slave/Master).
 
 Software:
-  - Linux Driver (DMA and Sysfs)
+  - Linux Driver (MMAP and DMA).
 
 [> FPGA Proven
 ---------------
