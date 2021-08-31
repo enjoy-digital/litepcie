@@ -155,7 +155,9 @@ class LitePCIeCore(SoCMini):
             bar0_size       = core_config["phy_bar0_size"])
 
         # PCIe Endpoint ----------------------------------------------------------------------------
-        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, endianness=core_config["endianness"])
+        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
+            endianness           = core_config["endianness"],
+            max_pending_requests = core_config.get("ep_max_pending_requests", 4))
 
         # PCIe Wishbone Master ---------------------------------------------------------------------
         pcie_wishbone_master = LitePCIeWishboneMaster(self.pcie_endpoint, qword_aligned=core_config["qword_aligned"])

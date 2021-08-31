@@ -17,6 +17,9 @@
     "clk_freq":     125e6,         # User Clk Freq (AXI MMAP/DMA)
     "clk_external": False,         # Use external User provided Clk
 
+    # Endpoint -----------------------------------------------------------------
+    "ep_max_pending_requests" : 8,
+
     # MMAP Master --------------------------------------------------------------
     "mmap":      True,
     "mmap_base": 0x00020000,
