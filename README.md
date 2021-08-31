@@ -4,7 +4,7 @@
                                 / /__/ / __/ -_) ___/ /___/ // -_)
                                /____/_/\__/\__/_/   \___/___/\__/
 
-                               Copyright 2015-2020 / EnjoyDigital
+                               Copyright 2015-2021 / EnjoyDigital
 
                             A small footprint and configurable PCIe core
                                      powered by Migen & LiteX
