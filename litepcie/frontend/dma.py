@@ -564,7 +564,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
     appears in the streams and our Writes/Reads can't be absorbed/produced at a fixed rate. A minimum
     of buffering is needed to make sure the gaps are smoothed and not propagated to user modules.
     """
-    def __init__(self, data_width, writer_depth, reader_depth):
+    def __init__(self, data_width, writer_depth, reader_depth, dynamic_depth=True):
         self.sink        = stream.Endpoint(dma_layout(data_width))
         self.source      = stream.Endpoint(dma_layout(data_width))
 
@@ -611,7 +611,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
         self.comb += [
             # Connect Reader Sink to Reader FIFO when Level < Configured Depth.
             self.sink.connect(reader_fifo.sink, omit={"valid", "ready"}),
-            If(reader_fifo.level < self.reader_fifo_control.fields.depth[depth_shift:],
+            If((reader_fifo.level < self.reader_fifo_control.fields.depth[depth_shift:]) | (not dynamic_depth),
                 self.sink.connect(reader_fifo.sink, keep={"valid", "ready"})
             ),
             # Connect Reader FIFO to Reader Source.
@@ -641,7 +641,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
         self.comb += [
             # Connect Writer Sink to Writer FIFO when Level < Configured Depth.
             self.next_sink.connect(writer_fifo.sink, omit={"valid", "ready"}),
-            If(writer_fifo.level < self.writer_fifo_control.fields.depth[depth_shift:],
+            If((writer_fifo.level < self.writer_fifo_control.fields.depth[depth_shift:]) | (not dynamic_depth),
                 self.next_sink.connect(writer_fifo.sink, keep={"valid", "ready"})
             ),
             # Connect Writer FIFO to Writer Source.
