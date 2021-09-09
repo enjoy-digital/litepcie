@@ -8,6 +8,7 @@ from migen import *
 
 from litepcie.common import *
 
+# LitePCIe Internal Ports --------------------------------------------------------------------------
 
 class LitePCIeSlaveInternalPort:
     def __init__(self, data_width, address_decoder=None):
@@ -24,6 +25,7 @@ class LitePCIeMasterInternalPort:
         self.sink   = stream.Endpoint(request_layout(data_width))
         self.source = stream.Endpoint(completion_layout(data_width))
 
+# LitePCIe User Ports ------------------------------------------------------------------------------
 
 class LitePCIeSlavePort:
     def __init__(self, port):

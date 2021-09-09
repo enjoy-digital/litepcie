@@ -40,29 +40,29 @@ def phy_layout(data_width):
 
 def request_layout(data_width):
     layout = [
-            ("we",               1),
-            ("adr",             32),
-            ("len",             10),
-            ("req_id",          16),
-            ("tag",              8),
-            ("dat",     data_width),
-            ("channel",          8), # for routing
-            ("user_id",          8)  # for packet identification
+        ("we",               1),
+        ("adr",             32),
+        ("len",             10),
+        ("req_id",          16),
+        ("tag",              8),
+        ("dat",     data_width),
+        ("channel",          8), # For routing.
+        ("user_id",          8)  # For packet identification.
     ]
     return EndpointDescription(layout)
 
 def completion_layout(data_width):
     layout = [
-            ("adr",             32),
-            ("len",             10),
-            ("end",              1),
-            ("req_id",          16),
-            ("cmp_id",          16),
-            ("err",              1),
-            ("tag",              8),
-            ("dat",     data_width),
-            ("channel",          8), # for routing
-            ("user_id",          8)  # for packet identification
+        ("adr",             32),
+        ("len",             10),
+        ("end",              1),
+        ("req_id",          16),
+        ("cmp_id",          16),
+        ("err",              1),
+        ("tag",              8),
+        ("dat",     data_width),
+        ("channel",          8), # For routing.
+        ("user_id",          8)  # For packet identification.
     ]
     return EndpointDescription(layout)
 
