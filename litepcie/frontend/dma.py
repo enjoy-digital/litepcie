@@ -357,11 +357,8 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.sync += If(~enable, pending_words.eq(0))
 
         # IRQ --------------------------------------------------------------------------------------
-        self.comb += self.irq.eq(
-            splitter.source.valid &
-            splitter.source.ready &
-            splitter.source.last  &
-            ~splitter.source.irq_disable
+        self.comb += If(splitter.source.valid & splitter.source.ready & splitter.source.last,
+            self.irq.eq(~splitter.source.irq_disable)
         )
 
 # LitePCIeDMAWriter --------------------------------------------------------------------------------
@@ -479,11 +476,8 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         )
 
         # IRQ --------------------------------------------------------------------------------------
-        self.comb += self.irq.eq(
-            splitter.source.valid &
-            splitter.source.ready &
-            splitter.source.last  &
-            ~splitter.source.irq_disable
+        self.comb += If(splitter.source.valid & splitter.source.ready & splitter.source.last,
+            self.irq.eq(~splitter.source.irq_disable)
         )
 
 # LitePCIeDMALoopback ------------------------------------------------------------------------------
