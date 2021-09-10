@@ -6,9 +6,8 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
-from migen.genlib.fifo import SyncFIFOBuffered
 
-from litex.soc.interconnect.stream import *
+from litex.soc.interconnect import stream
 from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
@@ -66,7 +65,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
     maintain a software loop status based MSI IRQ reception).
     """
     def __init__(self, depth):
-        # Stream Endpoints.
+        # Stream Endpoint.
         self.source = source = stream.Endpoint(descriptor_layout())
 
         # Control/Status.
@@ -167,8 +166,11 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
     several shorter descriptors.
     """
     def __init__(self, max_size):
+        # Stream Endpoints.
         self.sink   =   sink = stream.Endpoint(descriptor_layout())
         self.source = source = stream.Endpoint(descriptor_layout(with_user_id=True))
+
+        # Control.
         self.end    = Signal()
 
         # # #
@@ -243,10 +245,15 @@ class LitePCIeDMAReader(Module, AutoCSR):
     A MSI IRQ can be generated when a descriptor has been executed.
     """
     def __init__(self, endpoint, port, with_table=True, table_depth=256):
-        self.port   = port
+        self.port = port
+        # Stream Endpoint.
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
-        self.irq    = Signal()
+
+        # Control.
         self.enable = CSRStorage(description="DMA Reader Control. Write ``1`` to enable DMA Reader.", reset=0 if with_table else 1)
+
+        # IRQ.
+        self.irq = Signal()
 
         # # #
 
@@ -271,7 +278,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # DMA descriptors need to be splitted in descriptors of max_request_size (negotiated at link-up)
         splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_request_size)
         splitter = ResetInserter()(splitter)
-        splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
+        splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings.
         self.submodules.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
@@ -374,20 +381,23 @@ class LitePCIeDMAWriter(Module, AutoCSR):
     A MSI IRQ can be generated when a descriptor has been executed.
     """
     def __init__(self, endpoint, port, with_table=True, table_depth=256):
-        self.port   = port
+        self.port = port
+        # Stream Endpoint.
         self.sink   = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
-        self.irq    = Signal()
+
+        # Control.
         self.enable = CSRStorage(description="DMA Writer Control. Write ``1`` to enable DMA Writer.", reset=0 if with_table else 1)
 
-        # # #
+        # IRQ.
+        self.irq = Signal()
 
-        counter = Signal(max=(2**len(endpoint.phy.max_payload_size))//8)
+        # # #
 
         # CSR/Parameters ---------------------------------------------------------------------------
         enable = self.enable.storage
 
+        length_shift          = log2_int(endpoint.phy.data_width//8)
         max_words_per_request = max_payload_size//(endpoint.phy.data_width//8)
-        fifo_depth            = 4*max_words_per_request
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
@@ -399,7 +409,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         # DMA descriptors need to be splitted in descriptors of max_request_size (negotiated at link-up)
         splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_payload_size)
         splitter = ResetInserter()(splitter)
-        splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
+        splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings.
         self.submodules.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
@@ -407,56 +417,62 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             self.comb += self.desc_sink.connect(splitter.sink)
 
         # Data FIFO --------------------------------------------------------------------------------
-        fifo = SyncFIFOBuffered(endpoint.phy.data_width + 1, fifo_depth)
-        self.submodules += ResetInserter()(fifo)
+        data_fifo_depth = 4*max_words_per_request
+        data_fifo       = stream.SyncFIFO([("data", endpoint.phy.data_width)], data_fifo_depth, buffered=True)
+        self.submodules += ResetInserter()(data_fifo)
         self.comb += [
-            fifo.we.eq(sink.valid & enable),
-            sink.ready.eq(fifo.writable | ~enable),
-            fifo.din.eq(Cat(sink.data, sink.last))
+            # When Enabled, connect Sink to Data FIFO.
+            If(enable,
+                sink.connect(data_fifo.sink)
+            # Else accept incoming Sink Data.
+            ).Else(
+                sink.ready.eq(1)
+            )
         ]
 
         # FSM --------------------------------------------------------------------------------------
+        req_count = Signal.like(splitter.source.length)
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            # Reset Splitter/FIFO when DMA is disabled.
-            If(~enable,
-                splitter.reset.eq(1),
-                fifo.reset.eq(1)
-            ),
-            NextValue(counter, 0),
-             # Wait for a Request from the Splitter.
-            If(splitter.source.valid,
-                # When enough Data in the FIFO, generate the Request.
-                If(fifo.level >= splitter.source.length[log2_int(endpoint.phy.data_width//8):],
-                    NextState("REQUEST"),
-                )
+            # Reset Splitter/FIFO when Disabled.
+            splitter.reset.eq( ~enable),
+            data_fifo.reset.eq(~enable),
+            # Reset Request Count.
+            NextValue(req_count, 0),
+            # Wait for a Descriptor and to have enough Data to generate the Request.
+            If(splitter.source.valid & (data_fifo.level >= splitter.source.length[length_shift:]),
+                NextState("REQUEST"),
             )
         )
-        length_shift = log2_int(endpoint.phy.data_width//8)
+        # Request Data-Path.
         self.comb += [
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
-            port.source.first.eq(counter == 0),
-            port.source.last.eq((counter == splitter.source.length[length_shift:] - 1)),
+            port.source.first.eq(req_count == 0),
+            port.source.last.eq((req_count == splitter.source.length[length_shift:] - 1)),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(splitter.source.length[2:]),
-            port.source.dat.eq(fifo.dout[:-1])
+            port.source.dat.eq(data_fifo.source.data)
         ]
         fsm.act("REQUEST",
-            # Generate the Request.
+            # Request Control-Path.
             port.source.valid.eq(1),
+            # When Request is accepted...
             If(port.source.ready,
-                NextValue(counter, counter + 1),
-                # Read only if not last.
-                fifo.re.eq(~(fifo.dout[-1] & ~splitter.source.last_disable)),
+                # Increment Request Count.
+                NextValue(req_count, req_count + 1),
+                # Accept Data.
+                data_fifo.source.ready.eq(1),
+                # When last...
                 If(port.source.last,
-                    # Always read.
-                    fifo.re.eq(1),
-                    splitter.end.eq(fifo.dout[-1] & ~splitter.source.last_disable),
+                    # Accept Descriptor.
                     splitter.source.ready.eq(1),
+                    # Early Splitter End (can be disabled).
+                    splitter.end.eq(data_fifo.source.last & ~splitter.source.last_disable),
+                    # Return to Idle.
                     NextState("IDLE"),
                 )
             )
