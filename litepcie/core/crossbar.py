@@ -53,26 +53,26 @@ class LitePCIeCrossbar(Module):
 
     def slave_dispatch_arbitrate(self, slaves, slave):
         # Dispatch ---------------------------------------------------------------------------------
-        s_sources = [s.source for s in slaves]
+        s_sources    = [s.source for s in slaves]
         s_dispatcher = Dispatcher(slave.source, s_sources, one_hot=True)
         self.submodules += s_dispatcher
         for i, s in enumerate(slaves):
                 self.comb += s_dispatcher.sel[i].eq(s.address_decoder(slave.source.adr))
 
         # Arbitrate --------------------------------------------------------------------------------
-        s_sinks = [s.sink for s in slaves]
+        s_sinks   = [s.sink for s in slaves]
         s_arbiter = Arbiter(s_sinks, slave.sink)
         self.submodules += s_arbiter
 
     def master_arbitrate_dispatch(self, masters, master, dispatch=True):
         # Arbitrate --------------------------------------------------------------------------------
-        m_sinks = [m.sink for m in masters]
+        m_sinks   = [m.sink for m in masters]
         m_arbiter = Arbiter(m_sinks, master.sink)
         self.submodules += m_arbiter
 
         # Dispatch ---------------------------------------------------------------------------------
         if dispatch:
-            m_sources = [m.source for m in masters]
+            m_sources    = [m.source for m in masters]
             m_dispatcher = Dispatcher(master.source, m_sources, one_hot=True)
             self.submodules += m_dispatcher
             for i, m in enumerate(masters):
@@ -122,7 +122,7 @@ class LitePCIeCrossbar(Module):
             rd_rw_masters += self.filter_masters(False, False)
             if rd_rw_masters != []:
                 rd_rw_master = LitePCIeMasterInternalPort(self.data_width)
-                controller = LitePCIeTLPController(
+                controller   = LitePCIeTLPController(
                     data_width           = self.data_width,
                     max_pending_requests = self.max_pending_requests,
                     cmp_bufs_buffered    = self.cmp_bufs_buffered)
