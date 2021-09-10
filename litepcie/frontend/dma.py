@@ -124,7 +124,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
 
         # Loop Status (For Software Sychronization in Loop mode) -----------------------------------
         loop_first = Signal(reset=1)
-        loop_index = Signal(16)
+        loop_index = Signal(log2_int(depth))
         loop_count = Signal(16)
         self.sync += [
             # Reset Loop Index/Count on Table reset.
