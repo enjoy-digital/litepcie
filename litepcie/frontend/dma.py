@@ -123,27 +123,21 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
         self.comb += table.source.connect(source)
 
         # Loop Status (For Software Sychronization in Loop mode) -----------------------------------
-        loop_first = Signal(reset=1)
-        loop_index = Signal(log2_int(depth))
-        loop_count = Signal(16)
+        loop_index = self.loop_status.fields.index
+        loop_count = self.loop_status.fields.count
         self.sync += [
             # Reset Loop Index/Count on Table reset.
             If(table.reset,
-                loop_first.eq(1),
+                # Init count to 2**n-1 to have (index, count) == (0, 0) for the first Descriptor.
                 loop_index.eq(0),
-                loop_count.eq(0),
-                self.loop_status.fields.index.eq(0),
-                self.loop_status.fields.count.eq(0),
+                loop_count.eq(2**len(loop_count) - 1),
             # When a Descriptor is consumned...
             ).Elif(table.source.valid & table.source.ready,
                 # Update Loop Status with current Loop Index/Count.
-                self.loop_status.fields.index.eq(loop_index),
-                self.loop_status.fields.count.eq(loop_count),
                 # Update Loop Index/Count.
-                If(source.first,
-                    loop_first.eq(0),
+                If(table.source.first,
                     loop_index.eq(0),
-                    loop_count.eq(loop_count + (~loop_first))
+                    loop_count.eq(loop_count + 1),
                 ).Else(
                     loop_index.eq(loop_index + 1)
                 )
