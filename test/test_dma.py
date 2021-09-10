@@ -41,7 +41,7 @@ class DMADriver:
         yield from self.dma.table.loop_prog_n.write(1)
 
     def flush(self):
-        yield from self.dma.table.flush.write(1)
+        yield from self.dma.table.reset.write(1)
 
     def program_descriptor(self, address, length):
         value = address

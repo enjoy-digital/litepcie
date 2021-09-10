@@ -6,7 +6,6 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
-from migen.genlib.misc import chooser, displacer
 from migen.genlib.fifo import SyncFIFOBuffered
 
 from litex.soc.interconnect.stream import *
@@ -17,11 +16,8 @@ from litepcie.tlp.common import *
 
 # Constants/Layouts --------------------------------------------------------------------------------
 
-DMA_IRQ_DISABLE    = 0
-DMA_LAST_DISABLE   = 1
-
 def descriptor_layout(with_user_id=False):
-    layout = [("address", 32), ("length",  24), ("control", 8)]
+    layout = [("address", 32), ("length",  24), ("irq_disable", 1), ("last_disable", 1)]
     if with_user_id:
         layout += [("user_id", 8)]
     return EndpointDescription(layout)
@@ -32,31 +28,48 @@ def descriptor_layout(with_user_id=False):
 class LitePCIeDMAScatterGather(Module, AutoCSR):
     """LitePCIe DMA Scatter-Gather
 
-    Software programmable table that stores a list of DMA descriptors to be executed.
+    Software programmable table storing a list of DMA descriptors.
+
+                               Mode
+                                │
+                              ┌─▼─┐  ┌───────────────────┐
+       Descriptor to program  │   │  │                   │
+             (Prog Mode) ─────►   │  │                   │
+                              │   │  │    ScatterGather  │
+                              │   ├──►     Table(FIFO)   ├──┬───► Descriptor (To DMA).
+                          ┌───►   │  │                   │  │
+                          │   │   │  │                   │  │
+                          │   └───┘  └───────────────────┘  │
+                          │                                 │
+                          └─────────────────────────────────┘
+                                    Refill (Loop Mode)
+
 
     A DMA descriptor is composed of:
-    - a 32-bit address: the base address where the data stream should be written/read.
-    - a 24-bit length : the length of the data stream (bytes).
-    - 8 control bits  : control to allow dynamic specific behavior (for example: disable MSI IRQ).
+    - a 32-bit address: The base address of the Host where the data stream should be written/read.
+    - a 24-bit length : The length of the data stream (bytes).
+    - a 8-bit control : Dynamic controls (ex: Disable IRQ generation, disable Last handling).
 
     The table is implemented as a FIFO initially filled by software. Once enabled, the DMA gets the
     descriptors from this table and executes them.
 
     This module has two modes:
-    - PROG mode: Used to program the table by software and for cases where automatic refill of the
+    - Prog mode: Used to program the table by software and for cases where automatic refill of the
     table is not needed: A descriptor is only executed once and when all the descriptors have been
     executed (ie the table is empty), the DMA just stops until the next software refill.
-    - LOOP mode: Used once the table has been filled by software in PROG mode and allow continuous
+    - Loop mode: Used once the table has been filled by software in PROG mode and allow continuous
     Scatter-Gather DMA: Each descriptor sent to the DMA is refilled to the table.
 
-    In LOOP mode, a loop status is maintained by the hardware for the software synchronization of the
+    In Loop mode, a loop status is maintained by the hardware for the software synchronization of the
     DMA buffers. (Even if a MSI IRQ is generated after a descriptor has been executed, since IRQ can
     potentially be lost, it's safer for the software to just use the hardware loop status than to
     maintain a software loop status based MSI IRQ reception).
     """
     def __init__(self, depth):
+        # Stream Endpoints.
         self.source = source = stream.Endpoint(descriptor_layout())
 
+        # Control/Status.
         self.value = CSRStorage(64, reset_less=True, fields=[
             CSRField("address",      size=32, description="32-bit Address of the descriptor (bytes-aligned)."),
             CSRField("length",       size=24, description="24-bit Length  of the descriptor (in bytes)."),
@@ -65,12 +78,12 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
             ], description="64-bit DMA descriptor to be written to the table.")
         self.we = CSRStorage(description="A write to this register adds the descriptor to table.")
         self.loop_prog_n = CSRStorage(description="""Mode Selection.\n
-            ``0``: **PROG** mode / ``1``: **LOOP** mode.\n
-            **PROG** mode should be used to program the table by software and for cases where automatic
+            ``0``: **Prog** mode / ``1``: **Loop** mode.\n
+            **Prog** mode should be used to program the table by software and for cases where automatic
             refill of the table is not needed: A descriptor is only executed once and when all the
             descriptors have been executed (ie the table is empty), the DMA just stops until the next
             software refill.\n
-            **LOOP** mode should be used once the table has been filled by software in **PROG** mode
+            **Loop** mode should be used once the table has been filled by software in **Prog** mode
             and allow continuous Scatter-Gather DMA: Each descriptor sent to the DMA is refilled to the table.
             """)
         self.loop_status = CSRStatus(fields=[
@@ -78,79 +91,60 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
             CSRField("count", size=16, description= "Loops of the DMA descriptor table since started."),
             ], description="Loop monitoring for software synchronization.")
         self.level = CSRStatus(bits_for(depth), description="Number descriptors in the table.")
-        self.flush = CSRStorage(description="A write to this register flushes the table.")
+        self.reset = CSRStorage(description="A write to this register resets the table.")
 
         # # #
 
-        # CSRs -------------------------------------------------------------------------------------
-        address     = self.value.fields.address
-        length      = self.value.fields.length
-        control     = Cat(self.value.fields.irq_disable, self.value.fields.last_disable)
-        we          = self.we.storage & self.we.re
-        loop_prog_n = self.loop_prog_n.storage
-        loop_status = self.loop_status
-        level       = self.level.status
-        flush       = self.flush.storage & self.flush.re
+        # Table (FIFO) -----------------------------------------------------------------------------
+        table = stream.SyncFIFO(descriptor_layout(), depth)
+        table = ResetInserter()(table)
+        self.submodules += table
+        self.comb += table.reset.eq(self.reset.storage & self.reset.re)
+        self.comb += self.level.status.eq(table.level)
 
-        # Table FIFO -------------------------------------------------------------------------------
-        fifo = SyncFIFO([("address", 32), ("length",  24), ("control", 8)], depth)
-        fifo = ResetInserter()(fifo)
-        self.submodules += fifo
-        self.comb += [
-            fifo.reset.eq(flush),
-            level.eq(fifo.level),
-        ]
-
-        # Write logic ------------------------------------------------------------------------------
+        # Table Write logic ------------------------------------------------------------------------
+        prog_mode = (self.loop_prog_n.storage == 0)
         self.sync += [
-            # In LOOP mode, the FIFO is automatically refilled with the descriptors.
-            If(loop_prog_n,
-                fifo.sink.address.eq(fifo.source.address),
-                fifo.sink.length.eq(fifo.source.length),
-                fifo.sink.control.eq(fifo.source.control),
-                fifo.sink.first.eq(fifo.source.first),
-                fifo.sink.valid.eq(fifo.source.ready)
-            # In PROG mode, the FIFO is filled through the CSRs and not automatically refilled.
+            # In Prog mode, the Table is filled through the CSRs.
+            If(prog_mode,
+                table.sink.address.eq(self.value.fields.address),
+                table.sink.length.eq(self.value.fields.length),
+                table.sink.irq_disable.eq(self.value.fields.irq_disable),
+                table.sink.last_disable.eq(self.value.fields.last_disable),
+                table.sink.first.eq(table.level == 0),
+                table.sink.valid.eq(self.we.storage & self.we.re),
+            # In Loop mode, the Table is automatically refilled.
             ).Else(
-                fifo.sink.address.eq(address),
-                fifo.sink.length.eq(length),
-                fifo.sink.control.eq(control),
-                fifo.sink.first.eq(~fifo.source.valid),
-                fifo.sink.valid.eq(we)
+                table.source.connect(table.sink, omit={"valid", "ready"}),
+                table.sink.valid.eq(table.source.valid & table.source.ready),
             )
         ]
 
-        # Read logic -------------------------------------------------------------------------------
-        self.comb += [
-            source.valid.eq(fifo.source.valid),
-            source.first.eq(fifo.source.first),
-            fifo.source.ready.eq(source.valid & source.ready),
-            source.address.eq(fifo.source.address),
-            source.length.eq(fifo.source.length),
-            source.control.eq(fifo.source.control),
-        ]
+        # Table Read logic -------------------------------------------------------------------------
+        self.comb += table.source.connect(source)
 
-        # Loops monitoring -------------------------------------------------------------------------
-        # Used for software synchronization in LOOP mode.
+        # Loop Status (For Software Sychronization in Loop mode) -----------------------------------
         loop_first = Signal(reset=1)
-        loop_index = Signal(log2_int(depth))
+        loop_index = Signal(16)
         loop_count = Signal(16)
         self.sync += [
-            If(flush,
+            # Reset Loop Index/Count on Table reset.
+            If(table.reset,
                 loop_first.eq(1),
                 loop_index.eq(0),
                 loop_count.eq(0),
-                loop_status.fields.index.eq(0),
-                loop_status.fields.count.eq(0),
-            ).Elif(source.valid & source.ready,
-                loop_status.fields.index.eq(loop_index),
-                loop_status.fields.count.eq(loop_count),
+                self.loop_status.fields.index.eq(0),
+                self.loop_status.fields.count.eq(0),
+            # When a Descriptor is consumned...
+            ).Elif(table.source.valid & table.source.ready,
+                # Update Loop Status with current Loop Index/Count.
+                self.loop_status.fields.index.eq(loop_index),
+                self.loop_status.fields.count.eq(loop_count),
+                # Update Loop Index/Count.
                 If(source.first,
                     loop_first.eq(0),
                     loop_index.eq(0),
-                    If(~loop_first,
-                        loop_count.eq(loop_count + 1)
-                    )
+                    loop_count.eq(loop_count + (~loop_first))
                 ).Else(
                     loop_index.eq(loop_index + 1)
                 )
@@ -194,7 +188,8 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
         )
         self.comb += [
             source.address.eq(sink.address + offset),
-            source.control.eq(sink.control),
+            source.irq_disable.eq(sink.irq_disable),
+            source.last_disable.eq(sink.last_disable),
             source.user_id.eq(user_id),
         ]
         fsm.act("RUN",
@@ -351,7 +346,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
             splitter.source.valid &
             splitter.source.ready &
             splitter.source.last  &
-            ~splitter.source.control[DMA_IRQ_DISABLE]
+            ~splitter.source.irq_disable
         )
 
 # LitePCIeDMAWriter --------------------------------------------------------------------------------
@@ -448,11 +443,11 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             If(port.source.ready,
                 NextValue(counter, counter + 1),
                 # Read only if not last.
-                fifo.re.eq(~(fifo.dout[-1] & ~splitter.source.control[DMA_LAST_DISABLE])),
+                fifo.re.eq(~(fifo.dout[-1] & ~splitter.source.last_disable)),
                 If(port.source.last,
                     # Always read.
                     fifo.re.eq(1),
-                    splitter.end.eq(fifo.dout[-1] & ~splitter.source.control[DMA_LAST_DISABLE]),
+                    splitter.end.eq(fifo.dout[-1] & ~splitter.source.last_disable),
                     splitter.source.ready.eq(1),
                     NextState("IDLE"),
                 )
@@ -464,7 +459,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             splitter.source.valid &
             splitter.source.ready &
             splitter.source.last  &
-            ~splitter.source.control[DMA_IRQ_DISABLE]
+            ~splitter.source.irq_disable
         )
 
 # LitePCIeDMALoopback ------------------------------------------------------------------------------
