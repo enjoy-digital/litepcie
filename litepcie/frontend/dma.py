@@ -173,49 +173,57 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
 
         # # #
 
-        offset  = Signal(32)
-        user_id = Signal(32)
+        desc_length  = Signal(32)
+        desc_offset  = Signal(32)
+        desc_id      = Signal(32)
 
         # FSM --------------------------------------------------------------------------------------
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            NextValue(offset, 0),
+            # Set Descriptor Offset/Length.
+            NextValue(desc_offset, 0),
+            NextValue(desc_length, sink.length),
+            # Wait for a Descriptor and go to Run.
             If(sink.valid,
-                NextState("RUN")
-            ).Else(
-                sink.ready.eq(1)
+                NextState("SPLIT")
             )
         )
+        # Split Data-Path.
         self.comb += [
-            source.address.eq(sink.address + offset),
+            source.address.eq(sink.address + desc_offset),
             source.irq_disable.eq(sink.irq_disable),
             source.last_disable.eq(sink.last_disable),
-            source.user_id.eq(user_id),
+            source.user_id.eq(desc_id),
         ]
-        fsm.act("RUN",
+        fsm.act("SPLIT",
+            # Split Control-Path.
             source.valid.eq(1),
-            source.first.eq(offset == 0),
-            If((sink.length - offset) > max_size,
+            source.first.eq(desc_offset == 0),
+            # Full Descriptor when Length > max_size.
+            If(desc_length > max_size,
                 source.last.eq(self.end),
                 source.length.eq(max_size),
-                If(source.ready,
-                    NextValue(offset, offset + max_size),
-                    If(self.end,
-                        NextState("ACK")
-                    )
-                )
+            # Partial Descriptor when Length <= max_size
             ).Else(
                 source.last.eq(1),
-                source.length.eq(sink.length - offset),
-                If(source.ready,
-                    NextState("ACK")
+                source.length.eq(desc_length),
+            ),
+            # When Descriptor is accepted...
+            If(source.ready,
+                # Increment Offset.
+                NextValue(desc_offset, desc_offset + max_size),
+                # Decrement Length.
+                NextValue(desc_length, desc_length - max_size),
+                # When Last....
+                If(source.last,
+                    # Accept Descriptor.
+                    sink.ready.eq(1),
+                    # Increment ID.
+                    NextValue(desc_id, desc_id + 1),
+                    # Go to Idle.
+                    NextState("IDLE")
                 )
             )
-        )
-        fsm.act("ACK",
-            sink.ready.eq(1),
-            NextValue(user_id, user_id + 1),
-            NextState("IDLE")
         )
 
 # LitePCIeDMAReader --------------------------------------------------------------------------------
