@@ -254,13 +254,9 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # CSR/Parameters ---------------------------------------------------------------------------
         enable = self.enable.storage
 
+        length_shift          = log2_int(endpoint.phy.data_width//8)
         max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
         max_pending_words     = endpoint.max_pending_requests*max_words_per_request
-        fifo_depth            = 4*max_pending_words
-
-        pending_words         = Signal(max=fifo_depth + 1)
-        pending_words_queue   = Signal.like(pending_words)
-        pending_words_dequeue = Signal.like(pending_words)
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
@@ -279,41 +275,60 @@ class LitePCIeDMAReader(Module, AutoCSR):
         else:
             self.comb += self.desc_sink.connect(splitter.sink)
 
-        # Data FIFO --------------------------------------------------------------------------------
-        fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), fifo_depth, buffered=True)
-        fifo = ResetInserter()(fifo)
-        self.submodules.fifo = fifo
-        self.comb += fifo.source.connect(self.source)
-
+        # User ID ----------------------------------------------------------------------------------
         last_user_id = Signal(8, reset=255)
+        self.sync += If(port.sink.valid & port.sink.first & port.sink.ready,
+            last_user_id.eq(port.sink.user_id)
+        )
+
+        # Data FIFO --------------------------------------------------------------------------------
+        data_fifo_depth = 4*max_pending_words
+        data_fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), data_fifo_depth, buffered=True)
+        self.submodules += ResetInserter()(data_fifo)
         self.comb += [
-            fifo.sink.valid.eq(port.sink.valid),
-            fifo.sink.first.eq(port.sink.first & (port.sink.user_id != last_user_id)),
-            fifo.sink.data.eq(port.sink.dat),
-            port.sink.ready.eq(fifo.sink.ready | ~enable),
-        ]
-        self.sync += [
-            If(port.sink.valid & port.sink.first & port.sink.ready,
-                last_user_id.eq(port.sink.user_id)
+            # Connect Data FIFO to Source.
+            data_fifo.source.connect(self.source),
+            # When Enabled, connect Sink to Data FIFO.
+            If(enable,
+                port.sink.connect(data_fifo.sink, keep={"valid", "ready"}),
+                data_fifo.sink.data.eq(port.sink.dat),
+                data_fifo.sink.first.eq(port.sink.first & (port.sink.user_id != last_user_id)),
+            # Else accept incoming Port Data.
+            ).Else(
+                port.sink.ready.eq(1)
             )
         ]
+
+        # Pending words ----------------------------------------------------------------------------
+        pending_words         = Signal(max=data_fifo_depth + 1)
+        pending_words_queue   = Signal.like(pending_words)
+        pending_words_dequeue = Signal.like(pending_words)
+        self.comb += [
+            # Queue Pending words as Read Requests are emitted.
+            If(splitter.source.valid & splitter.source.ready,
+                pending_words_queue.eq(splitter.source.length[length_shift:])
+            ),
+            # Dequeue Pending words as Read Responses are received.
+            If(data_fifo.source.valid & data_fifo.source.ready,
+                pending_words_dequeue.eq(1)
+            ),
+        ]
+        # Update Pending words.
+        self.sync += pending_words.eq(pending_words + pending_words_queue - pending_words_dequeue)
+        self.sync += If(~enable, pending_words.eq(0))
 
         # FSM --------------------------------------------------------------------------------------
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            # Reset Splitter/FIFO when DMA is disabled.
-            If(~enable,
-                splitter.reset.eq(1),
-                fifo.reset.eq(1)
-            ),
-            # Wait for a Request from the Splitter.
-            If(splitter.source.valid,
-                # When enough space in the FIFO, generate the Request.
-                If(pending_words < (fifo_depth - max_words_per_request),
-                    NextState("REQUEST"),
-                )
+            # Reset Splitter/FIFO when Disabled.
+            splitter.reset.eq( ~enable),
+            data_fifo.reset.eq(~enable),
+            # Wait for a Descriptor and to have enough Space to generate the Request.
+            If(splitter.source.valid & (pending_words < (data_fifo_depth - max_words_per_request)),
+                NextState("REQUEST"),
             )
         )
+        # Request Data-Path.
         self.comb += [
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
@@ -326,29 +341,16 @@ class LitePCIeDMAReader(Module, AutoCSR):
             port.source.dat.eq(0),
         ]
         fsm.act("REQUEST",
-            # Generate Request.
+            # Request Control-Path.
             port.source.valid.eq(1),
+            # When Request is accepted...
             If(port.source.ready,
-                # Ack Splitter when Request is accepted.
+                # Accept Descriptor.
                 splitter.source.ready.eq(1),
+                # Return to Idle.
                 NextState("IDLE"),
             )
         )
-
-        # Pending words ----------------------------------------------------------------------------
-        self.comb += [
-            # Queue Pending words as Read Requests are emitted.
-            If(splitter.source.valid & splitter.source.ready,
-                pending_words_queue.eq(splitter.source.length[log2_int(endpoint.phy.data_width//8):])
-            ),
-            # Dequeue Pending words as Read Responses are received.
-            If(fifo.source.valid & fifo.source.ready,
-                pending_words_dequeue.eq(1)
-            ),
-        ]
-        # Update Pending words.
-        self.sync += pending_words.eq(pending_words + pending_words_queue - pending_words_dequeue)
-        self.sync += If(~enable, pending_words.eq(0))
 
         # IRQ --------------------------------------------------------------------------------------
         self.comb += If(splitter.source.valid & splitter.source.ready & splitter.source.last,
@@ -409,7 +411,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_words_per_request
-        data_fifo       = stream.SyncFIFO([("data", endpoint.phy.data_width)], data_fifo_depth, buffered=True)
+        data_fifo = stream.SyncFIFO([("data", endpoint.phy.data_width)], data_fifo_depth, buffered=True)
         self.submodules += ResetInserter()(data_fifo)
         self.comb += [
             # When Enabled, connect Sink to Data FIFO.
