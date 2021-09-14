@@ -581,11 +581,12 @@ class LitePCIeDMABuffering(Module, AutoCSR):
         self.next_sink   = stream.Endpoint(dma_layout(data_width))
 
         # Reader FIFO Control/Status.
-        assert bits_for(reader_depth) < 31
+        assert bits_for(reader_depth) < 24
         self.reader_fifo_control = CSRStorage(fields=[
             CSRField("depth", offset=0, size=bits_for(reader_depth), reset=reader_depth,
                 description="DMA Reader FIFO depth (in {}-bit words).".format(data_width)),
-            CSRField("level_mode", offset=31,  values=[
+            CSRField("scratch",    offset=24, size=4, description="Software Scratchpad."),
+            CSRField("level_mode", offset=31, values=[
                 ("``0b0``", "Report Instantaneous level."),
                 ("``0b1``", "Report `Minimal` level since last clear.")
             ])
@@ -596,11 +597,12 @@ class LitePCIeDMABuffering(Module, AutoCSR):
             ])
 
         # Writer FIFO Control/Status.
-        assert bits_for(writer_depth) < 31
+        assert bits_for(writer_depth) < 24
         self.writer_fifo_control = CSRStorage(fields=[
             CSRField("depth", offset=0, size=bits_for(writer_depth), reset=writer_depth,
                 description="DMA Writer FIFO depth (in {}-bit words).".format(data_width)),
-            CSRField("level_mode", offset=31,  values=[
+            CSRField("scratch",    offset=24, size=4, description="Software Scratchpad."),
+            CSRField("level_mode", offset=31, values=[
                 ("``0b0``", "Report Instantaneous level."),
                 ("``0b1``", "Report `Maximal` level since last clear.")
             ])
