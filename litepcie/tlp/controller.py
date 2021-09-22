@@ -112,7 +112,6 @@ class LitePCIeTLPController(Module):
         # Create Buffers.
         for i in range(max_pending_requests):
             cmp_buf_depth = 4*max_request_size//(data_width//8)
-            print(cmp_buf_depth)
             cmp_buf       = SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered)
             cmp_bufs.append(cmp_buf)
         self.submodules += cmp_bufs
