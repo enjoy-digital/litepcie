@@ -808,7 +808,7 @@ module pcie_support # (
 
 
   wire [63:0]     s_axis_cc_header0 = {s_axis_cc_requesterid,
-                                       1'b0, s_axis_cc_poison, s_axis_cc_cmpstatus, s_axis_cc_dwordcnt,
+                                       2'b0, s_axis_cc_poison, s_axis_cc_cmpstatus, s_axis_cc_dwordcnt,
                                        2'b0, s_axis_cc_lockedrdcmp, s_axis_cc_bytecnt,
                                        6'b0, s_axis_cc_at,
                                        1'b0, s_axis_cc_lowaddr};
