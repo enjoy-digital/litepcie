@@ -1,6 +1,6 @@
 CFLAGS=-O2 -Wall -g -I../kernel -MMD
 LDFLAGS=-g
-CC=gcc
+CC=$(CROSS_COMPILE)gcc
 AR=ar
 
 PROGS=litepcie_util litepcie_test
