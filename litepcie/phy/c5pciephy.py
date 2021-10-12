@@ -17,6 +17,7 @@ from litepcie.common import *
 # --------------------------------------------------------------------------------------------------
 
 class C5PCIEPHY(Module, AutoCSR):
+    endianness = "little"
     def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys"):
         # Streams ---------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))

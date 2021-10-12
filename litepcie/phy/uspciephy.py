@@ -16,6 +16,7 @@ from litepcie.phy.common import *
 # USPCIEPHY ----------------------------------------------------------------------------------------
 
 class USPCIEPHY(Module, AutoCSR):
+    endianness = "little"
     def __init__(self, platform, pads, speed="gen2", data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
