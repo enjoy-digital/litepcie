@@ -156,11 +156,12 @@ class LitePCIeCore(SoCMini):
 
         # PCIe Endpoint ----------------------------------------------------------------------------
         self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
-            endianness           = core_config["endianness"],
+            endianness           = self.pcie_phy.endianness,
             max_pending_requests = core_config.get("ep_max_pending_requests", 4))
 
         # PCIe Wishbone Master ---------------------------------------------------------------------
-        pcie_wishbone_master = LitePCIeWishboneMaster(self.pcie_endpoint, qword_aligned=core_config["qword_aligned"])
+        pcie_wishbone_master = LitePCIeWishboneMaster(self.pcie_endpoint,
+            qword_aligned = self.pcie_phy.qword_aligned)
         self.submodules += pcie_wishbone_master
         self.add_wb_master(pcie_wishbone_master.wishbone)
 
@@ -198,7 +199,8 @@ class LitePCIeCore(SoCMini):
                 self.comb += axi.connect_to_pads(axi_pads, mode="slave")
                 axi2wb = AXILite2Wishbone(axi, wb)
                 self.submodules += axi2wb
-                pcie_wishbone_slave = LitePCIeWishboneSlave(self.pcie_endpoint, qword_aligned=core_config["qword_aligned"])
+                pcie_wishbone_slave = LitePCIeWishboneSlave(self.pcie_endpoint,
+                    qword_aligned=self.pcie_phy.qword_aligned)
                 self.submodules += pcie_wishbone_slave
                 self.comb += wb.connect(pcie_wishbone_slave.wishbone)
 
@@ -284,30 +286,22 @@ def main():
         from litex.build.altera import AlteraPlatform
         from litepcie.phy.c5pciephy import C5PCIEPHY
         platform = AlteraPlatform("", io=[])
-        core_config["phy"]           = C5PCIEPHY
-        core_config["qword_aligned"] = True
-        core_config["endianness"]    = "little"
+        core_config["phy"] = C5PCIEPHY
     elif core_config["phy"] == "S7PCIEPHY":
         from litex.build.xilinx import XilinxPlatform
         from litepcie.phy.s7pciephy import S7PCIEPHY
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
-        core_config["phy"]           = S7PCIEPHY
-        core_config["qword_aligned"] = False
-        core_config["endianness"]    = "big"
+        core_config["phy"] = S7PCIEPHY
     elif core_config["phy"] == "USPCIEPHY":
         from litex.build.xilinx import XilinxPlatform
         from litepcie.phy.uspciephy import USPCIEPHY
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
-        core_config["phy"]           = USPCIEPHY
-        core_config["qword_aligned"] = False
-        core_config["endianness"]    = "little"
+        core_config["phy"] = USPCIEPHY
     elif core_config["phy"] == "USPPCIEPHY":
         from litex.build.xilinx import XilinxPlatform
         from litepcie.phy.usppciephy import USPPCIEPHY
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
-        core_config["phy"]           = USPPCIEPHY
-        core_config["qword_aligned"] = False
-        core_config["endianness"]    = "little"
+        core_config["phy"] = USPPCIEPHY
     else:
         raise ValueError("Unsupported PCIe PHY: {}".format(core_config["phy"]))
     soc      = LitePCIeCore(platform, core_config)
