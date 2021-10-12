@@ -17,7 +17,8 @@ from litepcie.phy.common import *
 # S7PCIEPHY ----------------------------------------------------------------------------------------
 
 class S7PCIEPHY(Module, AutoCSR):
-    endianness = "big"
+    endianness    = "big"
+    qword_aligned = False
     def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
