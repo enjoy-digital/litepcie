@@ -722,7 +722,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 
             litepcie_writel(chan->litepcie_dev, CSR_ICAP_ADDR_ADDR, m.addr);
 			litepcie_writel(chan->litepcie_dev, CSR_ICAP_DATA_ADDR, m.data);
-			litepcie_writel(chan->litepcie_dev, CSR_ICAP_SEND_ADDR, 1);
+			litepcie_writel(chan->litepcie_dev, CSR_ICAP_WRITE_ADDR, 1);
         }
         break;
 #endif
