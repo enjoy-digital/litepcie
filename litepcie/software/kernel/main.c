@@ -105,13 +105,13 @@ static int litepcie_minor_idx;
 static struct class *litepcie_class;
 static dev_t litepcie_dev_t;
 
-static inline uint32_t litepcie_readl(struct litepcie_device  *s, uint32_t addr)
+static inline uint32_t litepcie_readl(struct litepcie_device *s, uint32_t addr)
 {
 	uint32_t val;
 
 	val = readl(s->bar0_addr + addr - CSR_BASE);
 #ifdef DEBUG_CSR
-	pr_debug("csr_read: 0x%08x @ 0x%08x", val, addr);
+	dev_dbg(&s->dev->dev, "csr_read: 0x%08x @ 0x%08x", val, addr);
 #endif
 	return val;
 }
@@ -119,7 +119,7 @@ static inline uint32_t litepcie_readl(struct litepcie_device  *s, uint32_t addr)
 static inline void litepcie_writel(struct litepcie_device *s, uint32_t addr, uint32_t val)
 {
 #ifdef DEBUG_CSR
-	pr_debug("csr_write: 0x%08x @ 0x%08x", val, addr);
+	dev_dbg(&s->dev->dev, "csr_write: 0x%08x @ 0x%08x", val, addr);
 #endif
 	return writel(val, s->bar0_addr + addr - CSR_BASE);
 }
@@ -359,7 +359,7 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 #endif
 
 #ifdef DEBUG_MSI
-	pr_debug("MSI: 0x%x 0x%x\n", irq_vector, irq_enable);
+	dev_dbg(&s->dev->dev, "MSI: 0x%x 0x%x\n", irq_vector, irq_enable);
 #endif
 	irq_vector &= irq_enable;
 	clear_mask = 0;
@@ -376,7 +376,8 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 				chan->dma.reader_hw_count += (1 << (ilog2(DMA_BUFFER_COUNT) + 16));
 			chan->dma.reader_hw_count_last = chan->dma.reader_hw_count;
 #ifdef DEBUG_MSI
-			pr_debug("MSI DMA%d Reader buf: %lld\n", i, chan->dma.reader_hw_count);
+			dev_dbg(&s->dev->dev, "MSI DMA%d Reader buf: %lld\n", i,
+				chan->dma.reader_hw_count);
 #endif
 			wake_up_interruptible(&chan->wait_wr);
 			clear_mask |= (1 << chan->dma.reader_interrupt);
@@ -391,7 +392,8 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 				chan->dma.writer_hw_count += (1 << (ilog2(DMA_BUFFER_COUNT) + 16));
 			chan->dma.writer_hw_count_last = chan->dma.writer_hw_count;
 #ifdef DEBUG_MSI
-			pr_debug("MSI DMA%d Writer buf: %lld\n", i, chan->dma.writer_hw_count);
+			dev_dbg(&s->dev->dev, "MSI DMA%d Writer buf: %lld\n", i,
+				chan->dma.writer_hw_count);
 #endif
 			wake_up_interruptible(&chan->wait_rd);
 			clear_mask |= (1 << chan->dma.writer_interrupt);
@@ -482,6 +484,7 @@ static ssize_t litepcie_read(struct file *file, char __user *data, size_t size, 
 
 	struct litepcie_chan_priv *chan_priv = file->private_data;
 	struct litepcie_chan *chan = chan_priv->chan;
+	struct litepcie_device *s = chan->litepcie_dev;
 
 	if (file->f_flags & O_NONBLOCK) {
 		if (chan->dma.writer_hw_count == chan->dma.writer_sw_count)
@@ -519,10 +522,10 @@ static ssize_t litepcie_read(struct file *file, char __user *data, size_t size, 
 	}
 
 	if (overflows)
-		pr_debug("Reading too late, %d buffers lost\n", overflows);
+		dev_dbg(&s->dev->dev, "Reading too late, %d buffers lost\n", overflows);
 
 #ifdef DEBUG_READ
-	pr_debug("read: read %ld bytes out of %ld\n", size - len, size);
+	dev_dbg(&s->dev->dev, "read: read %ld bytes out of %ld\n", size - len, size);
 #endif
 
 	return size - len;
@@ -536,6 +539,7 @@ static ssize_t litepcie_write(struct file *file, const char __user *data, size_t
 
 	struct litepcie_chan_priv *chan_priv = file->private_data;
 	struct litepcie_chan *chan = chan_priv->chan;
+	struct litepcie_device *s = chan->litepcie_dev;
 
 	if (file->f_flags & O_NONBLOCK) {
 		if (chan->dma.reader_hw_count == chan->dma.reader_sw_count)
@@ -569,10 +573,10 @@ static ssize_t litepcie_write(struct file *file, const char __user *data, size_t
 	}
 
 	if (underflows)
-		pr_debug("Writing too late, %d buffers lost\n", underflows);
+		dev_dbg(&s->dev->dev, "Writing too late, %d buffers lost\n", underflows);
 
 #ifdef DEBUG_WRITE
-	pr_debug("write: write %ld bytes out of %ld\n", size - len, size);
+	dev_dbg(&s->dev->dev, "write: write %ld bytes out of %ld\n", size - len, size);
 #endif
 
 	return size - len;
@@ -582,6 +586,7 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct litepcie_chan_priv *chan_priv = file->private_data;
 	struct litepcie_chan *chan = chan_priv->chan;
+	struct litepcie_device *s = chan->litepcie_dev;
 	unsigned long pfn;
 	int is_tx, i;
 
@@ -606,7 +611,7 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
 		 */
 		if (remap_pfn_range(vma, vma->vm_start + i * DMA_BUFFER_SIZE, pfn,
 				    DMA_BUFFER_SIZE, vma->vm_page_prot)) {
-			pr_err("mmap remap_pfn_range failed\n");
+			dev_err(&s->dev->dev, "mmap remap_pfn_range failed\n");
 			return -EAGAIN;
 		}
 	}
@@ -620,14 +625,17 @@ static unsigned int litepcie_poll(struct file *file, poll_table *wait)
 
 	struct litepcie_chan_priv *chan_priv = file->private_data;
 	struct litepcie_chan *chan = chan_priv->chan;
+#ifdef DEBUG_POLL
+	struct litepcie_device *s = chan->litepcie_dev;
+#endif
 
 	poll_wait(file, &chan->wait_rd, wait);
 	poll_wait(file, &chan->wait_wr, wait);
 
 #ifdef DEBUG_POLL
-	pr_debug("poll: writer hw_count: %10lld / sw_count %10lld\n",
+	dev_dbg(&s->dev->dev, "poll: writer hw_count: %10lld / sw_count %10lld\n",
 	chan->dma.writer_hw_count, chan->dma.writer_sw_count);
-	pr_debug("poll: reader hw_count: %10lld / sw_count %10lld\n",
+	dev_dbg(&s->dev->dev, "poll: reader hw_count: %10lld / sw_count %10lld\n",
 	chan->dma.reader_hw_count, chan->dma.reader_sw_count);
 #endif
 
