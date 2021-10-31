@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: BSD-2-Clause
+ */
+
 #ifndef __HW_FLAGS_H
 #define __HW_FLAGS_H
 

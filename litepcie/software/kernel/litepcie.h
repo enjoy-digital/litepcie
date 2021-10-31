@@ -1,10 +1,11 @@
-/*
+/* SPDX-License-Identifier: BSD-2-Clause
+ *
  * LitePCIe driver
  *
  * This file is part of LitePCIe.
  *
  * Copyright (C) 2018-2020 / EnjoyDigital  / florent@enjoy-digital.fr
- * SPDX-License-Identifier: BSD-2-Clause
+ *
  */
 
 #ifndef _LINUX_LITEPCIE_H
@@ -16,59 +17,59 @@
 #include "config.h"
 
 struct litepcie_ioctl_reg {
-    uint32_t addr;
-    uint32_t val;
-    uint8_t is_write;
+	uint32_t addr;
+	uint32_t val;
+	uint8_t is_write;
 };
 
 struct litepcie_ioctl_flash {
-    int tx_len; /* 8 to 40 */
-    __u64 tx_data; /* 8 to 40 bits */
-    __u64 rx_data; /* 40 bits */
+	int tx_len; /* 8 to 40 */
+	__u64 tx_data; /* 8 to 40 bits */
+	__u64 rx_data; /* 40 bits */
 };
 
 struct litepcie_ioctl_icap {
-    uint8_t addr;
-    uint32_t data;
+	uint8_t addr;
+	uint32_t data;
 };
 
 struct litepcie_ioctl_dma {
-    uint8_t loopback_enable;
+	uint8_t loopback_enable;
 };
 
 struct litepcie_ioctl_dma_writer {
-    uint8_t enable;
-    int64_t hw_count;
-    int64_t sw_count;
+	uint8_t enable;
+	int64_t hw_count;
+	int64_t sw_count;
 };
 
 struct litepcie_ioctl_dma_reader {
-    uint8_t enable;
-    int64_t hw_count;
-    int64_t sw_count;
+	uint8_t enable;
+	int64_t hw_count;
+	int64_t sw_count;
 };
 
 struct litepcie_ioctl_lock {
-    uint8_t dma_reader_request;
-    uint8_t dma_writer_request;
-    uint8_t dma_reader_release;
-    uint8_t dma_writer_release;
-    uint8_t dma_reader_status;
-    uint8_t dma_writer_status;
+	uint8_t dma_reader_request;
+	uint8_t dma_writer_request;
+	uint8_t dma_reader_release;
+	uint8_t dma_writer_release;
+	uint8_t dma_reader_status;
+	uint8_t dma_writer_status;
 };
 
 struct litepcie_ioctl_mmap_dma_info {
-    uint64_t dma_tx_buf_offset;
-    uint64_t dma_tx_buf_size;
-    uint64_t dma_tx_buf_count;
+	uint64_t dma_tx_buf_offset;
+	uint64_t dma_tx_buf_size;
+	uint64_t dma_tx_buf_count;
 
-    uint64_t dma_rx_buf_offset;
-    uint64_t dma_rx_buf_size;
-    uint64_t dma_rx_buf_count;
+	uint64_t dma_rx_buf_offset;
+	uint64_t dma_rx_buf_size;
+	uint64_t dma_rx_buf_count;
 };
 
 struct litepcie_ioctl_mmap_dma_update {
-    int64_t sw_count;
+	int64_t sw_count;
 };
 
 #define LITEPCIE_IOCTL 'S'

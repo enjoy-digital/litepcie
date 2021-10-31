@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: BSD-2-Clause
+ */
+
 #ifndef __HW_CONFIG_H
 #define __HW_CONFIG_H
 #include "soc.h"
