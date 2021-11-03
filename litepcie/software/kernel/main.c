@@ -1017,7 +1017,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	litepcie_dev->dev = dev;
 	spin_lock_init(&litepcie_dev->lock);
 
-	ret = pci_enable_device(dev);
+	ret = pcim_enable_device(dev);
 	if (ret != 0) {
 		dev_err(&dev->dev, "Cannot enable device\n");
 		goto fail1;
@@ -1190,7 +1190,6 @@ fail4:
 fail3:
 	pci_release_regions(dev);
 fail2:
-	pci_disable_device(dev);
 fail1:
 	kfree(litepcie_dev);
 
@@ -1223,9 +1222,6 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 
 	/* Unmap BAR0 */
 	pci_iounmap(dev, litepcie_dev->bar0_addr);
-
-	/* Disable device */
-	pci_disable_device(dev);
 
 	/* Release Regions and DMA buffers */
 	pci_release_regions(dev);
