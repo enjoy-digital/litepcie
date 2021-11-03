@@ -939,7 +939,7 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
 
 fail_create:
 	index = litepcie_minor_idx;
-	for (j = 0; j < i ; j++)
+	for (j = 0; j < i; j++)
 		device_destroy(litepcie_class, MKDEV(litepcie_major, index++));
 
 fail_alloc:
@@ -955,7 +955,7 @@ static void litepcie_free_chdev(struct litepcie_device *s)
 
 	for (i = 0; i < s->channels; i++) {
 		device_destroy(litepcie_class, MKDEV(litepcie_major, s->minor_base + i));
-			cdev_del(&s->chan[i].cdev);
+		cdev_del(&s->chan[i].cdev);
 	}
 }
 
