@@ -1007,7 +1007,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
 	dev_info(&dev->dev, "\e[1m[Probing device]\e[0m\n");
 
-	litepcie_dev = kzalloc(sizeof(struct litepcie_device), GFP_KERNEL);
+	litepcie_dev = devm_kzalloc(&dev->dev, sizeof(struct litepcie_device), GFP_KERNEL);
 	if (!litepcie_dev) {
 		ret = -ENOMEM;
 		goto fail1;
@@ -1191,8 +1191,6 @@ fail3:
 	pci_release_regions(dev);
 fail2:
 fail1:
-	kfree(litepcie_dev);
-
 	return ret;
 }
 
@@ -1226,7 +1224,6 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 	/* Release Regions and DMA buffers */
 	pci_release_regions(dev);
 	litepcie_dma_free(litepcie_dev);
-	kfree(litepcie_dev);
 }
 
 static const struct pci_device_id litepcie_pci_ids[] = {
