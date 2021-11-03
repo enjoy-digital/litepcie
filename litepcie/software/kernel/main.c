@@ -1199,7 +1199,7 @@ fail1:
 
 static void litepcie_pci_remove(struct pci_dev *dev)
 {
-	int i;
+	int i, irq;
 	struct litepcie_device *litepcie_dev;
 
 	litepcie_dev = pci_get_drvdata(dev);
@@ -1214,7 +1214,7 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 
 	/* Free all interrupts */
 	for (i = 0; i < litepcie_dev->irqs; i++) {
-		int irq = pci_irq_vector(dev, i);
+		irq = pci_irq_vector(dev, i);
 		free_irq(irq, litepcie_dev);
 	}
 	litepcie_free_chdev(litepcie_dev);
