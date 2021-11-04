@@ -939,7 +939,7 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
 
 fail_create:
 	index = litepcie_minor_idx;
-	for (j = 0; j < i ; j++)
+	for (j = 0; j < i; j++)
 		device_destroy(litepcie_class, MKDEV(litepcie_major, index++));
 
 fail_alloc:
@@ -955,7 +955,7 @@ static void litepcie_free_chdev(struct litepcie_device *s)
 
 	for (i = 0; i < s->channels; i++) {
 		device_destroy(litepcie_class, MKDEV(litepcie_major, s->minor_base + i));
-			cdev_del(&s->chan[i].cdev);
+		cdev_del(&s->chan[i].cdev);
 	}
 }
 
@@ -1199,7 +1199,7 @@ fail1:
 
 static void litepcie_pci_remove(struct pci_dev *dev)
 {
-	int i;
+	int i, irq;
 	struct litepcie_device *litepcie_dev;
 
 	litepcie_dev = pci_get_drvdata(dev);
@@ -1207,36 +1207,30 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 	dev_info(&dev->dev, "\e[1m[Removing device]\e[0m\n");
 
 	/* Stop the DMAs */
-	if (litepcie_dev)
-		litepcie_stop_dma(litepcie_dev);
+	litepcie_stop_dma(litepcie_dev);
 
 	/* Disable all interrupts */
 	litepcie_writel(litepcie_dev, CSR_PCIE_MSI_ENABLE_ADDR, 0);
 
 	/* Free all interrupts */
-	if (litepcie_dev) {
-		for (i = 0; i < litepcie_dev->irqs; i++) {
-			int irq = pci_irq_vector(dev, i);
-
-			free_irq(irq, litepcie_dev);
-		}
-		litepcie_free_chdev(litepcie_dev);
+	for (i = 0; i < litepcie_dev->irqs; i++) {
+		irq = pci_irq_vector(dev, i);
+		free_irq(irq, litepcie_dev);
 	}
+	litepcie_free_chdev(litepcie_dev);
+
 	pci_free_irq_vectors(dev);
 
 	/* Unmap BAR0 */
-	if (litepcie_dev)
-		pci_iounmap(dev, litepcie_dev->bar0_addr);
+	pci_iounmap(dev, litepcie_dev->bar0_addr);
 
 	/* Disable device */
 	pci_disable_device(dev);
 
 	/* Release Regions and DMA buffers */
 	pci_release_regions(dev);
-	if (litepcie_dev) {
-		litepcie_dma_free(litepcie_dev);
-		kfree(litepcie_dev);
-	}
+	litepcie_dma_free(litepcie_dev);
+	kfree(litepcie_dev);
 }
 
 static const struct pci_device_id litepcie_pci_ids[] = {
