@@ -69,7 +69,7 @@ struct litepcie_dma_chan {
 struct litepcie_chan {
 	struct litepcie_device *litepcie_dev;
 	struct litepcie_dma_chan dma;
-	struct cdev *cdev;
+	struct cdev cdev;
 	uint32_t block_size;
 	uint32_t core_base;
 	wait_queue_head_t wait_rd; /* to wait for an ongoing read */
@@ -85,7 +85,6 @@ struct litepcie_device {
 	phys_addr_t bar0_phys_addr;
 	uint8_t *bar0_addr; /* virtual address of BAR0 */
 	struct litepcie_chan chan[DMA_CHANNEL_COUNT];
-	struct list_head list;
 	spinlock_t lock;
 	int minor_base;
 	int irqs;
@@ -97,8 +96,6 @@ struct litepcie_chan_priv {
 	bool reader;
 	bool writer;
 };
-
-static LIST_HEAD(litepcie_list);
 
 static int litepcie_major;
 static int litepcie_minor_idx;
@@ -409,43 +406,28 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 
 static int litepcie_open(struct inode *inode, struct file *file)
 {
-	int subminor;
-	struct litepcie_device *litepcie;
-	struct litepcie_chan *chan;
+	struct litepcie_chan *chan = container_of(inode->i_cdev, struct litepcie_chan, cdev);
+	struct litepcie_chan_priv *chan_priv = kzalloc(sizeof(*chan_priv), GFP_KERNEL);
 
-	struct litepcie_chan_priv *chan_priv = kzalloc(sizeof(*chan_priv),
-	GFP_KERNEL);
 	if (!chan_priv)
 		return -ENOMEM;
 
-	subminor = iminor(inode);
+	chan_priv->chan = chan;
+	file->private_data = chan_priv;
 
-	list_for_each_entry(litepcie, &litepcie_list, list) {
-		if ((litepcie->minor_base <= subminor) &&
-			(subminor < litepcie->minor_base + litepcie->channels)) {
-
-			chan = &litepcie->chan[subminor - litepcie->minor_base];
-			chan_priv->chan = chan;
-			file->private_data = chan_priv;
-
-			if (chan->dma.reader_enable == 0) { /* clear only if disabled */
-				chan->dma.reader_hw_count = 0;
-				chan->dma.reader_hw_count_last = 0;
-				chan->dma.reader_sw_count = 0;
-			}
-
-			if (chan->dma.writer_enable == 0) { /* clear only if disabled */
-				chan->dma.writer_hw_count = 0;
-				chan->dma.writer_hw_count_last = 0;
-				chan->dma.writer_sw_count = 0;
-			}
-
-			return 0;
-		}
+	if (chan->dma.reader_enable == 0) { /* clear only if disabled */
+		chan->dma.reader_hw_count = 0;
+		chan->dma.reader_hw_count_last = 0;
+		chan->dma.reader_sw_count = 0;
 	}
 
-	kfree(chan_priv);
-	return -1;
+	if (chan->dma.writer_enable == 0) { /* clear only if disabled */
+		chan->dma.writer_hw_count = 0;
+		chan->dma.writer_hw_count_last = 0;
+		chan->dma.writer_sw_count = 0;
+	}
+
+	return 0;
 }
 
 static int litepcie_release(struct inode *inode, struct file *file)
@@ -931,15 +913,8 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
 	index = litepcie_minor_idx;
 	s->minor_base = litepcie_minor_idx;
 	for (i = 0; i < s->channels; i++) {
-		s->chan[i].cdev = cdev_alloc();
-		if (!s->chan[i].cdev) {
-			ret = -ENOMEM;
-			dev_err(&s->dev->dev, "Failed to allocate cdev\n");
-			goto fail_alloc;
-		}
-
-		cdev_init(s->chan[i].cdev, &litepcie_fops);
-		ret = cdev_add(s->chan[i].cdev, MKDEV(litepcie_major, index), 1);
+		cdev_init(&s->chan[i].cdev, &litepcie_fops);
+		ret = cdev_add(&s->chan[i].cdev, MKDEV(litepcie_major, index), 1);
 		if (ret < 0) {
 			dev_err(&s->dev->dev, "Failed to allocate cdev\n");
 			goto fail_alloc;
@@ -968,12 +943,8 @@ fail_create:
 		device_destroy(litepcie_class, MKDEV(litepcie_major, index++));
 
 fail_alloc:
-	for (i = 0; i < s->channels; i++) {
-		if (s->chan[i].cdev) {
-			cdev_del(s->chan[i].cdev);
-			s->chan[i].cdev = NULL;
-		}
-	}
+	for (i = 0; i < s->channels; i++)
+		cdev_del(&s->chan[i].cdev);
 
 	return ret;
 }
@@ -984,10 +955,7 @@ static void litepcie_free_chdev(struct litepcie_device *s)
 
 	for (i = 0; i < s->channels; i++) {
 		device_destroy(litepcie_class, MKDEV(litepcie_major, s->minor_base + i));
-		if (s->chan[i].cdev) {
-			cdev_del(s->chan[i].cdev);
-			s->chan[i].cdev = NULL;
-		}
+			cdev_del(&s->chan[i].cdev);
 	}
 }
 
@@ -1048,7 +1016,6 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	pci_set_drvdata(dev, litepcie_dev);
 	litepcie_dev->dev = dev;
 	spin_lock_init(&litepcie_dev->lock);
-	list_add_tail(&(litepcie_dev->list), &(litepcie_list));
 
 	ret = pci_enable_device(dev);
 	if (ret != 0) {
@@ -1225,10 +1192,8 @@ fail3:
 fail2:
 	pci_disable_device(dev);
 fail1:
-	if (litepcie_dev) {
-		list_del(&litepcie_dev->list);
-		kfree(litepcie_dev);
-	}
+	kfree(litepcie_dev);
+
 	return ret;
 }
 
