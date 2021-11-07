@@ -139,47 +139,11 @@ static void litepcie_disable_interrupt(struct litepcie_device *s, int irq_num)
 	litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
 }
 
-static int litepcie_dma_free(struct litepcie_device *s)
-{
-	int i, j;
-	struct litepcie_dma_chan *dmachan;
-
-	if (!s)
-		return -ENODEV;
-
-	/* for each dma channel */
-	for (i = 0; i < s->channels; i++) {
-		dmachan = &s->chan[i].dma;
-		/* for each dma buffer */
-		for (j = 0; j < DMA_BUFFER_COUNT; j++) {
-			/* free rd */
-			if (dmachan->reader_addr[j]) {
-				dma_free_coherent(&s->dev->dev, DMA_BUFFER_SIZE,
-						  dmachan->reader_addr[j],
-						  dmachan->reader_handle[j]);
-				dmachan->reader_addr[j] = NULL;
-				dmachan->reader_handle[j] = 0;
-			}
-			/* free wr */
-			if (dmachan->writer_addr[j]) {
-				dma_free_coherent(&s->dev->dev, DMA_BUFFER_SIZE,
-						  dmachan->writer_addr[j],
-						  dmachan->writer_handle[j]);
-				dmachan->writer_addr[j] = NULL;
-				dmachan->writer_handle[j] = 0;
-			}
-		}
-	}
-
-	return 0;
-}
-
 static int litepcie_dma_init(struct litepcie_device *s)
 {
 
 	int i, j;
 	struct litepcie_dma_chan *dmachan;
-	int ret;
 
 	if (!s)
 		return -ENODEV;
@@ -190,31 +154,27 @@ static int litepcie_dma_init(struct litepcie_device *s)
 		/* for each dma buffer */
 		for (j = 0; j < DMA_BUFFER_COUNT; j++) {
 			/* allocate rd */
-			dmachan->reader_addr[j] = dma_alloc_coherent(
+			dmachan->reader_addr[j] = dmam_alloc_coherent(
 				&s->dev->dev,
 				DMA_BUFFER_SIZE,
 				&dmachan->reader_handle[j],
-			GFP_KERNEL | GFP_DMA32);
+				GFP_KERNEL);
 			/* allocate wr */
-			dmachan->writer_addr[j] = dma_alloc_coherent(
+			dmachan->writer_addr[j] = dmam_alloc_coherent(
 				&s->dev->dev,
 				DMA_BUFFER_SIZE,
 				&dmachan->writer_handle[j],
-			GFP_KERNEL | GFP_DMA32);
+				GFP_KERNEL);
 			/* check */
 			if (!dmachan->writer_addr[j]
 				|| !dmachan->reader_addr[j]) {
 				dev_err(&s->dev->dev, "Failed to allocate dma buffers\n");
-				ret = -ENOMEM;
-				goto fail;
+				return -ENOMEM;
 			}
 		}
 	}
 
 	return 0;
-fail:
-	litepcie_dma_free(s);
-	return ret;
 }
 
 static void litepcie_dma_writer_start(struct litepcie_device *s, int chan_num)
@@ -1210,8 +1170,6 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 	litepcie_free_chdev(litepcie_dev);
 
 	pci_free_irq_vectors(dev);
-
-	litepcie_dma_free(litepcie_dev);
 }
 
 static const struct pci_device_id litepcie_pci_ids[] = {
