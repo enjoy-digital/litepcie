@@ -152,12 +152,10 @@ static void flash_write(const char *filename, uint32_t offset)
     ssize_t ret = fread(data, size, 1, f);
     fclose(f);
 
-    if (ret != 1) {
+    if (ret != 1)
         perror(filename);
-        return;
-    }
-
-    flash_program(offset, data, size);
+    else
+        flash_program(offset, data, size);
 
     free(data);
 }
