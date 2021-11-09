@@ -75,7 +75,7 @@ static inline int64_t add_mod_int(int64_t a, int64_t b, int64_t m)
     return a;
 }
 
-static void litepcie_record(const char  *filename, uint32_t size)
+static void litepcie_record(const char *filename, uint32_t size)
 {
     struct pollfd fds;
     FILE * fo = NULL;
@@ -149,7 +149,7 @@ static void litepcie_record(const char  *filename, uint32_t size)
 
     for (;;) {
         /* exit loop on ctrl+c pressed */
-        if (!(keep_running))
+        if (!keep_running)
             break;
 
         /* set / get dma */

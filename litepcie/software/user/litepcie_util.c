@@ -331,7 +331,7 @@ static void dma_test(void)
         goto exit;
     }
 
-    /* enable dma loopback*/
+    /* enable dma loopback */
     litepcie_dma(fds.fd, 1);
 
     /* test loop */
@@ -353,9 +353,8 @@ static void dma_test(void)
 
         /* polling */
         ret = poll(&fds, 1, 100);
-        if (ret <=  0) {
+        if (ret <= 0)
             continue;
-        }
 
         /* read event */
         if (fds.revents & POLLIN) {
