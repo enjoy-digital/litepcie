@@ -133,6 +133,10 @@ static void litepcie_record(const char  *filename, uint32_t size)
     } else {
         /* else: allocate it */
         buf_rd = malloc(DMA_BUFFER_SIZE * DMA_BUFFER_COUNT);
+        if (!buf_rd) {
+            fprintf(stderr, "%d: malloc failed\n", __LINE__);
+            goto exit;
+        }
     }
 
     /* test loop */
@@ -282,6 +286,10 @@ static void litepcie_play(const char *filename, uint32_t loops)
     } else {
         /* else: allocate it */
         buf_wr = malloc(DMA_BUFFER_SIZE * DMA_BUFFER_COUNT);
+        if (!buf_wr) {
+            fprintf(stderr, "%d: malloc failed\n", __LINE__);
+            goto exit;
+        }
     }
 
     /* request dma */

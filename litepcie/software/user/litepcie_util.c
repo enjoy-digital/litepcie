@@ -112,8 +112,11 @@ static void flash_program(uint32_t base, const uint8_t *buf1, int size1)
     /* pad to sector_size */
     size = ((size1 + sector_size - 1) / sector_size) * sector_size;
 
-    buf = malloc(size);
-    memset(buf, 0, size);
+    buf = calloc(1, size);
+    if (!buf) {
+        fprintf(stderr, "%d: alloc failed\n", __LINE__);
+        exit(1);
+    }
     memcpy(buf, buf1, size1);
 
     printf("Programming (%d bytes at 0x%08x)\n", size, base);
@@ -149,6 +152,10 @@ static void flash_write(const char *filename, uint32_t offset)
     size = ftell(f);
     fseek(f, 0L, SEEK_SET);
     data = malloc(size);
+    if (!data) {
+        fprintf(stderr, "%d: malloc failed\n", __LINE__);
+        exit(1);
+    }
     ssize_t ret = fread(data, size, 1, f);
     fclose(f);
 
@@ -289,15 +296,21 @@ static void dma_test(void)
 
     signal(SIGINT, intHandler);
 
-    buf_rd = malloc(DMA_BUFFER_TOTAL_SIZE);
-    buf_wr = malloc(DMA_BUFFER_TOTAL_SIZE);
+    buf_rd = calloc(1, DMA_BUFFER_TOTAL_SIZE);
+    if (!buf_rd) {
+        fprintf(stderr, "%d: alloc failed\n", __LINE__);
+        exit(1);
+    }
+    buf_wr = calloc(1, DMA_BUFFER_TOTAL_SIZE);
+    if (!buf_wr) {
+        fprintf(stderr, "%d: alloc failed\n", __LINE__);
+        free(buf_rd);
+        exit(1);
+    }
 
     errors = 0;
     seed_wr = 0;
     seed_rd = 0;
-
-    memset(buf_rd, 0, DMA_BUFFER_TOTAL_SIZE);
-    memset(buf_wr, 0, DMA_BUFFER_TOTAL_SIZE);
 
 #ifdef DMA_CHECK_DATA
     write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_TOTAL_SIZE/4, &seed_wr);
@@ -307,7 +320,7 @@ static void dma_test(void)
     fds.events = POLLIN | POLLOUT;
     if (fds.fd < 0) {
         fprintf(stderr, "Could not init driver\n");
-        exit(1);
+        goto exit;
     }
 
     /* request dma */
