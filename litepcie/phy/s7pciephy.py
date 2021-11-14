@@ -387,7 +387,8 @@ class S7PCIEPHY(Module, AutoCSR):
             config = {
                 'Bar0_Scale': 'Megabytes',
                 'Bar0_Size': 1,
-                'Buf_Opt_BMA': False,
+                'Buf_Opt_BMA': True,
+                'Component_Name': 'pcie',
                 'Device_ID': 7020 + self.nlanes,
                 'IntX_Generation': False,
                 'Interface_Width': '64_bit',
@@ -409,7 +410,6 @@ class S7PCIEPHY(Module, AutoCSR):
             for config, value in config.items():
                 ip_tcl.append("CONFIG.{} {} \\".format(config, '{{' + str(value) + '}}'))
             ip_tcl.append(f"] $obj")
-            ip_tcl.append('generate_target synthesis $obj')
             ip_tcl.append('synth_ip $obj')
             platform.toolchain.pre_synthesis_commands += ip_tcl
         # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (we only want to keep Timing constraints).
