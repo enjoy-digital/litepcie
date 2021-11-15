@@ -80,9 +80,6 @@ static void liteuart_timer(struct timer_list *t)
 		ch = litex_read8(membase + OFF_RXTX);
 		port->icount.rx++;
 
-		/* necessary for RXEMPTY to refresh its value */
-		litex_write8(membase + OFF_EV_PENDING, EV_TX | EV_RX);
-
 		/* no overflow bits in status */
 		if (!(uart_handle_sysrq_char(port, ch)))
 			uart_insert_char(port, status, 0, ch, flg);
