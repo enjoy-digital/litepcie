@@ -245,6 +245,7 @@ static int liteuart_probe(struct platform_device *pdev)
 	struct liteuart_port *uart;
 	struct uart_port *port;
 	struct xa_limit limit;
+	struct resource *res;
 	int dev_id, ret;
 
 	/* look for aliases; auto-enumerate for free index if not found */
@@ -266,10 +267,20 @@ static int liteuart_probe(struct platform_device *pdev)
 	port = &uart->port;
 
 	/* get membase */
-	port->membase = devm_platform_get_and_ioremap_resource(pdev, 0, NULL);
-	if (IS_ERR(port->membase)) {
-		ret = PTR_ERR(port->membase);
+	res = platform_get_mem_or_io(pdev, 0);
+	if (!res) {
+		ret = -EINVAL;
 		goto err_erase_id;
+	}
+
+	if (res->flags & IORESOURCE_REG)
+		port->membase = (unsigned char __iomem	*) res->start;
+	else {
+		port->membase = devm_ioremap_resource(&pdev->dev, res);
+		if (IS_ERR(port->membase)) {
+			ret = PTR_ERR(port->membase);
+			goto err_erase_id;
+		}
 	}
 
 	/* values not from device tree */
