@@ -73,6 +73,10 @@ static DEFINE_XARRAY_FLAGS(liteuart_array, XA_FLAGS_ALLOC);
 static struct console liteuart_console;
 #endif
 
+#ifndef CONFIG_SERIAL_LITEUART_MAX_PORTS
+#define CONFIG_SERIAL_LITEUART_MAX_PORTS 1
+#endif
+
 static struct uart_driver liteuart_driver = {
 	.owner = THIS_MODULE,
 	.driver_name = "liteuart",
