@@ -31,6 +31,7 @@
 #include <linux/log2.h>
 #include <linux/poll.h>
 #include <linux/cdev.h>
+#include <linux/platform_device.h>
 
 #include "litepcie.h"
 #include "csr.h"
@@ -80,7 +81,8 @@ struct litepcie_chan {
 };
 
 struct litepcie_device {
-	struct pci_dev  *dev;
+	struct pci_dev *dev;
+	struct platform_device *uart;
 	resource_size_t bar0_size;
 	phys_addr_t bar0_phys_addr;
 	uint8_t *bar0_addr; /* virtual address of BAR0 */
@@ -625,6 +627,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 
 	struct litepcie_chan_priv *chan_priv = file->private_data;
 	struct litepcie_chan *chan = chan_priv->chan;
+	struct litepcie_device *dev = chan->litepcie_dev;
 
 	switch (cmd) {
 	case LITEPCIE_IOCTL_REG:
@@ -636,9 +639,9 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 			break;
 		}
 		if (m.is_write)
-			litepcie_writel(chan->litepcie_dev, m.addr, m.val);
+			litepcie_writel(dev, m.addr, m.val);
 		else
-			m.val = litepcie_readl(chan->litepcie_dev, m.addr);
+			m.val = litepcie_readl(dev, m.addr);
 
 		if (copy_to_user((void *)arg, &m, sizeof(m))) {
 			ret = -EFAULT;
@@ -655,7 +658,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 			ret = -EFAULT;
 			break;
 		}
-		ret = litepcie_flash_spi(chan->litepcie_dev, &m);
+		ret = litepcie_flash_spi(dev, &m);
 		if (ret == 0) {
 			if (copy_to_user((void *)arg, &m, sizeof(m))) {
 				ret = -EFAULT;
@@ -675,9 +678,9 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 			break;
 		}
 
-		litepcie_writel(chan->litepcie_dev, CSR_ICAP_ADDR_ADDR, m.addr);
-		litepcie_writel(chan->litepcie_dev, CSR_ICAP_DATA_ADDR, m.data);
-		litepcie_writel(chan->litepcie_dev, CSR_ICAP_WRITE_ADDR, 1);
+		litepcie_writel(dev, CSR_ICAP_ADDR_ADDR, m.addr);
+		litepcie_writel(dev, CSR_ICAP_DATA_ADDR, m.data);
+		litepcie_writel(dev, CSR_ICAP_WRITE_ADDR, 1);
 	}
 	break;
 #endif
@@ -693,7 +696,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 		/* loopback */
 		litepcie_writel(chan->litepcie_dev, chan->dma.base + PCIE_DMA_LOOPBACK_ENABLE_OFFSET, m.loopback_enable);
 	}
-		break;
+	break;
 	case LITEPCIE_IOCTL_DMA_WRITER:
 	{
 		struct litepcie_ioctl_dma_writer m;
@@ -726,7 +729,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 		}
 
 	}
-		break;
+	break;
 	case LITEPCIE_IOCTL_DMA_READER:
 	{
 		struct litepcie_ioctl_dma_reader m;
@@ -758,7 +761,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 		}
 
 	}
-		break;
+	break;
 	case LITEPCIE_IOCTL_MMAP_DMA_INFO:
 	{
 		struct litepcie_ioctl_mmap_dma_info m;
@@ -776,7 +779,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 			break;
 		}
 	}
-		break;
+	break;
 	case LITEPCIE_IOCTL_MMAP_DMA_WRITER_UPDATE:
 	{
 		struct litepcie_ioctl_mmap_dma_update m;
@@ -788,7 +791,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 
 		chan->dma.writer_sw_count = m.sw_count;
 	}
-		break;
+	break;
 	case LITEPCIE_IOCTL_MMAP_DMA_READER_UPDATE:
 	{
 		struct litepcie_ioctl_mmap_dma_update m;
@@ -800,7 +803,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 
 		chan->dma.reader_sw_count = m.sw_count;
 	}
-		break;
+	break;
 	case LITEPCIE_IOCTL_LOCK:
 	{
 		struct litepcie_ioctl_lock m;
@@ -845,7 +848,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 		}
 
 	}
-		break;
+	break;
 	default:
 		ret = -ENOIOCTLCMD;
 		break;
@@ -962,8 +965,8 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	uint8_t rev_id;
 	int i;
 	char fpga_identifier[256];
-
 	struct litepcie_device *litepcie_dev = NULL;
+	struct resource *tty_res = NULL;
 
 	dev_info(&dev->dev, "\e[1m[Probing device]\e[0m\n");
 
@@ -1137,6 +1140,21 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 		goto fail3;
 	}
 
+#ifdef CSR_UART_XOVER_RXTX_ADDR
+	tty_res = devm_kzalloc(&dev->dev, sizeof(struct resource), GFP_KERNEL);
+	if (!tty_res)
+		return -ENOMEM;
+	tty_res->start =
+		(resource_size_t) litepcie_dev->bar0_addr +
+		CSR_UART_XOVER_RXTX_ADDR - CSR_BASE;
+	tty_res->flags = IORESOURCE_REG;
+	litepcie_dev->uart = platform_device_register_simple("liteuart", -1, tty_res, 1);
+	if (IS_ERR(litepcie_dev->uart)) {
+		ret = PTR_ERR(litepcie_dev->uart);
+		goto fail3;
+	}
+#endif
+
 	return 0;
 
 fail3:
@@ -1167,6 +1185,9 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 		irq = pci_irq_vector(dev, i);
 		free_irq(irq, litepcie_dev);
 	}
+
+	platform_device_unregister(litepcie_dev->uart);
+
 	litepcie_free_chdev(litepcie_dev);
 
 	pci_free_irq_vectors(dev);
