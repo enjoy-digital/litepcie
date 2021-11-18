@@ -6,7 +6,7 @@
  */
 
 #include <linux/console.h>
-#include <linux/litex.h>
+//#include <linux/litex.h> FIXME: Too early to use litex.h directly from kernel, use a local version for now.
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -17,6 +17,24 @@
 #include <linux/timer.h>
 #include <linux/tty_flip.h>
 #include <linux/xarray.h>
+
+#include "litex.h"
+
+// FIXME: Too early to use  platform_get_mem_or_io directly from kernel, use a local version for now.
+
+static struct resource *local_platform_get_mem_or_io(struct platform_device *dev,
+					unsigned int num)
+{
+	u32 i;
+
+	for (i = 0; i < dev->num_resources; i++) {
+		struct resource *r = &dev->resource[i];
+
+		if ((resource_type(r) & (IORESOURCE_MEM|IORESOURCE_IO)) && num-- == 0)
+			return r;
+	}
+	return NULL;
+}
 
 /*
  * CSRs definitions (base address offsets + width)
@@ -267,7 +285,7 @@ static int liteuart_probe(struct platform_device *pdev)
 	port = &uart->port;
 
 	/* get membase */
-	res = platform_get_mem_or_io(pdev, 0);
+	res = local_platform_get_mem_or_io(pdev, 0);
 	if (!res) {
 		ret = -EINVAL;
 		goto err_erase_id;
