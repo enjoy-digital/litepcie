@@ -495,6 +495,9 @@ static ssize_t litepcie_write(struct file *file, const char __user *data, size_t
 					       (chan->dma.reader_sw_count - chan->dma.reader_hw_count) < DMA_BUFFER_COUNT/2);
 	}
 
+	if (ret < 0)
+		return ret;
+
 	i = 0;
 	underflows = 0;
 	len = size;
