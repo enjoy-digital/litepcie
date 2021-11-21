@@ -12,10 +12,10 @@ liblitepcie/liblitepcie.a: liblitepcie/litepcie_dma.o liblitepcie/litepcie_flash
 	ranlib $@
 
 litepcie_util: liblitepcie/liblitepcie.a litepcie_util.o
-	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -lrt -lm -llitepcie
+	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -llitepcie
 
 litepcie_test: liblitepcie/liblitepcie.a litepcie_test.o
-	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -lrt -lm -llitepcie
+	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -lm -llitepcie
 
 clean:
 	rm -f $(PROGS) *.o *.a *.d *~ liblitepcie/*.a liblitepcie/*.o liblitepcie/*.d
