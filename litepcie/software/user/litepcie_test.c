@@ -178,7 +178,7 @@ static void litepcie_record(const char *filename, uint32_t size)
             } else {
                 /* read available data and write it to file */
                 len = read(fds.fd, buf_rd, DMA_BUFFER_SIZE * DMA_BUFFER_COUNT);
-                if(len >= 0) {
+                if (len >= 0) {
                     if (filename != NULL) {
                         fwrite(buf_rd, fmin(size - total_len, len), 1, fo);
                         total_len += len;
@@ -350,7 +350,7 @@ static void litepcie_play(const char *filename, uint32_t loops)
         /* non zero-copy mode */
         else {
             /* read from file */
-            if(buf_wr_size < DMA_BUFFER_TOTAL_SIZE) {
+            if (buf_wr_size < DMA_BUFFER_TOTAL_SIZE) {
                 buf_wr_size = fread(buf_wr, 1, DMA_BUFFER_SIZE, fo);
 
                 /* if end of file, rewind */
@@ -433,7 +433,7 @@ int main(int argc, char **argv)
 
     signal(SIGINT, intHandler);
 
-    for(;;) {
+    for (;;) {
         c = getopt(argc, argv, "hc:z");
         if (c == -1)
             break;

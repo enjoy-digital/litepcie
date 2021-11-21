@@ -347,7 +347,7 @@ static void dma_test(void)
         /* read event */
         if (fds.revents & POLLIN) {
             len = read(fds.fd, buf_rd, DMA_BUFFER_TOTAL_SIZE);
-            if(len >= 0) {
+            if (len >= 0) {
                 uint32_t check_errors;
 #ifdef DMA_CHECK_DATA
                 check_errors = check_pn_data((uint32_t *) buf_rd, len/4, &seed_rd);
@@ -472,7 +472,7 @@ int main(int argc, char **argv)
     litepcie_device_num = 0;
 
     /* parameters */
-    for(;;) {
+    for (;;) {
         c = getopt(argc, argv, "hfc:");
         if (c == -1)
             break;
