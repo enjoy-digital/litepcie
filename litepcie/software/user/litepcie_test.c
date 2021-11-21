@@ -47,7 +47,7 @@ static void litepcie_init(const char *rate)
     printf("Reset Driver...\n");
 
     /* disable loopback */
-    litepcie_dma(fd, 0);
+    litepcie_dma_set_loopback(fd, 0);
 
     /* disable dmas */
     litepcie_dma_reader(fd, 0, &hw_count, &sw_count);
@@ -104,7 +104,7 @@ static void litepcie_record(const char *filename, uint32_t size)
     }
 
     /* disable dma loopback */
-    litepcie_dma(fds.fd, 0);
+    litepcie_dma_set_loopback(fds.fd, 0);
 
     /* get data buffer */
     if (litepcie_device_zero_copy) {
@@ -288,7 +288,7 @@ static void litepcie_play(const char *filename, uint32_t loops)
     }
 
     /* disable dma loopback */
-    litepcie_dma(fds.fd, 0);
+    litepcie_dma_set_loopback(fds.fd, 0);
 
     /* test loop */
     i = 0;

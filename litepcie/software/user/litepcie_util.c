@@ -320,7 +320,7 @@ static void dma_test(void)
     }
 
     /* enable dma loopback */
-    litepcie_dma(fds.fd, 1);
+    litepcie_dma_set_loopback(fds.fd, 1);
 
     /* test loop */
     i = 0;

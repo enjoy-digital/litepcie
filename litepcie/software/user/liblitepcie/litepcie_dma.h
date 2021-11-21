@@ -12,7 +12,7 @@
 
 #include <stdint.h>
 
-void litepcie_dma(int fd, uint8_t loopback_enable);
+void litepcie_dma_set_loopback(int fd, uint8_t loopback_enable);
 void litepcie_dma_reader(int fd, uint8_t enable, int64_t *hw_count, int64_t *sw_count);
 void litepcie_dma_writer(int fd, uint8_t enable, int64_t *hw_count, int64_t *sw_count);
 void litepcie_set_pattern(int fd, uint8_t mode, uint8_t enable, uint8_t format);

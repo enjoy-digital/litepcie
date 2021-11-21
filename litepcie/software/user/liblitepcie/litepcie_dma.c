@@ -12,7 +12,7 @@
 #include "litepcie.h"
 
 
-void litepcie_dma(int fd, uint8_t loopback_enable) {
+void litepcie_dma_set_loopback(int fd, uint8_t loopback_enable) {
     struct litepcie_ioctl_dma m;
     m.loopback_enable = loopback_enable;
     ioctl(fd, LITEPCIE_IOCTL_DMA, &m);
