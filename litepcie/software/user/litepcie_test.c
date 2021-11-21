@@ -10,25 +10,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdarg.h>
 #include <inttypes.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/poll.h>
-#include <time.h>
 #include <math.h>
-#include <unistd.h>
-#include <termios.h>
-#include <fcntl.h>
 #include <signal.h>
-
-#include "litepcie.h"
-#include "config.h"
-#include "csr.h"
-#include "flags.h"
-
 #include "liblitepcie.h"
 
 static char litepcie_device[1024];

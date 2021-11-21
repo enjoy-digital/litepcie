@@ -7,121 +7,15 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdarg.h>
-#include <inttypes.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <sys/poll.h>
-#include <time.h>
-
+#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
+#include "litepcie_flash.h"
+#include "litepcie_helpers.h"
 #include "litepcie.h"
-#include "config.h"
-#include "csr.h"
-#include "flags.h"
-
-#include "liblitepcie.h"
-
-int64_t get_time_ms(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000U);
-}
-
-/* ioctl */
-
-uint32_t litepcie_readl(int fd, uint32_t addr) {
-    struct litepcie_ioctl_reg m;
-    m.is_write = 0;
-    m.addr = addr;
-    ioctl(fd, LITEPCIE_IOCTL_REG, &m);
-    return m.val;
-}
-
-void litepcie_writel(int fd, uint32_t addr, uint32_t val) {
-    struct litepcie_ioctl_reg m;
-    m.is_write = 1;
-    m.addr = addr;
-    m.val = val;
-    ioctl(fd, LITEPCIE_IOCTL_REG, &m);
-}
-
-void litepcie_reload(int fd) {
-    struct litepcie_ioctl_icap m;
-	m.addr = 0x4;
-	m.data = 0xf;
-    ioctl(fd, LITEPCIE_IOCTL_ICAP, &m);
-}
-
-void litepcie_dma(int fd, uint8_t loopback_enable) {
-    struct litepcie_ioctl_dma m;
-    m.loopback_enable = loopback_enable;
-    ioctl(fd, LITEPCIE_IOCTL_DMA, &m);
-}
-
-void litepcie_dma_writer(int fd, uint8_t enable, int64_t *hw_count, int64_t *sw_count) {
-    struct litepcie_ioctl_dma_writer m;
-    m.enable = enable;
-    ioctl(fd, LITEPCIE_IOCTL_DMA_WRITER, &m);
-    *hw_count = m.hw_count;
-    *sw_count = m.sw_count;
-}
-
-void litepcie_dma_reader(int fd, uint8_t enable, int64_t *hw_count, int64_t *sw_count) {
-    struct litepcie_ioctl_dma_reader m;
-    m.enable = enable;
-    ioctl(fd, LITEPCIE_IOCTL_DMA_READER, &m);
-    *hw_count = m.hw_count;
-    *sw_count = m.sw_count;
-}
-
-/* lock */
-
-uint8_t litepcie_request_dma_reader(int fd) {
-    struct litepcie_ioctl_lock m;
-    m.dma_reader_request = 1;
-    m.dma_writer_request = 0;
-    m.dma_reader_release = 0;
-    m.dma_writer_release = 0;
-    ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
-    return m.dma_reader_status;
-}
-
-uint8_t litepcie_request_dma_writer(int fd) {
-    struct litepcie_ioctl_lock m;
-    m.dma_reader_request = 0;
-    m.dma_writer_request = 1;
-    m.dma_reader_release = 0;
-    m.dma_writer_release = 0;
-    ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
-    return m.dma_writer_status;
-}
-
-void litepcie_release_dma_reader(int fd) {
-    struct litepcie_ioctl_lock m;
-    m.dma_reader_request = 0;
-    m.dma_writer_request = 0;
-    m.dma_reader_release = 1;
-    m.dma_writer_release = 0;
-    ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
-}
-
-void litepcie_release_dma_writer(int fd) {
-    struct litepcie_ioctl_lock m;
-    m.dma_reader_request = 0;
-    m.dma_writer_request = 0;
-    m.dma_reader_release = 0;
-    m.dma_writer_release = 1;
-    ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
-}
 
 #ifdef CSR_FLASH_BASE
-/* flash */
 
 //#define FLASH_FULL_ERASE
 #define FLASH_RETRIES 16

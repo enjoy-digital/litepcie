@@ -7,8 +7,6 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include <ctype.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -17,18 +15,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#include <sys/mman.h>
 #include <sys/poll.h>
-#include <time.h>
-#include <unistd.h>
-#include <termios.h>
-#include <fcntl.h>
 #include <signal.h>
-
-#include "litepcie.h"
-#include "config.h"
-#include "csr.h"
-#include "flags.h"
 
 #include "liblitepcie.h"
 
