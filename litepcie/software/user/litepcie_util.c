@@ -14,11 +14,9 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <sys/ioctl.h>
-#include <sys/poll.h>
 #include <signal.h>
-
 #include "liblitepcie.h"
+#include "helpers.h"
 
 #define DMA_CHECK_DATA
 #define DMA_RANDOM_DATA
@@ -215,14 +213,7 @@ static void flash_reload(void)
 
 /* dma */
 
-static inline uint32_t add_mod_int(uint32_t a, uint32_t b, uint32_t m)
-{
-    a += b;
-    if (a >= m)
-        a -= m;
-    return a;
-}
-
+#ifdef DMA_CHECK_DATA
 static inline uint32_t seed_to_data(uint32_t seed)
 {
 #ifdef DMA_RANDOM_DATA
@@ -240,12 +231,12 @@ static void write_pn_data(uint32_t *buf, int count, uint32_t *pseed)
     seed = *pseed;
     for(i = 0; i < count; i++) {
         buf[i] = seed_to_data(seed);
-        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE/4);
+        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / 4);
     }
     *pseed = seed;
 }
 
-static int check_pn_data(uint32_t *buf, int count, uint32_t *pseed)
+static int check_pn_data(const uint32_t *buf, int count, uint32_t *pseed)
 {
     int i, errors;
     uint32_t seed;
@@ -261,136 +252,82 @@ static int check_pn_data(uint32_t *buf, int count, uint32_t *pseed)
     *pseed = seed;
     return errors;
 }
+#endif
 
-static void dma_test(void)
+static void dma_test(uint8_t zero_copy)
 {
-    struct pollfd fds;
-    int ret;
-    int i;
-    ssize_t len;
+    static struct litepcie_dma_ctrl dma = {.use_reader = 1, .use_writer = 1, .loopback = 1};
 
-    int64_t reader_hw_count, reader_sw_count, reader_sw_count_last;
-    int64_t writer_hw_count, writer_sw_count;
-
-    int64_t duration;
+    // stats
+    int i = 0;
+    int64_t reader_sw_count_last = 0;
     int64_t last_time;
+    uint32_t errors = 0;
 
-    uint32_t seed_wr;
-    uint32_t seed_rd;
-
-    uint32_t errors;
-
-    char *buf_rd, *buf_wr;
+#ifdef DMA_CHECK_DATA
+    uint32_t seed_wr = 0;
+    uint32_t seed_rd = 0;
+    unsigned n_buffers_written = 0;
+#endif
 
     signal(SIGINT, intHandler);
 
-    buf_rd = calloc(1, DMA_BUFFER_TOTAL_SIZE);
-    if (!buf_rd) {
-        fprintf(stderr, "%d: alloc failed\n", __LINE__);
+    if (litepcie_dma_init(&dma, litepcie_device, zero_copy))
         exit(1);
-    }
-    buf_wr = calloc(1, DMA_BUFFER_TOTAL_SIZE);
-    if (!buf_wr) {
-        fprintf(stderr, "%d: alloc failed\n", __LINE__);
-        free(buf_rd);
-        exit(1);
-    }
-
-    errors = 0;
-    seed_wr = 0;
-    seed_rd = 0;
 
 #ifdef DMA_CHECK_DATA
-    write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_TOTAL_SIZE/4, &seed_wr);
 #endif
 
-    fds.fd = open(litepcie_device, O_RDWR | O_CLOEXEC);
-    fds.events = POLLIN | POLLOUT;
-    if (fds.fd < 0) {
-        fprintf(stderr, "Could not init driver\n");
-        goto exit;
-    }
-
-    /* request dma */
-    if ((litepcie_request_dma_reader(fds.fd) == 0) |
-        (litepcie_request_dma_writer(fds.fd) == 0)) {
-        printf("DMA not available, exiting.\n");
-        errors += 1;
-        goto exit;
-    }
-
-    /* enable dma loopback */
-    litepcie_dma_set_loopback(fds.fd, 1);
-
     /* test loop */
-    i = 0;
-    reader_hw_count = 0;
-    reader_sw_count = 0;
-    reader_sw_count_last = 0;
-    writer_hw_count = 0;
-    writer_sw_count = 0;
     last_time = get_time_ms();
     for (;;) {
         /* exit loop on ctrl+c pressed */
         if (!keep_running)
             break;
 
-        /* set / get dma */
-        litepcie_dma_writer(fds.fd, 1, &writer_hw_count, &writer_sw_count);
-        litepcie_dma_reader(fds.fd, 1, &reader_hw_count, &reader_sw_count);
+        litepcie_dma_process(&dma);
 
-        /* polling */
-        ret = poll(&fds, 1, 100);
-        if (ret <= 0)
-            continue;
-
-        /* read event */
-        if (fds.revents & POLLIN) {
-            len = read(fds.fd, buf_rd, DMA_BUFFER_TOTAL_SIZE);
-            if (len >= 0) {
-                uint32_t check_errors;
 #ifdef DMA_CHECK_DATA
-                check_errors = check_pn_data((uint32_t *) buf_rd, len/4, &seed_rd);
-                if (writer_hw_count > DMA_BUFFER_COUNT)
-                    errors += check_errors;
-#endif
-            }
+        while (1) {
+            if (n_buffers_written == DMA_BUFFER_COUNT)
+                break;
+            char *buf_wr = litepcie_dma_next_write_buffer(&dma);
+            if (!buf_wr)
+                break;
+            write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_wr);
+            n_buffers_written++;
         }
 
-        /* write event */
-        if (fds.revents & POLLOUT) {
-            len = write(fds.fd, buf_wr, DMA_BUFFER_TOTAL_SIZE);
+        uint32_t check_errors = 0;
+        while (1) {
+            char *buf_rd = litepcie_dma_next_read_buffer(&dma);
+            if (!buf_rd)
+                break;
+            check_errors += check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd);
+            if (dma.writer_hw_count > DMA_BUFFER_COUNT)
+                errors += check_errors;
         }
+#endif
 
         /* statistics */
-        duration = get_time_ms() - last_time;
+        int64_t duration = get_time_ms() - last_time;
         if (duration > 200) {
             if (i % 10 == 0)
-                printf("\e[1mDMA_SPEED(Gbps) TX_BUFFERS RX_BUFFERS  DIFF  ERRORS\e[0m\n");
+                printf("\e[1mDMA_SPEED(Gbps)\tTX_BUFFERS\tRX_BUFFERS\tDIFF\tERRORS\e[0m\n");
             i++;
-            printf("%14.2f %10" PRIu64 " %10" PRIu64 " %6" PRIu64 " %7u\n",
-                    (double)(reader_sw_count - reader_sw_count_last) * DMA_BUFFER_SIZE * 8 / ((double)duration * 1e6),
-                    reader_sw_count,
-                    writer_sw_count,
-                    reader_sw_count - writer_sw_count,
-                    errors);
+            printf("%14.2f\t%10" PRIu64 "\t%10" PRIu64 "\t%6" PRIu64 "\t%7u\n",
+                   (double)(dma.reader_sw_count - reader_sw_count_last) * DMA_BUFFER_SIZE * 8 / ((double)duration * 1e6),
+                   dma.reader_sw_count,
+                   dma.writer_sw_count,
+                   dma.reader_sw_count - dma.writer_sw_count,
+                   errors);
             errors = 0;
             last_time = get_time_ms();
-            reader_sw_count_last = reader_sw_count;
+            reader_sw_count_last = dma.reader_sw_count;
         }
     }
 
-    litepcie_dma_reader(fds.fd, 0, &reader_hw_count, &reader_sw_count);
-    litepcie_dma_writer(fds.fd, 0, &writer_hw_count, &writer_sw_count);
-
-    litepcie_release_dma_reader(fds.fd);
-    litepcie_release_dma_writer(fds.fd);
-
-exit:
-    free(buf_rd);
-    free(buf_wr);
-
-    close(fds.fd);
+    litepcie_dma_cleanup(&dma);
 }
 
 
@@ -499,7 +436,7 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "info"))
         info();
     else if (!strcmp(cmd, "dma_test"))
-        dma_test();
+        dma_test(0);
     else if (!strcmp(cmd, "scratch_test"))
         scratch_test();
 #ifdef CSR_UART_XOVER_RXTX_ADDR

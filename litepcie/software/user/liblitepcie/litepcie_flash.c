@@ -242,7 +242,7 @@ int litepcie_flash_write(int fd,
         }
 
         if (retries > FLASH_RETRIES) {
-            printf("Not able to write page, exiting\n");
+            printf("Not able to write page\n");
             return 1;
         }
     }

@@ -3,7 +3,7 @@ LDFLAGS=-g
 CC=$(CROSS_COMPILE)gcc
 AR=ar
 
-PROGS=litepcie_util litepcie_test
+PROGS=litepcie_util litepcie_test litepcie_dma_minimal_example
 
 all: $(PROGS)
 
@@ -11,11 +11,14 @@ liblitepcie/liblitepcie.a: liblitepcie/litepcie_dma.o liblitepcie/litepcie_flash
 	ar rcs $@ $+
 	ranlib $@
 
-litepcie_util: liblitepcie/liblitepcie.a litepcie_util.o
+litepcie_util: liblitepcie/liblitepcie.a litepcie_util.o helpers.o
 	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -llitepcie
 
-litepcie_test: liblitepcie/liblitepcie.a litepcie_test.o
+litepcie_test: liblitepcie/liblitepcie.a litepcie_test.o helpers.o
 	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -lm -llitepcie
+
+litepcie_dma_minimal_example: liblitepcie/liblitepcie.a litepcie_dma_minimal_example.o
+	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -llitepcie
 
 clean:
 	rm -f $(PROGS) *.o *.a *.d *~ liblitepcie/*.a liblitepcie/*.o liblitepcie/*.d
