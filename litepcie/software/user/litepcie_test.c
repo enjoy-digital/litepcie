@@ -32,7 +32,7 @@ void intHandler(int dummy) {
 
 /* litepcie */
 
-static void litepcie_init(const char * rate)
+static void litepcie_init(const char *rate)
 {
     int fd;
     int64_t hw_count, sw_count;
@@ -194,7 +194,7 @@ static void litepcie_record(const char *filename, uint32_t size)
         /* statistics */
         duration = get_time_ms() - last_time;
         if (duration > 200) {
-            if(i%10 == 0)
+            if (i % 10 == 0)
                 printf("\e[1mSPEED(Gbps)    BUFFERS SIZE(MB)\e[0m\n");
             i++;
             printf("%10.2f %10" PRIu64 " %8" PRIu64"\n",
@@ -299,6 +299,7 @@ static void litepcie_play(const char *filename, uint32_t loops)
     reader_sw_count = 0;
     reader_sw_count_last = 0;
     last_time = get_time_ms();
+
     for (;;) {
         /* exit loop on key or ctrl+c pressed */
         if (!(keep_running))
@@ -318,13 +319,13 @@ static void litepcie_play(const char *filename, uint32_t loops)
                 int64_t buf_offset;
 
                 /* count available buffers and read them from file */
-                buf_count = DMA_BUFFER_COUNT/2 - (reader_sw_count - reader_hw_count);
-                buf_offset = (reader_sw_count%DMA_BUFFER_COUNT)*DMA_BUFFER_SIZE;
+                buf_count = DMA_BUFFER_COUNT / 2 - (reader_sw_count - reader_hw_count);
+                buf_offset = (reader_sw_count % DMA_BUFFER_COUNT) * DMA_BUFFER_SIZE;
 
                 if (reader_sw_count - reader_hw_count < 0) {
                     sw_underflows += (reader_hw_count - reader_sw_count);
                 } else {
-                    for (j=0; j<buf_count; j++) {
+                    for (j = 0; j < buf_count; j ++) {
                         len = fread(buf_wr + buf_offset, 1, DMA_BUFFER_SIZE, fo);
                         /* if end of file, rewind */
                         if (feof(fo)) {
@@ -377,13 +378,13 @@ static void litepcie_play(const char *filename, uint32_t loops)
         /* statistics */
         duration = get_time_ms() - last_time;
         if (duration > 200) {
-            if(i%10 == 0)
+            if (i % 10 == 0)
                 printf("\e[1mSPEED(Gbps)   BUFFERS   SIZE(MB)   LOOP UNDERFLOWS\e[0m\n");
             i++;
             printf("%10.2f %10" PRIu64 " %10" PRIu64 " %6d %10ld\n",
                     (double)(reader_sw_count-reader_sw_count_last) * DMA_BUFFER_SIZE * 8 / ((double)duration * 1e6),
                     reader_sw_count,
-                    (reader_sw_count*DMA_BUFFER_SIZE)/1024/1024,
+                    (reader_sw_count * DMA_BUFFER_SIZE) / 1024 / 1024,
                     current_loop,
                     sw_underflows);
             sw_underflows = 0;
