@@ -46,13 +46,13 @@ static void info(void)
         exit(1);
     }
 
-    for(i=0; i<256; i++)
-        fpga_identification[i] = litepcie_readl(fd, CSR_IDENTIFIER_MEM_BASE + 4*i);
+    for (i = 0; i < 256; i ++)
+        fpga_identification[i] = litepcie_readl(fd, CSR_IDENTIFIER_MEM_BASE + 4 * i);
     printf("FPGA identification: %s\n", fpga_identification);
 #ifdef CSR_DNA_BASE
     printf("FPGA dna: 0x%08x%08x\n",
-        litepcie_readl(fd, CSR_DNA_ID_ADDR + 4*0),
-        litepcie_readl(fd, CSR_DNA_ID_ADDR + 4*1)
+        litepcie_readl(fd, CSR_DNA_ID_ADDR + 4 * 0),
+        litepcie_readl(fd, CSR_DNA_ID_ADDR + 4 * 1)
     );
 #endif
 #ifdef CSR_XADC_BASE
@@ -178,7 +178,7 @@ static void flash_read(const char *filename, uint32_t size, uint32_t offset)
 
     base = offset;
     sector_size = litepcie_flash_get_erase_block_size(fd);
-    for(i = 0; i < size; i++) {
+    for (i = 0; i < size; i++) {
         if ((i % sector_size) == 0) {
             printf("Dumping %08x\r", base + i);
             fflush(stdout);
@@ -206,7 +206,7 @@ static void flash_reload(void)
     litepcie_reload(fd);
 
     printf("================================================================\n");
-    printf("= PLEASE REBOOT YOUR HARDWARE TO START WITH NEW FPGA GATEWARE =\n");
+    printf("= PLEASE REBOOT YOUR HARDWARE TO START WITH NEW FPGA GATEWARE  =\n");
     printf("================================================================\n");
 
     close(fd);
@@ -252,7 +252,7 @@ static int check_pn_data(uint32_t *buf, int count, uint32_t *pseed)
 
     errors = 0;
     seed = *pseed;
-    for(i = 0; i < count; i++) {
+    for (i = 0; i < count; i++) {
         if (buf[i] != seed_to_data(seed)) {
             errors++;
         }
@@ -365,7 +365,7 @@ static void dma_test(void)
         /* statistics */
         duration = get_time_ms() - last_time;
         if (duration > 200) {
-            if(i%10 == 0)
+            if (i % 10 == 0)
                 printf("\e[1mDMA_SPEED(Gbps) TX_BUFFERS RX_BUFFERS  DIFF  ERRORS\e[0m\n");
             i++;
             printf("%14.2f %10" PRIu64 " %10" PRIu64 " %6" PRIu64 " %7u\n",
