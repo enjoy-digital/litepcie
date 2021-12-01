@@ -685,7 +685,7 @@ class LitePCIeDMAStatus(Module, AutoCSR):
     LitePCIeDMAStatus writes 16 x 32-bit words to the Host memory. The first 8 words are reserved for
     the internal DMA status and the last 8 words for optional external status. The mapping as follows:
 
-    0:    Sync Word (0x5aa55aa50
+    0:    Sync Word (0x5aa55aa5).
     1:    DMA Writer Loop Status.
     2:    DMA Reader Loop Status.
     3-7:  Reserved
@@ -704,7 +704,7 @@ class LitePCIeDMAStatus(Module, AutoCSR):
                 ("``0b00``", "External."),
                 ("``0b01``", "DMA Writer IRQ."),
                 ("``0b10``", "DMA Reader IRQ."),
-                ("``0b11``", "Reserved."),
+                ("``0b11``", "Software."),
             ]),
         ])
         self.address = CSRStorage(32, description="Status Base Address on Host.")
@@ -737,6 +737,7 @@ class LitePCIeDMAStatus(Module, AutoCSR):
             0b00: update.eq(self.external_update),
             0b01: update.eq(writer.irq),
             0b10: update.eq(reader.irq),
+            0b11: update.eq(self.control.re),
         }
         self.comb += Case(self.control.fields.update, update_cases)
 
