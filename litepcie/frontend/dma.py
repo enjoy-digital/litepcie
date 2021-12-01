@@ -675,6 +675,112 @@ class LitePCIeDMABuffering(Module, AutoCSR):
             )
         ]
 
+# LitePCIeDMAStatus --------------------------------------------------------------------------------
+
+class LitePCIeDMAStatus(Module, AutoCSR):
+    """LitePCIe DMA Status
+
+    Optional DMA Status writer to Host Memory.
+
+    LitePCIeDMAStatus writes 16 x 32-bit words to the Host memory. The first 8 words are reserved for
+    the internal DMA status and the last 8 words for optional external status. The mapping as follows:
+
+    0:    Sync Word (0x5aa55aa50
+    1:    DMA Writer Loop Status.
+    2:    DMA Reader Loop Status.
+    3-7:  Reserved
+    8-15: External (Optional, from user logic/design).
+
+    The Update to the Host Memory can be triggered from the following events:
+    - External (From user logic/design).
+    - DMA Writer IRQ.
+    - DMA Reader IRQ.
+    Allowing a Synchronous or Asynchrounous update with the DMAs.
+    """
+    def __init__(self, endpoint, writer, reader):
+        self.control = CSRStorage(fields=[
+            CSRField("enable", offset=0, size=1, description="Status Enable"),
+            CSRField("update", offset=4, size=2, description="Status Update Event", values=[
+                ("``0b00``", "External."),
+                ("``0b01``", "DMA Writer IRQ."),
+                ("``0b10``", "DMA Reader IRQ."),
+                ("``0b11``", "Reserved."),
+            ]),
+        ])
+        self.address = CSRStorage(32, description="Status Base Address on Host.")
+
+        self.external_update = Signal()
+        self.external_status = Array([Signal(32) for _ in range(8)])
+
+        # # #
+
+
+        # Create Status Array.
+        # --------------------
+        status = Array([Signal(32) for _ in range(16)])
+        # 0-7:  Internal.
+        sync_word = 0x5aa55aa5
+        self.comb += [
+            status[0].eq(0x5aa55aa5),
+            status[1].eq(writer.table.loop_status.status),
+            status[2].eq(reader.table.loop_status.status),
+        ]
+
+        # 7-15: External.
+        for i in range(8):
+            self.comb += status[8 + i].eq(self.external_status[i])
+
+        # Update Event.
+        # -------------
+        update = Signal()
+        update_cases = {
+            0b00: update.eq(self.external_update),
+            0b01: update.eq(writer.irq),
+            0b10: update.eq(reader.irq),
+        }
+        self.comb += Case(self.control.fields.update, update_cases)
+
+        # Update Logic.
+        # -------------
+        port   = endpoint.crossbar.get_master_port(write_only=True)
+        offset = Signal(4)
+
+        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        fsm.act("IDLE",
+            If(self.control.fields.enable,
+                If(update,
+                    NextValue(offset, 0),
+                    NextState("WORD-WRITE")
+                )
+            )
+        )
+        fsm.act("WORD-UPDATE",
+            NextValue(offset, offset + 1),
+            If(offset == (16 - 1),
+                NextState("IDLE")
+            ).Else(
+                NextState("WORD-WRITE")
+            )
+        )
+        self.comb += [
+            port.source.channel.eq(port.channel),
+            port.source.first.eq(1),
+            port.source.last.eq(1),
+            port.source.adr.eq(self.address.storage + 4*offset),
+            port.source.req_id.eq(endpoint.phy.id),
+            port.source.tag.eq(0),
+            port.source.len.eq(1),
+            port.source.dat.eq(status[offset]),
+        ]
+
+        fsm.act("WORD-WRITE",
+            port.source.valid.eq(1),
+            port.source.we.eq(1),
+            If(port.source.ready,
+                NextState("WORD-UPDATE")
+            )
+        )
+
 # LitePCIeDMA --------------------------------------------------------------------------------------
 
 class LitePCIeDMA(Module, AutoCSR):
@@ -690,7 +796,8 @@ class LitePCIeDMA(Module, AutoCSR):
         with_loopback      = False,
         with_synchronizer  = False,
         with_buffering     = False, buffering_depth=256*8, writer_buffering_depth=None, reader_buffering_depth=None,
-        with_monitor       = False):
+        with_monitor       = False,
+        with_status        = False):
 
         # Writer/Reader ----------------------------------------------------------------------------
         writer = LitePCIeDMAWriter(
@@ -731,6 +838,14 @@ class LitePCIeDMA(Module, AutoCSR):
         if with_monitor:
             self.submodules.writer_monitor = stream.Monitor(self.sink,   count_width=16, with_overflows  = True)
             self.submodules.reader_monitor = stream.Monitor(self.source, count_width=16, with_underflows = True)
+
+        # Status -----------------------------------------------------------------------------------
+        if with_status:
+            self.submodules.status = LitePCIeDMAStatus(
+                endpoint = endpoint,
+                writer   = writer,
+                reader   = reader
+            )
 
     def add_plugin_module(self, m):
         self.comb += [
