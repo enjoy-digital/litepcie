@@ -378,10 +378,40 @@ class S7PCIEPHY(Module, AutoCSR):
             ]
 
     # Hard IP sources ------------------------------------------------------------------------------
-    def add_sources(self, platform, phy_path, phy_filename):
+    def add_sources(self, platform, phy_path, phy_filename=None):
         platform.add_source(os.path.join(phy_path, "pcie_pipe_clock.v"))
         platform.add_source(os.path.join(phy_path, "pcie_s7_support.v"))
-        platform.add_ip(os.path.join(phy_path, phy_filename))
+        if phy_filename is not None:
+            platform.add_ip(os.path.join(phy_path, phy_filename))
+        else:
+            config = {
+                'Bar0_Scale': 'Megabytes',
+                'Bar0_Size': 1,
+                'Buf_Opt_BMA': True,
+                'Component_Name': 'pcie',
+                'Device_ID': 7020 + self.nlanes,
+                'IntX_Generation': False,
+                'Interface_Width': '64_bit',
+                'Legacy_Interrupt': None,
+                'Link_Speed': '5.0_GT/s',
+                'MSI_64b': False,
+                'Max_Payload_Size': '512_bytes',
+                'Maximum_Link_Width': f'X{self.nlanes}',
+                'PCIe_Blk_Locn': 'X0Y0',
+                'Ref_Clk_Freq': '100_MHz',
+                'Trans_Buf_Pipeline': None,
+                'Trgt_Link_Speed': "4'h2",
+                'User_Clk_Freq': 125,
+            }
+            ip_tcl = []
+            ip_tcl.append("create_ip -vendor xilinx.com -name pcie_7x -module_name pcie_s7")
+            ip_tcl.append('set obj [get_ips pcie_s7]')
+            ip_tcl.append("set_property -dict [list \\")
+            for config, value in config.items():
+                ip_tcl.append("CONFIG.{} {} \\".format(config, '{{' + str(value) + '}}'))
+            ip_tcl.append(f"] $obj")
+            ip_tcl.append('synth_ip $obj')
+            platform.toolchain.pre_synthesis_commands += ip_tcl
         # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (we only want to keep Timing constraints).
         if self.pcie_gt_device == "GTP":
             platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtp_common.gtpe2_common_i}}]")
@@ -397,9 +427,8 @@ class S7PCIEPHY(Module, AutoCSR):
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_hard_ip:
-            phy_path     = "xilinx_s7_gen2_x{}".format(self.nlanes)
+            phy_path     = "xilinx_s7_gen2"
             self.add_sources(self.platform,
                 phy_path     = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
-                phy_filename = "pcie_s7.xci"
             )
         self.specials += Instance("pcie_support", **self.pcie_phy_params)
