@@ -9,6 +9,10 @@
 
 #include <time.h>
 #include <sys/ioctl.h>
+#include <stdio.h>
+#include <errno.h>
+#include <string.h>
+#include <stdlib.h>
 #include "litepcie_helpers.h"
 #include "litepcie.h"
 
@@ -23,7 +27,7 @@ uint32_t litepcie_readl(int fd, uint32_t addr) {
     struct litepcie_ioctl_reg m;
     m.is_write = 0;
     m.addr = addr;
-    ioctl(fd, LITEPCIE_IOCTL_REG, &m);
+    checked_ioctl(fd, LITEPCIE_IOCTL_REG, &m);
     return m.val;
 }
 
@@ -32,12 +36,19 @@ void litepcie_writel(int fd, uint32_t addr, uint32_t val) {
     m.is_write = 1;
     m.addr = addr;
     m.val = val;
-    ioctl(fd, LITEPCIE_IOCTL_REG, &m);
+    checked_ioctl(fd, LITEPCIE_IOCTL_REG, &m);
 }
 
 void litepcie_reload(int fd) {
     struct litepcie_ioctl_icap m;
     m.addr = 0x4;
     m.data = 0xf;
-    ioctl(fd, LITEPCIE_IOCTL_ICAP, &m);
+    checked_ioctl(fd, LITEPCIE_IOCTL_ICAP, &m);
+}
+
+void _check_ioctl(int status, const char *file, int line) {
+    if (status) {
+        fprintf(stderr, "Failed ioctl at %s:%d: %s\n", file, line, strerror(errno));
+        abort();
+    }
 }
