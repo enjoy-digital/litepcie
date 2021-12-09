@@ -23,6 +23,7 @@
 
 static char litepcie_device[1024];
 static int litepcie_device_num;
+static uint8_t litepcie_device_zero_copy;
 
 sig_atomic_t keep_running = 1;
 
@@ -383,6 +384,7 @@ static void help(void)
            "options:\n"
            "-h                                Help\n"
            "-c device_num                     Select the device (default = 0)\n"
+           "-z                                Enable zero-copy DMA mode\n"
            "\n"
            "available commands:\n"
            "info                              Board information\n"
@@ -407,10 +409,11 @@ int main(int argc, char **argv)
     int c;
 
     litepcie_device_num = 0;
+    litepcie_device_zero_copy = 0;
 
     /* parameters */
     for (;;) {
-        c = getopt(argc, argv, "hfc:");
+        c = getopt(argc, argv, "hc:z");
         if (c == -1)
             break;
         switch(c) {
@@ -419,6 +422,9 @@ int main(int argc, char **argv)
             break;
         case 'c':
             litepcie_device_num = atoi(optarg);
+            break;
+        case 'z':
+            litepcie_device_zero_copy = 1;
             break;
         default:
             exit(1);
