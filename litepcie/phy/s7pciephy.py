@@ -391,7 +391,7 @@ class S7PCIEPHY(Module, AutoCSR):
                 "Component_Name"     : "pcie",
                 "Device_ID"          : 7020 + self.nlanes,
                 "IntX_Generation"    : False,
-                "Interface_Width"    : "64_bit",
+                "Interface_Width"    : f"{self.pcie_data_width}_bit",
                 "Legacy_Interrupt"   : None,
                 "Link_Speed"         : "5.0_GT/s",
                 "MSI_64b"            : False,
