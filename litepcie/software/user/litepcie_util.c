@@ -23,7 +23,6 @@
 
 static char litepcie_device[1024];
 static int litepcie_device_num;
-static uint8_t litepcie_device_zero_copy;
 
 sig_atomic_t keep_running = 1;
 
@@ -407,6 +406,8 @@ int main(int argc, char **argv)
 {
     const char *cmd;
     int c;
+    static uint8_t litepcie_device_zero_copy;
+
 
     litepcie_device_num = 0;
     litepcie_device_zero_copy = 0;
@@ -442,7 +443,7 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "info"))
         info();
     else if (!strcmp(cmd, "dma_test"))
-        dma_test(0);
+        dma_test(litepcie_device_zero_copy);
     else if (!strcmp(cmd, "scratch_test"))
         scratch_test();
 #ifdef CSR_UART_XOVER_RXTX_ADDR
