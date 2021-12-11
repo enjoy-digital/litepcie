@@ -16,7 +16,6 @@
 #include <math.h>
 #include <signal.h>
 #include "liblitepcie.h"
-#include "helpers.h"
 
 sig_atomic_t keep_running = 1;
 

@@ -16,7 +16,6 @@
 #include <fcntl.h>
 #include <signal.h>
 #include "liblitepcie.h"
-#include "helpers.h"
 
 #define DMA_CHECK_DATA
 #define DMA_RANDOM_DATA
@@ -212,6 +211,14 @@ static void flash_reload(void)
 #endif
 
 /* dma */
+
+static inline int64_t add_mod_int(int64_t a, int64_t b, int64_t m)
+{
+    a += b;
+    if (a >= m)
+        a -= m;
+    return a;
+}
 
 #ifdef DMA_CHECK_DATA
 static inline uint32_t seed_to_data(uint32_t seed)
