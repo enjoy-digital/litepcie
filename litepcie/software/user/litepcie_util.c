@@ -307,6 +307,7 @@ static void dma_test(uint8_t zero_copy)
                 if (!buf_rd)
                     break;
                 check_errors += check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd);
+                memset(buf_rd, 0, DMA_BUFFER_SIZE);
                 if (dma.writer_hw_count > DMA_BUFFER_COUNT)
                     errors += check_errors;
             }
