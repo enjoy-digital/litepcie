@@ -466,7 +466,7 @@ static ssize_t litepcie_read(struct file *file, char __user *data, size_t size, 
 	}
 
 	if (overflows)
-		dev_dbg(&s->dev->dev, "Reading too late, %d buffers lost\n", overflows);
+		dev_err(&s->dev->dev, "Reading too late, %d buffers lost\n", overflows);
 
 #ifdef DEBUG_READ
 	dev_dbg(&s->dev->dev, "read: read %ld bytes out of %ld\n", size - len, size);
@@ -520,7 +520,7 @@ static ssize_t litepcie_write(struct file *file, const char __user *data, size_t
 	}
 
 	if (underflows)
-		dev_dbg(&s->dev->dev, "Writing too late, %d buffers lost\n", underflows);
+		dev_err(&s->dev->dev, "Writing too late, %d buffers lost\n", underflows);
 
 #ifdef DEBUG_WRITE
 	dev_dbg(&s->dev->dev, "write: write %ld bytes out of %ld\n", size - len, size);
