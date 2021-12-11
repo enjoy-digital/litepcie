@@ -245,9 +245,9 @@ static int check_pn_data(const uint32_t *buf, int count, uint32_t *pseed)
     seed = *pseed;
     for (i = 0; i < count; i++) {
         if (buf[i] != seed_to_data(seed)) {
-            errors++;
+            errors ++;
         }
-        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE/4);
+        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / 4);
     }
     *pseed = seed;
     return errors;
@@ -274,9 +274,6 @@ static void dma_test(uint8_t zero_copy)
 
     if (litepcie_dma_init(&dma, litepcie_device, zero_copy))
         exit(1);
-
-#ifdef DMA_CHECK_DATA
-#endif
 
     /* test loop */
     last_time = get_time_ms();

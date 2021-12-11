@@ -177,7 +177,6 @@ void litepcie_dma_process(struct litepcie_dma_ctrl *dma)
             /* update dma sw_count*/
             dma->mmap_dma_update.sw_count = dma->writer_sw_count + dma->buffers_available_read;
             ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_WRITER_UPDATE, &dma->mmap_dma_update);
-
         } else {
             len = read(dma->fds.fd, dma->buf_rd, DMA_BUFFER_TOTAL_SIZE);
             dma->buffers_available_read = len / DMA_BUFFER_SIZE;
