@@ -285,24 +285,24 @@ static void dma_test(uint8_t zero_copy)
         litepcie_dma_process(&dma);
 
 #ifdef DMA_CHECK_DATA
-        while (1) {
-            if (n_buffers_written == DMA_BUFFER_COUNT)
-                break;
-            char *buf_wr = litepcie_dma_next_write_buffer(&dma);
-            if (!buf_wr)
-                break;
-            write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_wr);
-            n_buffers_written++;
-        }
-
-        uint32_t check_errors = 0;
-        while (1) {
-            char *buf_rd = litepcie_dma_next_read_buffer(&dma);
-            if (!buf_rd)
-                break;
-            check_errors += check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd);
-            if (dma.writer_hw_count > DMA_BUFFER_COUNT)
-                errors += check_errors;
+        if (n_buffers_written < DMA_BUFFER_COUNT) {
+            while (1) {
+                char *buf_wr = litepcie_dma_next_write_buffer(&dma);
+                if (!buf_wr)
+                    break;
+                write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_wr);
+                n_buffers_written++;
+            }
+        } else {
+            uint32_t check_errors = 0;
+            while (1) {
+                char *buf_rd = litepcie_dma_next_read_buffer(&dma);
+                if (!buf_rd)
+                    break;
+                check_errors += check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd);
+                if (dma.writer_hw_count > DMA_BUFFER_COUNT)
+                    errors += check_errors;
+            }
         }
 #endif
 
