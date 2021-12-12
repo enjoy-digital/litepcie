@@ -94,7 +94,7 @@ int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, ui
             return -1;
         }
         if (dma->use_reader) {
-            dma->buf_rd = mmap(NULL, DMA_BUFFER_TOTAL_SIZE, PROT_READ, MAP_SHARED,
+            dma->buf_rd = mmap(NULL, DMA_BUFFER_TOTAL_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
                                dma->fds.fd, dma->mmap_dma_info.dma_rx_buf_offset);
             if (dma->buf_rd == MAP_FAILED) {
                 fprintf(stderr, "MMAP failed\n");
