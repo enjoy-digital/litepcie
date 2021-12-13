@@ -12,20 +12,20 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
-#include <sys/ioctl.h>
 #include "litepcie_dma.h"
+#include "litepcie_helpers.h"
 
 
 void litepcie_dma_set_loopback(int fd, uint8_t loopback_enable) {
     struct litepcie_ioctl_dma m;
     m.loopback_enable = loopback_enable;
-    ioctl(fd, LITEPCIE_IOCTL_DMA, &m);
+    checked_ioctl(fd, LITEPCIE_IOCTL_DMA, &m);
 }
 
 void litepcie_dma_writer(int fd, uint8_t enable, int64_t *hw_count, int64_t *sw_count) {
     struct litepcie_ioctl_dma_writer m;
     m.enable = enable;
-    ioctl(fd, LITEPCIE_IOCTL_DMA_WRITER, &m);
+    checked_ioctl(fd, LITEPCIE_IOCTL_DMA_WRITER, &m);
     *hw_count = m.hw_count;
     *sw_count = m.sw_count;
 }
@@ -33,7 +33,7 @@ void litepcie_dma_writer(int fd, uint8_t enable, int64_t *hw_count, int64_t *sw_
 void litepcie_dma_reader(int fd, uint8_t enable, int64_t *hw_count, int64_t *sw_count) {
     struct litepcie_ioctl_dma_reader m;
     m.enable = enable;
-    ioctl(fd, LITEPCIE_IOCTL_DMA_READER, &m);
+    checked_ioctl(fd, LITEPCIE_IOCTL_DMA_READER, &m);
     *hw_count = m.hw_count;
     *sw_count = m.sw_count;
 }
@@ -46,7 +46,7 @@ uint8_t litepcie_request_dma(int fd, uint8_t reader, uint8_t writer) {
     m.dma_writer_request = writer > 0;
     m.dma_reader_release = 0;
     m.dma_writer_release = 0;
-    ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
+    checked_ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
     return m.dma_reader_status;
 }
 
@@ -56,7 +56,7 @@ void litepcie_release_dma(int fd, uint8_t reader, uint8_t writer) {
     m.dma_writer_request = 0;
     m.dma_reader_release = reader > 0;
     m.dma_writer_release = writer > 0;
-    ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
+    checked_ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
 }
 
 int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, uint8_t zero_copy)
@@ -89,10 +89,7 @@ int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, ui
 
     if (dma->zero_copy) {
         /* if mmap: get it from the kernel */
-        if (ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_INFO, &dma->mmap_dma_info)) {
-            fprintf(stderr, "LITEPCIE_IOCTL_MMAP_DMA_INFO error\n");
-            return -1;
-        }
+        checked_ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_INFO, &dma->mmap_dma_info);
         if (dma->use_reader) {
             dma->buf_rd = mmap(NULL, DMA_BUFFER_TOTAL_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
                                dma->fds.fd, dma->mmap_dma_info.dma_rx_buf_offset);
@@ -156,6 +153,7 @@ void litepcie_dma_cleanup(struct litepcie_dma_ctrl *dma)
 void litepcie_dma_process(struct litepcie_dma_ctrl *dma)
 {
     ssize_t len;
+    int ret;
 
     /* set / get dma */
     if (dma->use_writer)
@@ -164,8 +162,14 @@ void litepcie_dma_process(struct litepcie_dma_ctrl *dma)
         litepcie_dma_reader(dma->fds.fd, 1, &dma->reader_hw_count, &dma->reader_sw_count);
 
     /* polling */
-    if (poll(&dma->fds, 1, 100) <= 0)
+    ret = poll(&dma->fds, 1, 100);
+    if (poll < 0) {
+        perror("poll");
         return;
+    } else if (ret == 0) {
+        /* timeout */
+        return;
+    }
 
     /* read event */
     if (dma->fds.revents & POLLIN) {
@@ -176,9 +180,13 @@ void litepcie_dma_process(struct litepcie_dma_ctrl *dma)
 
             /* update dma sw_count*/
             dma->mmap_dma_update.sw_count = dma->writer_sw_count + dma->buffers_available_read;
-            ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_WRITER_UPDATE, &dma->mmap_dma_update);
+            checked_ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_WRITER_UPDATE, &dma->mmap_dma_update);
         } else {
             len = read(dma->fds.fd, dma->buf_rd, DMA_BUFFER_TOTAL_SIZE);
+            if (len < 0) {
+                perror("read");
+                abort();
+            }
             dma->buffers_available_read = len / DMA_BUFFER_SIZE;
             dma->usr_read_buf_offset = 0;
         }
@@ -195,10 +203,14 @@ void litepcie_dma_process(struct litepcie_dma_ctrl *dma)
 
             /* update dma sw_count */
             dma->mmap_dma_update.sw_count = dma->reader_sw_count + dma->buffers_available_write;
-            ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_READER_UPDATE, &dma->mmap_dma_update);
+            checked_ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_READER_UPDATE, &dma->mmap_dma_update);
 
         } else {
             len = write(dma->fds.fd, dma->buf_wr, DMA_BUFFER_TOTAL_SIZE);
+            if (len < 0) {
+                perror("write");
+                abort();
+            }
             dma->buffers_available_write = len / DMA_BUFFER_SIZE;
             dma->usr_write_buf_offset = 0;
         }
