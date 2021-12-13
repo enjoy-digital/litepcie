@@ -11,10 +11,10 @@ liblitepcie/liblitepcie.a: liblitepcie/litepcie_dma.o liblitepcie/litepcie_flash
 	ar rcs $@ $+
 	ranlib $@
 
-litepcie_util: liblitepcie/liblitepcie.a litepcie_util.o helpers.o
+litepcie_util: liblitepcie/liblitepcie.a litepcie_util.o
 	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -llitepcie
 
-litepcie_test: liblitepcie/liblitepcie.a litepcie_test.o helpers.o
+litepcie_test: liblitepcie/liblitepcie.a litepcie_test.o
 	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -lm -llitepcie
 
 litepcie_dma_minimal_example: liblitepcie/liblitepcie.a litepcie_dma_minimal_example.o

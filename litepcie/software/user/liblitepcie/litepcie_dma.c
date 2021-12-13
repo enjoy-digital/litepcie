@@ -91,7 +91,7 @@ int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, ui
         /* if mmap: get it from the kernel */
         checked_ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_INFO, &dma->mmap_dma_info);
         if (dma->use_reader) {
-            dma->buf_rd = mmap(NULL, DMA_BUFFER_TOTAL_SIZE, PROT_READ, MAP_SHARED,
+            dma->buf_rd = mmap(NULL, DMA_BUFFER_TOTAL_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
                                dma->fds.fd, dma->mmap_dma_info.dma_rx_buf_offset);
             if (dma->buf_rd == MAP_FAILED) {
                 fprintf(stderr, "MMAP failed\n");
@@ -181,7 +181,6 @@ void litepcie_dma_process(struct litepcie_dma_ctrl *dma)
             /* update dma sw_count*/
             dma->mmap_dma_update.sw_count = dma->writer_sw_count + dma->buffers_available_read;
             checked_ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_WRITER_UPDATE, &dma->mmap_dma_update);
-
         } else {
             len = read(dma->fds.fd, dma->buf_rd, DMA_BUFFER_TOTAL_SIZE);
             if (len < 0) {
