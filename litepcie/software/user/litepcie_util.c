@@ -442,7 +442,7 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "info"))
         info();
     else if (!strcmp(cmd, "dma_test"))
-        dma_test(0);
+        dma_test(litepcie_device_zero_copy);
     else if (!strcmp(cmd, "scratch_test"))
         scratch_test();
 #ifdef CSR_UART_XOVER_RXTX_ADDR
