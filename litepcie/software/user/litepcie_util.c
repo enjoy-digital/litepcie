@@ -221,7 +221,7 @@ static inline int64_t add_mod_int(int64_t a, int64_t b, int64_t m)
 }
 
 #ifdef DMA_CHECK_DATA
-static inline uint32_t seed_to_data(uint32_t seed)
+static inline uint16_t seed_to_data(uint16_t seed)
 {
 #ifdef DMA_RANDOM_DATA
     return seed * 69069 + 1;
@@ -230,40 +230,48 @@ static inline uint32_t seed_to_data(uint32_t seed)
 #endif
 }
 
-static void write_pn_data(uint32_t *buf, int count, uint32_t *pseed)
+static void write_pn_data(uint16_t *buf, int count, uint16_t *pseed, int data_width)
 {
     int i;
-    uint32_t seed;
+    uint16_t seed;
+    uint16_t mask = (1 << data_width) - 1;
 
     seed = *pseed;
     for(i = 0; i < count; i++) {
-        buf[i] = seed_to_data(seed);
-        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / 4);
+        buf[i] = (seed_to_data(seed)&mask);
+        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / 2);
     }
     *pseed = seed;
 }
 
-static int check_pn_data(const uint32_t *buf, int count, uint32_t *pseed)
+static int check_pn_data(const uint16_t *buf, int count, uint16_t *pseed, int data_width)
 {
     int i, errors;
-    uint32_t seed;
+    uint16_t seed;
+    uint16_t mask = (1 << data_width) - 1;
 
     errors = 0;
     seed = *pseed;
     for (i = 0; i < count; i++) {
-        if (buf[i] != seed_to_data(seed)) {
+        if (buf[i] != (seed_to_data(seed)&mask)) {
             errors ++;
         }
-        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / 4);
+        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / 2);
     }
     *pseed = seed;
     return errors;
 }
 #endif
 
-static void dma_test(uint8_t zero_copy)
+static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_width)
 {
-    static struct litepcie_dma_ctrl dma = {.use_reader = 1, .use_writer = 1, .loopback = 1};
+    static struct litepcie_dma_ctrl dma = {.use_reader = 1, .use_writer = 1};
+    dma.loopback = external_loopback ? 0 : 1;
+
+    if (data_width > 16 || data_width < 1) {
+        fprintf(stderr, "Invalid data width %d\n", data_width);
+        exit(1);
+    }
 
     // stats
     int i = 0;
@@ -297,7 +305,7 @@ static void dma_test(uint8_t zero_copy)
                 char *buf_wr = litepcie_dma_next_write_buffer(&dma);
                 if (!buf_wr)
                     break;
-                write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_wr);
+                write_pn_data((uint16_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_wr, data_width);
                 n_buffers_written++;
             }
         } else {
@@ -306,7 +314,7 @@ static void dma_test(uint8_t zero_copy)
                 char *buf_rd = litepcie_dma_next_read_buffer(&dma);
                 if (!buf_rd)
                     break;
-                check_errors += check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd);
+                check_errors += check_pn_data((uint16_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_rd, data_width);
                 memset(buf_rd, 0, DMA_BUFFER_SIZE);
                 if (dma.writer_hw_count > DMA_BUFFER_COUNT)
                     errors += check_errors;
@@ -389,10 +397,12 @@ static void help(void)
            "-h                                Help\n"
            "-c device_num                     Select the device (default = 0)\n"
            "-z                                Enable zero-copy DMA mode\n"
+           "-e                                Use external loopback (default = internal)\n"
+           "-w data_width                     Width of data bus (default = 16)\n"
            "\n"
            "available commands:\n"
            "info                              Board information\n"
-           "dma_test                          Test DMA  (loopback in FPGA)\n"
+           "dma_test                          Test DMA\n"
            "scratch_test                      Test Scratch register\n"
 #ifdef CSR_UART_XOVER_RXTX_ADDR
            "uart_test                         Test CPU Crossover UART\n"
@@ -412,14 +422,18 @@ int main(int argc, char **argv)
     const char *cmd;
     int c;
     static uint8_t litepcie_device_zero_copy;
+    static uint8_t litepcie_device_external_loopback;
+    static int litepcie_data_width;
 
 
     litepcie_device_num = 0;
+    litepcie_data_width = 16;
     litepcie_device_zero_copy = 0;
+    litepcie_device_external_loopback = 0;
 
     /* parameters */
     for (;;) {
-        c = getopt(argc, argv, "hc:z");
+        c = getopt(argc, argv, "hc:w:ze");
         if (c == -1)
             break;
         switch(c) {
@@ -429,8 +443,14 @@ int main(int argc, char **argv)
         case 'c':
             litepcie_device_num = atoi(optarg);
             break;
+        case 'w':
+            litepcie_data_width = atoi(optarg);
+            break;
         case 'z':
             litepcie_device_zero_copy = 1;
+            break;
+        case 'e':
+            litepcie_device_external_loopback = 1;
             break;
         default:
             exit(1);
@@ -448,7 +468,7 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "info"))
         info();
     else if (!strcmp(cmd, "dma_test"))
-        dma_test(litepcie_device_zero_copy);
+        dma_test(litepcie_device_zero_copy, litepcie_device_external_loopback, litepcie_data_width);
     else if (!strcmp(cmd, "scratch_test"))
         scratch_test();
 #ifdef CSR_UART_XOVER_RXTX_ADDR
