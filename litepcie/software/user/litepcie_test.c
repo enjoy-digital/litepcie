@@ -74,7 +74,7 @@ static void litepcie_record(const char *device_name, const char *filename, uint3
                 total_len += len;
             }
             if (size > 0 && total_len >= size)
-                break;
+                keep_running = 0;
         }
 
         /* statistics */

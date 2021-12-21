@@ -90,7 +90,7 @@ int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, ui
     if (dma->zero_copy) {
         /* if mmap: get it from the kernel */
         checked_ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_INFO, &dma->mmap_dma_info);
-        if (dma->use_reader) {
+        if (dma->use_writer) {
             dma->buf_rd = mmap(NULL, DMA_BUFFER_TOTAL_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
                                dma->fds.fd, dma->mmap_dma_info.dma_rx_buf_offset);
             if (dma->buf_rd == MAP_FAILED) {
@@ -98,7 +98,7 @@ int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, ui
                 return -1;
             }
         }
-        if (dma->use_writer) {
+        if (dma->use_reader) {
             dma->buf_wr = mmap(NULL, DMA_BUFFER_TOTAL_SIZE, PROT_WRITE, MAP_SHARED,
                                dma->fds.fd, dma->mmap_dma_info.dma_tx_buf_offset);
             if (dma->buf_wr == MAP_FAILED) {
@@ -108,14 +108,14 @@ int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, ui
         }
     } else {
         /* else: allocate it */
-        if (dma->use_reader) {
+        if (dma->use_writer) {
             dma->buf_rd = calloc(1, DMA_BUFFER_TOTAL_SIZE);
             if (!dma->buf_rd) {
                 fprintf(stderr, "%d: alloc failed\n", __LINE__);
                 return -1;
             }
         }
-        if (dma->use_writer) {
+        if (dma->use_reader) {
             dma->buf_wr = calloc(1, DMA_BUFFER_TOTAL_SIZE);
             if (!dma->buf_wr) {
                 free(dma->buf_rd);
@@ -138,9 +138,9 @@ void litepcie_dma_cleanup(struct litepcie_dma_ctrl *dma)
     litepcie_release_dma(dma->fds.fd, dma->use_reader, dma->use_writer);
 
     if (dma->zero_copy) {
-        if (dma->use_writer)
-            munmap(dma->buf_wr, dma->mmap_dma_info.dma_tx_buf_size * dma->mmap_dma_info.dma_tx_buf_count);
         if (dma->use_reader)
+            munmap(dma->buf_wr, dma->mmap_dma_info.dma_tx_buf_size * dma->mmap_dma_info.dma_tx_buf_count);
+        if (dma->use_writer)
             munmap(dma->buf_rd, dma->mmap_dma_info.dma_tx_buf_size * dma->mmap_dma_info.dma_tx_buf_count);
     } else {
         free(dma->buf_rd);
