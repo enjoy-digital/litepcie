@@ -273,7 +273,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
         exit(1);
     }
 
-    // stats
+    /* stats */
     int i = 0;
     int64_t reader_sw_count_last = 0;
     int64_t last_time;
@@ -282,7 +282,6 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
 #ifdef DMA_CHECK_DATA
     uint32_t seed_wr = 0;
     uint32_t seed_rd = 0;
-    unsigned n_buffers_written = 0;
 #endif
 
     signal(SIGINT, intHandler);
@@ -300,25 +299,34 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
         litepcie_dma_process(&dma);
 
 #ifdef DMA_CHECK_DATA
-        if (n_buffers_written < DMA_BUFFER_COUNT) {
-            while (1) {
-                char *buf_wr = litepcie_dma_next_write_buffer(&dma);
-                if (!buf_wr)
-                    break;
-                write_pn_data((uint16_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_wr, data_width);
-                n_buffers_written++;
-            }
-        } else {
-            uint32_t check_errors = 0;
-            while (1) {
-                char *buf_rd = litepcie_dma_next_read_buffer(&dma);
-                if (!buf_rd)
-                    break;
-                check_errors += check_pn_data((uint16_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_rd, data_width);
-                memset(buf_rd, 0, DMA_BUFFER_SIZE);
-                if (dma.writer_hw_count > DMA_BUFFER_COUNT)
-                    errors += check_errors;
-            }
+        char *buf_wr;
+        char *buf_rd;
+
+        /* write tx-buffers */
+        while (1) {
+            /* get buffer */
+            buf_wr = litepcie_dma_next_write_buffer(&dma);
+
+            /* break when no buffer available */
+            if (!buf_wr)
+                break;
+
+            /* write buffer */
+            write_pn_data((uint16_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_wr, data_width);
+        }
+
+        /* read/check rx-buffers */
+        while (1) {
+            /* get buffer */
+            buf_rd = litepcie_dma_next_read_buffer(&dma);
+
+            /* break when no buffer available */
+            if (!buf_rd)
+                break;
+
+            /* check buffer */
+            errors += check_pn_data((uint16_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_rd, data_width);
+            memset(buf_rd, 0, DMA_BUFFER_SIZE);
         }
 #endif
 
@@ -328,7 +336,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
             if (i % 10 == 0)
                 printf("\e[1mDMA_SPEED(Gbps)\tTX_BUFFERS\tRX_BUFFERS\tDIFF\tERRORS\e[0m\n");
             i++;
-            printf("%14.2f\t%10" PRIu64 "\t%10" PRIu64 "\t%6" PRIu64 "\t%7u\n",
+            printf("%14.2f\t%10" PRIu64 "\t%10" PRIu64 "\t%4" PRIu64 "\t%6u\n",
                    (double)(dma.reader_sw_count - reader_sw_count_last) * DMA_BUFFER_SIZE * 8 / ((double)duration * 1e6),
                    dma.reader_sw_count,
                    dma.writer_sw_count,
