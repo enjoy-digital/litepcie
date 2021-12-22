@@ -239,7 +239,7 @@ static void write_pn_data(uint16_t *buf, int count, uint16_t *pseed, int data_wi
     seed = *pseed;
     for(i = 0; i < count; i++) {
         buf[i] = (seed_to_data(seed)&mask);
-        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / 2);
+        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / sizeof(uint16_t));
     }
     *pseed = seed;
 }
@@ -256,7 +256,7 @@ static int check_pn_data(const uint16_t *buf, int count, uint16_t *pseed, int da
         if (buf[i] != (seed_to_data(seed)&mask)) {
             errors ++;
         }
-        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / 2);
+        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / sizeof(uint16_t));
     }
     *pseed = seed;
     return errors;
@@ -282,6 +282,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
 #ifdef DMA_CHECK_DATA
     uint32_t seed_wr = 0;
     uint32_t seed_rd = 0;
+    uint8_t  run = 0;
 #endif
 
     signal(SIGINT, intHandler);
@@ -324,9 +325,32 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
             if (!buf_rd)
                 break;
 
-            /* check buffer */
-            errors += check_pn_data((uint16_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_rd, data_width);
-            memset(buf_rd, 0, DMA_BUFFER_SIZE);
+            /* break until first full dma loop */
+            if (dma.writer_hw_count < DMA_BUFFER_COUNT)
+                break;
+
+            if (run) {
+                /* check buffer */
+                errors += check_pn_data((uint16_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_rd, data_width);
+                memset(buf_rd, 0, DMA_BUFFER_SIZE);
+            } else {
+                /* find delay/seed */
+                for (int delay = 0; delay < DMA_BUFFER_SIZE / sizeof(uint16_t); delay++) {
+                    seed_rd = delay;
+                    errors = check_pn_data((uint16_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_rd, data_width);
+                    //printf("delay: %d / errors: %d\n", delay, errors);
+                    if (errors < (DMA_BUFFER_SIZE / sizeof(uint16_t)) / 2) {
+                        printf("RX_DELAY: %d\n", delay);
+                        run = 1;
+                        break;
+                    }
+                }
+                if (!run) {
+                    printf("Unable to find DMA RX_DELAY, exiting.\n");
+                    goto end;
+                }
+            }
+
         }
 #endif
 
@@ -348,6 +372,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
         }
     }
 
+end:
     litepcie_dma_cleanup(&dma);
 }
 
