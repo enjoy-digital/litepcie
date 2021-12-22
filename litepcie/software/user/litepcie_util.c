@@ -335,18 +335,23 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
                 memset(buf_rd, 0, DMA_BUFFER_SIZE);
             } else {
                 /* find delay/seed */
+                uint32_t errors_min = 0xffffffff;
                 for (int delay = 0; delay < DMA_BUFFER_SIZE / sizeof(uint16_t); delay++) {
                     seed_rd = delay;
                     errors = check_pn_data((uint16_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_rd, data_width);
                     //printf("delay: %d / errors: %d\n", delay, errors);
+                    if (errors < errors_min)
+                        errors_min = errors;
                     if (errors < (DMA_BUFFER_SIZE / sizeof(uint16_t)) / 2) {
-                        printf("RX_DELAY: %d\n", delay);
+                        printf("RX_DELAY: %d (errors: %d)\n", delay, errors);
                         run = 1;
                         break;
                     }
                 }
                 if (!run) {
-                    printf("Unable to find DMA RX_DELAY, exiting.\n");
+                    printf("Unable to find DMA RX_DELAY (min errors: %d/%ld), exiting.\n",
+                        errors_min,
+                        DMA_BUFFER_SIZE / sizeof(uint16_t));
                     goto end;
                 }
             }
