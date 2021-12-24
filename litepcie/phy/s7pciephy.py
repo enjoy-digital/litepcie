@@ -393,6 +393,7 @@ class S7PCIEPHY(Module, AutoCSR):
                 "IntX_Generation"    : False,
                 "Interface_Width"    : f"{self.pcie_data_width}_bit",
                 "Legacy_Interrupt"   : None,
+                "Multiple_Message_Capable"  : '1_vectors',
                 "Link_Speed"         : "5.0_GT/s",
                 "MSI_64b"            : False,
                 "Max_Payload_Size"   : "512_bytes",
