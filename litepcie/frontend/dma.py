@@ -402,7 +402,6 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         # DMA descriptors need to be splitted in descriptors of max_request_size (negotiated at link-up)
         splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_payload_size)
         splitter = ResetInserter()(splitter)
-        splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings.
         self.submodules.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
