@@ -221,7 +221,7 @@ static inline int64_t add_mod_int(int64_t a, int64_t b, int64_t m)
 }
 
 #ifdef DMA_CHECK_DATA
-static inline uint16_t seed_to_data(uint16_t seed)
+static inline uint32_t seed_to_data(uint32_t seed)
 {
 #ifdef DMA_RANDOM_DATA
     return seed * 69069 + 1;
@@ -230,33 +230,53 @@ static inline uint16_t seed_to_data(uint16_t seed)
 #endif
 }
 
-static void write_pn_data(uint16_t *buf, int count, uint16_t *pseed, int data_width)
+static int get_next_pow2(int data_width)
+{
+    int x = 1;
+    while (x < data_width)
+        x <<= 1;
+    return x;
+}
+
+static uint32_t get_data_mask(int data_width)
 {
     int i;
-    uint16_t seed;
-    uint16_t mask = (1 << data_width) - 1;
+    uint32_t mask;
+    mask = 0;
+    for (i = 0; i < 32/get_next_pow2(data_width); i++) {
+        mask <<= get_next_pow2(data_width);
+        mask |= (1 << data_width) - 1;
+    }
+    return mask;
+}
+
+static void write_pn_data(uint32_t *buf, int count, uint32_t *pseed, int data_width)
+{
+    int i;
+    uint32_t seed;
+    uint32_t mask = get_data_mask(data_width);
 
     seed = *pseed;
     for(i = 0; i < count; i++) {
-        buf[i] = (seed_to_data(seed)&mask);
-        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / sizeof(uint16_t));
+        buf[i] = (seed_to_data(seed) & mask);
+        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / sizeof(uint32_t));
     }
     *pseed = seed;
 }
 
-static int check_pn_data(const uint16_t *buf, int count, uint16_t *pseed, int data_width)
+static int check_pn_data(const uint32_t *buf, int count, uint32_t *pseed, int data_width)
 {
     int i, errors;
-    uint16_t seed;
-    uint16_t mask = (1 << data_width) - 1;
+    uint32_t seed;
+    uint32_t mask = get_data_mask(data_width);
 
     errors = 0;
     seed = *pseed;
     for (i = 0; i < count; i++) {
-        if (buf[i] != (seed_to_data(seed)&mask)) {
+        if (buf[i] != (seed_to_data(seed) & mask)) {
             errors ++;
         }
-        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / sizeof(uint16_t));
+        seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / sizeof(uint32_t));
     }
     *pseed = seed;
     return errors;
@@ -268,7 +288,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
     static struct litepcie_dma_ctrl dma = {.use_reader = 1, .use_writer = 1};
     dma.loopback = external_loopback ? 0 : 1;
 
-    if (data_width > 16 || data_width < 1) {
+    if (data_width > 32 || data_width < 1) {
         fprintf(stderr, "Invalid data width %d\n", data_width);
         exit(1);
     }
@@ -313,7 +333,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
                 break;
 
             /* write buffer */
-            write_pn_data((uint16_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_wr, data_width);
+            write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_wr, data_width);
         }
 
         /* read/check rx-buffers */
@@ -331,18 +351,18 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
 
             if (run) {
                 /* check buffer */
-                errors += check_pn_data((uint16_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_rd, data_width);
+                errors += check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd, data_width);
                 memset(buf_rd, 0, DMA_BUFFER_SIZE);
             } else {
                 /* find delay/seed */
                 uint32_t errors_min = 0xffffffff;
-                for (int delay = 0; delay < DMA_BUFFER_SIZE / sizeof(uint16_t); delay++) {
+                for (int delay = 0; delay < DMA_BUFFER_SIZE / sizeof(uint32_t); delay++) {
                     seed_rd = delay;
-                    errors = check_pn_data((uint16_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint16_t), &seed_rd, data_width);
+                    errors = check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd, data_width);
                     //printf("delay: %d / errors: %d\n", delay, errors);
                     if (errors < errors_min)
                         errors_min = errors;
-                    if (errors < (DMA_BUFFER_SIZE / sizeof(uint16_t)) / 2) {
+                    if (errors < (DMA_BUFFER_SIZE / sizeof(uint32_t)) / 2) {
                         printf("RX_DELAY: %d (errors: %d)\n", delay, errors);
                         run = 1;
                         break;
@@ -351,7 +371,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
                 if (!run) {
                     printf("Unable to find DMA RX_DELAY (min errors: %d/%ld), exiting.\n",
                         errors_min,
-                        DMA_BUFFER_SIZE / sizeof(uint16_t));
+                        DMA_BUFFER_SIZE / sizeof(uint32_t));
                     goto end;
                 }
             }
@@ -366,7 +386,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
                 printf("\e[1mDMA_SPEED(Gbps)\tTX_BUFFERS\tRX_BUFFERS\tDIFF\tERRORS\e[0m\n");
             i++;
             printf("%14.2f\t%10" PRIu64 "\t%10" PRIu64 "\t%4" PRIu64 "\t%6u\n",
-                   (double)(dma.reader_sw_count - reader_sw_count_last) * DMA_BUFFER_SIZE * 8 * data_width / (16 * (double)duration * 1e6),
+                   (double)(dma.reader_sw_count - reader_sw_count_last) * DMA_BUFFER_SIZE * 8 * data_width / (get_next_pow2(data_width) * (double)duration * 1e6),
                    dma.reader_sw_count,
                    dma.writer_sw_count,
                    dma.reader_sw_count - dma.writer_sw_count,
