@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2019 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
@@ -19,7 +19,7 @@ class LitePCIeTLPHeaderInserter64b(Module):
         # # #
 
         dat  = Signal(64, reset_less=True)
-        last = Signal(reset_less=True)
+        last = Signal(    reset_less=True)
         self.sync += \
             If(sink.valid & sink.ready,
                 dat.eq(sink.dat),
@@ -34,12 +34,13 @@ class LitePCIeTLPHeaderInserter64b(Module):
                 source.valid.eq(sink.valid),
                 source.first.eq(sink.first),
                 source.last.eq(0),
-                # 32 lsbs
+
                 source.dat[32*0:32*1].eq(sink.header[32*0:32*1]),
-                source.be[4*0:4*1].eq(0xf),
-                # 32 msbs
                 source.dat[32*1:32*2].eq(sink.header[32*1:32*2]),
+
+                source.be[4*0:4*1].eq(0xf),
                 source.be[4*1:4*2].eq(0xf),
+
                 If(source.valid & source.ready,
                     NextState("HEADER2"),
                 )
@@ -48,12 +49,13 @@ class LitePCIeTLPHeaderInserter64b(Module):
         fsm.act("HEADER2",
             source.valid.eq(1),
             source.last.eq(sink.last),
-            # 32 lsbs
+
             source.dat[32*0:32*1].eq(sink.header[32*2:32*3]),
-            source.be[4*0:4*1].eq(0xf),
-            # 32 msbs
             source.dat[32*1:32*2].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
+
+            source.be[4*0:4*1].eq(0xf),
             source.be[4*1:4*2].eq(convert_bits(sink.be[:4], endianness)),
+
             If(source.valid & source.ready,
                 sink.ready.eq(1),
                 If(source.last,
@@ -66,16 +68,17 @@ class LitePCIeTLPHeaderInserter64b(Module):
         fsm.act("DATA",
             source.valid.eq(sink.valid | last),
             source.last.eq(last),
-            # 32 msbs
-            source.dat[32*0:32*1].eq(convert_bytes(dat[32*1:32*2], endianness)),
-			source.be[4*0:4*1].eq(0xf),
-            # 32 lsbs
+
+            source.dat[32*0:32*1].eq(convert_bytes(     dat[32*1:32*2], endianness)),
             source.dat[32*1:32*2].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
+
+            source.be[4*0:4*1].eq(0xf),
             If(last,
                 source.be[4*1:4*2].eq(0x0)
             ).Else(
                 source.be[4*1:4*2].eq(0xf)
             ),
+
             If(source.valid & source.ready,
                 sink.ready.eq(~last),
                 If(source.last,
@@ -94,7 +97,7 @@ class LitePCIeTLPHeaderInserter128b(Module):
         # # #
 
         dat  = Signal(128, reset_less=True)
-        last = Signal(reset_less=True)
+        last = Signal(     reset_less=True)
         self.sync += \
             If(sink.valid & sink.ready,
                 dat.eq(sink.dat),
@@ -109,18 +112,17 @@ class LitePCIeTLPHeaderInserter128b(Module):
                 source.valid.eq(1),
                 source.first.eq(1),
                 source.last.eq(sink.last),
-                # 32 l lsbs
+
                 source.dat[32*0:32*1].eq(sink.header[32*0:32*1]),
-                source.be[4*0:4*1].eq(0xf),
-                # 32 l msbs
                 source.dat[32*1:32*2].eq(sink.header[32*1:32*2]),
-                source.be[4*1:4*2].eq(0xf),
-                # 32 h lsbs
                 source.dat[32*2:32*3].eq(sink.header[32*2:32*3]),
-                source.be[4*2:4*3].eq(0xf),
-                # 32 h msbs
                 source.dat[32*3:32*4].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
+
+                source.be[4*0:4*1].eq(0xf),
+                source.be[4*1:4*2].eq(0xf),
+                source.be[4*2:4*3].eq(0xf),
                 source.be[4*3:4*4].eq(convert_bits(sink.be[:4], endianness)),
+
                 If(source.valid & source.ready,
                     sink.ready.eq(1),
                     If(~source.last,
@@ -132,22 +134,21 @@ class LitePCIeTLPHeaderInserter128b(Module):
         fsm.act("DATA",
             source.valid.eq(sink.valid | last),
             source.last.eq(last),
-            # 32 l lsbs
-            source.dat[32*0:32*1].eq(convert_bytes(dat[32*1:32*2], endianness)),
-            source.be[4*0:4*1].eq(0xf),
-            # 32 l msbs
-            source.dat[32*1:32*2].eq(convert_bytes(dat[32*2:32*3], endianness)),
-            source.be[4*1:4*2].eq(0xf),
-            # 32 h lsbs
-            source.dat[32*2:32*3].eq(convert_bytes(dat[32*3:2*32*4], endianness)),
-            source.be[4*2:4*3].eq(0xf),
-            # 32 h msbs
+
+            source.dat[32*0:32*1].eq(convert_bytes(     dat[32*1:32*2], endianness)),
+            source.dat[32*1:32*2].eq(convert_bytes(     dat[32*2:32*3], endianness)),
+            source.dat[32*2:32*3].eq(convert_bytes(     dat[32*3:32*4], endianness)),
             source.dat[32*3:32*4].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
+
+            source.be[4*0:4*1].eq(0xf),
+            source.be[4*1:4*2].eq(0xf),
+            source.be[4*2:4*3].eq(0xf),
             If(last,
                 source.be[4*3:4*4].eq(0x0)
             ).Else(
                 source.be[4*3:4*4].eq(0xf)
             ),
+
             If(source.valid & source.ready,
                 sink.ready.eq(~last),
                 If(source.last,
@@ -165,9 +166,9 @@ class LitePCIeTLPHeaderInserter256b(Module):
 
         # # #
 
-        dat  = Signal(256, reset_less=True)
-        be  = Signal(256//8, reset_less=True)
-        last = Signal(reset_less=True)
+        dat  = Signal(256,    reset_less=True)
+        be   = Signal(256//8, reset_less=True)
+        last = Signal(        reset_less=True)
         self.sync += \
             If(sink.valid & sink.ready,
                 dat.eq(sink.dat),
@@ -214,9 +215,9 @@ class LitePCIeTLPHeaderInserter256b(Module):
             source.valid.eq(sink.valid | last),
             source.last.eq(last),
 
-            source.dat[32*0:32*1].eq(convert_bytes(dat[32*5:32*6], endianness)),
-            source.dat[32*1:32*2].eq(convert_bytes(dat[32*6:32*7], endianness)),
-            source.dat[32*2:32*3].eq(convert_bytes(dat[32*7:32*8], endianness)),
+            source.dat[32*0:32*1].eq(convert_bytes(     dat[32*5:32*6], endianness)),
+            source.dat[32*1:32*2].eq(convert_bytes(     dat[32*6:32*7], endianness)),
+            source.dat[32*2:32*3].eq(convert_bytes(     dat[32*7:32*8], endianness)),
             source.dat[32*3:32*4].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
             source.dat[32*4:32*5].eq(convert_bytes(sink.dat[32*1:32*2], endianness)),
             source.dat[32*5:32*6].eq(convert_bytes(sink.dat[32*2:32*3], endianness)),
@@ -252,9 +253,9 @@ class LitePCIeTLPHeaderInserter512b(Module):
 
         # # #
 
-        dat  = Signal(512, reset_less=True)
-        be  = Signal(512//8, reset_less=True)
-        last = Signal(reset_less=True)
+        dat  = Signal(512,    reset_less=True)
+        be   = Signal(512//8, reset_less=True)
+        last = Signal(        reset_less=True)
         self.sync += \
             If(sink.valid & sink.ready,
                 dat.eq(sink.dat),
@@ -271,36 +272,36 @@ class LitePCIeTLPHeaderInserter512b(Module):
                 source.first.eq(1),
                 source.last.eq(sink.last),
 
-                source.dat[32*0:32*1].eq(sink.header[32*0:32*1]),
-                source.dat[32*1:32*2].eq(sink.header[32*1:32*2]),
-                source.dat[32*2:32*3].eq(sink.header[32*2:32*3]),
-                source.dat[32*3:32*4].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
-                source.dat[32*4:32*5].eq(convert_bytes(sink.dat[32*1:32*2], endianness)),
-                source.dat[32*5:32*6].eq(convert_bytes(sink.dat[32*2:32*3], endianness)),
-                source.dat[32*6:32*7].eq(convert_bytes(sink.dat[32*3:32*4], endianness)),
-                source.dat[32*7:32*8].eq(convert_bytes(sink.dat[32*4:32*5], endianness)),
-                source.dat[32*8:32*9].eq(convert_bytes(sink.dat[32*5:32*6], endianness)),
-                source.dat[32*9:32*10].eq(convert_bytes(sink.dat[32*6:32*7], endianness)),
-                source.dat[32*10:32*11].eq(convert_bytes(sink.dat[32*7:32*8], endianness)),
-                source.dat[32*11:32*12].eq(convert_bytes(sink.dat[32*8:32*9], endianness)),
-                source.dat[32*12:32*13].eq(convert_bytes(sink.dat[32*9:32*10], endianness)),
+                source.dat[ 32*0: 32*1].eq(sink.header[32*0:32*1]),
+                source.dat[ 32*1: 32*2].eq(sink.header[32*1:32*2]),
+                source.dat[ 32*2: 32*3].eq(sink.header[32*2:32*3]),
+                source.dat[ 32*3: 32*4].eq(convert_bytes(sink.dat[ 32*0: 32*1], endianness)),
+                source.dat[ 32*4: 32*5].eq(convert_bytes(sink.dat[ 32*1: 32*2], endianness)),
+                source.dat[ 32*5: 32*6].eq(convert_bytes(sink.dat[ 32*2: 32*3], endianness)),
+                source.dat[ 32*6: 32*7].eq(convert_bytes(sink.dat[ 32*3: 32*4], endianness)),
+                source.dat[ 32*7: 32*8].eq(convert_bytes(sink.dat[ 32*4: 32*5], endianness)),
+                source.dat[ 32*8: 32*9].eq(convert_bytes(sink.dat[ 32*5: 32*6], endianness)),
+                source.dat[ 32*9:32*10].eq(convert_bytes(sink.dat[ 32*6: 32*7], endianness)),
+                source.dat[32*10:32*11].eq(convert_bytes(sink.dat[ 32*7: 32*8], endianness)),
+                source.dat[32*11:32*12].eq(convert_bytes(sink.dat[ 32*8: 32*9], endianness)),
+                source.dat[32*12:32*13].eq(convert_bytes(sink.dat[ 32*9:32*10], endianness)),
                 source.dat[32*13:32*14].eq(convert_bytes(sink.dat[32*10:32*11], endianness)),
                 source.dat[32*14:32*15].eq(convert_bytes(sink.dat[32*11:32*12], endianness)),
                 source.dat[32*15:32*16].eq(convert_bytes(sink.dat[32*12:32*13], endianness)),
 
-                source.be[4*0:4*1].eq(0xf),
-                source.be[4*1:4*2].eq(0xf),
-                source.be[4*2:4*3].eq(0xf),
-                source.be[4*3:4*4].eq(convert_bits(sink.be[4*0:4*1], endianness)),
-                source.be[4*4:4*5].eq(convert_bits(sink.be[4*1:4*2], endianness)),
-                source.be[4*5:4*6].eq(convert_bits(sink.be[4*2:4*3], endianness)),
-                source.be[4*6:4*7].eq(convert_bits(sink.be[4*3:4*4], endianness)),
-                source.be[4*7:4*8].eq(convert_bits(sink.be[4*4:4*5], endianness)),
-                source.be[4*8:4*9].eq(convert_bits(sink.be[4*5:4*6], endianness)),
-                source.be[4*9:4*10].eq(convert_bits(sink.be[4*6:4*7], endianness)),
-                source.be[4*10:4*11].eq(convert_bits(sink.be[4*7:4*8], endianness)),
-                source.be[4*11:4*12].eq(convert_bits(sink.be[4*8:4*9], endianness)),
-                source.be[4*12:4*13].eq(convert_bits(sink.be[4*9:4*10], endianness)),
+                source.be[ 4*0: 4*1].eq(0xf),
+                source.be[ 4*1: 4*2].eq(0xf),
+                source.be[ 4*2: 4*3].eq(0xf),
+                source.be[ 4*3: 4*4].eq(convert_bits(sink.be[ 4*0: 4*1], endianness)),
+                source.be[ 4*4: 4*5].eq(convert_bits(sink.be[ 4*1: 4*2], endianness)),
+                source.be[ 4*5: 4*6].eq(convert_bits(sink.be[ 4*2: 4*3], endianness)),
+                source.be[ 4*6: 4*7].eq(convert_bits(sink.be[ 4*3: 4*4], endianness)),
+                source.be[ 4*7: 4*8].eq(convert_bits(sink.be[ 4*4: 4*5], endianness)),
+                source.be[ 4*8: 4*9].eq(convert_bits(sink.be[ 4*5: 4*6], endianness)),
+                source.be[ 4*9:4*10].eq(convert_bits(sink.be[ 4*6: 4*7], endianness)),
+                source.be[4*10:4*11].eq(convert_bits(sink.be[ 4*7: 4*8], endianness)),
+                source.be[4*11:4*12].eq(convert_bits(sink.be[ 4*8: 4*9], endianness)),
+                source.be[4*12:4*13].eq(convert_bits(sink.be[ 4*9:4*10], endianness)),
                 source.be[4*13:4*14].eq(convert_bits(sink.be[4*10:4*11], endianness)),
                 source.be[4*14:4*15].eq(convert_bits(sink.be[4*11:4*12], endianness)),
                 source.be[4*15:4*16].eq(convert_bits(sink.be[4*12:4*13], endianness)),
@@ -317,19 +318,19 @@ class LitePCIeTLPHeaderInserter512b(Module):
             source.valid.eq(sink.valid | last),
             source.last.eq(last),
 
-            source.dat[32*0:32*1].eq(convert_bytes(dat[32*13:32*14], endianness)),
-            source.dat[32*1:32*2].eq(convert_bytes(dat[32*14:32*15], endianness)),
-            source.dat[32*2:32*3].eq(convert_bytes(dat[32*15:32*16], endianness)),
-            source.dat[32*3:32*4].eq(convert_bytes(sink.dat[32*0:32*1], endianness)),
-            source.dat[32*4:32*5].eq(convert_bytes(sink.dat[32*1:32*2], endianness)),
-            source.dat[32*5:32*6].eq(convert_bytes(sink.dat[32*2:32*3], endianness)),
-            source.dat[32*6:32*7].eq(convert_bytes(sink.dat[32*3:32*4], endianness)),
-            source.dat[32*7:32*8].eq(convert_bytes(sink.dat[32*4:32*5], endianness)),
-            source.dat[32*8:32*9].eq(convert_bytes(sink.dat[32*5:32*6], endianness)),
-            source.dat[32*9:32*10].eq(convert_bytes(sink.dat[32*6:32*7], endianness)),
-            source.dat[32*10:32*11].eq(convert_bytes(sink.dat[32*7:32*8], endianness)),
-            source.dat[32*11:32*12].eq(convert_bytes(sink.dat[32*8:32*9], endianness)),
-            source.dat[32*12:32*13].eq(convert_bytes(sink.dat[32*9:32*10], endianness)),
+            source.dat[ 32*0: 32*1].eq(convert_bytes(     dat[32*13:32*14], endianness)),
+            source.dat[ 32*1: 32*2].eq(convert_bytes(     dat[32*14:32*15], endianness)),
+            source.dat[ 32*2: 32*3].eq(convert_bytes(     dat[32*15:32*16], endianness)),
+            source.dat[ 32*3: 32*4].eq(convert_bytes(sink.dat[ 32*0: 32*1], endianness)),
+            source.dat[ 32*4: 32*5].eq(convert_bytes(sink.dat[ 32*1: 32*2], endianness)),
+            source.dat[ 32*5: 32*6].eq(convert_bytes(sink.dat[ 32*2: 32*3], endianness)),
+            source.dat[ 32*6: 32*7].eq(convert_bytes(sink.dat[ 32*3: 32*4], endianness)),
+            source.dat[ 32*7: 32*8].eq(convert_bytes(sink.dat[ 32*4: 32*5], endianness)),
+            source.dat[ 32*8: 32*9].eq(convert_bytes(sink.dat[ 32*5: 32*6], endianness)),
+            source.dat[ 32*9:32*10].eq(convert_bytes(sink.dat[ 32*6: 32*7], endianness)),
+            source.dat[32*10:32*11].eq(convert_bytes(sink.dat[ 32*7: 32*8], endianness)),
+            source.dat[32*11:32*12].eq(convert_bytes(sink.dat[ 32*8: 32*9], endianness)),
+            source.dat[32*12:32*13].eq(convert_bytes(sink.dat[ 32*9:32*10], endianness)),
             source.dat[32*13:32*14].eq(convert_bytes(sink.dat[32*10:32*11], endianness)),
             source.dat[32*14:32*15].eq(convert_bytes(sink.dat[32*11:32*12], endianness)),
             source.dat[32*15:32*16].eq(convert_bytes(sink.dat[32*12:32*13], endianness)),
@@ -340,16 +341,16 @@ class LitePCIeTLPHeaderInserter512b(Module):
             If(last,
                 source.be[4*3:4*16].eq(0x0)
             ).Else(
-                source.be[4*3:4*4].eq(convert_bits(sink.be[4*0:4*1], endianness)),
-                source.be[4*4:4*5].eq(convert_bits(sink.be[4*1:4*2], endianness)),
-                source.be[4*5:4*6].eq(convert_bits(sink.be[4*2:4*3], endianness)),
-                source.be[4*6:4*7].eq(convert_bits(sink.be[4*3:4*4], endianness)),
-                source.be[4*7:4*8].eq(convert_bits(sink.be[4*4:4*5], endianness)),
-                source.be[4*8:4*9].eq(convert_bits(sink.be[4*5:4*6], endianness)),
-                source.be[4*9:4*10].eq(convert_bits(sink.be[4*6:4*7], endianness)),
-                source.be[4*10:4*11].eq(convert_bits(sink.be[4*7:4*8], endianness)),
-                source.be[4*11:4*12].eq(convert_bits(sink.be[4*8:4*9], endianness)),
-                source.be[4*12:4*13].eq(convert_bits(sink.be[4*9:4*10], endianness)),
+                source.be[ 4*3: 4*4].eq(convert_bits(sink.be[ 4*0: 4*1], endianness)),
+                source.be[ 4*4: 4*5].eq(convert_bits(sink.be[ 4*1: 4*2], endianness)),
+                source.be[ 4*5: 4*6].eq(convert_bits(sink.be[ 4*2: 4*3], endianness)),
+                source.be[ 4*6: 4*7].eq(convert_bits(sink.be[ 4*3: 4*4], endianness)),
+                source.be[ 4*7: 4*8].eq(convert_bits(sink.be[ 4*4: 4*5], endianness)),
+                source.be[ 4*8: 4*9].eq(convert_bits(sink.be[ 4*5: 4*6], endianness)),
+                source.be[ 4*9:4*10].eq(convert_bits(sink.be[ 4*6: 4*7], endianness)),
+                source.be[4*10:4*11].eq(convert_bits(sink.be[ 4*7: 4*8], endianness)),
+                source.be[4*11:4*12].eq(convert_bits(sink.be[ 4*8: 4*9], endianness)),
+                source.be[4*12:4*13].eq(convert_bits(sink.be[ 4*9:4*10], endianness)),
                 source.be[4*13:4*14].eq(convert_bits(sink.be[4*10:4*11], endianness)),
                 source.be[4*14:4*15].eq(convert_bits(sink.be[4*11:4*12], endianness)),
                 source.be[4*15:4*16].eq(convert_bits(sink.be[4*12:4*13], endianness)),
