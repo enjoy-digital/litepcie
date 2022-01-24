@@ -491,5 +491,5 @@ class LitePCIeTLPPacketizer(Module):
         self.comb += tlp_raw.connect(header_inserter.sink)
         self.comb += header_inserter.source.connect(self.source, omit={"data", "be"})
         for n in range(data_width//32):
-            self.comb += self.source.dat[n*32:(n+1)*32].eq(convert_bytes(header_inserter.source.dat[n*32:(n+1)*32], endianness))  # FIXME: Improve.
-            self.comb += self.source.be[ n* 4:(n+1)* 4].eq(convert_bits( header_inserter.source.be[ n* 4:(n+1)* 4], endianness))  # FIXME: Improve.
+            self.comb += self.source.dat[n*32:(n+1)*32].eq(convert_bytes(header_inserter.source.dat[n*32:(n+1)*32], endianness)) # FIXME: Improve.
+            self.comb += self.source.be[ n* 4:(n+1)* 4].eq(convert_bits( header_inserter.source.be[ n* 4:(n+1)* 4], endianness)) # FIXME: Improve.
