@@ -18,50 +18,41 @@ class LitePCIeTLPHeaderInserter64b(Module):
 
         # # #
 
-        dat  = Signal(64, reset_less=True)
-        last = Signal(    reset_less=True)
+        count = Signal()
+        dat   = Signal(64, reset_less=True)
+        last  = Signal(    reset_less=True)
         self.sync += \
             If(sink.valid & sink.ready,
                 dat.eq(sink.dat),
                 last.eq(sink.last)
             )
 
-        self.submodules.fsm = fsm = FSM(reset_state="HEADER-0")
-        fsm.act("HEADER-0",
+        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        fsm.act("HEADER",
             sink.ready.eq(1),
-            If(sink.first,
+            If(sink.valid & sink.first,
                 sink.ready.eq(0),
-                source.valid.eq(sink.valid),
-                source.first.eq(sink.first),
-                source.last.eq(0),
-
-                source.dat[32*0:32*1].eq(sink.header[32*0:]),
-                source.dat[32*1:32*2].eq(sink.header[32*1:]),
-
-                source.be[4*0:4*1].eq(0xf),
-                source.be[4*1:4*2].eq(0xf),
-
+                source.valid.eq(1),
+                source.first.eq((count == 0) & sink.first),
+                source.last.eq( (count == 1) & sink.last),
+                If(count == 0,
+                    source.dat[32*0:32*1].eq(sink.header[32*0:]),
+                    source.dat[32*1:32*2].eq(sink.header[32*1:]),
+                    source.be[4*0:4*1].eq(0xf),
+                    source.be[4*1:4*2].eq(0xf),
+                ),
+                If(count == 1,
+                    source.dat[32*0:32*1].eq(sink.header[32*2:]),
+                    source.dat[32*1:32*2].eq(sink.dat[32*0:]),
+                    source.be[4*0:4*1].eq(0xf),
+                    source.be[4*1:4*2].eq(sink.be[0:]),
+                ),
                 If(source.valid & source.ready,
-                    NextState("HEADER-1"),
-                )
-            )
-        )
-        fsm.act("HEADER-1",
-            source.valid.eq(1),
-            source.last.eq(sink.last),
-
-            source.dat[32*0:32*1].eq(sink.header[32*2:]),
-            source.dat[32*1:32*2].eq(sink.dat[32*0:]),
-
-            source.be[4*0:4*1].eq(0xf),
-            source.be[4*1:4*2].eq(sink.be[0:]),
-
-            If(source.valid & source.ready,
-                sink.ready.eq(1),
-                If(source.last,
-                    NextState("HEADER-0")
-                ).Else(
-                    NextState("DATA")
+                    NextValue(count, count + 1),
+                    If(count == 1,
+                        sink.ready.eq(1),
+                        NextState("DATA")
+                    )
                 )
             )
         )
@@ -82,7 +73,7 @@ class LitePCIeTLPHeaderInserter64b(Module):
             If(source.valid & source.ready,
                 sink.ready.eq(~last),
                 If(source.last,
-                    NextState("HEADER-0")
+                    NextState("HEADER")
                 )
             )
         )
