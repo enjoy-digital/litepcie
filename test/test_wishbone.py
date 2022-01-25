@@ -64,3 +64,9 @@ class TestWishbone(unittest.TestCase):
 
     def test_wishbone_128b(self):
         self.wishbone_test(128)
+
+    def test_wishbone_256b(self):
+        self.wishbone_test(256)
+
+    def test_wishbone_512b(self):
+        self.wishbone_test(512)
