@@ -411,7 +411,16 @@ class LitePCIeTLPPacketizer(Module):
             tlp_raw_req.first.eq(tlp_req.first),
             tlp_raw_req.last.eq(tlp_req.last),
             tlp_request_header.encode(tlp_req, tlp_raw_req_header),
-            *[tlp_raw_req.header[n*32:(n+1)*32].eq(convert_bytes(tlp_raw_req_header[n*32:(n+1)*32], endianness)) for n in range(3)],  # FIXME: Improve.
+        ]
+        self.comb += dword_endianness_swap(
+            src        = tlp_raw_req_header,
+            dst        = tlp_raw_req.header,
+            data_width = data_width,
+            endianness = endianness,
+            mode       = "dat",
+            ndwords    = 3
+        )
+        self.comb += [
             tlp_raw_req.dat.eq(tlp_req.dat),
             tlp_raw_req.be.eq(tlp_req.be)
         ]
@@ -461,7 +470,16 @@ class LitePCIeTLPPacketizer(Module):
             tlp_raw_cmp.first.eq(tlp_cmp.first),
             tlp_raw_cmp.last.eq(tlp_cmp.last),
             tlp_completion_header.encode(tlp_cmp, tlp_raw_cmp_header),
-            *[tlp_raw_cmp.header[n*32:(n+1)*32].eq(convert_bytes(tlp_raw_cmp_header[n*32:(n+1)*32], endianness)) for n in range(3)], # FIXME: Improve.
+        ]
+        self.comb += dword_endianness_swap(
+            src        = tlp_raw_cmp_header,
+            dst        = tlp_raw_cmp.header,
+            data_width = data_width,
+            endianness = endianness,
+            mode       = "dat",
+            ndwords    = 3
+        )
+        self.comb += [
             tlp_raw_cmp.dat.eq(tlp_cmp.dat),
             tlp_raw_cmp.be.eq(tlp_cmp.be)
         ]
@@ -481,6 +499,11 @@ class LitePCIeTLPPacketizer(Module):
         self.submodules += header_inserter
         self.comb += tlp_raw.connect(header_inserter.sink)
         self.comb += header_inserter.source.connect(self.source, omit={"data", "be"})
-        for n in range(data_width//32):
-            self.comb += self.source.dat[n*32:(n+1)*32].eq(convert_bytes(header_inserter.source.dat[n*32:(n+1)*32], endianness)) # FIXME: Improve.
-            self.comb += self.source.be[ n* 4:(n+1)* 4].eq(convert_bits( header_inserter.source.be[ n* 4:(n+1)* 4], endianness)) # FIXME: Improve.
+        for name in ["dat", "be"]:
+            self.comb += dword_endianness_swap(
+                src        = getattr(header_inserter.source, name),
+                dst        = getattr(self.source, name),
+                data_width = data_width,
+                endianness = endianness,
+                mode       = name,
+            )

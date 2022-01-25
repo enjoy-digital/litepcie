@@ -323,10 +323,20 @@ class LitePCIeTLPDepacketizer(Module):
             dispatch_source.last.eq(header_extracter.source.last),
             tlp_common_header.decode(header, dispatch_source)
         ]
-        for n in range(data_width//32):
-            self.comb += dispatch_source.dat[n*32:(n+1)*32].eq(convert_bytes(header_extracter.source.dat[n*32:(n+1)*32], endianness)), # FIXME: Improve.
-            self.comb += dispatch_source.be[ n* 4:(n+1)* 4].eq(convert_bits( header_extracter.source.be[ n* 4:(n+1)* 4], endianness)), # FIXME: Improve.
-
+        self.comb += dword_endianness_swap(
+            src        = header_extracter.source.dat,
+            dst        = dispatch_source.dat,
+            data_width = data_width,
+            endianness = endianness,
+            mode       = "dat",
+        )
+        self.comb += dword_endianness_swap(
+            src        = header_extracter.source.be,
+            dst        = dispatch_source.be,
+            data_width = data_width,
+            endianness = endianness,
+            mode       = "be",
+        )
         self.submodules.dispatcher = Dispatcher(dispatch_source, dispatch_sinks)
 
         fmt_type = Cat(dispatch_source.type, dispatch_source.fmt)

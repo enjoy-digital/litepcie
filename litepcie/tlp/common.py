@@ -88,13 +88,26 @@ tlp_completion_header = Header(tlp_completion_header_fields,
                                swap_field_bytes=False)
 
 # Helpers ------------------------------------------------------------------------------------------
-def convert_bytes(s, endianness="big"):
-    return reverse_bytes(s) if endianness == "big" else s
 
-def convert_bits(s, endianness="big"):
-    return reverse_bits(s) if endianness == "big" else s
+def dword_endianness_swap(src, dst, data_width, endianness, mode="dat", ndwords=None):
+    assert len(src) == len(dst)
+    assert data_width%32 == 0
+    assert mode in ["dat", "be"]
+    r = []
+    nbits       = {"dat":            32, "be":            4}[mode]
+    ndwords     = data_width//32 if ndwords is None else ndwords
+    reverse_cls = {"dat": reverse_bytes, "be": reverse_bits}[mode]
+    for n in range(ndwords):
+        low  = (n + 0)*nbits
+        high = (n + 1)*nbits
+        r += {
+            "little" : [dst[low:high].eq(            src[low:high])],
+            "big"    : [dst[low:high].eq(reverse_cls(src[low:high]))],
+        }[endianness]
+    return r
 
 # Layouts ------------------------------------------------------------------------------------------
+
 def tlp_raw_layout(data_width):
     layout = [
         ("header", 4*32),
