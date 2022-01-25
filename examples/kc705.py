@@ -52,13 +52,13 @@ class LitePCIeSoC(SoCMini):
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, sys_clk_freq,
             csr_data_width = 32,
-            ident          = "LitePCIe example design on KC705 ({}:x{})".format(speed, nlanes),
-            ident_version  = True,
-            with_uart      = True,
-            uart_name      = "bridge")
+            ident          = "LitePCIe example design on KC705 ({}:x{})".format(speed, nlanes))
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
+
+        # UARTBone ---------------------------------------------------------------------------------
+        self.add_uartbone()
 
         # PCIe -------------------------------------------------------------------------------------
         # PHY
