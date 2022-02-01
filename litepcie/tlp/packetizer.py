@@ -11,7 +11,7 @@ from litepcie.tlp.common import *
 
 # LitePCIeTLPHeaderInserter64b ---------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter64b(Module):
+class LitePCIeTLPHeaderInserter64b3DWs(Module):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(64))
         self.source = source = stream.Endpoint(phy_layout(64))
@@ -69,6 +69,59 @@ class LitePCIeTLPHeaderInserter64b(Module):
             ).Else(
                 source.be[4*1:4*2].eq(0xf)
             ),
+
+            If(source.valid & source.ready,
+                sink.ready.eq(~last),
+                If(source.last,
+                    NextState("HEADER")
+                )
+            )
+        )
+
+class LitePCIeTLPHeaderInserter64b4DWs(Module):
+    def __init__(self):
+        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(64))
+        self.source = source = stream.Endpoint(phy_layout(64))
+
+        # # #
+
+        count = Signal()
+        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        fsm.act("HEADER",
+            sink.ready.eq(1),
+            If(sink.valid & sink.first,
+                sink.ready.eq(0),
+                source.valid.eq(1),
+                source.first.eq((count == 0) & sink.first),
+                source.last.eq( (count == 1) & sink.last),
+                If(count == 0,
+                    source.dat[32*0:32*1].eq(sink.header[32*0:]),
+                    source.dat[32*1:32*2].eq(sink.header[32*1:]),
+                    source.be[4*0:4*1].eq(0xf),
+                    source.be[4*1:4*2].eq(0xf),
+                ),
+                If(count == 1,
+                    source.dat[32*0:32*1].eq(sink.header[32*2:]),
+                    source.dat[32*1:32*2].eq(sink.header[32*3:]),
+                    source.be[4*0:4*1].eq(0xf),
+                    source.be[4*1:4*2].eq(0xf),
+                ),
+                If(source.valid & source.ready,
+                    NextValue(count, count + 1),
+                    If(count == 1,
+                        NextState("DATA")
+                    )
+                )
+            )
+        )
+        fsm.act("DATA",
+            source.valid.eq(sink.valid),
+            source.last.eq(sink.last),
+
+            source.dat[32*0:32*1].eq(sink.dat[32*0]),
+            source.dat[32*1:32*2].eq(sink.dat[32*1:]),
+            source.be[4*0:4*1].eq(0xf),
+            source.be[4*1:4*2].eq(0xf),
 
             If(source.valid & source.ready,
                 sink.ready.eq(~last),
@@ -357,8 +410,9 @@ class LitePCIeTLPHeaderInserter512b(Module):
 # LitePCIeTLPPacketizer ----------------------------------------------------------------------------
 
 class LitePCIeTLPPacketizer(Module):
-    def __init__(self, data_width, endianness):
+    def __init__(self, data_width, endianness, address_width=32):
         assert data_width%32 == 0
+        assert address_width in [32, 64]
         self.req_sink = req_sink = stream.Endpoint(request_layout(data_width))
         self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
         self.source   = stream.Endpoint(phy_layout(data_width))
@@ -374,9 +428,9 @@ class LitePCIeTLPPacketizer(Module):
             tlp_req.last.eq(req_sink.last),
 
             If(req_sink.we,
-                Cat(tlp_req.type, tlp_req.fmt).eq(fmt_type_dict["mem_wr32"])
+                Cat(tlp_req.type, tlp_req.fmt).eq(fmt_type_dict[f"mem_wr{address_width}"])
             ).Else(
-                Cat(tlp_req.type, tlp_req.fmt).eq(fmt_type_dict["mem_rd32"])
+                Cat(tlp_req.type, tlp_req.fmt).eq(fmt_type_dict[f"mem_rd{address_width}"])
             ),
 
             tlp_req.tc.eq(0),
@@ -484,26 +538,62 @@ class LitePCIeTLPPacketizer(Module):
             tlp_raw_cmp.be.eq(tlp_cmp.be)
         ]
 
-        # Arbitrate --------------------------------------------------------------------------------
-        tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))
-        self.submodules.arbitrer = Arbiter([tlp_raw_req, tlp_raw_cmp], tlp_raw)
 
-        # Insert header ----------------------------------------------------------------------------
-        header_inserter_cls = {
-            64 : LitePCIeTLPHeaderInserter64b,
-           128 : LitePCIeTLPHeaderInserter128b,
-           256 : LitePCIeTLPHeaderInserter256b,
-           512 : LitePCIeTLPHeaderInserter512b,
-        }
-        header_inserter = header_inserter_cls[data_width]()
-        self.submodules += header_inserter
-        self.comb += tlp_raw.connect(header_inserter.sink)
-        self.comb += header_inserter.source.connect(self.source, omit={"data", "be"})
-        for name in ["dat", "be"]:
-            self.comb += dword_endianness_swap(
-                src        = getattr(header_inserter.source, name),
-                dst        = getattr(self.source, name),
-                data_width = data_width,
-                endianness = endianness,
-                mode       = name,
-            )
+        if address_width == 32:
+
+            # Arbitrate ----------------------------------------------------------------------------
+
+            tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))
+            self.submodules.arbitrer = Arbiter([tlp_raw_req, tlp_raw_cmp], tlp_raw)
+
+            # Insert header ------------------------------------------------------------------------
+            header_inserter_cls = {
+                64 : LitePCIeTLPHeaderInserter64b3DWs,
+               128 : LitePCIeTLPHeaderInserter128b,
+               256 : LitePCIeTLPHeaderInserter256b,
+               512 : LitePCIeTLPHeaderInserter512b,
+            }
+            header_inserter = header_inserter_cls[data_width]()
+            self.submodules += header_inserter
+            self.comb += tlp_raw.connect(header_inserter.sink)
+            self.comb += header_inserter.source.connect(self.source, omit={"data", "be"})
+            for name in ["dat", "be"]:
+                self.comb += dword_endianness_swap(
+                    src        = getattr(header_inserter.source, name),
+                    dst        = getattr(self.source, name),
+                    data_width = data_width,
+                    endianness = endianness,
+                    mode       = name,
+                )
+
+        else:
+
+            # Insert header (Req) ------------------------------------------------------------------
+            header_inserter_cls = {
+                64 : LitePCIeTLPHeaderInserter64b4DWs,
+            }
+            header_inserter_req = header_inserter_cls[data_width]()
+            self.submodules += header_inserter_req
+            self.comb += tlp_raw_req.connect(header_inserter.sink)
+
+            # Insert header (Cmp) ------------------------------------------------------------------
+            header_inserter_cls = {
+                64 : LitePCIeTLPHeaderInserter64b3DWs,
+            }
+            header_inserter_cmp = header_inserter_cls[data_width]()
+            self.submodules += header_inserter_cmp
+            self.comb += tlp_raw_cmp.connect(header_inserter_cmp.sink)
+
+            # Arbitrate ----------------------------------------------------------------------------
+            header_inserter_source = stream.Endpoint(phy_layout(64))
+            self.submodules.arbitrer = Arbiter([header_inserter_req.source, header_inserter_cmp.source], header_inserter_source)
+
+            self.comb += header_inserter_source.connect(self.source, omit={"data", "be"})
+            for name in ["dat", "be"]:
+                self.comb += dword_endianness_swap(
+                    src        = getattr(header_inserter_source, name),
+                    dst        = getattr(self.source, name),
+                    data_width = data_width,
+                    endianness = endianness,
+                    mode       = name,
+                )
