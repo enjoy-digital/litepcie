@@ -13,13 +13,12 @@
 
 import unittest
 
-from litex.soc.interconnect.stream_sim import seed_to_data
-
 from litepcie.common import *
 from litepcie.core import LitePCIeEndpoint
 from litepcie.core.msi import LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader
 
+from test.common import seed_to_data
 from test.model.host import *
 
 root_id     = 0x100

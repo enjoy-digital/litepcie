@@ -15,11 +15,11 @@ import unittest
 from migen import *
 
 from litex.soc.interconnect import wishbone
-from litex.soc.interconnect.stream_sim import seed_to_data
 
 from litepcie.core import LitePCIeEndpoint
 from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
+from test.common import seed_to_data
 from test.model.host import *
 
 root_id     = 0x100
