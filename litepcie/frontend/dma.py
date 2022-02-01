@@ -45,7 +45,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
 
 
     A DMA descriptor is composed of:
-    - a 32-bit address: The base address of the Host where the data stream should be written/read.
+    - a 32/64-bit address: The base address of the Host where the data stream should be written/read.
     - a 24-bit length : The length of the data stream (bytes).
     - a 8-bit control : Dynamic controls (ex: Disable IRQ generation, disable Last handling).
 
@@ -64,17 +64,18 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
     potentially be lost, it's safer for the software to just use the hardware loop status than to
     maintain a software loop status based MSI IRQ reception).
     """
-    def __init__(self, depth):
+    def __init__(self, depth, address_width=32):
+        assert address_width in [32, 64]
         # Stream Endpoint.
         self.source = source = stream.Endpoint(descriptor_layout())
 
         # Control/Status.
-        self.value = CSRStorage(64, reset_less=True, fields=[
-            CSRField("address",      size=32, description="32-bit Address of the descriptor (bytes-aligned)."),
-            CSRField("length",       size=24, description="24-bit Length  of the descriptor (in bytes)."),
-            CSRField("irq_disable",  size=1,  description="IRQ Disable Control of the descriptor."),
-            CSRField("last_disable", size=1,  description="Last Disable Control of the descriptor.")
-            ], description="64-bit DMA descriptor to be written to the table.")
+        self.value = CSRStorage(address_width + 32, reset_less=True, fields=[
+            CSRField("address",      size=address_width, description="32/64-bit Address of the descriptor (bytes-aligned)."),
+            CSRField("length",       size=24,            description="24-bit Length  of the descriptor (in bytes)."),
+            CSRField("irq_disable",  size=1,             description="IRQ Disable Control of the descriptor."),
+            CSRField("last_disable", size=1,             description="Last Disable Control of the descriptor.")
+            ], description="64/96-bit DMA descriptor to be written to the table.")
         self.we = CSRStorage(description="A write to this register adds the descriptor to table.")
         self.loop_prog_n = CSRStorage(description="""Mode Selection.\n
             ``0``: **Prog** mode / ``1``: **Loop** mode.\n
@@ -238,7 +239,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256):
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32):
         self.port = port
         # Stream Endpoint.
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
@@ -260,7 +261,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
-            self.submodules.table = LitePCIeDMAScatterGather(table_depth)
+            self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width=address_width)
         else:
             self.desc_sink = stream.Endpoint(descriptor_layout()) # Expose a Descriptor sink.
 
@@ -373,7 +374,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256):
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32):
         self.port = port
         # Stream Endpoint.
         self.sink   = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
@@ -394,7 +395,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
-            self.submodules.table = LitePCIeDMAScatterGather(table_depth)
+            self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width)
         else:
             self.desc_sink = stream.Endpoint(descriptor_layout()) # Expose a Descriptor sink.
 
@@ -793,7 +794,7 @@ class LitePCIeDMA(Module, AutoCSR):
 
     Optional buffering, loopback, synchronization and monitoring.
     """
-    def __init__(self, phy, endpoint, table_depth=256,
+    def __init__(self, phy, endpoint, table_depth=256, address_width=32,
         with_loopback      = False,
         with_synchronizer  = False,
         with_buffering     = False, buffering_depth=256*8, writer_buffering_depth=None, reader_buffering_depth=None,
@@ -802,14 +803,16 @@ class LitePCIeDMA(Module, AutoCSR):
 
         # Writer/Reader ----------------------------------------------------------------------------
         writer = LitePCIeDMAWriter(
-            endpoint    = endpoint,
-            port        = endpoint.crossbar.get_master_port(write_only=True),
-            table_depth = table_depth,
+            endpoint      = endpoint,
+            port          = endpoint.crossbar.get_master_port(write_only=True),
+            table_depth   = table_depth,
+            address_width = address_width,
         )
         reader = LitePCIeDMAReader(
-            endpoint    = endpoint,
-            port        = endpoint.crossbar.get_master_port(read_only=True),
-            table_depth = table_depth,
+            endpoint      = endpoint,
+            port          = endpoint.crossbar.get_master_port(read_only=True),
+            table_depth   = table_depth,
+            address_width = address_width,
         )
         self.submodules.writer = writer
         self.submodules.reader = reader
