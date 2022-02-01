@@ -1,15 +1,40 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2018 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 # In this high level test, LitePCIeEndpoint is connected to LitePCIeDMAReader and LitePCIeDMAWriter
 # frontends with Reader's source connected to Writer's sink. Our Host model is used to emulate a Host
-# memory with the Reader and Writer are reading/writing data from/to this memory. The Host memory
-# is initially filled with random data, that are read by the Reader, re-directed to the Writer and
-# then re-written in another memory location of the Host. The test then checks that the initial data
-# and re-written data are identical.
+# memory with the Reader and Writer are reading/writing data from/to this memory.
+#
+#                                       ┌───────────┐
+#                                       │           │
+#                                       │   HOST    │
+#                                       │  (Model)  │
+#                                       │           │
+#                                       └─┬───────▲─┘
+#                                         │       │
+#                                   ┌─────▼───────┴─────┐
+#                                   │                   │
+#                                   │                   │
+#                                ┌──►  LitePCIeEndpoint ├─┐
+#                                │  │                   │ │
+#                                │  │                   │ │
+#                                │  └───────────────────┘ │
+#                                │                        │
+#                       ┌────────┴──────────┐   ┌─────────▼─────────┐
+#                       │                   │   │                   │
+#                       │ LitePCIeDMAWriter │   │ LitePCIeDMAReader │
+#                       │                   │   │                   │
+#                       └────────▲──────────┘   └─────────┬─────────┘
+#                                │                        │
+#                                │                        │
+#                                └────────────────────────┘
+#
+# The Host memory  is initially filled with random data, that are read by the Reader, re-directed
+# to the Writer and then re-written in another memory location of the Host. The test then checks
+# that the initial data and re-written data are identical.
 
 import unittest
 
@@ -21,8 +46,12 @@ from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader
 from test.common import seed_to_data
 from test.model.host import *
 
+# Parameters ---------------------------------------------------------------------------------------
+
 root_id     = 0x100
 endpoint_id = 0x400
+
+# DMA Driver ---------------------------------------------------------------------------------------
 
 class DMADriver:
     """DMA Driver model
@@ -54,6 +83,8 @@ class DMADriver:
     def disable(self):
         yield from self.dma.enable.write(0)
 
+# MSI Handler --------------------------------------------------------------------------------------
+
 DMA_READER_IRQ = 1
 DMA_WRITER_IRQ = 2
 
@@ -80,11 +111,11 @@ class MSIHandler(Module):
         while True:
             yield self.sink.ready.eq(1)
             if (yield self.sink.valid):
-                # Get IRQs
+                # Get IRQs.
                 irq_vector = (yield dut.msi.vector.status)
                 irq_clear  = 0
 
-                # Handle IRQs
+                # Handle IRQs.
                 if irq_vector & DMA_READER_IRQ:
                     self.dma_reader_irq_count += 1
                     if self.debug:
@@ -96,10 +127,11 @@ class MSIHandler(Module):
                     if self.debug:
                         print("[MSI] dma_writer_irq (n: {:d})".format(self.dma_writer_irq_count))
                     irq_clear |= DMA_WRITER_IRQ
-                # Clear IRQs
+                # Clear IRQs.
                 yield from dut.msi.clear.write((yield from dut.msi.clear.read()) | irq_clear)
             yield
 
+# Test DMA -----------------------------------------------------------------------------------------
 
 class TestDMA(unittest.TestCase):
     def dma_test(self, data_width, test_size=1024):
@@ -107,43 +139,43 @@ class TestDMA(unittest.TestCase):
         loopback_data = []
 
         def main_generator(dut, nreads=8, nwrites=8):
-            # Allocate Host's memory
+            # Allocate Host's Memory.
             dut.host.malloc(0x00000000, test_size*2)
 
             # Enable Chipset
             dut.host.chipset.enable()
 
-            # Fill initial Host's memory
+            # Fill initial Host's Memory.
             dut.host.write_mem(0x00000000, host_data)
 
-            # DMA Reader/Writer control models
+            # DMA Reader/Writer control models.
             dma_reader_driver = DMADriver("dma_reader", dut)
             dma_writer_driver = DMADriver("dma_writer", dut)
 
-            # Program DMA Reader descriptors
+            # Program DMA Reader descriptors.
             yield from dma_reader_driver.set_prog_mode()
             yield from dma_reader_driver.flush()
             for i in range(nreads):
                 yield from dma_reader_driver.program_descriptor((test_size//8)*i, test_size//8)
 
-            # Program DMA Writer descriptors
+            # Program DMA Writer descriptors.
             yield from dma_writer_driver.set_prog_mode()
             yield from dma_writer_driver.flush()
             for i in range(nwrites):
                 yield from dma_writer_driver.program_descriptor(test_size + (test_size//8)*i, test_size//8)
 
-            # Enable MSI
+            # Enable MSI.
             yield dut.msi.enable.storage.eq(DMA_READER_IRQ | DMA_WRITER_IRQ)
 
-            # Enable DMA Reader & Writer
+            # Enable DMA Reader & Writer.
             yield from dma_reader_driver.enable()
             yield from dma_writer_driver.enable()
 
-            # Wait for all writes
+            # Wait for all writes.
             while dut.msi_handler.dma_writer_irq_count != nwrites:
                 yield
 
-            # Delay to ensure all the data has been written
+            # Delay to ensure all the data has been written.
             for i in range(1024):
                 yield
 

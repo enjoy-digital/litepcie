@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2019 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from litepcie.common import *
@@ -21,12 +21,12 @@ def print_host(s):
 
 class Host(Module):
     def __init__(self, data_width, root_id, endpoint_id,
-                 bar0_size          = 1*MB,
-                 phy_debug          = False,
-                 chipset_debug      = False,
-                 chipset_split      = False,
-                 chipset_reordering = False,
-                 host_debug         = False):
+        bar0_size          = 1*MB,
+        phy_debug          = False,
+        chipset_debug      = False,
+        chipset_split      = False,
+        chipset_reordering = False,
+        host_debug         = False):
         self.debug         = host_debug
         self.chipset_split = chipset_split
 
