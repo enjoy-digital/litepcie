@@ -113,7 +113,7 @@ class PHY(Module):
         self.bar0_mask = get_bar_mask(bar0_size)
 
         self.max_request_size = Signal(10, reset=512)
-        self.max_payload_size = Signal(8, reset=128)
+        self.max_payload_size = Signal(8,  reset=128)
 
         self.submodules.phy_source = PHYSource(data_width)
         self.submodules.phy_sink   = PHYSink(data_width)

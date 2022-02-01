@@ -69,7 +69,7 @@ class TestWishbone(unittest.TestCase):
             # Read ndatas from the Wishbone SRAM.
             for i in range(nwords):
                 yield from dut.host.chipset.rd32(i)
-                rd_datas.append(dut.host.chipset.rd32_data[0])
+                rd_datas.append(dut.host.chipset.rd_data[0])
 
         class DUT(Module):
             def __init__(self, data_width):

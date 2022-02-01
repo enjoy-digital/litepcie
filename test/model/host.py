@@ -36,7 +36,7 @@ class Host(Module):
         self.submodules.chipset = Chipset(self.phy, root_id, chipset_debug, chipset_reordering)
         self.chipset.set_host_callback(self.callback)
 
-        self.rd32_queue = []
+        self.rd_queue = []
 
     def malloc(self, base, length):
         self.base   = base
@@ -63,18 +63,24 @@ class Host(Module):
             address = msg.address
             self.write_mem(address, msg.data)
         elif isinstance(msg, RD32):
-            self.rd32_queue.append(msg)
+            self.rd_queue.append(msg)
+        elif isinstance(msg, WR64):
+            address = msg.address
+            self.write_mem(address, msg.data)
+        elif isinstance(msg, RD64):
+            self.rd_queue.append(msg)
 
     @passive
     def generator(self):
         while True:
-            if len(self.rd32_queue):
-                msg     = self.rd32_queue.pop(0)
+            if len(self.rd_queue):
+                msg     = self.rd_queue.pop(0)
                 address = msg.address
                 length  = msg.length*4
                 data    = self.read_mem(address, length)
                 self.chipset.cmp(msg.requester_id, data,
                     byte_count = length,
                     tag        = msg.tag,
-                    with_split = self.chipset_split)
+                    with_split = self.chipset_split
+                )
             yield
