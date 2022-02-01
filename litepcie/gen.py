@@ -148,6 +148,14 @@ class LitePCIeCore(SoCMini):
         clk_external = core_config.get("clk_external", False)
         self.submodules.crg = LitePCIeCRG(platform, sys_clk_freq, clk_external)
 
+        # Control ----------------------------------------------------------------------------------
+        if core_config.get("ctrl", False):
+            axi = AXILiteInterface(data_width=32, address_width=32)
+            platform.add_extension(axi.get_ios("ctrl_axi_lite"))
+            axi_pads = platform.request("ctrl_axi_lite")
+            self.comb += axi.connect_to_pads(axi_pads, mode="slave")
+            self.bus.add_master(name="ctrl", master=axi)
+
         # PCIe PHY ---------------------------------------------------------------------------------
         self.submodules.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
             pcie_data_width = core_config.get("phy_pcie_data_width", 64),
