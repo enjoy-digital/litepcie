@@ -164,9 +164,6 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
         self.sink   =   sink = stream.Endpoint(descriptor_layout())
         self.source = source = stream.Endpoint(descriptor_layout(with_user_id=True))
 
-        # Control.
-        self.end    = Signal()
-
         # # #
 
         desc_length  = Signal(32)
@@ -197,9 +194,9 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
             source.first.eq(desc_offset == 0),
             # Full Descriptor when Length > max_size.
             If(desc_length > max_size,
-                source.last.eq(self.end),
+                source.last.eq(0),
                 source.length.eq(max_size),
-            # Partial Descriptor when Length <= max_size
+            # Partial Descriptor when Length <= max_size.
             ).Else(
                 source.last.eq(1),
                 source.length.eq(desc_length),
@@ -376,7 +373,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
     def __init__(self, endpoint, port, with_table=True, table_depth=256):
         self.port = port
         # Stream Endpoint.
-        self.sink   = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
+        self.sink = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
 
         # Control.
         self.enable = CSRStorage(description="DMA Writer Control. Write ``1`` to enable DMA Writer.", reset=0 if with_table else 1)
@@ -424,14 +421,16 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         ]
 
         # FSM --------------------------------------------------------------------------------------
+        req_done  = Signal()
         req_count = Signal.like(splitter.source.length)
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             # Reset Splitter/FIFO when Disabled.
             splitter.reset.eq( ~enable),
             data_fifo.reset.eq(~enable),
-            # Reset Request Count.
+            # Reset Request Count/Done.
             NextValue(req_count, 0),
+            NextValue(req_done,  0),
             # Wait for a Descriptor and to have enough Data to generate the Request.
             If(splitter.source.valid & (data_fifo.level >= splitter.source.length[length_shift:]),
                 NextState("REQUEST"),
@@ -457,14 +456,16 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             If(port.source.ready,
                 # Increment Request Count.
                 NextValue(req_count, req_count + 1),
-                # Accept Data.
-                data_fifo.source.ready.eq(1),
+                # Accept Data (Only when not terminated).
+                data_fifo.source.ready.eq(~req_done),
                 # When last...
                 If(port.source.last,
                     # Accept Descriptor.
                     splitter.source.ready.eq(1),
-                    # Early Splitter End (can be disabled).
-                    splitter.end.eq(data_fifo.source.last & ~splitter.source.last_disable),
+                    # Terminate early on last (Optional, can be disabled).
+                    If(data_fifo.source.last & ~splitter.source.last_disable,
+                        NextValue(req_done, 1)
+                    ),
                     # Return to Idle.
                     NextState("IDLE"),
                 )
