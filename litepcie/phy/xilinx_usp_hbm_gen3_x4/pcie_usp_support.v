@@ -262,8 +262,8 @@ module pcie_support # (
 
   output                                     cfg_phy_link_down,
   output                            [1:0]    cfg_phy_link_status,
-  output                            [3:0]    cfg_negotiated_width,
-  output                            [2:0]    cfg_current_speed,
+  output                            [2:0]    cfg_negotiated_width,
+  output                            [1:0]    cfg_current_speed,
   output                            [2:0]    cfg_max_payload,
   output                            [2:0]    cfg_max_read_req,
   output                           [15:0]    cfg_function_status,
