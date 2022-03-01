@@ -2,6 +2,7 @@
 # This file is part of LitePCIe.
 #
 # Copyright (c) 2020 Enjoy-Digital <enjoy-digital.fr>
+# Copyright (c) 2022 Sylvain Munaut <tnt@246tNt.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 import os
@@ -37,10 +38,10 @@ class USPPCIEPHY(Module, AutoCSR):
                 ("``0b1``", "PHY Link Down."),
             ]),
             CSRField("phy_status", size=2, values=[
-                ("``00b``", "No receivers detected"),
-                ("``01b``", "Link training in progress"),
-                ("``10b``", "Link up, DL initialization in progress"),
-                ("``11b``", "Link up, DL initialization completed"),
+                ("``00b``", "No receivers detected."),
+                ("``01b``", "Link training in progress."),
+                ("``10b``", "Link up, DL initialization in progress."),
+                ("``11b``", "Link up, DL initialization completed."),
             ]),
             CSRField("rate", size=2, values=[
                 ("``0b00``", "2.5 GT/s."),
