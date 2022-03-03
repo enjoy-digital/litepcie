@@ -77,7 +77,7 @@ class S7PCIEPHY(Module, AutoCSR):
         if hasattr(pads, "rst_n"):
             self.comb += pcie_rst_n.eq(pads.rst_n)
         self.specials += Instance("IBUFDS_GTE2",
-            i_CEB = ~pcie_rst_n,
+            i_CEB = 0,
             i_I   = pads.clk_p,
             i_IB  = pads.clk_n,
             o_O   = pcie_refclk

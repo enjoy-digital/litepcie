@@ -93,7 +93,7 @@ class USPCIEPHY(Module, AutoCSR):
             self.comb += pcie_rst_n.eq(pads.rst_n)
         self.specials += Instance("IBUFDS_GTE3",
             p_REFCLK_HROW_CK_SEL = 0,
-            i_CEB   = ~pcie_rst_n,
+            i_CEB   = 0,
             i_I     = pads.clk_p,
             i_IB    = pads.clk_n,
             o_O     = pcie_refclk_gt,
