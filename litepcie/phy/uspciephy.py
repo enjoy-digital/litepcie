@@ -1,7 +1,8 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2020 Enjoy-Digital <enjoy-digital.fr>
+# Copyright (c) 2020-2022 Enjoy-Digital <enjoy-digital.fr>
+# Copyright (c) 2022 Sylvain Munaut <tnt@246tNt.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 import os
@@ -27,7 +28,34 @@ class USPCIEPHY(Module, AutoCSR):
         self.msi        = stream.Endpoint(msi_layout())
 
         # Registers --------------------------------------------------------------------------------
-        self._link_up           = CSRStatus(description="Link Up Status. ``1``: Link is Up.")
+        self._link_status = CSRStatus(fields=[
+            CSRField("status", size=1, values=[
+                ("``0b0``", "Link Down."),
+                ("``0b1``", "Link Up."),
+            ]),
+            CSRField("phy_down", size=1, values=[
+                ("``0b0``", "PHY Link Up."),
+                ("``0b1``", "PHY Link Down."),
+            ]),
+            CSRField("phy_status", size=2, values=[
+                ("``00b``", "No receivers detected."),
+                ("``01b``", "Link training in progress."),
+                ("``10b``", "Link up, DL initialization in progress."),
+                ("``11b``", "Link up, DL initialization completed."),
+            ]),
+            CSRField("rate", size=3, values=[
+                ("``0b001``", "2.5 GT/s."),
+                ("``0b010``", "5.0 GT/s."),
+                ("``0b100``", "8.0 GT/s."),
+            ]),
+            CSRField("width", size=4, values=[
+                ("``0b0001``", "1-Lane link."),
+                ("``0b0010``", "2-Lane link."),
+                ("``0b0100``", "4-Lane link."),
+                ("``0b1000``", "8-Lane link."),
+            ]),
+            CSRField("ltssm", size=6, description="LTSSM State"),
+        ])
         self._msi_enable        = CSRStatus(description="MSI Enable Status. ``1``: MSI is enabled.")
         self._bus_master_enable = CSRStatus(description="Bus Mastering Status. ``1``: Bus Mastering enabled.")
         self._max_request_size  = CSRStatus(16, description="Negiotiated Max Request Size (in bytes).")
@@ -123,7 +151,13 @@ class USPCIEPHY(Module, AutoCSR):
                 value = min(value*2, max_size)
             return Case(command, cases)
 
-        link_up         = Signal()
+        link_status     = Signal()
+        link_phy_down   = Signal()
+        link_phy_status = Signal(2)
+        link_rate       = Signal(3)
+        link_width      = Signal(4)
+        link_ltssm      = Signal(6)
+
         msi_enable      = Signal()
         serial_number   = Signal(64)
         bus_number      = Signal(8)
@@ -140,7 +174,12 @@ class USPCIEPHY(Module, AutoCSR):
             self.id.eq(Cat(function_number, device_number, bus_number))
         ]
         self.specials += [
-            MultiReg(link_up, self._link_up.status),
+            MultiReg(link_status,     self._link_status.fields.status),
+            MultiReg(link_phy_down,   self._link_status.fields.phy_down),
+            MultiReg(link_phy_status, self._link_status.fields.phy_status),
+            MultiReg(link_rate,       self._link_status.fields.rate),
+            MultiReg(link_width,      self._link_status.fields.width),
+            MultiReg(link_ltssm,      self._link_status.fields.ltssm),
             MultiReg(cfg_function_status, self._bus_master_enable.status),
             MultiReg(msi_enable, self._msi_enable.status),
             MultiReg(self.max_request_size, self._max_request_size.status),
@@ -183,7 +222,7 @@ class USPCIEPHY(Module, AutoCSR):
             # Common
             o_user_clk_out          = ClockSignal("pcie"),
             o_user_reset_out        = ResetSignal("pcie"),
-            o_user_lnk_up           = link_up,
+            o_user_lnk_up           = link_status,
             o_user_app_rdy          = Open(),
 
             # (FPGA -> Host) Requester Request
@@ -290,11 +329,10 @@ class USPCIEPHY(Module, AutoCSR):
             o_cfg_interrupt_msi_vf_enable   = Open(8),
 
             # Error Reporting Interface ------------------------------------------------------------
-
-            o_cfg_phy_link_down           = Open(),
-            o_cfg_phy_link_status         = Open(2),
-            o_cfg_negotiated_width        = Open(4),
-            o_cfg_current_speed           = Open(3),
+            o_cfg_phy_link_down           = link_phy_down,
+            o_cfg_phy_link_status         = link_phy_status,
+            o_cfg_negotiated_width        = link_width,
+            o_cfg_current_speed           = link_rate,
             o_cfg_max_payload             = cfg_max_payload_size,
             o_cfg_max_read_req            = cfg_max_read_req,
             o_cfg_function_status         = cfg_function_status,
@@ -307,7 +345,7 @@ class USPCIEPHY(Module, AutoCSR):
             o_cfg_err_nonfatal_out        = Open(),
             o_cfg_err_fatal_out           = Open(),
             o_cfg_ltr_enable              = Open(),
-            o_cfg_ltssm_state             = Open(6),
+            o_cfg_ltssm_state             = link_ltssm,
             o_cfg_rcb_status              = Open(4),
             o_cfg_dpa_substate_change     = Open(4),
             o_cfg_obff_enable             = Open(2),
