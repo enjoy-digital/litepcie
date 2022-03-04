@@ -111,7 +111,7 @@ def main():
     parser.add_argument("--build",  action="store_true", help="Build bitstream")
     parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
     parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
-    parser.add_argument("--speed",  default="gen2",      help="PCIe speed: gen2 (default) or gen3")
+    parser.add_argument("--speed",  default="gen3",      help="PCIe speed: gen2 (default) or gen3")
     parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 4 (default) or 8")
     args = parser.parse_args()
 
