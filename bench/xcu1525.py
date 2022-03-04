@@ -53,8 +53,8 @@ class LitePCIeSoC(SoCMini):
 
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, sys_clk_freq,
-            csr_data_width = 32,
-            ident          = "LitePCIe example design on XCU1525 ({}:x{})".format(speed, nlanes))
+            ident = "LitePCIe example design on XCU1525 ({}:x{})".format(speed, nlanes)
+        )
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
