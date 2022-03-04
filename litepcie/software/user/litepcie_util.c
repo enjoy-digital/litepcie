@@ -345,8 +345,8 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
             if (!buf_rd)
                 break;
 
-            /* break until first full dma loop */
-            if (dma.writer_hw_count < DMA_BUFFER_COUNT)
+            /* skip the first 128 dma loop */
+            if (dma.writer_hw_count < 128*DMA_BUFFER_COUNT)
                 break;
 
             if (run) {
@@ -381,7 +381,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
 
         /* statistics */
         int64_t duration = get_time_ms() - last_time;
-        if (duration > 200) {
+        if (run & (duration > 200)) {
             if (i % 10 == 0)
                 printf("\e[1mDMA_SPEED(Gbps)\tTX_BUFFERS\tRX_BUFFERS\tDIFF\tERRORS\e[0m\n");
             i++;
