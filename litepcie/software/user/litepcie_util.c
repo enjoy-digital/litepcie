@@ -283,7 +283,7 @@ static int check_pn_data(const uint32_t *buf, int count, uint32_t *pseed, int da
 }
 #endif
 
-static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_width)
+static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_width, int auto_rx_delay)
 {
     static struct litepcie_dma_ctrl dma = {.use_reader = 1, .use_writer = 1};
     dma.loopback = external_loopback ? 0 : 1;
@@ -302,7 +302,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
 #ifdef DMA_CHECK_DATA
     uint32_t seed_wr = 0;
     uint32_t seed_rd = 0;
-    uint8_t  run = 0;
+    uint8_t  run = (auto_rx_delay == 0);
 #endif
 
     signal(SIGINT, intHandler);
@@ -457,6 +457,7 @@ static void help(void)
            "-z                                Enable zero-copy DMA mode\n"
            "-e                                Use external loopback (default = internal)\n"
            "-w data_width                     Width of data bus (default = 16)\n"
+           "-a                                Automatic DMA RX-Delay calibration\n"
            "\n"
            "available commands:\n"
            "info                              Board information\n"
@@ -482,16 +483,18 @@ int main(int argc, char **argv)
     static uint8_t litepcie_device_zero_copy;
     static uint8_t litepcie_device_external_loopback;
     static int litepcie_data_width;
+    static int litepcie_auto_rx_delay;
 
 
     litepcie_device_num = 0;
     litepcie_data_width = 16;
+    litepcie_auto_rx_delay = 0;
     litepcie_device_zero_copy = 0;
     litepcie_device_external_loopback = 0;
 
     /* parameters */
     for (;;) {
-        c = getopt(argc, argv, "hc:w:ze");
+        c = getopt(argc, argv, "hc:w:zea");
         if (c == -1)
             break;
         switch(c) {
@@ -510,6 +513,9 @@ int main(int argc, char **argv)
         case 'e':
             litepcie_device_external_loopback = 1;
             break;
+        case 'a':
+            litepcie_auto_rx_delay = 1;
+            break;
         default:
             exit(1);
         }
@@ -526,7 +532,11 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "info"))
         info();
     else if (!strcmp(cmd, "dma_test"))
-        dma_test(litepcie_device_zero_copy, litepcie_device_external_loopback, litepcie_data_width);
+        dma_test(
+            litepcie_device_zero_copy,
+            litepcie_device_external_loopback,
+            litepcie_data_width,
+            litepcie_auto_rx_delay);
     else if (!strcmp(cmd, "scratch_test"))
         scratch_test();
 #ifdef CSR_UART_XOVER_RXTX_ADDR
