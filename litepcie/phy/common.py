@@ -117,10 +117,9 @@ class PHYRXDatapath(Module):
                 pipe_valid.source.connect(source),
             ]
 
-# LTSSMDebug ---------------------------------------------------------------------------------------
+# LTSSMTracer --------------------------------------------------------------------------------------
 
-class LTSSMDebug(Module, AutoCSR):
-
+class LTSSMTracer(Module, AutoCSR):
     def __init__(self, ltssm):
         self._history = CSRStatus(description="History of LTSSM states",
             fields = [
@@ -130,13 +129,11 @@ class LTSSMDebug(Module, AutoCSR):
                 CSRField("valid", offset=31, size=1, description="Is data valid"),
         ])
 
-            # The ltssm state signal input is sampled in the sys domain
-            # just using a MultiReg. This means on change we could have an
-            # invalid state during 1 cycle.
-            #
-            # We also don't use an AsyncFIFO because the pcie clock domain is
-            # held in reset most of the LTSSM initial negotiation defeating the
-            # point of this module.
+        # The ltssm state signal input is sampled in the sys domain just using a MultiReg. This means
+        # on change we could have an invalid state during 1 cycle.
+        #
+        # We also don't use an AsyncFIFO because the pcie clock domain is held in reset most of the
+        # LTSSM initial negotiation defeating the point of this module.
 
         fifo = stream.SyncFIFO([("new", 6), ("old", 6), ("ovfl", 1)], 128)
         self.submodules += fifo

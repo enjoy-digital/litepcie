@@ -68,6 +68,7 @@ class LitePCIeSoC(SoCMini):
             data_width = data_width,
             bar0_size  = 0x20000,
         )
+        self.pcie_phy.add_ltssm_tracer()
 
         # Endpoint
         self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
