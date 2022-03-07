@@ -116,3 +116,54 @@ class PHYRXDatapath(Module):
                 cdc.source.connect(pipe_valid.sink),
                 pipe_valid.source.connect(source),
             ]
+
+# LTSSMDebug ---------------------------------------------------------------------------------------
+
+class LTSSMDebug(Module, AutoCSR):
+
+    def __init__(self, ltssm):
+        self._history = CSRStatus(description="History of LTSSM states",
+            fields = [
+                CSRField("new",   offset= 0, size=6, description="New LTSSM state"),
+                CSRField("old",   offset= 6, size=6, description="Old LTSSM state"),
+                CSRField("ovfl",  offset=30, size=1, description="Overflow"),
+                CSRField("valid", offset=31, size=1, description="Is data valid"),
+        ])
+
+            # The ltssm state signal input is sampled in the sys domain
+            # just using a MultiReg. This means on change we could have an
+            # invalid state during 1 cycle.
+            #
+            # We also don't use an AsyncFIFO because the pcie clock domain is
+            # held in reset most of the LTSSM initial negotiation defeating the
+            # point of this module.
+
+        fifo = stream.SyncFIFO([("new", 6), ("old", 6), ("ovfl", 1)], 128)
+        self.submodules += fifo
+
+        ltssm_cur = Signal(6)
+        ltssm_d1  = Signal(6)
+        ltssm_d2  = Signal(6)
+
+        overflow  = Signal()
+        change    = Signal()
+
+        self.sync += [
+            ltssm_d1.eq(ltssm_cur),
+            If(fifo.sink.ready, ltssm_d2.eq(ltssm_d1)),
+            change.eq((ltssm_cur != ltssm_d1) & ~change),
+            overflow.eq((overflow | change) & ~fifo.sink.ready),
+        ]
+
+        self.comb += [
+            ltssm_cur.eq(ltssm),
+            fifo.sink.new.eq(ltssm_cur),
+            fifo.sink.old.eq(ltssm_d2),
+            fifo.sink.ovfl.eq(overflow),
+            fifo.sink.valid.eq(overflow | change),
+            self._history.fields.new.eq(fifo.source.new),
+            self._history.fields.old.eq(fifo.source.old),
+            self._history.fields.ovfl.eq(fifo.source.ovfl),
+            self._history.fields.valid.eq(fifo.source.valid),
+            fifo.source.ready.eq(self._history.we),
+        ]

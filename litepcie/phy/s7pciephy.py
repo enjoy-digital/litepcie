@@ -19,7 +19,7 @@ from litepcie.phy.common import *
 class S7PCIEPHY(Module, AutoCSR):
     endianness    = "big"
     qword_aligned = False
-    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
+    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None, ltssm_debug=False):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
@@ -48,6 +48,9 @@ class S7PCIEPHY(Module, AutoCSR):
         self._bus_master_enable = CSRStatus(description="Bus Mastering Status. ``1``: Bus Mastering enabled.")
         self._max_request_size  = CSRStatus(16, description="Negiotiated Max Request Size (in bytes).")
         self._max_payload_size  = CSRStatus(16, description="Negiotiated Max Payload Size (in bytes).")
+
+        if ltssm_debug:
+            self.submodules.ltssm_debug = LTSSMDebug(self._link_status.fields.ltssm)
 
         # Parameters/Locals ------------------------------------------------------------------------
         if pcie_data_width is None: pcie_data_width = data_width
