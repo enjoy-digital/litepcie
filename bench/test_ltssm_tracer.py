@@ -63,7 +63,7 @@ def main():
 
     # Read history
     while True:
-        v = wb.regs.pcie_phy_ltssm_debug_history.read()
+        v = wb.regs.pcie_phy_ltssm_tracer_history.read()
 
         ltssm_new = (v >>  0) & 0x3f
         ltssm_old = (v >>  6) & 0x3f
