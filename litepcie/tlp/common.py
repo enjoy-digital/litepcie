@@ -66,30 +66,6 @@ tlp_request_header = Header(
     swap_field_bytes = False
 )
 
-# FIXME: Is it really useful?
-tlp_request_header_64_length = 16
-tlp_request_header_64_fields = {
-    "fmt":          HeaderField(byte=0*4, offset=29, width= 2),
-    "type":         HeaderField(byte=0*4, offset=24, width= 5),
-    "tc":           HeaderField(byte=0*4, offset=20, width= 3),
-    "td":           HeaderField(byte=0*4, offset=15, width= 1),
-    "ep":           HeaderField(byte=0*4, offset=14, width= 1),
-    "attr":         HeaderField(byte=0*4, offset=12, width= 2),
-    "length":       HeaderField(byte=0*4, offset= 0, width=10),
-
-    "requester_id": HeaderField(byte=1*4, offset=16, width=16),
-    "tag":          HeaderField(byte=1*4, offset= 8, width= 8),
-    "last_be":      HeaderField(byte=1*4, offset= 4, width= 4),
-    "first_be":     HeaderField(byte=1*4, offset= 0, width= 4),
-
-    "address":      HeaderField(byte=2*4, offset= 0, width=64),
-}
-tlp_request_header_64 = Header(
-    fields           = tlp_request_header_64_fields,
-    length           = tlp_request_header_64_length,
-    swap_field_bytes = False
-)
-
 tlp_completion_header_length = 16
 tlp_completion_header_fields = {
     "fmt":           HeaderField(byte=0*4, offset=29, width= 2),

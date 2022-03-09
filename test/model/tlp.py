@@ -16,8 +16,8 @@ def get_field_data(field, dwords):
 tlp_headers_dict = {
     "RD32": tlp_request_header,
     "WR32": tlp_request_header,
-    "RD64": tlp_request_header_64,
-    "WR64": tlp_request_header_64,
+    "RD64": tlp_request_header,
+    "WR64": tlp_request_header,
     "CPLD": tlp_completion_header,
     "CPL":  tlp_completion_header
 }
@@ -74,13 +74,13 @@ class WR32(TLP):
 
 class RD64(TLP):
     def __init__(self, dwords=[0, 0, 0, 0]):
-        TLP.__init__(self, "RD64", dwords)
+        TLP.__init__(self, "RD64", dwords, header_dwords=4)
 
 # WR64 ---------------------------------------------------------------------------------------------
 
 class WR64(TLP):
     def __init__(self, dwords=[0, 0, 0, 0]):
-        TLP.__init__(self, "WR64", dwords)
+        TLP.__init__(self, "WR64", dwords, header_dwords=4)
 
 # CPLD ---------------------------------------------------------------------------------------------
 

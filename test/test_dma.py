@@ -73,7 +73,7 @@ class DMADriver:
 
     def program_descriptor(self, address, length):
         value = address
-        value |= (length << 32)
+        value |= (length << self.dut.address_width)
         yield from self.dma.table.value.write(value)
         yield from self.dma.table.we.write(1)
 
@@ -134,7 +134,7 @@ class MSIHandler(Module):
 # Test DMA -----------------------------------------------------------------------------------------
 
 class TestDMA(unittest.TestCase):
-    def dma_test(self, data_width, test_size=1024):
+    def dma_test(self, data_width, address_width, test_size=1024):
         host_data     = [seed_to_data(i, True) for i in range(test_size//4)]
         loopback_data = []
 
@@ -184,7 +184,11 @@ class TestDMA(unittest.TestCase):
 
 
         class DUT(Module):
-            def __init__(self, data_width):
+            def __init__(self, data_width, address_width):
+                self.data_width    = data_width
+                self.address_width = address_width
+
+                # Host -----------------------------------------------------------------------------
                 self.submodules.host = Host(data_width, root_id, endpoint_id,
                     phy_debug          = False,
                     chipset_debug      = False,
@@ -193,13 +197,16 @@ class TestDMA(unittest.TestCase):
                     host_debug         = True)
 
                 # Endpoint -------------------------------------------------------------------------
-                self.submodules.endpoint   = LitePCIeEndpoint(self.host.phy, max_pending_requests=8)
+                self.submodules.endpoint = LitePCIeEndpoint(self.host.phy,
+                    address_width        = address_width,
+                    max_pending_requests = 8
+                )
 
                 # DMA Reader/Writer ----------------------------------------------------------------
                 dma_reader_port = self.endpoint.crossbar.get_master_port(read_only=True)
                 dma_writer_port = self.endpoint.crossbar.get_master_port(write_only=True)
-                self.submodules.dma_reader = LitePCIeDMAReader(self.endpoint, dma_reader_port)
-                self.submodules.dma_writer = LitePCIeDMAWriter(self.endpoint, dma_writer_port)
+                self.submodules.dma_reader = LitePCIeDMAReader(self.endpoint, dma_reader_port, address_width=address_width)
+                self.submodules.dma_writer = LitePCIeDMAWriter(self.endpoint, dma_writer_port, address_width=address_width)
                 self.comb += self.dma_reader.source.connect(self.dma_writer.sink)
 
                 # MSI ------------------------------------------------------------------------------
@@ -211,7 +218,7 @@ class TestDMA(unittest.TestCase):
                 self.submodules.msi_handler = MSIHandler(debug=False)
                 self.comb += self.msi.source.connect(self.msi_handler.sink)
 
-        dut = DUT(data_width)
+        dut = DUT(data_width, address_width)
         generators = {
             "sys" : [
                 main_generator(dut),
@@ -226,5 +233,8 @@ class TestDMA(unittest.TestCase):
         run_simulation(dut, generators, clocks, vcd_name="test_dma.vcd")
         self.assertEqual(host_data, loopback_data)
 
-    def test_dma_64b(self):
-        self.dma_test(64)
+    def test_dma_64b_data_width_32b_address_width(self):
+        self.dma_test(data_width=64, address_width=32)
+
+    def test_dma_64b_data_width_64b_address_width(self):
+        self.dma_test(data_width=64, address_width=64)
