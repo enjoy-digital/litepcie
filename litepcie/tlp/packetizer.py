@@ -118,13 +118,13 @@ class LitePCIeTLPHeaderInserter64b4DWs(Module):
             source.valid.eq(sink.valid),
             source.last.eq(sink.last),
 
-            source.dat[32*0:32*1].eq(sink.dat[32*0]),
+            source.dat[32*0:32*1].eq(sink.dat[32*0:]),
             source.dat[32*1:32*2].eq(sink.dat[32*1:]),
             source.be[4*0:4*1].eq(0xf),
             source.be[4*1:4*2].eq(0xf),
 
             If(source.valid & source.ready,
-                sink.ready.eq(~last),
+                sink.ready.eq(1),
                 If(source.last,
                     NextState("HEADER")
                 )
@@ -565,28 +565,29 @@ class LitePCIeTLPPacketizer(Module):
                     endianness = endianness,
                     mode       = name,
                 )
-
         else:
+            assert data_width in [64] # FIXME: Extend support to 128/256/512-bit data_widths.
 
             # Insert header (Req) ------------------------------------------------------------------
             header_inserter_cls = {
                 64 : LitePCIeTLPHeaderInserter64b4DWs,
             }
-            header_inserter_req = header_inserter_cls[data_width]()
-            self.submodules += header_inserter_req
-            self.comb += tlp_raw_req.connect(header_inserter.sink)
+            self.submodules.header_inserter_req = header_inserter_cls[data_width]()
+            self.comb += tlp_raw_req.connect(self.header_inserter_req.sink)
 
             # Insert header (Cmp) ------------------------------------------------------------------
             header_inserter_cls = {
                 64 : LitePCIeTLPHeaderInserter64b3DWs,
             }
-            header_inserter_cmp = header_inserter_cls[data_width]()
-            self.submodules += header_inserter_cmp
-            self.comb += tlp_raw_cmp.connect(header_inserter_cmp.sink)
+            self.submodules.header_inserter_cmp = header_inserter_cls[data_width]()
+            self.comb += tlp_raw_cmp.connect(self.header_inserter_cmp.sink)
 
             # Arbitrate ----------------------------------------------------------------------------
             header_inserter_source = stream.Endpoint(phy_layout(64))
-            self.submodules.arbitrer = Arbiter([header_inserter_req.source, header_inserter_cmp.source], header_inserter_source)
+            self.submodules.arbitrer = Arbiter(
+                [self.header_inserter_req.source, self.header_inserter_cmp.source],
+                header_inserter_source
+            )
 
             self.comb += header_inserter_source.connect(self.source, omit={"data", "be"})
             for name in ["dat", "be"]:
