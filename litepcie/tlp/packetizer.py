@@ -472,7 +472,7 @@ class LitePCIeTLPPacketizer(Module):
             data_width = data_width,
             endianness = endianness,
             mode       = "dat",
-            ndwords    = 3
+            ndwords    = {32 : 3, 64 : 4}[address_width]
         )
         self.comb += [
             tlp_raw_req.dat.eq(tlp_req.dat),
@@ -544,7 +544,10 @@ class LitePCIeTLPPacketizer(Module):
             # Arbitrate ----------------------------------------------------------------------------
 
             tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))
-            self.submodules.arbitrer = Arbiter([tlp_raw_req, tlp_raw_cmp], tlp_raw)
+            self.submodules.arbitrer = Arbiter(
+                masters = [tlp_raw_req, tlp_raw_cmp],
+                slave   = tlp_raw
+            )
 
             # Insert header ------------------------------------------------------------------------
             header_inserter_cls = {
@@ -583,10 +586,10 @@ class LitePCIeTLPPacketizer(Module):
             self.comb += tlp_raw_cmp.connect(self.header_inserter_cmp.sink)
 
             # Arbitrate ----------------------------------------------------------------------------
-            header_inserter_source = stream.Endpoint(phy_layout(64))
+            header_inserter_source = stream.Endpoint(phy_layout(data_width))
             self.submodules.arbitrer = Arbiter(
-                [self.header_inserter_req.source, self.header_inserter_cmp.source],
-                header_inserter_source
+                masters = [self.header_inserter_req.source, self.header_inserter_cmp.source],
+                slave   = header_inserter_source
             )
 
             self.comb += header_inserter_source.connect(self.source, omit={"data", "be"})

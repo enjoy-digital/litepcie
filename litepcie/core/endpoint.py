@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
@@ -58,7 +58,12 @@ class LitePCIeEndpoint(Module):
             cmp_source = cmp_depacketizer.cmp_source
 
         # Crossbar ---------------------------------------------------------------------------------
-        crossbar = LitePCIeCrossbar(phy.data_width, max_pending_requests, cmp_bufs_buffered)
+        crossbar = LitePCIeCrossbar(
+            data_width           = phy.data_width,
+            address_width        = address_width,
+            max_pending_requests = max_pending_requests,
+            cmp_bufs_buffered    = cmp_bufs_buffered
+        )
         self.submodules.crossbar = crossbar
 
         # Slave: HOST initiates the transactions ---------------------------------------------------

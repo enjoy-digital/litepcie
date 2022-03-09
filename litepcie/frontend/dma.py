@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
 # Copyright (c) 2020 Antmicro <www.antmicro.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
@@ -15,8 +15,8 @@ from litepcie.tlp.common import *
 
 # Constants/Layouts --------------------------------------------------------------------------------
 
-def descriptor_layout(with_user_id=False):
-    layout = [("address", 32), ("length",  24), ("irq_disable", 1), ("last_disable", 1)]
+def descriptor_layout(address_width=32, with_user_id=False):
+    layout = [("address", address_width), ("length",  24), ("irq_disable", 1), ("last_disable", 1)]
     if with_user_id:
         layout += [("user_id", 8)]
     return EndpointDescription(layout)
@@ -67,7 +67,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
     def __init__(self, depth, address_width=32):
         assert address_width in [32, 64]
         # Stream Endpoint.
-        self.source = source = stream.Endpoint(descriptor_layout())
+        self.source = source = stream.Endpoint(descriptor_layout(address_width=address_width))
 
         # Control/Status.
         self.value = CSRStorage(address_width + 32, reset_less=True, fields=[
@@ -96,7 +96,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
         # # #
 
         # Table (FIFO) -----------------------------------------------------------------------------
-        table = stream.SyncFIFO(descriptor_layout(), depth)
+        table = stream.SyncFIFO(descriptor_layout(address_width=address_width), depth)
         table = ResetInserter()(table)
         self.submodules += table
         self.comb += table.reset.eq(self.reset.storage & self.reset.re)
@@ -160,10 +160,10 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
     Payload Size, Reads are limited to Maximum Request Size. Each descriptor is then split in
     several shorter descriptors.
     """
-    def __init__(self, max_size):
+    def __init__(self, max_size, address_width):
         # Stream Endpoints.
-        self.sink   =   sink = stream.Endpoint(descriptor_layout())
-        self.source = source = stream.Endpoint(descriptor_layout(with_user_id=True))
+        self.sink   =   sink = stream.Endpoint(descriptor_layout(address_width=address_width))
+        self.source = source = stream.Endpoint(descriptor_layout(address_width=address_width, with_user_id=True))
 
         # Control.
         self.end    = Signal()
@@ -263,11 +263,14 @@ class LitePCIeDMAReader(Module, AutoCSR):
         if with_table:
             self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width=address_width)
         else:
-            self.desc_sink = stream.Endpoint(descriptor_layout()) # Expose a Descriptor sink.
+            self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
 
         # Splitter ---------------------------------------------------------------------------------
         # DMA descriptors need to be splitted in descriptors of max_request_size (negotiated at link-up)
-        splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_request_size)
+        splitter = LitePCIeDMADescriptorSplitter(
+            max_size      = endpoint.phy.max_request_size,
+            address_width = address_width
+        )
         splitter = ResetInserter()(splitter)
         splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings.
         self.submodules.splitter = splitter
@@ -397,11 +400,14 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         if with_table:
             self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width)
         else:
-            self.desc_sink = stream.Endpoint(descriptor_layout()) # Expose a Descriptor sink.
+            self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
 
         # Splitter ---------------------------------------------------------------------------------
         # DMA descriptors need to be splitted in descriptors of max_request_size (negotiated at link-up)
-        splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_payload_size)
+        splitter = LitePCIeDMADescriptorSplitter(
+            max_size      = endpoint.phy.max_payload_size,
+            address_width = address_width
+        )
         splitter = ResetInserter()(splitter)
         splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings.
         self.submodules.splitter = splitter

@@ -16,9 +16,9 @@ class LitePCIeTLPController(Module):
 
     Arbitrate/throttle TLP requests and reorder/assemble/redirect completions.
     """
-    def __init__(self, data_width, max_pending_requests, cmp_bufs_buffered=True):
-        self.master_in  = LitePCIeMasterInternalPort(data_width)
-        self.master_out = LitePCIeMasterInternalPort(data_width)
+    def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True):
+        self.master_in  = LitePCIeMasterInternalPort(data_width, address_width)
+        self.master_out = LitePCIeMasterInternalPort(data_width, address_width)
 
         # # #
 
