@@ -30,7 +30,6 @@ def find_first_cmp_msg(queue, msg_tag):
         if tag == msg_tag:
             return i
 
-
 # Chipset model ------------------------------------------------------------------------------------
 
 class Chipset(Module):
@@ -42,7 +41,7 @@ class Chipset(Module):
 
         # # #
 
-        self.rd32_data = []
+        self.rd_data   = []
         self.cmp_queue = []
         self.en = False
 
@@ -55,29 +54,35 @@ class Chipset(Module):
     def disable(self):
         self.en = False
 
-    def wr32(self, adr, data):
-        wr32 = WR32()
-        wr32.fmt          = 0b10
-        wr32.type         = 0b00000
-        wr32.length       = len(data)
-        wr32.first_be     = 0xf
-        wr32.address      = adr*4
-        wr32.requester_id = self.root_id
-        dwords = wr32.encode_dwords(data)
+    def wr(self, wr_cls, adr, data):
+        wr = wr_cls()
+        wr.fmt          = 0b10 if isinstance(wr, WR32) else 0b11
+        wr.type         = 0b00000
+        wr.length       = len(data)
+        wr.first_be     = 0xf
+        wr.address      = (adr << 2)
+        wr.requester_id = self.root_id
+        dwords = wr.encode_dwords(data)
         if self.debug:
             print_chipset(">>>>>>>>")
             print_chipset(parse_dwords(dwords))
         yield from self.phy.send_blocking(dwords)
 
-    def rd32(self, adr, length=1):
-        rd32 = RD32()
-        rd32.fmt          = 0b00
-        rd32.type         = 0b00000
-        rd32.length       = length
-        rd32.first_be     = 0xf
-        rd32.address      = adr*4
-        rd32.requester_id = self.root_id
-        dwords = rd32.encode_dwords()
+    def wr32(self, adr, data):
+        return self.wr(wr_cls=WR32, adr=adr, data=data)
+
+    def wr64(self, adr, data):
+        return self.wr(wr_cls=WR64, adr=adr, data=data)
+
+    def rd(self, rd_cls, adr, length=1):
+        rd = rd_cls()
+        rd.fmt          = 0b00 if isinstance(rd, RD32) else 0b01
+        rd.type         = 0b00000
+        rd.length       = length
+        rd.first_be     = 0xf
+        rd.address      = (adr << 2)
+        rd.requester_id = self.root_id
+        dwords = rd.encode_dwords()
         if self.debug:
             print_chipset(">>>>>>>>")
             print_chipset(parse_dwords(dwords))
@@ -87,10 +92,16 @@ class Chipset(Module):
             dwords = self.phy.receive()
             yield
         cpld = CPLD(dwords)
-        self.rd32_data = cpld.data
+        self.rd_data = cpld.data
         if self.debug:
             print_chipset("<<<<<<<<")
             print_chipset(cpld)
+
+    def rd32(self, adr, length=1):
+        return self.rd(rd_cls=RD32, adr=adr, length=length)
+
+    def rd64(self, adr, length=1):
+        return self.rd(rd_cls=RD64, adr=adr, length=length)
 
     def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0, with_split=False):
         if with_split:

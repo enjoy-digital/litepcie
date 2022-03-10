@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2018 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
@@ -10,15 +10,16 @@ from litepcie.common import *
 from litepcie.core.common import *
 from litepcie.tlp.controller import LitePCIeTLPController
 
-# --------------------------------------------------------------------------------------------------
+# LitePCIe Crossbar --------------------------------------------------------------------------------
 
 class LitePCIeCrossbar(Module):
-    def __init__(self, data_width, max_pending_requests, cmp_bufs_buffered=True):
+    def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True):
         self.data_width           = data_width
+        self.address_width        = address_width
         self.max_pending_requests = max_pending_requests
         self.cmp_bufs_buffered    = cmp_bufs_buffered
 
-        self.master     = LitePCIeMasterInternalPort(data_width)
+        self.master     = LitePCIeMasterInternalPort(data_width, address_width)
         self.slave      = LitePCIeSlaveInternalPort(data_width)
         self.phy_master = LitePCIeMasterPort(self.master)
         self.phy_slave  = LitePCIeSlavePort(self.slave)
@@ -36,10 +37,12 @@ class LitePCIeCrossbar(Module):
 
     def get_master_port(self, write_only=False, read_only=False):
         m = LitePCIeMasterInternalPort(
-            data_width = self.data_width,
-            channel    = self.user_masters_channel,
-            write_only = write_only,
-            read_only  = read_only)
+            data_width    = self.data_width,
+            address_width = self.address_width,
+            channel       = self.user_masters_channel,
+            write_only    = write_only,
+            read_only     = read_only
+        )
         self.user_masters_channel += 1
         self.user_masters.append(m)
         return LitePCIeMasterPort(m)
@@ -121,9 +124,10 @@ class LitePCIeCrossbar(Module):
             rd_rw_masters = self.filter_masters(False, True)
             rd_rw_masters += self.filter_masters(False, False)
             if rd_rw_masters != []:
-                rd_rw_master = LitePCIeMasterInternalPort(self.data_width)
+                rd_rw_master = LitePCIeMasterInternalPort(self.data_width, self.address_width)
                 controller   = LitePCIeTLPController(
                     data_width           = self.data_width,
+                    address_width        = self.address_width,
                     max_pending_requests = self.max_pending_requests,
                     cmp_bufs_buffered    = self.cmp_bufs_buffered)
                 self.submodules.controller = controller
@@ -133,7 +137,7 @@ class LitePCIeCrossbar(Module):
             # Arbitrate / dispatch write_only ports ------------------------------------------------
             wr_masters = self.filter_masters(True, False)
             if wr_masters != []:
-                wr_master = LitePCIeMasterInternalPort(self.data_width)
+                wr_master = LitePCIeMasterInternalPort(self.data_width, self.address_width)
                 self.master_arbitrate_dispatch(wr_masters, wr_master)
                 masters.append(wr_master)
 

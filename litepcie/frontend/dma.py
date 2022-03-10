@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
 # Copyright (c) 2020 Antmicro <www.antmicro.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
@@ -15,8 +15,8 @@ from litepcie.tlp.common import *
 
 # Constants/Layouts --------------------------------------------------------------------------------
 
-def descriptor_layout(with_user_id=False):
-    layout = [("address", 32), ("length",  24), ("irq_disable", 1), ("last_disable", 1)]
+def descriptor_layout(address_width=32, with_user_id=False):
+    layout = [("address", address_width), ("length",  24), ("irq_disable", 1), ("last_disable", 1)]
     if with_user_id:
         layout += [("user_id", 8)]
     return EndpointDescription(layout)
@@ -45,7 +45,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
 
 
     A DMA descriptor is composed of:
-    - a 32-bit address: The base address of the Host where the data stream should be written/read.
+    - a 32/64-bit address: The base address of the Host where the data stream should be written/read.
     - a 24-bit length : The length of the data stream (bytes).
     - a 8-bit control : Dynamic controls (ex: Disable IRQ generation, disable Last handling).
 
@@ -64,17 +64,18 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
     potentially be lost, it's safer for the software to just use the hardware loop status than to
     maintain a software loop status based MSI IRQ reception).
     """
-    def __init__(self, depth):
+    def __init__(self, depth, address_width=32):
+        assert address_width in [32, 64]
         # Stream Endpoint.
-        self.source = source = stream.Endpoint(descriptor_layout())
+        self.source = source = stream.Endpoint(descriptor_layout(address_width=address_width))
 
         # Control/Status.
-        self.value = CSRStorage(64, reset_less=True, fields=[
-            CSRField("address",      size=32, description="32-bit Address of the descriptor (bytes-aligned)."),
-            CSRField("length",       size=24, description="24-bit Length  of the descriptor (in bytes)."),
-            CSRField("irq_disable",  size=1,  description="IRQ Disable Control of the descriptor."),
-            CSRField("last_disable", size=1,  description="Last Disable Control of the descriptor.")
-            ], description="64-bit DMA descriptor to be written to the table.")
+        self.value = CSRStorage(address_width + 32, reset_less=True, fields=[
+            CSRField("address",      size=address_width, description="32/64-bit Address of the descriptor (bytes-aligned)."),
+            CSRField("length",       size=24,            description="24-bit Length  of the descriptor (in bytes)."),
+            CSRField("irq_disable",  size=1,             description="IRQ Disable Control of the descriptor."),
+            CSRField("last_disable", size=1,             description="Last Disable Control of the descriptor.")
+            ], description="64/96-bit DMA descriptor to be written to the table.")
         self.we = CSRStorage(description="A write to this register adds the descriptor to table.")
         self.loop_prog_n = CSRStorage(description="""Mode Selection.\n
             ``0``: **Prog** mode / ``1``: **Loop** mode.\n
@@ -95,7 +96,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
         # # #
 
         # Table (FIFO) -----------------------------------------------------------------------------
-        table = stream.SyncFIFO(descriptor_layout(), depth)
+        table = stream.SyncFIFO(descriptor_layout(address_width=address_width), depth)
         table = ResetInserter()(table)
         self.submodules += table
         self.comb += table.reset.eq(self.reset.storage & self.reset.re)
@@ -159,10 +160,10 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
     Payload Size, Reads are limited to Maximum Request Size. Each descriptor is then split in
     several shorter descriptors.
     """
-    def __init__(self, max_size):
+    def __init__(self, max_size, address_width):
         # Stream Endpoints.
-        self.sink   =   sink = stream.Endpoint(descriptor_layout())
-        self.source = source = stream.Endpoint(descriptor_layout(with_user_id=True))
+        self.sink   =   sink = stream.Endpoint(descriptor_layout(address_width=address_width))
+        self.source = source = stream.Endpoint(descriptor_layout(address_width=address_width, with_user_id=True))
 
         # # #
 
@@ -235,7 +236,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256):
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32):
         self.port = port
         # Stream Endpoint.
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
@@ -257,13 +258,16 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
-            self.submodules.table = LitePCIeDMAScatterGather(table_depth)
+            self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width=address_width)
         else:
-            self.desc_sink = stream.Endpoint(descriptor_layout()) # Expose a Descriptor sink.
+            self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
 
         # Splitter ---------------------------------------------------------------------------------
         # DMA descriptors need to be splitted in descriptors of max_request_size (negotiated at link-up)
-        splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_request_size)
+        splitter = LitePCIeDMADescriptorSplitter(
+            max_size      = endpoint.phy.max_request_size,
+            address_width = address_width
+        )
         splitter = ResetInserter()(splitter)
         splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings.
         self.submodules.splitter = splitter
@@ -370,7 +374,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256):
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32):
         self.port = port
         # Stream Endpoint.
         self.sink = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
@@ -391,13 +395,16 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
-            self.submodules.table = LitePCIeDMAScatterGather(table_depth)
+            self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width)
         else:
-            self.desc_sink = stream.Endpoint(descriptor_layout()) # Expose a Descriptor sink.
+            self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
 
         # Splitter ---------------------------------------------------------------------------------
         # DMA descriptors need to be splitted in descriptors of max_request_size (negotiated at link-up)
-        splitter = LitePCIeDMADescriptorSplitter(max_size=endpoint.phy.max_payload_size)
+        splitter = LitePCIeDMADescriptorSplitter(
+            max_size      = endpoint.phy.max_payload_size,
+            address_width = address_width
+        )
         splitter = ResetInserter()(splitter)
         splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings.
         self.submodules.splitter = splitter
@@ -794,7 +801,7 @@ class LitePCIeDMA(Module, AutoCSR):
 
     Optional buffering, loopback, synchronization and monitoring.
     """
-    def __init__(self, phy, endpoint, table_depth=256,
+    def __init__(self, phy, endpoint, table_depth=256, address_width=32,
         with_loopback      = False,
         with_synchronizer  = False,
         with_buffering     = False, buffering_depth=256*8, writer_buffering_depth=None, reader_buffering_depth=None,
@@ -803,14 +810,16 @@ class LitePCIeDMA(Module, AutoCSR):
 
         # Writer/Reader ----------------------------------------------------------------------------
         writer = LitePCIeDMAWriter(
-            endpoint    = endpoint,
-            port        = endpoint.crossbar.get_master_port(write_only=True),
-            table_depth = table_depth,
+            endpoint      = endpoint,
+            port          = endpoint.crossbar.get_master_port(write_only=True),
+            table_depth   = table_depth,
+            address_width = address_width,
         )
         reader = LitePCIeDMAReader(
-            endpoint    = endpoint,
-            port        = endpoint.crossbar.get_master_port(read_only=True),
-            table_depth = table_depth,
+            endpoint      = endpoint,
+            port          = endpoint.crossbar.get_master_port(read_only=True),
+            table_depth   = table_depth,
+            address_width = address_width,
         )
         self.submodules.writer = writer
         self.submodules.reader = reader

@@ -38,10 +38,10 @@ def phy_layout(data_width):
     ]
     return EndpointDescription(layout)
 
-def request_layout(data_width):
+def request_layout(data_width, address_width=32):
     layout = [
         ("we",               1),
-        ("adr",             32),
+        ("adr",  address_width),
         ("len",             10),
         ("req_id",          16),
         ("tag",              8),
@@ -51,9 +51,9 @@ def request_layout(data_width):
     ]
     return EndpointDescription(layout)
 
-def completion_layout(data_width):
+def completion_layout(data_width, address_width=32):
     layout = [
-        ("adr",             32),
+        ("adr",  address_width),
         ("len",             10),
         ("end",              1),
         ("req_id",          16),

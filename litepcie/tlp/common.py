@@ -58,14 +58,13 @@ tlp_request_header_fields = {
     "last_be":      HeaderField(byte=1*4, offset= 4, width= 4),
     "first_be":     HeaderField(byte=1*4, offset= 0, width= 4),
 
-    "address":      HeaderField(byte=2*4, offset= 0, width=32),
+    "address":      HeaderField(byte=2*4, offset= 0, width=64),
 }
 tlp_request_header = Header(
     fields           = tlp_request_header_fields,
     length           = tlp_request_header_length,
     swap_field_bytes = False
 )
-
 
 tlp_completion_header_length = 16
 tlp_completion_header_fields = {
