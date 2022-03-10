@@ -453,12 +453,6 @@ class LitePCIeTLPPacketizer(Module):
                 tlp_req.last_be.eq(0x0)
             ),
             tlp_req.first_be.eq(0xf),
-            If(address_width == 64,
-                tlp_req.address[:32].eq(req_sink.adr[32:]),
-                tlp_req.address[32:].eq(req_sink.adr[:32]),
-            ).Else(
-                tlp_req.address.eq(req_sink.adr)
-            ),
             tlp_req.dat.eq(req_sink.dat),
             If(req_sink.we,
                 tlp_req.be.eq(2**(data_width//8)-1)
@@ -466,6 +460,13 @@ class LitePCIeTLPPacketizer(Module):
                 tlp_req.be.eq(0x00)
             )
         ]
+        if address_width == 64:
+            # Address's MSB on DW2, LSB on DW3 with 64-bit addressing:
+            # Requires swap due to Packetizer's behavior.
+            self.comb += tlp_req.address[:32].eq(req_sink.adr[32:])
+            self.comb += tlp_req.address[32:].eq(req_sink.adr[:32])
+        else:
+            self.comb += tlp_req.address.eq(req_sink.adr)
 
         tlp_raw_req        = stream.Endpoint(tlp_raw_layout(data_width))
         tlp_raw_req_header = Signal(len(tlp_raw_req.header))
