@@ -198,8 +198,8 @@ static void litepcie_dma_writer_start(struct litepcie_device *s, int chan_num)
 					(!(i%DMA_BUFFER_PER_IRQ == 0)) * DMA_IRQ_DISABLE | /* generate an msi */
 					DMA_BUFFER_SIZE);                                  /* every n buffers */
 #if (DMA_ADDR_WIDTH == 64)
-		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET + 4, (dmachan->writer_handle[i] > 32) & 0xffffffff);
-		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET + 8, (dmachan->writer_handle[i] >  0) & 0xffffffff);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET + 4, (dmachan->writer_handle[i] >> 32) & 0xffffffff);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET + 8, (dmachan->writer_handle[i] >>  0) & 0xffffffff);
 #else
 		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET + 4, dmachan->writer_handle[i]);
 #endif
@@ -253,8 +253,8 @@ static void litepcie_dma_reader_start(struct litepcie_device *s, int chan_num)
 					(!(i%DMA_BUFFER_PER_IRQ == 0)) * DMA_IRQ_DISABLE | /* generate an msi */
 					DMA_BUFFER_SIZE);                                  /* every n buffers */
 #if (DMA_ADDR_WIDTH == 64)
-		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET + 4, (dmachan->reader_handle[i] > 32) & 0xffffffff);
-		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET + 8, (dmachan->reader_handle[i] >  0) & 0xffffffff);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET + 4, (dmachan->reader_handle[i] >> 32) & 0xffffffff);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET + 8, (dmachan->reader_handle[i] >>  0) & 0xffffffff);
 #else
 		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET + 4, dmachan->reader_handle[i]);
 #endif

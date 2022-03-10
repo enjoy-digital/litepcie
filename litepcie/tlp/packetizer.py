@@ -51,7 +51,9 @@ class LitePCIeTLPHeaderInserter64b3DWs(Module):
                     NextValue(count, count + 1),
                     If(count == 1,
                         sink.ready.eq(1),
-                        NextState("DATA")
+                        If(~source.last,
+                            NextState("DATA")
+                        )
                     )
                 )
             )
@@ -109,7 +111,11 @@ class LitePCIeTLPHeaderInserter64b4DWs(Module):
                 If(source.valid & source.ready,
                     NextValue(count, count + 1),
                     If(count == 1,
-                        NextState("DATA")
+                        sink.ready.eq(1),
+                        If(~source.last,
+                            sink.ready.eq(0),
+                            NextState("DATA")
+                        )
                     )
                 )
             )
@@ -413,7 +419,7 @@ class LitePCIeTLPPacketizer(Module):
     def __init__(self, data_width, endianness, address_width=32):
         assert data_width%32 == 0
         assert address_width in [32, 64]
-        self.req_sink = req_sink = stream.Endpoint(request_layout(data_width))
+        self.req_sink = req_sink = stream.Endpoint(request_layout(data_width, address_width))
         self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
         self.source   = stream.Endpoint(phy_layout(data_width))
 
@@ -447,8 +453,12 @@ class LitePCIeTLPPacketizer(Module):
                 tlp_req.last_be.eq(0x0)
             ),
             tlp_req.first_be.eq(0xf),
-            tlp_req.address.eq(req_sink.adr),
-
+            If(address_width == 64,
+                tlp_req.address[:32].eq(req_sink.adr[32:]),
+                tlp_req.address[32:].eq(req_sink.adr[:32]),
+            ).Else(
+                tlp_req.address.eq(req_sink.adr)
+            ),
             tlp_req.dat.eq(req_sink.dat),
             If(req_sink.we,
                 tlp_req.be.eq(2**(data_width//8)-1)

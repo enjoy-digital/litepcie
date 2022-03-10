@@ -60,13 +60,11 @@ class Host(Module):
 
     def callback(self, msg):
         if isinstance(msg, WR32):
-            address = msg.address
-            self.write_mem(address, msg.data)
+            self.write_mem(msg.address, msg.data)
         elif isinstance(msg, RD32):
             self.rd_queue.append(msg)
         elif isinstance(msg, WR64):
-            address = msg.address
-            self.write_mem(address, msg.data)
+            self.write_mem(msg.address, msg.data)
         elif isinstance(msg, RD64):
             self.rd_queue.append(msg)
 

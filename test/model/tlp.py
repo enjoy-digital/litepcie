@@ -74,13 +74,19 @@ class WR32(TLP):
 
 class RD64(TLP):
     def __init__(self, dwords=[0, 0, 0, 0]):
-        TLP.__init__(self, "RD64", dwords, header_dwords=4)
+        _dwords = [d for d in dwords]
+        _dwords[2] = dwords[3] # FIXME: Swap Address LSB/MSB.
+        _dwords[3] = dwords[2] # FIXME: Swap Address LSB/MSB.
+        TLP.__init__(self, "RD64", _dwords, header_dwords=4)
 
 # WR64 ---------------------------------------------------------------------------------------------
 
 class WR64(TLP):
     def __init__(self, dwords=[0, 0, 0, 0]):
-        TLP.__init__(self, "WR64", dwords, header_dwords=4)
+        _dwords = [d for d in dwords]
+        _dwords[2] = dwords[3] # FIXME: Swap Address LSB/MSB.
+        _dwords[3] = dwords[2] # FIXME: Swap Address LSB/MSB.
+        TLP.__init__(self, "WR64", _dwords, header_dwords=4)
 
 # CPLD ---------------------------------------------------------------------------------------------
 
