@@ -80,6 +80,10 @@ def get_pcie_ios(phy_lanes=4):
 
 def get_axi_dma_ios(_id, dw):
     return [
+        ("dma{}_status".format(_id), 0,
+            Subsignal("writer_enable", Pins(1)),
+            Subsignal("reader_enable", Pins(1)),
+        ),
         ("dma{}_writer_axi".format(_id), 0,
             Subsignal("tvalid", Pins(1)),
             Subsignal("tready", Pins(1)),
@@ -226,9 +230,14 @@ class LitePCIeCore(SoCMini):
             pcie_dma = stream.BufferizeEndpoints({"source" : stream.DIR_SOURCE})(pcie_dma)
             setattr(self.submodules, "pcie_dma" + str(i), pcie_dma)
             self.add_csr("pcie_dma{}".format(i))
+            dma_status_ios = platform.request("dma{}_status".format(i))
             dma_writer_ios = platform.request("dma{}_writer_axi".format(i))
             dma_reader_ios = platform.request("dma{}_reader_axi".format(i))
             self.comb += [
+                # Status IOs
+                dma_status_ios.writer_enable.eq(pcie_dma.writer.enable),
+                dma_status_ios.reader_enable.eq(pcie_dma.reader.enable),
+
                 # Writer IOs
                 pcie_dma.sink.valid.eq(dma_writer_ios.tvalid),
                 dma_writer_ios.tready.eq(pcie_dma.sink.ready),
