@@ -242,7 +242,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
 
         # Control.
-        self.enable = CSRStorage(description="DMA Reader Control. Write ``1`` to enable DMA Reader.", reset=0 if with_table else 1)
+        self._enable = CSRStorage(description="DMA Reader Control. Write ``1`` to enable DMA Reader.", reset=0 if with_table else 1)
 
         # IRQ.
         self.irq = Signal()
@@ -250,7 +250,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # # #
 
         # CSR/Parameters ---------------------------------------------------------------------------
-        enable = self.enable.storage
+        self.enable = enable = self._enable.storage
 
         length_shift          = log2_int(endpoint.phy.data_width//8)
         max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
@@ -380,7 +380,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.sink = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
 
         # Control.
-        self.enable = CSRStorage(description="DMA Writer Control. Write ``1`` to enable DMA Writer.", reset=0 if with_table else 1)
+        self._enable = CSRStorage(description="DMA Writer Control. Write ``1`` to enable DMA Writer.", reset=0 if with_table else 1)
 
         # IRQ.
         self.irq = Signal()
@@ -388,10 +388,13 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         # # #
 
         # CSR/Parameters ---------------------------------------------------------------------------
-        enable = self.enable.storage
+        self.enable = enable = self._enable.storage
 
         length_shift          = log2_int(endpoint.phy.data_width//8)
         max_words_per_request = max_payload_size//(endpoint.phy.data_width//8)
+
+        # By default, accept incoming stream when disabled.
+        self.sink.ready.reset = 1
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
@@ -417,15 +420,8 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         data_fifo_depth = 4*max_words_per_request
         data_fifo = stream.SyncFIFO([("data", endpoint.phy.data_width)], data_fifo_depth, buffered=True)
         self.submodules += ResetInserter()(data_fifo)
-        self.comb += [
-            # When Enabled, connect Sink to Data FIFO.
-            If(enable,
-                sink.connect(data_fifo.sink)
-            # Else accept incoming Sink Data.
-            ).Else(
-                sink.ready.eq(1)
-            )
-        ]
+        # When Enabled, connect Sink to Data FIFO.
+        self.comb += If(enable, sink.connect(data_fifo.sink))
 
         # FSM --------------------------------------------------------------------------------------
         req_done  = Signal()
