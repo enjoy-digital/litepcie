@@ -226,7 +226,6 @@ class LitePCIeCore(SoCMini):
                 with_loopback     = core_config["dma_loopback"],
                 with_synchronizer = core_config["dma_synchronizer"],
                 with_monitor      = core_config["dma_monitor"])
-            pcie_dma.writer.sink.ready.reset = core_config.get("dma_sink_ready_default", 1)
             pcie_dma = stream.BufferizeEndpoints({"sink"   : stream.DIR_SINK})(pcie_dma)
             pcie_dma = stream.BufferizeEndpoints({"source" : stream.DIR_SOURCE})(pcie_dma)
             setattr(self.submodules, "pcie_dma" + str(i), pcie_dma)
@@ -240,15 +239,15 @@ class LitePCIeCore(SoCMini):
                 dma_status_ios.reader_enable.eq(pcie_dma.reader.enable),
 
                 # Writer IOs
-                pcie_dma.sink.valid.eq(dma_writer_ios.tvalid),
-                dma_writer_ios.tready.eq(pcie_dma.sink.ready),
+                pcie_dma.sink.valid.eq(dma_writer_ios.tvalid & pcie_dma.writer.enable),
+                dma_writer_ios.tready.eq(pcie_dma.sink.ready & pcie_dma.writer.enable),
                 pcie_dma.sink.last.eq(dma_writer_ios.tlast),
                 pcie_dma.sink.data.eq(dma_writer_ios.tdata),
                 pcie_dma.sink.first.eq(dma_writer_ios.tuser),
 
                 # Reader IOs
-                dma_reader_ios.tvalid.eq(pcie_dma.source.valid),
-                pcie_dma.source.ready.eq(dma_reader_ios.tready),
+                dma_reader_ios.tvalid.eq(pcie_dma.source.valid & pcie_dma.reader.enable),
+                pcie_dma.source.ready.eq(dma_reader_ios.tready | ~pcie_dma.reader.enable),
                 dma_reader_ios.tlast.eq(pcie_dma.source.last),
                 dma_reader_ios.tdata.eq(pcie_dma.source.data),
                 dma_reader_ios.tuser.eq(pcie_dma.source.first),

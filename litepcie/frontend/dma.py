@@ -396,9 +396,6 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         length_shift          = log2_int(endpoint.phy.data_width//8)
         max_words_per_request = max_payload_size//(endpoint.phy.data_width//8)
 
-        # By default, accept incoming stream when disabled.
-        self.sink.ready.reset = 1
-
         # Table ------------------------------------------------------------------------------------
         if with_table:
             self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width)
@@ -423,6 +420,8 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         data_fifo_depth = 4*max_words_per_request
         data_fifo = stream.SyncFIFO([("data", endpoint.phy.data_width)], data_fifo_depth, buffered=True)
         self.submodules += ResetInserter()(data_fifo)
+         # By default, accept incoming stream when disabled.
+        self.comb += sink.ready.eq(1)
         # When Enabled, connect Sink to Data FIFO.
         self.comb += If(enable, sink.connect(data_fifo.sink))
 
