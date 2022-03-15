@@ -322,8 +322,11 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             # Reset Splitter/FIFO when Disabled.
-            splitter.reset.eq( ~enable),
-            data_fifo.reset.eq(~enable),
+            # Reset Splitter/FIFO when disabled.
+            If(~enable,
+                splitter.reset.eq(1),
+                data_fifo.reset.eq(1),
+            ),
             # Wait for a Descriptor and to have enough Space to generate the Request.
             If(splitter.source.valid & (pending_words < (data_fifo_depth - max_words_per_request)),
                 NextState("REQUEST"),
@@ -428,9 +431,11 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         req_count = Signal.like(splitter.source.length)
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            # Reset Splitter/FIFO when Disabled.
-            splitter.reset.eq( ~enable),
-            data_fifo.reset.eq(~enable),
+            # Reset Splitter/FIFO when disabled.
+            If(~enable,
+                splitter.reset.eq(1),
+                data_fifo.reset.eq(1),
+            ),
             # Reset Request Count/Done.
             NextValue(req_count, 0),
             NextValue(req_done,  0),
@@ -444,7 +449,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
             port.source.first.eq(req_count == 0),
-            port.source.last.eq((req_count == splitter.source.length[length_shift:] - 1)),
+            port.source.last.eq( req_count == (splitter.source.length[length_shift:] - 1)),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
