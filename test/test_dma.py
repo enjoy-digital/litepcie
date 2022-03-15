@@ -78,10 +78,10 @@ class DMADriver:
         yield from self.dma.table.we.write(1)
 
     def enable(self):
-        yield from self.dma.enable.write(1)
+        yield from self.dma._enable.write(1)
 
     def disable(self):
-        yield from self.dma.enable.write(0)
+        yield from self.dma._enable.write(0)
 
 # MSI Handler --------------------------------------------------------------------------------------
 
