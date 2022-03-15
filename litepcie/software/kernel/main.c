@@ -210,6 +210,7 @@ static void litepcie_dma_writer_start(struct litepcie_device *s, int chan_num)
 	/* clear counters */
 	dmachan->writer_hw_count = 0;
 	dmachan->writer_hw_count_last = 0;
+	dmachan->writer_sw_count = 0;
 
 	/* start dma writer */
 	litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 1);
@@ -265,6 +266,7 @@ static void litepcie_dma_reader_start(struct litepcie_device *s, int chan_num)
 	/* clear counters */
 	dmachan->reader_hw_count = 0;
 	dmachan->reader_hw_count_last = 0;
+	dmachan->reader_sw_count = 0;
 
 	/* start dma reader */
 	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 1);
