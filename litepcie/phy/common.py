@@ -23,8 +23,7 @@ class PHYTXDatapath(Module):
         else:
             pipe_valid = stream.PipeValid(phy_layout(core_data_width))
             pipe_valid = ClockDomainsRenamer(clock_domain)(pipe_valid)
-            cdc        = stream.AsyncFIFO(phy_layout(core_data_width), 4)
-            cdc        = ClockDomainsRenamer({"write": clock_domain, "read": "pcie"})(cdc)
+            cdc        = stream.ClockDomainCrossing(phy_layout(core_data_width), cd_from=clock_domain, cd_to="pcie")
             converter  = stream.StrideConverter(phy_layout(core_data_width), phy_layout(pcie_data_width))
             converter  = ClockDomainsRenamer("pcie")(converter)
             pipe_ready = stream.PipeReady(phy_layout(pcie_data_width))
@@ -104,8 +103,7 @@ class PHYRXDatapath(Module):
             pipe_ready = ClockDomainsRenamer("pcie")(pipe_ready)
             converter  = stream.StrideConverter(phy_layout(pcie_data_width), phy_layout(core_data_width))
             converter  = ClockDomainsRenamer("pcie")(converter)
-            cdc        = stream.AsyncFIFO(phy_layout(core_data_width), 4)
-            cdc        = ClockDomainsRenamer({"write": "pcie", "read": clock_domain})(cdc)
+            cdc        = stream.ClockDomainCrossing(phy_layout(core_data_width), cd_from="pcie", cd_to=clock_domain)
             pipe_valid = stream.PipeValid(phy_layout(core_data_width))
             pipe_valid = ClockDomainsRenamer(clock_domain)(pipe_valid)
             self.submodules += pipe_ready, converter, cdc, pipe_valid
