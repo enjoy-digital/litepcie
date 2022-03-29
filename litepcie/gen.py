@@ -51,18 +51,11 @@ from litex.build.generic_platform import *
 
 # IOs/Interfaces -----------------------------------------------------------------------------------
 
-def get_clkin_ios():
+def get_clk_ios():
     return [
-        # clk / rst
+        # Clk / Rst.
         ("clk", 0, Pins(1)),
         ("rst", 0, Pins(1))
-    ]
-
-def get_clkout_ios():
-    return [
-        # clk / rst
-        ("clk125", 0, Pins(1)),
-        ("rst125", 0, Pins(1))
     ]
 
 def get_pcie_ios(phy_lanes=4):
@@ -111,16 +104,28 @@ class LitePCIeCRG(Module):
 
         # # #
 
+        # Create/Get Clk/Rst IOs.
+        platform.add_extension(get_clk_ios())
+        clk = platform.request("clk")
+        rst = platform.request("rst")
+
+        # Get PCIe Clk/Rst.
+        pcie_clk = ClockSignal("pcie")
+        pcie_rst = ResetSignal("pcie")
+
+        # External Clk mode: Clk is provided by the User logic.
         if clk_external:
-            platform.add_extension(get_clkin_ios())
-            self.comb += self.cd_sys.clk.eq(platform.request("clk"))
-            self.specials += AsyncResetSynchronizer(self.cd_sys, platform.request("rst"))
+            self.comb += self.cd_sys.clk.eq(clk)
+            self.specials += AsyncResetSynchronizer(self.cd_sys, rst | pcie_rst)
+
+        # Internal Clk mode: Clk is provided to the User logic by the LitePCIe standalone core.
         else:
-            platform.add_extension(get_clkout_ios())
-            self.comb += self.cd_sys.clk.eq(ClockSignal("pcie"))
-            self.comb += self.cd_sys.rst.eq(ResetSignal("pcie"))
-            self.comb += platform.request("clk125").eq(ClockSignal("pcie"))
-            self.comb += platform.request("rst125").eq(ResetSignal("pcie"))
+            self.comb += [
+                clk.eq(pcie_clk),
+                rst.eq(pcie_rst),
+                self.cd_sys.clk.eq(pcie_clk),
+                self.cd_sys.rst.Eq(pcie_rst),
+            ]
 
 # Core ---------------------------------------------------------------------------------------------
 
