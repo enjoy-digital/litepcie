@@ -137,8 +137,7 @@ class USPPCIEPHY(Module, AutoCSR):
         if cd == "pcie":
             cfg_msi = self.msi
         else:
-            msi_cdc = stream.ClockDomainCrossing(msi_layout(), cd_from=cd, cd_to="pcie")
-            self.submodules += msi_cdc
+            self.submodules.msi_cdc = msi_cdc = stream.ClockDomainCrossing(msi_layout(), cd_from=cd, cd_to="pcie")
             self.comb += self.msi.connect(msi_cdc.sink)
             cfg_msi = msi_cdc.source
 
