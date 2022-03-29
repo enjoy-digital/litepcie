@@ -124,7 +124,7 @@ class LitePCIeCRG(Module):
                 clk.eq(pcie_clk),
                 rst.eq(pcie_rst),
                 self.cd_sys.clk.eq(pcie_clk),
-                self.cd_sys.rst.Eq(pcie_rst),
+                self.cd_sys.rst.eq(pcie_rst),
             ]
 
 # Core ---------------------------------------------------------------------------------------------
