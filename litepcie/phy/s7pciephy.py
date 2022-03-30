@@ -98,7 +98,8 @@ class S7PCIEPHY(Module, AutoCSR):
         self.submodules.rx_datapath = PHYRXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
-            clock_domain    = cd)
+            clock_domain    = cd,
+            with_aligner    = True)
         m_axis_rx = self.rx_datapath.sink
         self.comb += self.rx_datapath.source.connect(self.source)
 

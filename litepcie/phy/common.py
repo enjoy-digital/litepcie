@@ -83,13 +83,13 @@ class PHYRX128BAligner(Module):
 # RX Datapath --------------------------------------------------------------------------------------
 
 class PHYRXDatapath(Module):
-    def __init__(self, core_data_width, pcie_data_width, clock_domain):
+    def __init__(self, core_data_width, pcie_data_width, clock_domain, with_aligner=False):
         self.sink   = sink   = stream.Endpoint(phy_layout(pcie_data_width))
         self.source = source = stream.Endpoint(phy_layout(core_data_width))
 
         # # #
 
-        if pcie_data_width == 128:
+        if (pcie_data_width == 128) and with_aligner:
             aligner = PHYRX128BAligner()
             aligner = ClockDomainsRenamer("pcie")(aligner)
             self.submodules.aligner = aligner
