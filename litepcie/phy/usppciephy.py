@@ -179,8 +179,8 @@ class USPPCIEPHY(Module, AutoCSR):
             MultiReg(link_rate,       self._link_status.fields.rate),
             MultiReg(link_width,      self._link_status.fields.width),
             MultiReg(link_ltssm,      self._link_status.fields.ltssm),
-            MultiReg(cfg_function_status, self._bus_master_enable.status),
-            MultiReg(msi_enable, self._msi_enable.status),
+            MultiReg(cfg_function_status,   self._bus_master_enable.status),
+            MultiReg(msi_enable,            self._msi_enable.status),
             MultiReg(self.max_request_size, self._max_request_size.status),
             MultiReg(self.max_payload_size, self._max_payload_size.status)
         ]

@@ -130,7 +130,7 @@ class S7PCIEPHY(Module, AutoCSR):
             self.id.eq(Cat(function_number, device_number, bus_number))
         ]
         self.specials += [
-            MultiReg(command[2],  self._bus_master_enable.status),
+            MultiReg(command[2],            self._bus_master_enable.status),
             MultiReg(self.max_request_size, self._max_request_size.status),
             MultiReg(self.max_payload_size, self._max_payload_size.status)
         ]
