@@ -314,7 +314,8 @@ class LitePCIeTLPDepacketizer(Module):
 
         # Dispatch data according to fmt/type ------------------------------------------------------
         dispatch_source = stream.Endpoint(tlp_common_layout(data_width))
-        dispatch_sinks  = [stream.Endpoint(tlp_common_layout(data_width)) for i in range(2)]
+        dispatch_sinks  = [stream.Endpoint(tlp_common_layout(data_width)) for i in range(3)]
+        self.comb += dispatch_sinks[0b00].ready.eq(1) # Always ready when unknown.
 
         self.comb += [
             dispatch_source.valid.eq(header_extracter.source.valid),
@@ -341,23 +342,27 @@ class LitePCIeTLPDepacketizer(Module):
 
         fmt_type = Cat(dispatch_source.type, dispatch_source.fmt)
         self.comb += [
-            If((fmt_type == fmt_type_dict["mem_rd32"]) | (fmt_type == fmt_type_dict["mem_wr32"]),
-                self.dispatcher.sel.eq(0),
-            ).Elif((fmt_type == fmt_type_dict["cpld"]) | (fmt_type == fmt_type_dict["cpl"]),
-                self.dispatcher.sel.eq(1)
-            )
+            self.dispatcher.sel.eq(0b00),
+            If((fmt_type == fmt_type_dict["mem_rd32"]) |
+               (fmt_type == fmt_type_dict["mem_wr32"]),
+                self.dispatcher.sel.eq(0b01),
+            ),
+            If((fmt_type == fmt_type_dict["cpld"]) |
+               (fmt_type == fmt_type_dict["cpl"]),
+               self.dispatcher.sel.eq(0b10),
+            ),
         ]
 
         # Decode TLP request and format local request ----------------------------------------------
         self.tlp_req = tlp_req = stream.Endpoint(tlp_request_layout(data_width))
-        self.comb += dispatch_sinks[0].connect(tlp_req)
+        self.comb += dispatch_sinks[0b01].connect(tlp_req)
         self.comb += tlp_request_header.decode(header, tlp_req)
 
+        req_type   = Cat(tlp_req.type, tlp_req.fmt)
         req_source = self.req_source
         self.comb += [
             req_source.valid.eq(tlp_req.valid),
-            req_source.we.eq(tlp_req.valid &
-                (Cat(tlp_req.type, tlp_req.fmt) == fmt_type_dict["mem_wr32"])),
+            req_source.we.eq(tlp_req.valid & (req_type == fmt_type_dict["mem_wr32"])),
             tlp_req.ready.eq(req_source.ready),
             req_source.first.eq(tlp_req.first),
             req_source.last.eq(tlp_req.last),
@@ -370,7 +375,7 @@ class LitePCIeTLPDepacketizer(Module):
 
         # Decode TLP completion and format local completion ----------------------------------------
         self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
-        self.comb += dispatch_sinks[1].connect(tlp_cmp)
+        self.comb += dispatch_sinks[0b10].connect(tlp_cmp)
         self.comb += tlp_completion_header.decode(header, tlp_cmp)
 
         cmp_source = self.cmp_source
