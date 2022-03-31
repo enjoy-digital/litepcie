@@ -1001,14 +1001,14 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
 	ret = -EIO;
 
-	/* check device version */
+	/* Check device version */
 	pci_read_config_byte(dev, PCI_REVISION_ID, &rev_id);
 	if (rev_id != 0) {
 		dev_err(&dev->dev, "Unsupported device version %d\n", rev_id);
 		goto fail1;
 	}
 
-	/* check bar0 config */
+	/* Check bar0 config */
 	if (!(pci_resource_flags(dev, 0) & IORESOURCE_MEM)) {
 		dev_err(&dev->dev, "Invalid BAR0 configuration\n");
 		goto fail1;
@@ -1025,7 +1025,13 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 		goto fail1;
 	}
 
-	/* show identifier */
+	/* Reset LitePCIe core */
+#ifdef CSR_CTRL_RESET_ADDR
+	litepcie_writel(litepcie_dev, CSR_CTRL_RESET_ADDR, 1);
+	msleep(10);
+#endif
+
+	/* Show identifier */
 	for (i = 0; i < 256; i++)
 		fpga_identifier[i] = litepcie_readl(litepcie_dev, CSR_IDENTIFIER_MEM_BASE + i*4);
 	dev_info(&dev->dev, "Version %s\n", fpga_identifier);
