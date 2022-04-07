@@ -40,29 +40,39 @@ def phy_layout(data_width):
 
 def request_layout(data_width, address_width=32):
     layout = [
-        ("we",               1),
-        ("adr",  address_width),
-        ("len",             10),
-        ("req_id",          16),
-        ("tag",              8),
-        ("dat",     data_width),
-        ("channel",          8), # For routing.
-        ("user_id",          8)  # For packet identification.
+        # Request Parameters.
+        ("req_id",          16), # Requester ID.
+        ("we",               1), # Request type; 0 : Read / 1 : Write.
+        ("adr",  address_width), # Request address (In Bytes).
+        ("len",             10), # Request length (In Dwords).
+        ("tag",              8), # Request tag.
+
+        # Data Stream.
+        ("dat", data_width),
+
+        # Internal LitePCIe Routing/Identification.
+        ("channel", 8), # Crossbar's channel (Used for internal routing).
+        ("user_id", 8), # Packet identification (Used for packet delimitation).
     ]
     return EndpointDescription(layout)
 
 def completion_layout(data_width, address_width=32):
     layout = [
-        ("adr",  address_width),
-        ("len",             10),
-        ("end",              1),
-        ("req_id",          16),
-        ("cmp_id",          16),
-        ("err",              1),
-        ("tag",              8),
+        # Completion Parameters.
+        ("req_id",          16), # Requester ID.
+        ("cmp_id",          16), # Completion ID.
+        ("adr",  address_width), # Completion address (In Bytes).
+        ("len",             10), # Completion length (In Dwords).
+        ("end",              1), # Completion end (Current packet is the last).
+        ("err",              1), # Completion error.
+        ("tag",              8), # Completion tag.
+
+        # Data Stream.
         ("dat",     data_width),
-        ("channel",          8), # For routing.
-        ("user_id",          8)  # For packet identification.
+
+        # Internal LitePCIe Routing/Identification.
+        ("channel", 8), # Crossbar's channel (Used for internal routing).
+        ("user_id", 8)  # Packet identification (Used for packet delimitation).
     ]
     return EndpointDescription(layout)
 
