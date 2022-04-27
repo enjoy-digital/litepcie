@@ -1,0 +1,44 @@
+#
+# This file is part of LitePCIe.
+#
+# Copyright (c) 2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# SPDX-License-Identifier: BSD-2-Clause
+
+{
+    # PHY ----------------------------------------------------------------------
+    "phy":                 "S7PCIEPHY", # Type of PCIe PHY
+    "phy_device":          "xc7a",      # Type of Device
+    "phy_lanes":           4,           # Number of lanes
+    "phy_pcie_data_width": 128,         # PCIe data_width
+    "phy_data_width":      128,         # Bus data_width
+    "phy_bar0_size":       0x40000,     # BAR0 size
+
+    # Clocking -----------------------------------------------------------------
+    "clk_freq":     125e6,        # User Clk Freq (AXI MMAP/DMA)
+    "clk_external": True,         # Use external User provided Clk
+
+    # Endpoint -----------------------------------------------------------------
+    "ep_max_pending_requests" : 8,
+
+    # Control ------------------------------------------------------------------
+    "ctrl": False,
+
+    # MMAP Master --------------------------------------------------------------
+    "mmap":      True,
+    "mmap_base": 0x00020000,
+    "mmap_size": 0x00020000,
+
+    # MMAP Slave ---------------------------------------------------------------
+    "mmap_slave":          True,
+    "mmap_slave_axi_full": True,
+
+    # DMA channels -------------------------------------------------------------
+    "dma_channels"     :    4, # Number of DMA channels
+    "dma_buffering"    : 1024, # Buffering for each channel (in bytes)
+    "dma_loopback"     : True, # Enable DMA loopback capability
+    "dma_synchronizer" : False, # Enable DMA synchronizer capability
+    "dma_monitor"      : False, # Enable DMA monitoring capability
+
+    # MSI IRQs -----------------------------------------------------------------
+    "msi_irqs": 16,                # Number or MSI IRQs
+}
