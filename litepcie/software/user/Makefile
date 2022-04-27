@@ -3,7 +3,7 @@ LDFLAGS=-g
 CC=$(CROSS_COMPILE)gcc
 AR=ar
 
-PROGS=litepcie_util litepcie_test litepcie_dma_minimal_example
+PROGS=litepcie_util litepcie_test
 
 all: $(PROGS)
 
@@ -17,9 +17,6 @@ litepcie_util: liblitepcie/liblitepcie.a litepcie_util.o
 litepcie_test: liblitepcie/liblitepcie.a litepcie_test.o
 	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -lm -llitepcie
 
-litepcie_dma_minimal_example: liblitepcie/liblitepcie.a litepcie_dma_minimal_example.o
-	$(CC) $(LDFLAGS) -o $@ $^ -Lliblitepcie -llitepcie
-
 clean:
 	rm -f $(PROGS) *.o *.a *.d *~ liblitepcie/*.a liblitepcie/*.o liblitepcie/*.d
 
@@ -28,6 +25,5 @@ clean:
 
 liblitepcie/%.o: liblitepcie/%.c
 	$(CC) -c $(CFLAGS) -o $@ $<
-
 
 -include $(wildcard *.d)
