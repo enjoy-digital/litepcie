@@ -76,7 +76,7 @@ static void info(void)
     close(fd);
 }
 
-/* SCRATCH */
+/* Scratch */
 /*---------*/
 
 void scratch_test(void)
@@ -379,45 +379,42 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
         if (!keep_running)
             break;
 
+        /* Update DMA status. */
         litepcie_dma_process(&dma);
 
 #ifdef DMA_CHECK_DATA
         char *buf_wr;
         char *buf_rd;
 
-        /* Write TX-buffers. */
+        /* DMA-TX Write. */
         while (1) {
-            /* Get buffer. */
+            /* Get Write buffer. */
             buf_wr = litepcie_dma_next_write_buffer(&dma);
-
-            /* Break when no buffer available. */
+            /* Break when no buffer available for Write. */
             if (!buf_wr)
                 break;
-
-            /* Write buffer. */
+            /* Write data to buffer. */
             write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_wr, data_width);
         }
 
-        /* Read/check RX-buffers */
+        /* DMA-RX Read/Check */
         while (1) {
-            /* Get RX-buffer. */
+            /* Get Read buffer. */
             buf_rd = litepcie_dma_next_read_buffer(&dma);
-
-            /* Break when no buffer available. */
+            /* Break when no buffer available for Read. */
             if (!buf_rd)
                 break;
-
             /* Skip the first 128 DMA loops. */
             if (dma.writer_hw_count < 128*DMA_BUFFER_COUNT)
                 break;
-
             /* When running... */
             if (run) {
-                /* Check buffer. */
+                /* Check data in Read buffer. */
                 errors += check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd, data_width);
+                /* Clear Read buffer */
                 memset(buf_rd, 0, DMA_BUFFER_SIZE);
             } else {
-                /* Find initial delay/seed. */
+                /* Find initial Delay/Seed (Useful when loopback is introducing delay). */
                 uint32_t errors_min = 0xffffffff;
                 for (int delay = 0; delay < DMA_BUFFER_SIZE / sizeof(uint32_t); delay++) {
                     seed_rd = delay;
@@ -442,29 +439,34 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
         }
 #endif
 
-        /* Test loop statistics */
+        /* Statistics every 200ms. */
         int64_t duration = get_time_ms() - last_time;
         if (run & (duration > 200)) {
+            /* Print banner every 10 lines. */
             if (i % 10 == 0)
                 printf("\e[1mDMA_SPEED(Gbps)\tTX_BUFFERS\tRX_BUFFERS\tDIFF\tERRORS\e[0m\n");
             i++;
+            /* Print statistics. */
             printf("%14.2f\t%10" PRIu64 "\t%10" PRIu64 "\t%4" PRIu64 "\t%6u\n",
                    (double)(dma.reader_sw_count - reader_sw_count_last) * DMA_BUFFER_SIZE * 8 * data_width / (get_next_pow2(data_width) * (double)duration * 1e6),
                    dma.reader_sw_count,
                    dma.writer_sw_count,
                    dma.reader_sw_count - dma.writer_sw_count,
                    errors);
+            /* Update errors/time/count. */
             errors = 0;
             last_time = get_time_ms();
             reader_sw_count_last = dma.reader_sw_count;
         }
     }
 
+
+    /* Cleanup DMA. */
 end:
     litepcie_dma_cleanup(&dma);
 }
 
-/* HELP */
+/* Help */
 /*------*/
 
 static void help(void)
@@ -495,7 +497,7 @@ static void help(void)
     exit(1);
 }
 
-/* MAIN */
+/* Main */
 /*------*/
 
 int main(int argc, char **argv)
@@ -542,21 +544,22 @@ int main(int argc, char **argv)
         }
     }
 
+    /* Show help when too much args. */
     if (optind >= argc)
         help();
 
-    /* Select device */
+    /* Select device. */
     snprintf(litepcie_device, sizeof(litepcie_device), "/dev/litepcie%d", litepcie_device_num);
 
     cmd = argv[optind++];
 
-    /* Info cmds */
+    /* Info cmds. */
     if (!strcmp(cmd, "info"))
         info();
-    /* Scratch cmds */
+    /* Scratch cmds. */
     else if (!strcmp(cmd, "scratch_test"))
         scratch_test();
-    /* SPI Flash cmds */
+    /* SPI Flash cmds. */
 #if CSR_FLASH_BASE
     else if (!strcmp(cmd, "flash_write")) {
         const char *filename;
@@ -583,7 +586,7 @@ int main(int argc, char **argv)
     else if (!strcmp(cmd, "flash_reload"))
         flash_reload();
 #endif
-    /* DMA cmds */
+    /* DMA cmds. */
     else if (!strcmp(cmd, "dma_test"))
         dma_test(
             litepcie_device_zero_copy,
@@ -591,7 +594,7 @@ int main(int argc, char **argv)
             litepcie_data_width,
             litepcie_auto_rx_delay);
 
-    /* Help */
+    /* Show help otherwise. */
     else
         goto show_help;
 
