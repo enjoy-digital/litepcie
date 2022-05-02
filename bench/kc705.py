@@ -11,7 +11,7 @@ import argparse
 
 from migen import *
 
-from litex_boards.platforms import kc705
+from litex_boards.platforms import xilinx_kc705
 
 from litex.soc.cores.clock import S7MMCM
 from litex.soc.interconnect.csr import *
@@ -114,10 +114,10 @@ def main():
     parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 1, 4 (default) or 8")
     args = parser.parse_args()
 
-    platform = kc705.Platform()
+    platform = xilinx_kc705.Platform()
     soc      = LitePCIeSoC(platform, nlanes=int(args.nlanes))
-    builder  = Builder(soc, output_dir="build/kc705", csr_csv="csr.csv")
-    builder.build(build_name="kc705", run=args.build)
+    builder  = Builder(soc, csr_csv="csr.csv")
+    builder.build(run=args.build)
 
     if args.driver:
         generate_litepcie_software(soc, os.path.join(builder.output_dir, "driver"))

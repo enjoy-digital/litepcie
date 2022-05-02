@@ -12,7 +12,7 @@ import argparse
 
 from migen import *
 
-from litex_boards.platforms import acorn
+from litex_boards.platforms import sqrl_acorn
 
 from litex.soc.cores.clock import S7PLL
 from litex.soc.interconnect.csr import *
@@ -186,7 +186,7 @@ def main():
     parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
     args = parser.parse_args()
 
-    platform = acorn.Platform()
+    platform = sqrl_acorn.Platform()
     soc      = LitePCIeSoC(platform)
     builder  = Builder(soc)
     builder.build(run=args.build)
