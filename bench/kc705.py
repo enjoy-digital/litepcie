@@ -116,8 +116,8 @@ def main():
 
     platform = xilinx_kc705.Platform()
     soc      = LitePCIeSoC(platform, nlanes=int(args.nlanes))
-    builder  = Builder(soc, csr_csv="csr.csv")
-    builder.build(run=args.build)
+    builder  = Builder(soc, output_dir="build/kc705", csr_csv="csr.csv")
+    builder.build(build_name="kc705", run=args.build)
 
     if args.driver:
         generate_litepcie_software(soc, os.path.join(builder.output_dir, "driver"))
