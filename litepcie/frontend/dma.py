@@ -591,7 +591,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
         # Reader FIFO Control/Status.
         assert bits_for(reader_depth) < 24
         self.reader_fifo_control = CSRStorage(fields=[
-            CSRField("depth", offset=0, size=bits_for(reader_depth), reset=reader_depth,
+            CSRField("depth", offset=0, size=24, reset=reader_depth,
                 description="DMA Reader FIFO depth (in {}-bit words).".format(data_width)),
             CSRField("scratch",    offset=24, size=4, description="Software Scratchpad."),
             CSRField("level_mode", offset=31, values=[
@@ -600,14 +600,14 @@ class LitePCIeDMABuffering(Module, AutoCSR):
             ])
         ])
         self.reader_fifo_status = CSRStatus(fields=[
-            CSRField("level", offset=0, size=bits_for(reader_depth),
+            CSRField("level", offset=0, size=24,
                 description="DMA Reader FIFO level (in {}-bit words).".format(data_width))
             ])
 
         # Writer FIFO Control/Status.
         assert bits_for(writer_depth) < 24
         self.writer_fifo_control = CSRStorage(fields=[
-            CSRField("depth", offset=0, size=bits_for(writer_depth), reset=writer_depth,
+            CSRField("depth", offset=0, size=24, reset=writer_depth,
                 description="DMA Writer FIFO depth (in {}-bit words).".format(data_width)),
             CSRField("scratch",    offset=24, size=4, description="Software Scratchpad."),
             CSRField("level_mode", offset=31, values=[
@@ -616,7 +616,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
             ])
         ])
         self.writer_fifo_status = CSRStatus(fields=[
-            CSRField("level", offset=0, size=bits_for(reader_depth),
+            CSRField("level", offset=0, size=24,
                 description="DMA Writer FIFO level (in {}-bit words).".format(data_width))
             ])
 
