@@ -139,7 +139,7 @@ class LitePCIeTLPHeaderInserter64b4DWs(Module):
 
 # LitePCIeTLPHeaderInserter128b --------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter128b(Module):
+class LitePCIeTLPHeaderInserter128b3DWs(Module):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(128))
         self.source = source = stream.Endpoint(phy_layout(128))
@@ -201,6 +201,63 @@ class LitePCIeTLPHeaderInserter128b(Module):
 
             If(source.valid & source.ready,
                 sink.ready.eq(~last),
+                If(source.last,
+                    NextState("HEADER")
+                )
+            )
+        )
+
+class LitePCIeTLPHeaderInserter128b4DWs(Module):
+    def __init__(self):
+        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(128))
+        self.source = source = stream.Endpoint(phy_layout(128))
+
+        # # #
+
+        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        fsm.act("HEADER",
+            sink.ready.eq(1),
+            If(sink.valid & sink.first,
+                sink.ready.eq(0),
+                source.valid.eq(1),
+                source.first.eq(sink.first),
+                source.last.eq(sink.last),
+
+                source.dat[32*0:32*1].eq(sink.header[32*0:]),
+                source.dat[32*1:32*2].eq(sink.header[32*1:]),
+                source.dat[32*2:32*3].eq(sink.header[32*2:]),
+                source.dat[32*3:32*4].eq(sink.header[32*3:]),
+
+                source.be[4*0:4*1].eq(0xf),
+                source.be[4*1:4*2].eq(0xf),
+                source.be[4*2:4*3].eq(0xf),
+                source.be[4*3:4*4].eq(0xf),
+
+                If(source.valid & source.ready,
+                    sink.ready.eq(1),
+                    If(~source.last,
+                        sink.ready.eq(0),
+                        NextState("DATA"),
+                    )
+                )
+            )
+        )
+        fsm.act("DATA",
+            source.valid.eq(sink.valid),
+            source.last.eq(sink.last),
+
+            source.dat[32*0:32*1].eq(sink.dat[32*0:]),
+            source.dat[32*1:32*2].eq(sink.dat[32*1:]),
+            source.dat[32*2:32*3].eq(sink.dat[32*2:]),
+            source.dat[32*3:32*4].eq(sink.dat[32*3:]),
+
+            source.be[4*0:4*1].eq(0xf),
+            source.be[4*1:4*2].eq(0xf),
+            source.be[4*2:4*3].eq(0xf),
+            source.be[4*3:4*4].eq(0xf),
+
+            If(source.valid & source.ready,
+                sink.ready.eq(1),
                 If(source.last,
                     NextState("HEADER")
                 )
@@ -563,7 +620,7 @@ class LitePCIeTLPPacketizer(Module):
             # Insert header ------------------------------------------------------------------------
             header_inserter_cls = {
                 64 : LitePCIeTLPHeaderInserter64b3DWs,
-               128 : LitePCIeTLPHeaderInserter128b,
+               128 : LitePCIeTLPHeaderInserter128b3DWs,
                256 : LitePCIeTLPHeaderInserter256b,
                512 : LitePCIeTLPHeaderInserter512b,
             }
@@ -580,11 +637,12 @@ class LitePCIeTLPPacketizer(Module):
                     mode       = name,
                 )
         else:
-            assert data_width in [64] # FIXME: Extend support to 128/256/512-bit data_widths.
+            assert data_width in [64, 128] # FIXME: Extend support to 256/512-bit data_widths.
 
             # Insert header (Req) ------------------------------------------------------------------
             header_inserter_cls = {
                 64 : LitePCIeTLPHeaderInserter64b4DWs,
+               128 : LitePCIeTLPHeaderInserter128b4DWs,
             }
             self.submodules.header_inserter_req = header_inserter_cls[data_width]()
             self.comb += tlp_raw_req.connect(self.header_inserter_req.sink)
@@ -592,6 +650,7 @@ class LitePCIeTLPPacketizer(Module):
             # Insert header (Cmp) ------------------------------------------------------------------
             header_inserter_cls = {
                 64 : LitePCIeTLPHeaderInserter64b3DWs,
+               128 : LitePCIeTLPHeaderInserter128b3DWs,
             }
             self.submodules.header_inserter_cmp = header_inserter_cls[data_width]()
             self.comb += tlp_raw_cmp.connect(self.header_inserter_cmp.sink)
