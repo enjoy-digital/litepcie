@@ -70,13 +70,15 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
         self.source = source = stream.Endpoint(descriptor_layout(address_width=address_width))
 
         # Control/Status.
-        self.value = CSRStorage(address_width + 32, reset_less=True, fields=[
-            CSRField("address",      size=address_width, description="32/64-bit Address of the descriptor (bytes-aligned)."),
-            CSRField("length",       size=24,            description="24-bit Length  of the descriptor (in bytes)."),
-            CSRField("irq_disable",  size=1,             description="IRQ Disable Control of the descriptor."),
-            CSRField("last_disable", size=1,             description="Last Disable Control of the descriptor.")
-            ], description="64/96-bit DMA descriptor to be written to the table.")
-        self.we = CSRStorage(description="A write to this register adds the descriptor to table.")
+        self.value = CSRStorage(64, reset_less=True, fields=[
+            CSRField("address_lsb",  size=32, description="32-bit LSB Address of the descriptor (bytes-aligned)."),
+            CSRField("length",       size=24, description="24-bit Length  of the descriptor (in bytes)."),
+            CSRField("irq_disable",  size=1,  description="IRQ Disable Control of the descriptor."),
+            CSRField("last_disable", size=1,  description="Last Disable Control of the descriptor.")
+            ], description="64-bit DMA descriptor to be written to the table.")
+        self.we = CSRStorage(32, description="Write and 32-bit MSB Address of the descriptor (bytes-aligned)", fields=[
+            CSRField("address_msb", size=32, description="32-bit MSB Address of the descriptor (bytes-aligned), in 64-bit mode."),
+        ])
         self.loop_prog_n = CSRStorage(description="""Mode Selection.\n
             ``0``: **Prog** mode / ``1``: **Loop** mode.\n
             **Prog** mode should be used to program the table by software and for cases where automatic
@@ -103,16 +105,23 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
         self.comb += self.level.status.eq(table.level)
 
         # Table Write logic ------------------------------------------------------------------------
+        def table_sink_address_map():
+            address_map = []
+            address_map.append(table.sink.address[0:32].eq(self.value.fields.address_lsb))
+            if address_width == 64:
+                address_map.append(table.sink.address[32:64].eq(self.we.fields.address_msb))
+            return address_map
+
         prog_mode = (self.loop_prog_n.storage == 0)
         self.sync += [
             # In Prog mode, the Table is filled through the CSRs.
             If(prog_mode,
-                table.sink.address.eq(self.value.fields.address),
+                *table_sink_address_map(),
                 table.sink.length.eq(self.value.fields.length),
                 table.sink.irq_disable.eq(self.value.fields.irq_disable),
                 table.sink.last_disable.eq(self.value.fields.last_disable),
                 table.sink.first.eq(table.level == 0),
-                table.sink.valid.eq(self.we.storage & self.we.re),
+                table.sink.valid.eq(self.we.re),
             # In Loop mode, the Table is automatically refilled.
             ).Else(
                 table.source.connect(table.sink, omit={"valid", "ready"}),

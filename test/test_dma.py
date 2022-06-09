@@ -72,10 +72,12 @@ class DMADriver:
         yield from self.dma.table.reset.write(1)
 
     def program_descriptor(self, address, length):
-        value = address
-        value |= (length << self.dut.address_width)
+        address_lsb = (address >>  0) & 0xffff_ffff
+        address_msb = (address >> 32) & 0xffff_ffff
+        value = address_lsb
+        value |= (length << 32)
         yield from self.dma.table.value.write(value)
-        yield from self.dma.table.we.write(1)
+        yield from self.dma.table.we.write(address_msb)
 
     def enable(self):
         yield from self.dma._enable.write(1)
