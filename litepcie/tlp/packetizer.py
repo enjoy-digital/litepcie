@@ -95,7 +95,7 @@ class LitePCIeTLPHeaderInserter64b4DWs(Module):
                 sink.ready.eq(0),
                 source.valid.eq(1),
                 source.first.eq((count == 0) & sink.first),
-                source.last.eq( (count == 1) & sink.last),
+                source.last.eq( (count == 1) & sink.last & (sink.be == 0)),
                 If(count == 0,
                     source.dat[32*0:32*1].eq(sink.header[32*0:]),
                     source.dat[32*1:32*2].eq(sink.header[32*1:]),
@@ -221,7 +221,7 @@ class LitePCIeTLPHeaderInserter128b4DWs(Module):
                 sink.ready.eq(0),
                 source.valid.eq(1),
                 source.first.eq(sink.first),
-                source.last.eq(sink.last),
+                source.last.eq(sink.last & (sink.be == 0)),
 
                 source.dat[32*0:32*1].eq(sink.header[32*0:]),
                 source.dat[32*1:32*2].eq(sink.header[32*1:]),
