@@ -761,23 +761,25 @@ class LitePCIeDMAStatus(Module, AutoCSR):
         # Update Logic.
         # -------------
         port   = endpoint.crossbar.get_master_port(write_only=True)
+        dwords = len(port.source.dat)//32
         offset = Signal(4)
+        assert len(status)%dwords == 0
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             If(self.control.fields.enable,
                 If(update,
                     NextValue(offset, 0),
-                    NextState("WORD-WRITE")
+                    NextState("WORDS-WRITE")
                 )
             )
         )
-        fsm.act("WORD-UPDATE",
-            NextValue(offset, offset + 1),
-            If(offset == (16 - 1),
+        fsm.act("WORDS-UPDATE",
+            NextValue(offset, offset + dwords),
+            If(offset == (len(status) - dwords),
                 NextState("IDLE")
             ).Else(
-                NextState("WORD-WRITE")
+                NextState("WORDS-WRITE")
             )
         )
         self.comb += [
@@ -787,15 +789,16 @@ class LitePCIeDMAStatus(Module, AutoCSR):
             port.source.adr.eq(self.address.storage + 4*offset),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
-            port.source.len.eq(1),
-            port.source.dat.eq(status[offset]),
+            port.source.len.eq(dwords),
         ]
+        for n in range(dwords):
+            self.comb += port.source.dat[32*n:32*(n+1)].eq(status[offset + n])
 
-        fsm.act("WORD-WRITE",
+        fsm.act("WORDS-WRITE",
             port.source.valid.eq(1),
             port.source.we.eq(1),
             If(port.source.ready,
-                NextState("WORD-UPDATE")
+                NextState("WORDS-UPDATE")
             )
         )
 
