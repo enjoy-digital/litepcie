@@ -714,7 +714,7 @@ class LitePCIeDMAStatus(Module, AutoCSR):
     - DMA Reader IRQ.
     Allowing a Synchronous or Asynchrounous update with the DMAs.
     """
-    def __init__(self, endpoint, writer, reader):
+    def __init__(self, endpoint, writer, reader, address_width=32):
         self.control = CSRStorage(fields=[
             CSRField("enable", offset=0, size=1, description="Status Enable"),
             CSRField("update", offset=4, size=2, description="Status Update Event", values=[
@@ -724,7 +724,8 @@ class LitePCIeDMAStatus(Module, AutoCSR):
                 ("``0b11``", "Software."),
             ]),
         ])
-        self.address = CSRStorage(32, description="Status Base Address on Host.")
+        self.address_lsb = CSRStorage(32, description="Status Base Address (LSB) on Host.")
+        self.address_msb = CSRStorage(32, description="Status Base Address (MSB) on Host.")
 
         self.external_update = Signal()
         self.external_status = Array([Signal(32) for _ in range(8)])
@@ -786,10 +787,13 @@ class LitePCIeDMAStatus(Module, AutoCSR):
             port.source.channel.eq(port.channel),
             port.source.first.eq(1),
             port.source.last.eq(1),
-            port.source.adr.eq(self.address.storage + 4*offset),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(dwords),
+            port.source.adr.eq({
+                32:              (0x0000_0000 << 32) + self.address_lsb.storage + (offset << 2),
+                64: (self.address_msb.storage << 32) + self.address_lsb.storage + (offset << 2),
+            }[address_width]),
         ]
         for n in range(dwords):
             self.comb += port.source.dat[32*n:32*(n+1)].eq(status[offset + n])
@@ -865,9 +869,10 @@ class LitePCIeDMA(Module, AutoCSR):
         # Status -----------------------------------------------------------------------------------
         if with_status:
             self.submodules.status = LitePCIeDMAStatus(
-                endpoint = endpoint,
-                writer   = writer,
-                reader   = reader
+                endpoint      = endpoint,
+                writer        = writer,
+                reader        = reader,
+                address_width = address_width,
             )
 
     def add_plugin_module(self, m):
