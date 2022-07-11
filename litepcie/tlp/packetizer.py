@@ -530,10 +530,7 @@ class LitePCIeTLPPacketizer(Module):
         tlp_raw_req        = stream.Endpoint(tlp_raw_layout(data_width))
         tlp_raw_req_header = Signal(len(tlp_raw_req.header))
         self.comb += [
-            tlp_raw_req.valid.eq(tlp_req.valid),
-            tlp_req.ready.eq(tlp_raw_req.ready),
-            tlp_raw_req.first.eq(tlp_req.first),
-            tlp_raw_req.last.eq(tlp_req.last),
+            tlp_req.connect(tlp_raw_req, omit={*tlp_request_header_fields.keys()}),
             tlp_request_header.encode(tlp_req, tlp_raw_req_header),
         ]
         self.comb += dword_endianness_swap(
@@ -544,10 +541,6 @@ class LitePCIeTLPPacketizer(Module):
             mode       = "dat",
             ndwords    = 4
         )
-        self.comb += [
-            tlp_raw_req.dat.eq(tlp_req.dat),
-            tlp_raw_req.be.eq(tlp_req.be),
-        ]
 
         # Format TLP completion and encode it ------------------------------------------------------
         self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
@@ -591,10 +584,7 @@ class LitePCIeTLPPacketizer(Module):
         tlp_raw_cmp        = stream.Endpoint(tlp_raw_layout(data_width))
         tlp_raw_cmp_header = Signal(len(tlp_raw_cmp.header))
         self.comb += [
-            tlp_raw_cmp.valid.eq(tlp_cmp.valid),
-            tlp_cmp.ready.eq(tlp_raw_cmp.ready),
-            tlp_raw_cmp.first.eq(tlp_cmp.first),
-            tlp_raw_cmp.last.eq(tlp_cmp.last),
+            tlp_cmp.connect(tlp_raw_cmp, omit={*tlp_completion_header_fields.keys()}),
             tlp_completion_header.encode(tlp_cmp, tlp_raw_cmp_header),
         ]
         self.comb += dword_endianness_swap(
@@ -605,11 +595,6 @@ class LitePCIeTLPPacketizer(Module):
             mode       = "dat",
             ndwords    = 4
         )
-        self.comb += [
-            tlp_raw_cmp.dat.eq(tlp_cmp.dat),
-            tlp_raw_cmp.be.eq(tlp_cmp.be)
-        ]
-
 
         if address_width == 32:
 
