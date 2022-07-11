@@ -131,6 +131,7 @@ def dword_endianness_swap(src, dst, data_width, endianness, mode="dat", ndwords=
 
 def tlp_raw_layout(data_width):
     layout = [
+        ("fmt",    2),
         ("header", 4*32),
         ("dat",    data_width),
         ("be",     data_width//8)
