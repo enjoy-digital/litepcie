@@ -542,7 +542,7 @@ class LitePCIeTLPPacketizer(Module):
             data_width = data_width,
             endianness = endianness,
             mode       = "dat",
-            ndwords    = {32 : 3, 64 : 4}[address_width]
+            ndwords    = 4
         )
         self.comb += [
             tlp_raw_req.dat.eq(tlp_req.dat),
@@ -603,7 +603,7 @@ class LitePCIeTLPPacketizer(Module):
             data_width = data_width,
             endianness = endianness,
             mode       = "dat",
-            ndwords    = 3
+            ndwords    = 4
         )
         self.comb += [
             tlp_raw_cmp.dat.eq(tlp_cmp.dat),
