@@ -491,9 +491,11 @@ class LitePCIeTLPPacketizer(Module):
             tlp_req.last.eq(req_sink.last),
 
             If(req_sink.we,
-                Cat(tlp_req.type, tlp_req.fmt).eq(fmt_type_dict[f"mem_wr{address_width}"])
+                tlp_req.type.eq(type_dict[f"mem_wr{address_width}"]),
+                tlp_req.fmt.eq( fmt_dict[ f"mem_wr{address_width}"]),
             ).Else(
-                Cat(tlp_req.type, tlp_req.fmt).eq(fmt_type_dict[f"mem_rd{address_width}"])
+                tlp_req.type.eq(type_dict[f"mem_rd{address_width}"]),
+                tlp_req.fmt.eq( fmt_dict[ f"mem_rd{address_width}"]),
             ),
 
             tlp_req.tc.eq(0),
@@ -544,7 +546,7 @@ class LitePCIeTLPPacketizer(Module):
         )
         self.comb += [
             tlp_raw_req.dat.eq(tlp_req.dat),
-            tlp_raw_req.be.eq(tlp_req.be)
+            tlp_raw_req.be.eq(tlp_req.be),
         ]
 
         # Format TLP completion and encode it ------------------------------------------------------
@@ -563,10 +565,12 @@ class LitePCIeTLPPacketizer(Module):
 
             tlp_cmp.completer_id.eq(cmp_sink.cmp_id),
             If(cmp_sink.err,
-                Cat(tlp_cmp.type, tlp_cmp.fmt).eq(fmt_type_dict["cpl"]),
+                tlp_cmp.type.eq(type_dict["cpl"]),
+                tlp_cmp.fmt.eq( fmt_dict["cpl"]),
                 tlp_cmp.status.eq(cpl_dict["ur"])
             ).Else(
-                Cat(tlp_cmp.type, tlp_cmp.fmt).eq(fmt_type_dict["cpld"]),
+                tlp_cmp.type.eq(type_dict["cpld"]),
+                tlp_cmp.fmt.eq( fmt_dict["cpld"]),
                 tlp_cmp.status.eq(cpl_dict["sc"])
             ),
             tlp_cmp.bcm.eq(0),
