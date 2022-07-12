@@ -9,6 +9,45 @@ from migen.genlib.misc import chooser
 
 from litepcie.tlp.common import *
 
+# LitePCIeTLPHeaderInserter ------------------------------------------------------------------------
+
+class LitePCIeTLPHeaderInserter3DWs4DWs(Module):
+    def __init__(self, data_width, header_inserter_3dws_cls, header_inserter_4dws_cls, fmt):
+        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(data_width))
+        self.source = source = stream.Endpoint(phy_layout(data_width))
+
+        # # #
+
+        # Header Inserters Modules.
+        header_inserter_3dws = header_inserter_3dws_cls()
+        header_inserter_4dws = header_inserter_4dws_cls()
+        self.submodules += header_inserter_3dws, header_inserter_4dws
+
+        # Header Inserters Sel.
+        _3DWS_SEL = 0b0
+        _4DWS_SEL = 0b1
+        header_sel = Signal()
+        self.comb += Case(fmt, {
+            fmt_dict["mem_rd32"] : header_sel.eq(_3DWS_SEL),
+            fmt_dict["mem_rd64"] : header_sel.eq(_4DWS_SEL),
+            fmt_dict["mem_wr32"] : header_sel.eq(_3DWS_SEL),
+            fmt_dict["mem_wr64"] : header_sel.eq(_4DWS_SEL),
+            fmt_dict[    "cpld"] : header_sel.eq(_3DWS_SEL),
+            fmt_dict[     "cpl"] : header_sel.eq(_3DWS_SEL),
+        })
+
+        # Header Inserters Mux.
+        self.comb += Case(header_sel, {
+            _3DWS_SEL : [
+                sink.connect(header_inserter_3dws.sink),
+                header_inserter_3dws.source.connect(source),
+            ],
+            _4DWS_SEL : [
+                sink.connect(header_inserter_4dws.sink),
+                header_inserter_4dws.source.connect(source),
+            ],
+        })
+
 # LitePCIeTLPHeaderInserter64b ---------------------------------------------------------------------
 
 class LitePCIeTLPHeaderInserter64b3DWs(Module):
@@ -135,6 +174,15 @@ class LitePCIeTLPHeaderInserter64b4DWs(Module):
                     NextState("HEADER")
                 )
             )
+        )
+
+class LitePCIeTLPHeaderInserter64b(LitePCIeTLPHeaderInserter3DWs4DWs):
+    def __init__(self, fmt):
+        LitePCIeTLPHeaderInserter3DWs4DWs.__init__(self,
+            data_width               = 64,
+            header_inserter_3dws_cls = LitePCIeTLPHeaderInserter64b3DWs,
+            header_inserter_4dws_cls = LitePCIeTLPHeaderInserter64b4DWs,
+            fmt                      = fmt,
         )
 
 # LitePCIeTLPHeaderInserter128b --------------------------------------------------------------------
@@ -264,10 +312,19 @@ class LitePCIeTLPHeaderInserter128b4DWs(Module):
             )
         )
 
+class LitePCIeTLPHeaderInserter128b(LitePCIeTLPHeaderInserter3DWs4DWs):
+    def __init__(self, fmt):
+        LitePCIeTLPHeaderInserter3DWs4DWs.__init__(self,
+            data_width               = 128,
+            header_inserter_3dws_cls = LitePCIeTLPHeaderInserter128b3DWs,
+            header_inserter_4dws_cls = LitePCIeTLPHeaderInserter128b4DWs,
+            fmt                      = fmt,
+        )
+
 # LitePCIeTLPHeaderInserter256b --------------------------------------------------------------------
 
 class LitePCIeTLPHeaderInserter256b(Module):
-    def __init__(self):
+    def __init__(self, fmt):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(256))
         self.source = source = stream.Endpoint(phy_layout(256))
 
@@ -354,7 +411,7 @@ class LitePCIeTLPHeaderInserter256b(Module):
 # LitePCIeTLPHeaderInserter512b --------------------------------------------------------------------
 
 class LitePCIeTLPHeaderInserter512b(Module):
-    def __init__(self):
+    def __init__(self, fmt):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(512))
         self.source = source = stream.Endpoint(phy_layout(512))
 
@@ -476,6 +533,8 @@ class LitePCIeTLPPacketizer(Module):
     def __init__(self, data_width, endianness, address_width=32):
         assert data_width%32 == 0
         assert address_width in [32, 64]
+        if address_width == 64:
+            assert data_width in [64, 128] # FIXME: Extend support to 256/512-bit data_widths.
         self.req_sink = req_sink = stream.Endpoint(request_layout(data_width, address_width))
         self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
         self.source   = stream.Endpoint(phy_layout(data_width))
@@ -490,12 +549,31 @@ class LitePCIeTLPPacketizer(Module):
             tlp_req.first.eq(req_sink.first),
             tlp_req.last.eq(req_sink.last),
 
+            tlp_req.type.eq(0b00000),
             If(req_sink.we,
-                Cat(tlp_req.type, tlp_req.fmt).eq(fmt_type_dict[f"mem_wr{address_width}"])
+                tlp_req.fmt.eq( fmt_dict[ f"mem_wr32"]),
             ).Else(
-                Cat(tlp_req.type, tlp_req.fmt).eq(fmt_type_dict[f"mem_rd{address_width}"])
+                tlp_req.fmt.eq( fmt_dict[ f"mem_rd32"]),
             ),
+            tlp_req.address.eq(req_sink.adr),
+        ]
+        if address_width == 64:
+            self.comb += [
+                # Use WR64/RD64 only when 64-bit Address's MSB != 0, else use WR32/RD32.
+                If(req_sink.adr[32:] != 0,
+                    # Address's MSB on DW2, LSB on DW3 with 64-bit addressing: Requires swap due to
+                    # Packetizer's behavior.
+                    tlp_req.address[:32].eq(req_sink.adr[32:]),
+                    tlp_req.address[32:].eq(req_sink.adr[:32]),
+                    If(req_sink.we,
+                        tlp_req.fmt.eq( fmt_dict[ f"mem_wr64"]),
+                    ).Else(
+                        tlp_req.fmt.eq( fmt_dict[ f"mem_rd64"]),
+                    ),
+                )
+            ]
 
+        self.comb += [
             tlp_req.tc.eq(0),
             tlp_req.td.eq(0),
             tlp_req.ep.eq(0),
@@ -517,21 +595,12 @@ class LitePCIeTLPPacketizer(Module):
                 tlp_req.be.eq(0x00)
             )
         ]
-        if address_width == 64:
-            # Address's MSB on DW2, LSB on DW3 with 64-bit addressing:
-            # Requires swap due to Packetizer's behavior.
-            self.comb += tlp_req.address[:32].eq(req_sink.adr[32:])
-            self.comb += tlp_req.address[32:].eq(req_sink.adr[:32])
-        else:
-            self.comb += tlp_req.address.eq(req_sink.adr)
 
         tlp_raw_req        = stream.Endpoint(tlp_raw_layout(data_width))
         tlp_raw_req_header = Signal(len(tlp_raw_req.header))
         self.comb += [
-            tlp_raw_req.valid.eq(tlp_req.valid),
-            tlp_req.ready.eq(tlp_raw_req.ready),
-            tlp_raw_req.first.eq(tlp_req.first),
-            tlp_raw_req.last.eq(tlp_req.last),
+            tlp_req.connect(tlp_raw_req, omit={*tlp_request_header_fields.keys()}),
+            tlp_raw_req.fmt.eq(tlp_req.fmt),
             tlp_request_header.encode(tlp_req, tlp_raw_req_header),
         ]
         self.comb += dword_endianness_swap(
@@ -540,12 +609,8 @@ class LitePCIeTLPPacketizer(Module):
             data_width = data_width,
             endianness = endianness,
             mode       = "dat",
-            ndwords    = {32 : 3, 64 : 4}[address_width]
+            ndwords    = 4
         )
-        self.comb += [
-            tlp_raw_req.dat.eq(tlp_req.dat),
-            tlp_raw_req.be.eq(tlp_req.be)
-        ]
 
         # Format TLP completion and encode it ------------------------------------------------------
         self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
@@ -563,10 +628,12 @@ class LitePCIeTLPPacketizer(Module):
 
             tlp_cmp.completer_id.eq(cmp_sink.cmp_id),
             If(cmp_sink.err,
-                Cat(tlp_cmp.type, tlp_cmp.fmt).eq(fmt_type_dict["cpl"]),
+                tlp_cmp.type.eq(type_dict["cpl"]),
+                tlp_cmp.fmt.eq( fmt_dict["cpl"]),
                 tlp_cmp.status.eq(cpl_dict["ur"])
             ).Else(
-                Cat(tlp_cmp.type, tlp_cmp.fmt).eq(fmt_type_dict["cpld"]),
+                tlp_cmp.type.eq(type_dict["cpld"]),
+                tlp_cmp.fmt.eq( fmt_dict["cpld"]),
                 tlp_cmp.status.eq(cpl_dict["sc"])
             ),
             tlp_cmp.bcm.eq(0),
@@ -587,10 +654,8 @@ class LitePCIeTLPPacketizer(Module):
         tlp_raw_cmp        = stream.Endpoint(tlp_raw_layout(data_width))
         tlp_raw_cmp_header = Signal(len(tlp_raw_cmp.header))
         self.comb += [
-            tlp_raw_cmp.valid.eq(tlp_cmp.valid),
-            tlp_cmp.ready.eq(tlp_raw_cmp.ready),
-            tlp_raw_cmp.first.eq(tlp_cmp.first),
-            tlp_raw_cmp.last.eq(tlp_cmp.last),
+            tlp_cmp.connect(tlp_raw_cmp, omit={*tlp_completion_header_fields.keys()}),
+            tlp_raw_cmp.fmt.eq(tlp_cmp.fmt),
             tlp_completion_header.encode(tlp_cmp, tlp_raw_cmp_header),
         ]
         self.comb += dword_endianness_swap(
@@ -599,75 +664,33 @@ class LitePCIeTLPPacketizer(Module):
             data_width = data_width,
             endianness = endianness,
             mode       = "dat",
-            ndwords    = 3
+            ndwords    = 4
         )
-        self.comb += [
-            tlp_raw_cmp.dat.eq(tlp_cmp.dat),
-            tlp_raw_cmp.be.eq(tlp_cmp.be)
-        ]
 
+        # Arbitrate --------------------------------------------------------------------------------
 
-        if address_width == 32:
+        tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))
+        self.submodules.arbitrer = Arbiter(
+            masters = [tlp_raw_req, tlp_raw_cmp],
+            slave   = tlp_raw
+        )
 
-            # Arbitrate ----------------------------------------------------------------------------
-
-            tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))
-            self.submodules.arbitrer = Arbiter(
-                masters = [tlp_raw_req, tlp_raw_cmp],
-                slave   = tlp_raw
+        # Insert header ----------------------------------------------------------------------------
+        header_inserter_cls = {
+            64 : LitePCIeTLPHeaderInserter64b,
+           128 : LitePCIeTLPHeaderInserter128b,
+           256 : LitePCIeTLPHeaderInserter256b,
+           512 : LitePCIeTLPHeaderInserter512b,
+        }
+        header_inserter = header_inserter_cls[data_width](fmt=tlp_raw.fmt)
+        self.submodules += header_inserter
+        self.comb += tlp_raw.connect(header_inserter.sink)
+        self.comb += header_inserter.source.connect(self.source, omit={"data", "be"})
+        for name in ["dat", "be"]:
+            self.comb += dword_endianness_swap(
+                src        = getattr(header_inserter.source, name),
+                dst        = getattr(self.source, name),
+                data_width = data_width,
+                endianness = endianness,
+                mode       = name,
             )
-
-            # Insert header ------------------------------------------------------------------------
-            header_inserter_cls = {
-                64 : LitePCIeTLPHeaderInserter64b3DWs,
-               128 : LitePCIeTLPHeaderInserter128b3DWs,
-               256 : LitePCIeTLPHeaderInserter256b,
-               512 : LitePCIeTLPHeaderInserter512b,
-            }
-            header_inserter = header_inserter_cls[data_width]()
-            self.submodules += header_inserter
-            self.comb += tlp_raw.connect(header_inserter.sink)
-            self.comb += header_inserter.source.connect(self.source, omit={"data", "be"})
-            for name in ["dat", "be"]:
-                self.comb += dword_endianness_swap(
-                    src        = getattr(header_inserter.source, name),
-                    dst        = getattr(self.source, name),
-                    data_width = data_width,
-                    endianness = endianness,
-                    mode       = name,
-                )
-        else:
-            assert data_width in [64, 128] # FIXME: Extend support to 256/512-bit data_widths.
-
-            # Insert header (Req) ------------------------------------------------------------------
-            header_inserter_cls = {
-                64 : LitePCIeTLPHeaderInserter64b4DWs,
-               128 : LitePCIeTLPHeaderInserter128b4DWs,
-            }
-            self.submodules.header_inserter_req = header_inserter_cls[data_width]()
-            self.comb += tlp_raw_req.connect(self.header_inserter_req.sink)
-
-            # Insert header (Cmp) ------------------------------------------------------------------
-            header_inserter_cls = {
-                64 : LitePCIeTLPHeaderInserter64b3DWs,
-               128 : LitePCIeTLPHeaderInserter128b3DWs,
-            }
-            self.submodules.header_inserter_cmp = header_inserter_cls[data_width]()
-            self.comb += tlp_raw_cmp.connect(self.header_inserter_cmp.sink)
-
-            # Arbitrate ----------------------------------------------------------------------------
-            header_inserter_source = stream.Endpoint(phy_layout(data_width))
-            self.submodules.arbitrer = Arbiter(
-                masters = [self.header_inserter_req.source, self.header_inserter_cmp.source],
-                slave   = header_inserter_source
-            )
-
-            self.comb += header_inserter_source.connect(self.source, omit={"data", "be"})
-            for name in ["dat", "be"]:
-                self.comb += dword_endianness_swap(
-                    src        = getattr(header_inserter_source, name),
-                    dst        = getattr(self.source, name),
-                    data_width = data_width,
-                    endianness = endianness,
-                    mode       = name,
-                )

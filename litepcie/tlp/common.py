@@ -13,14 +13,31 @@ from litepcie.common import *
 max_payload_size = 512
 max_request_size = 512
 
-fmt_type_dict = {
-    "mem_rd32": 0b0000000,
-    "mem_wr32": 0b1000000,
-    "mem_rd64": 0b0100000,
-    "mem_wr64": 0b1100000,
+fmt_dict = {
+    "mem_rd32": 0b00,
+    "mem_rd64": 0b01,
+    "mem_wr32": 0b10,
+    "mem_wr64": 0b11,
+    "cpld":     0b10,
+    "cpl":      0b00,
+}
 
-    "cpld":     0b1001010,
-    "cpl":      0b0001010,
+type_dict = {
+    "mem_rd32": 0b00000,
+    "mem_rd64": 0b00000,
+    "mem_wr32": 0b00000,
+    "mem_wr64": 0b00000,
+    "cpld":     0b01010,
+    "cpl":      0b01010,
+}
+
+fmt_type_dict = {
+    "mem_rd32": 0b00_00000,
+    "mem_rd64": 0b01_00000,
+    "mem_wr32": 0b10_00000,
+    "mem_wr64": 0b11_00000,
+    "cpld":     0b10_01010,
+    "cpl":      0b00_01010,
 }
 
 cpl_dict = {
@@ -114,6 +131,7 @@ def dword_endianness_swap(src, dst, data_width, endianness, mode="dat", ndwords=
 
 def tlp_raw_layout(data_width):
     layout = [
+        ("fmt",    2),
         ("header", 4*32),
         ("dat",    data_width),
         ("be",     data_width//8)
