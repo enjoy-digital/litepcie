@@ -1163,7 +1163,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 		(resource_size_t) litepcie_dev->bar0_addr +
 		CSR_UART_XOVER_RXTX_ADDR - CSR_BASE;
 	tty_res->flags = IORESOURCE_REG;
-	litepcie_dev->uart = platform_device_register_simple("liteuart", -1, tty_res, 1);
+	litepcie_dev->uart = platform_device_register_simple("liteuart", litepcie_minor_idx, tty_res, 1);
 	if (IS_ERR(litepcie_dev->uart)) {
 		ret = PTR_ERR(litepcie_dev->uart);
 		goto fail3;

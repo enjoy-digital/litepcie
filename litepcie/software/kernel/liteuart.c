@@ -74,7 +74,7 @@ static struct console liteuart_console;
 #endif
 
 #ifndef CONFIG_SERIAL_LITEUART_MAX_PORTS
-#define CONFIG_SERIAL_LITEUART_MAX_PORTS 1
+#define CONFIG_SERIAL_LITEUART_MAX_PORTS 16
 #endif
 
 static struct uart_driver liteuart_driver = {
