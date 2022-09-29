@@ -541,7 +541,14 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
     """
     def __init__(self, data_width):
         self.bypass      = CSRStorage()
-        self.enable      = CSRStorage()
+        self.enable      = CSRStorage(fields=[
+            CSRField("mode", size=2, values=[
+                ("``0b00``", "Synchronization disabled."),
+                ("``0b01``", "TX/RX Synchronization enabled."),
+                ("``0b10``", "RX Synchronization enabled."),
+                ("``0b11``", "Reserved."),
+            ]
+        )])
         self.ready       = Signal(reset=1)
         self.pps         = Signal()
 
@@ -556,11 +563,21 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
         self.synced = synced = Signal()
 
         self.sync += [
-            If(~self.enable.storage,
+            # Synchro Disabled.
+            If(self.enable.fields.mode == 0b00,
                 synced.eq(0)
+            # Synchro Enabled.
             ).Else(
-                If(self.ready & self.sink.valid & (self.pps | self.bypass.storage),
-                    synced.eq(1)
+                # On PPS or Bypass and with external ready signal:
+                If(self.ready & (self.pps | self.bypass.storage),
+                    # TX/RX Synchronization, make sure TX has data.
+                    If((self.enable.fields.mode == 0b01) & self.sink.valid,
+                        synced.eq(1)
+                    ),
+                    # RX synchronization.
+                    If(self.enable.fields.mode == 0b10,
+                        synced.eq(1)
+                    )
                 )
             )
         ]
