@@ -174,6 +174,8 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
         self.sink   =   sink = stream.Endpoint(descriptor_layout(address_width=address_width))
         self.source = source = stream.Endpoint(descriptor_layout(address_width=address_width, with_user_id=True))
 
+        self.terminate = Signal() # Early Termination.
+
         # # #
 
         desc_length  = Signal(32)
@@ -218,7 +220,7 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
                 # Decrement Length.
                 NextValue(desc_length, desc_length - max_size),
                 # When Last....
-                If(source.last,
+                If(source.last | self.terminate,
                     # Accept Descriptor.
                     sink.ready.eq(1),
                     # Increment ID.
@@ -294,7 +296,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_pending_words
         data_fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), data_fifo_depth, buffered=True)
-        self.submodules += ResetInserter()(data_fifo)
+        self.submodules.data_fifo = ResetInserter()(data_fifo)
         self.comb += [
             # Connect Data FIFO to Source.
             data_fifo.source.connect(self.source),
@@ -331,14 +333,13 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             # Reset Splitter/FIFO when Disabled.
-            # Reset Splitter/FIFO when disabled.
             If(~enable,
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
             ),
             # Wait for a Descriptor and to have enough Space to generate the Request.
             If(splitter.source.valid & (pending_words < (data_fifo_depth - max_words_per_request)),
-                NextState("REQUEST"),
+                NextState("MEM-RD-REQ"),
             )
         )
         # Request Data-Path.
@@ -353,7 +354,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
             port.source.req_id.eq(endpoint.phy.id),
             port.source.dat.eq(0),
         ]
-        fsm.act("REQUEST",
+        fsm.act("MEM-RD-REQ",
             # Request Control-Path.
             port.source.valid.eq(1),
             # When Request is accepted...
@@ -418,7 +419,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             address_width = address_width
         )
         splitter = ResetInserter()(splitter)
-        splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings.
+        #splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings. # FIXME: Prevent early termination.
         self.submodules.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
@@ -428,7 +429,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_words_per_request
         data_fifo = stream.SyncFIFO([("data", endpoint.phy.data_width)], data_fifo_depth, buffered=True)
-        self.submodules += ResetInserter()(data_fifo)
+        self.submodules.data_fifo = ResetInserter()(data_fifo)
          # By default, accept incoming stream when disabled.
         self.comb += sink.ready.eq(1)
         # When Enabled, connect Sink to Data FIFO.
@@ -449,7 +450,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             NextValue(req_done,  0),
             # Wait for a Descriptor and to have enough Data to generate the Request.
             If(splitter.source.valid & (data_fifo.level >= splitter.source.length[length_shift:]),
-                NextState("REQUEST"),
+                NextState("MEM-WR"),
             )
         )
         # Request Data-Path.
@@ -465,23 +466,24 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             port.source.len.eq(splitter.source.length[2:]),
             port.source.dat.eq(data_fifo.source.data)
         ]
-        fsm.act("REQUEST",
+        fsm.act("MEM-WR",
             # Request Control-Path.
             port.source.valid.eq(1),
             # When Request is accepted...
             If(port.source.ready,
                 # Increment Request Count.
                 NextValue(req_count, req_count + 1),
+                # Early termination on last (Optional, can be dynamically disabled).
+                If(data_fifo.source.last & ~splitter.source.last_disable,
+                    NextValue(req_done, 1),
+                ),
+                splitter.terminate.eq(req_done),
                 # Accept Data (Only when not terminated).
                 data_fifo.source.ready.eq(~req_done),
                 # When last...
                 If(port.source.last,
                     # Accept Descriptor.
                     splitter.source.ready.eq(1),
-                    # Terminate early on last (Optional, can be disabled).
-                    If(data_fifo.source.last & ~splitter.source.last_disable,
-                        NextValue(req_done, 1)
-                    ),
                     # Return to Idle.
                     NextState("IDLE"),
                 )
