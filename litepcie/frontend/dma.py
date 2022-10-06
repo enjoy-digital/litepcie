@@ -133,21 +133,24 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
         self.comb += table.source.connect(source)
 
         # Loop Status (For Software Sychronization in Loop mode) -----------------------------------
+        loop_first = Signal()
         loop_index = self.loop_status.fields.index
         loop_count = self.loop_status.fields.count
         self.sync += [
             # Reset Loop Index/Count on Table reset.
             If(table.reset,
-                # Init count to 2**n-1 to have (index, count) == (0, 0) for the first Descriptor.
+                loop_first.eq(1),
                 loop_index.eq(0),
-                loop_count.eq(2**len(loop_count) - 1),
+                loop_count.eq(0),
             # When a Descriptor is consumned...
             ).Elif(table.source.valid & table.source.ready,
                 # Update Loop Status with current Loop Index/Count.
-                # Update Loop Index/Count.
                 If(table.source.first,
+                    # Reset Index.
                     loop_index.eq(0),
-                    loop_count.eq(loop_count + 1),
+                    # Increment Count (except on first since we want (index, count) == (0,0)).
+                    loop_first.eq(0),
+                    loop_count.eq(loop_count + Cat(~loop_first)),
                 ).Else(
                     loop_index.eq(loop_index + 1)
                 )
@@ -332,7 +335,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # FSM --------------------------------------------------------------------------------------
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            # Reset Splitter/FIFO when Disabled.
+            # Reset Splitter/FIFO when disabled.
             If(~enable,
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
