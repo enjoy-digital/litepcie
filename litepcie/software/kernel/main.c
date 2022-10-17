@@ -975,7 +975,9 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	int i;
 	char fpga_identifier[256];
 	struct litepcie_device *litepcie_dev = NULL;
+#ifdef CSR_UART_XOVER_RXTX_ADDR
 	struct resource *tty_res = NULL;
+#endif
 
 	dev_info(&dev->dev, "\e[1m[Probing device]\e[0m\n");
 
