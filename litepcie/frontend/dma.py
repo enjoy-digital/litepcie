@@ -540,15 +540,15 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
 
     For some applications (Software Defined Radio, Video, ...), DMA start needs to be precisely
     synchronized to an internal signal of the FPGA (PPS for example for an SDR applications). This
-    module allows releasing precisely the DMA Writer/Reader data streams.
+    module allows releasing precisely one or both of the DMA Writer/Reader data streams.
     """
     def __init__(self, data_width):
         self.bypass      = CSRStorage()
         self.enable      = CSRStorage(fields=[
             CSRField("mode", size=2, values=[
                 ("``0b00``", "Synchronization disabled."),
-                ("``0b01``", "TX/RX Synchronization enabled."),
-                ("``0b10``", "RX Synchronization enabled."),
+                ("``0b01``", "Reader and Writer to PPS Synchronization enabled."),
+                ("``0b10``", "PPS Synchronization enabled."),
                 ("``0b11``", "Reserved."),
             ]
         )])
@@ -577,7 +577,7 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
                     If((self.enable.fields.mode == 0b01) & self.sink.valid,
                         synced.eq(1)
                     ),
-                    # RX synchronization.
+                    # Synchronization only on PPS. Reader and Writer are independent
                     If(self.enable.fields.mode == 0b10,
                         synced.eq(1)
                     )
