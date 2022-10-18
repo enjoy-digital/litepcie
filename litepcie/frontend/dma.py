@@ -481,10 +481,8 @@ class LitePCIeDMAWriter(Module, AutoCSR):
                 data_fifo.source.ready.eq(~splitter.terminate),
                 # When last...
                 If(port.source.last,
-                    # Accept Descriptor (Only when last).
-                    If(splitter.source.last,
-                        splitter.source.ready.eq(1)
-                    ),
+                    # Accept Descriptor.
+                    splitter.source.ready.eq(1),
                     # Accept Data (Force).
                     data_fifo.source.ready.eq(1),
                     # Return to Idle.
