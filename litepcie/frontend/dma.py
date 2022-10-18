@@ -439,7 +439,6 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.comb += If(enable, sink.connect(data_fifo.sink))
 
         # FSM --------------------------------------------------------------------------------------
-        req_done  = Signal()
         req_count = Signal.like(splitter.source.length)
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
@@ -448,9 +447,8 @@ class LitePCIeDMAWriter(Module, AutoCSR):
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
             ),
-            # Reset Request Count/Done.
+            # Reset Request Count.
             NextValue(req_count, 0),
-            NextValue(req_done,  0),
             # Wait for a Descriptor and to have enough Data to generate the Request.
             If(splitter.source.valid & (data_fifo.level >= splitter.source.length[length_shift:]),
                 NextState("MEM-WR"),
@@ -467,8 +465,11 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(splitter.source.length[2:]),
-            port.source.dat.eq(data_fifo.source.data)
+            port.source.dat.eq(data_fifo.source.data),
         ]
+        # Early termination on last (Optional, can be dynamically disabled).
+        self.comb += splitter.terminate.eq(data_fifo.source.last & ~splitter.source.last_disable)
+
         fsm.act("MEM-WR",
             # Request Control-Path.
             port.source.valid.eq(1),
@@ -476,17 +477,14 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             If(port.source.ready,
                 # Increment Request Count.
                 NextValue(req_count, req_count + 1),
-                # Early termination on last (Optional, can be dynamically disabled).
-                If(data_fifo.source.last & ~splitter.source.last_disable,
-                    NextValue(req_done, 1),
-                ),
-                splitter.terminate.eq(req_done),
                 # Accept Data (Only when not terminated).
-                data_fifo.source.ready.eq(~req_done),
+                data_fifo.source.ready.eq(~splitter.terminate),
                 # When last...
                 If(port.source.last,
                     # Accept Descriptor.
                     splitter.source.ready.eq(1),
+                    # Accept Data (Force).
+                    data_fifo.source.ready.eq(1),
                     # Return to Idle.
                     NextState("IDLE"),
                 )
