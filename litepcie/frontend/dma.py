@@ -209,7 +209,7 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
             source.first.eq(desc_offset == 0),
             # Full Descriptor when Length > max_size.
             If(desc_length > max_size,
-                source.last.eq(0),
+                source.last.eq(self.terminate),
                 source.length.eq(max_size),
             # Partial Descriptor when Length <= max_size.
             ).Else(
@@ -223,7 +223,7 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
                 # Decrement Length.
                 NextValue(desc_length, desc_length - max_size),
                 # When Last....
-                If(source.last | self.terminate,
+                If(source.last,
                     # Accept Descriptor.
                     sink.ready.eq(1),
                     # Increment ID.
