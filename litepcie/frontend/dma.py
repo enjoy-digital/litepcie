@@ -844,6 +844,9 @@ class LitePCIeDMA(Module, AutoCSR):
         with_monitor       = False,
         with_status        = False):
 
+        # Parameters -------------------------------------------------------------------------------
+        self.data_width = data_width = phy.data_width
+
         # Writer/Reader ----------------------------------------------------------------------------
         writer = LitePCIeDMAWriter(
             endpoint      = endpoint,
@@ -863,12 +866,12 @@ class LitePCIeDMA(Module, AutoCSR):
 
         # Loopback ---------------------------------------------------------------------------------
         if with_loopback:
-            self.submodules.loopback = LitePCIeDMALoopback(phy.data_width)
+            self.submodules.loopback = LitePCIeDMALoopback(data_width)
             self.add_plugin_module(self.loopback)
 
         # Synchronizer -----------------------------------------------------------------------------
         if with_synchronizer:
-            self.submodules.synchronizer = LitePCIeDMASynchronizer(phy.data_width)
+            self.submodules.synchronizer = LitePCIeDMASynchronizer(data_width)
             self.add_plugin_module(self.synchronizer)
 
         # Buffering --------------------------------------------------------------------------------
@@ -876,7 +879,7 @@ class LitePCIeDMA(Module, AutoCSR):
             writer_depth = writer_buffering_depth if writer_buffering_depth is not None else buffering_depth
             reader_depth = reader_buffering_depth if reader_buffering_depth is not None else buffering_depth
             self.submodules.buffering = LitePCIeDMABuffering(
-                data_width   = phy.data_width,
+                data_width   = data_width,
                 writer_depth = writer_depth,
                 reader_depth = reader_depth)
             self.add_plugin_module(self.buffering)
