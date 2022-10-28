@@ -234,7 +234,6 @@ class LitePCIeCore(SoCMini):
             pcie_dma = stream.BufferizeEndpoints({"sink"   : stream.DIR_SINK})(pcie_dma)
             pcie_dma = stream.BufferizeEndpoints({"source" : stream.DIR_SOURCE})(pcie_dma)
             setattr(self.submodules, "pcie_dma" + str(i), pcie_dma)
-            self.add_csr("pcie_dma{}".format(i))
             dma_status_ios = platform.request("dma{}_status".format(i))
             dma_writer_ios = platform.request("dma{}_writer_axi".format(i))
             dma_reader_ios = platform.request("dma{}_reader_axi".format(i))
