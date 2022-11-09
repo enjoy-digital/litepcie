@@ -155,7 +155,7 @@ class LitePCIeCore(SoCMini):
 
         # CRG --------------------------------------------------------------------------------------
         clk_external = core_config.get("clk_external", False)
-        self.submodules.crg = LitePCIeCRG(platform, sys_clk_freq, clk_external)
+        self.crg = LitePCIeCRG(platform, sys_clk_freq, clk_external)
 
         # Control ----------------------------------------------------------------------------------
         if core_config.get("ctrl", False):
@@ -166,13 +166,13 @@ class LitePCIeCore(SoCMini):
             self.bus.add_master(name="ctrl", master=axi)
 
         # PCIe PHY ---------------------------------------------------------------------------------
-        self.submodules.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
+        self.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
             pcie_data_width = core_config.get("phy_pcie_data_width", 64),
             data_width      = core_config["phy_data_width"],
             bar0_size       = core_config["phy_bar0_size"])
 
         # PCIe Endpoint ----------------------------------------------------------------------------
-        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
+        self.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
             endianness           = self.pcie_phy.endianness,
             max_pending_requests = core_config.get("ep_max_pending_requests", 4))
 
@@ -260,14 +260,14 @@ class LitePCIeCore(SoCMini):
         # PCIe MSI ---------------------------------------------------------------------------------
         if core_config.get("msi_x", False):
             assert core_config["msi_irqs"] <= 32
-            self.submodules.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=64)
+            self.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=64)
             self.comb += self.pcie_msi.irqs[32:32+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
         else:
             assert core_config["msi_irqs"] <= 16
             if core_config.get("msi_multivector", False):
-                self.submodules.pcie_msi = LitePCIeMSIMultiVector(width=32)
+                self.pcie_msi = LitePCIeMSIMultiVector(width=32)
             else:
-                self.submodules.pcie_msi = LitePCIeMSI(width=32)
+                self.pcie_msi = LitePCIeMSI(width=32)
             self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
             self.comb += self.pcie_msi.irqs[16:16+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
         self.interrupts = {}
