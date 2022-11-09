@@ -38,6 +38,7 @@ from litex.soc.cores.clock import *
 from litex.soc.interconnect.csr import *
 from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.axi import *
+from litex.soc.integration.soc import SoCRegion
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
 
@@ -180,17 +181,16 @@ class LitePCIeCore(SoCMini):
         pcie_wishbone_master = LitePCIeWishboneMaster(self.pcie_endpoint,
             qword_aligned = self.pcie_phy.qword_aligned)
         self.submodules += pcie_wishbone_master
-        self.add_wb_master(pcie_wishbone_master.wishbone)
+        self.bus.add_master(master=pcie_wishbone_master.wishbone)
 
         # PCIe MMAP Master -------------------------------------------------------------------------
         if core_config.get("mmap", False):
             mmap_base        = core_config["mmap_base"]
             mmap_size        = core_config["mmap_size"]
             mmap_translation = core_config.get("mmap_translation", 0x00000000)
+            mmap_region      = SoCRegion(origin=mmap_base, size=mmap_size, cached=False)
             wb = wishbone.Interface(data_width=32)
-            self.mem_map["mmap"] = mmap_base
-            self.add_wb_slave(mmap_base, wb, mmap_size)
-            self.add_memory_region("mmap", mmap_base, mmap_size, type="io")
+            self.bus.add_slave(name="mmap", slave=wb, region=mmap_region)
             axi = AXILiteInterface(data_width=32, address_width=32)
             wb2axi = Wishbone2AXILite(wb, axi, base_address=-mmap_translation)
             self.submodules += wb2axi
