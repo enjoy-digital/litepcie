@@ -50,7 +50,7 @@ static void litepcie_record(const char *device_name, const char *filename, uint3
     }
 
     /* Initialize DMA. */
-    if (litepcie_dma_init(&dma, device_name, zero_copy))
+    if (litepcie_dma_init(&dma, device_name, zero_copy, 0))
         exit(1);
 
     /* Test Loop. */
@@ -129,7 +129,7 @@ static void litepcie_play(const char *device_name, const char *filename, uint32_
     }
 
     /* Initialize DMA. */
-    if (litepcie_dma_init(&dma, device_name, zero_copy))
+    if (litepcie_dma_init(&dma, device_name, zero_copy, 0))
         exit(1);
 
     /* Test Loop. */
