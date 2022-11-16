@@ -38,6 +38,7 @@
 #include "csr.h"
 #include "config.h"
 #include "flags.h"
+#include "soc.h"
 
 //#define DEBUG_CSR
 //#define DEBUG_MSI
@@ -1037,9 +1038,9 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
 	pci_set_master(dev);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)
-	ret = pci_set_dma_mask(dev, DMA_BIT_MASK(32));
+	ret = pci_set_dma_mask(dev, DMA_BIT_MASK(DMA_ADDR_WIDTH));
 #else
-	ret = dma_set_mask(&dev->dev, DMA_BIT_MASK(32));
+	ret = dma_set_mask(&dev->dev, DMA_BIT_MASK(DMA_ADDR_WIDTH));
 #endif
 	if (ret) {
 		dev_err(&dev->dev, "Failed to set DMA mask\n");
