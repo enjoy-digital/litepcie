@@ -85,10 +85,10 @@ static void litepcie_record(const char *device_name, const char *filename, uint3
         if (duration > 200) {
             /* Print banner every 10 lines. */
             if (i % 10 == 0)
-                printf("\e[1mSPEED(Gbps)\tBUFFERS SIZE(MB)\e[0m\n");
+                printf("\e[1mSPEED(Gbps)    BUFFERS SIZE(MB)\e[0m\n");
             i++;
             /* Print statistics. */
-            printf("%10.2f\t%10" PRIu64 "\t%8" PRIu64 "\n",
+            printf("%10.2f %10" PRIu64 "  %8" PRIu64"\n",
                     (double)(dma.writer_sw_count - writer_sw_count_last) * DMA_BUFFER_SIZE * 8 / ((double)duration * 1e6),
                     dma.writer_sw_count,
                     (size > 0) ? ((dma.writer_sw_count) * DMA_BUFFER_SIZE) / 1024 / 1024 : 0);
@@ -169,10 +169,10 @@ static void litepcie_play(const char *device_name, const char *filename, uint32_
         if (duration > 200) {
              /* Print banner every 10 lines. */
             if (i % 10 == 0)
-                printf("\e[1mSPEED(Gbps)\tBUFFERS\tSIZE(MB)\tLOOP\tUNDERFLOWS\e[0m\n");
+                printf("\e[1mSPEED(Gbps)   BUFFERS   SIZE(MB)   LOOP UNDERFLOWS\e[0m\n");
             i++;
             /* Print statistics. */
-            printf("%10.2f\t%10" PRIu64 "\t%10" PRIu64 "\t%6d\t%10ld\n",
+            printf("%10.2f %10" PRIu64 " %10" PRIu64 " %6d %10ld\n",
                    (double)(dma.reader_sw_count - reader_sw_count_last) * DMA_BUFFER_SIZE * 8 / ((double)duration * 1e6),
                    dma.reader_sw_count,
                    (dma.reader_sw_count * DMA_BUFFER_SIZE) / 1024 / 1024,
