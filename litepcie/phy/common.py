@@ -28,6 +28,7 @@ class PHYTXDatapath(Module):
                 cd_from         = clock_domain,
                 cd_to           = "pcie",
                 with_common_rst = True,
+                depth           = 16,
             )
             converter  = stream.StrideConverter(phy_layout(core_data_width), phy_layout(pcie_data_width))
             converter  = ClockDomainsRenamer("pcie")(converter)
@@ -112,7 +113,8 @@ class PHYRXDatapath(Module):
                 layout          = phy_layout(core_data_width),
                 cd_from         = "pcie",
                 cd_to           = clock_domain,
-                with_common_rst = True
+                with_common_rst = True,
+                depth           = 16,
             )
             pipe_valid = stream.PipeValid(phy_layout(core_data_width))
             pipe_valid = ClockDomainsRenamer(clock_domain)(pipe_valid)
