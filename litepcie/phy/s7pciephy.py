@@ -404,13 +404,13 @@ class S7PCIEPHY(Module, AutoCSR):
                 "Multiple_Message_Capable"  : '1_vector',
                 "Link_Speed"         : "5.0_GT/s",
                 "MSI_64b"            : False,
-                "Max_Payload_Size"   : "512_bytes",
+                "Max_Payload_Size"   : "512_bytes" if self.nlanes != 8 else "256_bytes",
                 "Maximum_Link_Width" : f"X{self.nlanes}",
                 "PCIe_Blk_Locn"      : "X0Y0",
                 "Ref_Clk_Freq"       : "100_MHz",
                 "Trans_Buf_Pipeline" : None,
                 "Trgt_Link_Speed"    : "4'h2",
-                "User_Clk_Freq"      : 125,
+                "User_Clk_Freq"      : 125 if self.nlanes != 8 else 250,
             }
             ip_tcl = []
             ip_tcl.append("create_ip -vendor xilinx.com -name pcie_7x -module_name pcie_s7")
@@ -426,7 +426,8 @@ class S7PCIEPHY(Module, AutoCSR):
             platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtp_common.gtpe2_common_i}}]")
         else:
             platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtx_common.gtxe2_common_i}}]")
-        platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*genblk*.bram36_tdp_bl.bram36_tdp_bl}}]")
+        if self.nlanes != 8:
+            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*genblk*.bram36_tdp_bl.bram36_tdp_bl}}]")
 
     # External Hard IP -----------------------------------------------------------------------------
     def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
