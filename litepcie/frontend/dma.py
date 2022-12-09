@@ -250,7 +250,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32):
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, with_splitter_buffer=True):
         self.port = port
         # Stream Endpoint.
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
@@ -283,7 +283,8 @@ class LitePCIeDMAReader(Module, AutoCSR):
             address_width = address_width
         )
         splitter = ResetInserter()(splitter)
-        splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings.
+        if with_splitter_buffer: # For timings.
+            splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
         self.submodules.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
@@ -390,7 +391,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32):
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, with_splitter_buffer=True):
         self.port = port
         # Stream Endpoint.
         self.sink = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
@@ -422,7 +423,9 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             address_width = address_width
         )
         splitter = ResetInserter()(splitter)
-        #splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter) # For timings. # FIXME: Prevent early termination.
+        if with_splitter_buffer: # For timings.
+            # FIXME: Prevent early termination, so don't use when early termination is required.
+            splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
         self.submodules.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
@@ -838,27 +841,38 @@ class LitePCIeDMA(Module, AutoCSR):
     Optional buffering, loopback, synchronization and monitoring.
     """
     def __init__(self, phy, endpoint, table_depth=256, address_width=32,
-        with_loopback      = False,
-        with_synchronizer  = False,
-        with_buffering     = False, buffering_depth=256*8, writer_buffering_depth=None, reader_buffering_depth=None,
-        with_monitor       = False,
-        with_status        = False):
+        # Loopback.
+        with_loopback     = False,
+        # Synchronizer.
+        with_synchronizer = False,
+        # Buffering.
+        with_buffering    = False, buffering_depth=256*8, writer_buffering_depth=None, reader_buffering_depth=None,
+        # Monitor.
+        with_monitor      = False,
+        # Status.
+        with_status       = False,
+        # Splitter Buffer.
+        with_writer_splitter_buffer = True,
+        with_reader_splitter_buffer = True,
+    ):
 
         # Parameters -------------------------------------------------------------------------------
         self.data_width = data_width = phy.data_width
 
         # Writer/Reader ----------------------------------------------------------------------------
         writer = LitePCIeDMAWriter(
-            endpoint      = endpoint,
-            port          = endpoint.crossbar.get_master_port(write_only=True),
-            table_depth   = table_depth,
-            address_width = address_width,
+            endpoint             = endpoint,
+            port                 = endpoint.crossbar.get_master_port(write_only=True),
+            table_depth          = table_depth,
+            address_width        = address_width,
+            with_splitter_buffer = with_writer_splitter_buffer,
         )
         reader = LitePCIeDMAReader(
-            endpoint      = endpoint,
-            port          = endpoint.crossbar.get_master_port(read_only=True),
-            table_depth   = table_depth,
-            address_width = address_width,
+            endpoint             = endpoint,
+            port                 = endpoint.crossbar.get_master_port(read_only=True),
+            table_depth          = table_depth,
+            address_width        = address_width,
+            with_splitter_buffer = with_reader_splitter_buffer,
         )
         self.submodules.writer = writer
         self.submodules.reader = reader
