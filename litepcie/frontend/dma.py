@@ -113,6 +113,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
             return address_map
 
         prog_mode = (self.loop_prog_n.storage == 0)
+        loop_mode = (self.loop_prog_n.storage == 1)
         self.sync += [
             # In Prog mode, the Table is filled through the CSRs.
             If(prog_mode,
@@ -145,7 +146,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
             # When a Descriptor is consumned...
             ).Elif(table.source.valid & table.source.ready,
                 # Update Loop Status with current Loop Index/Count.
-                If(table.source.first,
+                If(loop_mode & table.source.first,
                     # Reset Index.
                     loop_index.eq(0),
                     # Increment Count (except on first since we want (index, count) == (0,0)).
