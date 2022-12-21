@@ -146,14 +146,21 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
             # When a Descriptor is consumned...
             ).Elif(table.source.valid & table.source.ready,
                 # Update Loop Status with current Loop Index/Count.
+                # Loop Mode.
                 If(loop_mode & table.source.first,
                     # Reset Index.
                     loop_index.eq(0),
                     # Increment Count (except on first since we want (index, count) == (0,0)).
                     loop_first.eq(0),
                     loop_count.eq(loop_count + Cat(~loop_first)),
+                # Prog Mode.
                 ).Else(
-                    loop_index.eq(loop_index + 1)
+                    # Increment Index.
+                    loop_index.eq(loop_index + 1),
+                    # Increment Count.
+                    If(loop_index == (2**16-1),
+                        loop_count.eq(loop_count + 1)
+                    )
                 )
             )
         ]
