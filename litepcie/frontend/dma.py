@@ -811,10 +811,13 @@ class LitePCIeDMAStatus(Module, AutoCSR):
             If(offset == (len(status) - dwords),
                 NextState("IDLE")
             ).Else(
-                NextState("WORDS-WRITE")
+                NextState("WORDS-DELAY")
             )
         )
-        self.comb += [
+        fsm.act("WORDS-DELAY",
+            NextState("WORDS-WRITE")
+        )
+        self.sync += [
             port.source.channel.eq(port.channel),
             port.source.first.eq(1),
             port.source.last.eq(1),
@@ -827,7 +830,7 @@ class LitePCIeDMAStatus(Module, AutoCSR):
             }[address_width]),
         ]
         for n in range(dwords):
-            self.comb += port.source.dat[32*n:32*(n+1)].eq(status[offset + n])
+            self.sync += port.source.dat[32*n:32*(n+1)].eq(status[offset + n])
 
         fsm.act("WORDS-WRITE",
             port.source.valid.eq(1),
