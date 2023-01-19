@@ -146,6 +146,11 @@ class LitePCIeCore(SoCMini):
         platform.add_extension(get_msi_irqs_ios(width=core_config["msi_irqs"]))
         sys_clk_freq = float(core_config.get("clk_freq", 125e6))
 
+        # Parameters -------------------------------------------------------------------------------
+
+        ep_address_width        = core_config.get("ep_address_width", 32)
+        ep_max_pending_requests = core_config.get("ep_max_pending_requests", 4)
+
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq,
             csr_data_width = 32,
@@ -175,7 +180,9 @@ class LitePCIeCore(SoCMini):
         # PCIe Endpoint ----------------------------------------------------------------------------
         self.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
             endianness           = self.pcie_phy.endianness,
-            max_pending_requests = core_config.get("ep_max_pending_requests", 4))
+            address_width        = ep_address_width,
+            max_pending_requests = ep_max_pending_requests,
+        )
 
         # PCIe Wishbone Master ---------------------------------------------------------------------
         pcie_wishbone_master = LitePCIeWishboneMaster(self.pcie_endpoint,
@@ -223,9 +230,11 @@ class LitePCIeCore(SoCMini):
 
         # PCIe DMA ---------------------------------------------------------------------------------
         pcie_dmas = []
-        self.add_constant("DMA_CHANNELS", core_config["dma_channels"])
+        self.add_constant("DMA_CHANNELS",   core_config["dma_channels"])
+        self.add_constant("DMA_ADDR_WIDTH", ep_address_width)
         for i in range(core_config["dma_channels"]):
             pcie_dma = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
+                address_width     = ep_address_width,
                 with_buffering    = core_config["dma_buffering"] != 0,
                 buffering_depth   = core_config["dma_buffering"],
                 with_loopback     = core_config["dma_loopback"],
