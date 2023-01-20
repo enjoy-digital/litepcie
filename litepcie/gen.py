@@ -239,7 +239,10 @@ class LitePCIeCore(SoCMini):
                 buffering_depth   = core_config["dma_buffering"],
                 with_loopback     = core_config["dma_loopback"],
                 with_synchronizer = core_config["dma_synchronizer"],
-                with_monitor      = core_config["dma_monitor"])
+                with_monitor      = core_config["dma_monitor"],
+                with_writer_splitter_buffer = False, # FIXME: Prevent early termination, so don't use when early termination (tlast) is required.
+                with_reader_splitter_buffer = True,
+            )
             pcie_dma = stream.BufferizeEndpoints({"sink"   : stream.DIR_SINK})(pcie_dma)
             pcie_dma = stream.BufferizeEndpoints({"source" : stream.DIR_SOURCE})(pcie_dma)
             setattr(self.submodules, "pcie_dma" + str(i), pcie_dma)
