@@ -621,7 +621,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
     appears in the streams and our Writes/Reads can't be absorbed/produced at a fixed rate. A minimum
     of buffering is needed to make sure the gaps are smoothed and not propagated to user modules.
     """
-    def __init__(self, data_width, writer_depth, reader_depth, dynamic_depth=True):
+    def __init__(self, data_width, with_writer, with_reader, writer_depth, reader_depth, dynamic_depth=True):
         self.sink        = stream.Endpoint(dma_layout(data_width))
         self.source      = stream.Endpoint(dma_layout(data_width))
 
@@ -629,99 +629,104 @@ class LitePCIeDMABuffering(Module, AutoCSR):
         self.next_sink   = stream.Endpoint(dma_layout(data_width))
 
         # Reader FIFO Control/Status.
-        assert bits_for(reader_depth) < 24
-        self.reader_fifo_control = CSRStorage(fields=[
-            CSRField("depth", offset=0, size=24, reset=reader_depth,
-                description="DMA Reader FIFO depth (in {}-bit words).".format(data_width)),
-            CSRField("scratch",    offset=24, size=4, description="Software Scratchpad."),
-            CSRField("level_mode", offset=31, values=[
-                ("``0b0``", "Report Instantaneous level."),
-                ("``0b1``", "Report `Minimal` level since last clear.")
+        if with_reader:
+            assert bits_for(reader_depth) < 24
+            self.reader_fifo_control = CSRStorage(fields=[
+                CSRField("depth", offset=0, size=24, reset=reader_depth,
+                    description="DMA Reader FIFO depth (in {}-bit words).".format(data_width)),
+                CSRField("scratch",    offset=24, size=4, description="Software Scratchpad."),
+                CSRField("level_mode", offset=31, values=[
+                    ("``0b0``", "Report Instantaneous level."),
+                    ("``0b1``", "Report `Minimal` level since last clear.")
+                ])
             ])
-        ])
-        self.reader_fifo_status = CSRStatus(fields=[
-            CSRField("level", offset=0, size=24,
-                description="DMA Reader FIFO level (in {}-bit words).".format(data_width))
-            ])
+            self.reader_fifo_status = CSRStatus(fields=[
+                CSRField("level", offset=0, size=24,
+                    description="DMA Reader FIFO level (in {}-bit words).".format(data_width))
+                ])
 
         # Writer FIFO Control/Status.
-        assert bits_for(writer_depth) < 24
-        self.writer_fifo_control = CSRStorage(fields=[
-            CSRField("depth", offset=0, size=24, reset=writer_depth,
-                description="DMA Writer FIFO depth (in {}-bit words).".format(data_width)),
-            CSRField("scratch",    offset=24, size=4, description="Software Scratchpad."),
-            CSRField("level_mode", offset=31, values=[
-                ("``0b0``", "Report Instantaneous level."),
-                ("``0b1``", "Report `Maximal` level since last clear.")
+        if with_writer:
+            assert bits_for(writer_depth) < 24
+            self.writer_fifo_control = CSRStorage(fields=[
+                CSRField("depth", offset=0, size=24, reset=writer_depth,
+                    description="DMA Writer FIFO depth (in {}-bit words).".format(data_width)),
+                CSRField("scratch",    offset=24, size=4, description="Software Scratchpad."),
+                CSRField("level_mode", offset=31, values=[
+                    ("``0b0``", "Report Instantaneous level."),
+                    ("``0b1``", "Report `Maximal` level since last clear.")
+                ])
             ])
-        ])
-        self.writer_fifo_status = CSRStatus(fields=[
-            CSRField("level", offset=0, size=24,
-                description="DMA Writer FIFO level (in {}-bit words).".format(data_width))
-            ])
+            self.writer_fifo_status = CSRStatus(fields=[
+                CSRField("level", offset=0, size=24,
+                    description="DMA Writer FIFO level (in {}-bit words).".format(data_width))
+                ])
 
         # # #
 
         depth_shift = log2_int(data_width//8)
 
         # Reader FIFO.
-        reader_fifo = SyncFIFO(dma_layout(data_width), reader_depth//(data_width//8), buffered=True)
-        self.submodules += reader_fifo
-        self.comb += [
-            # Connect Reader Sink to Reader FIFO when Level < Configured Depth.
-            self.sink.connect(reader_fifo.sink, omit={"valid", "ready"}),
-            If((reader_fifo.level < self.reader_fifo_control.fields.depth[depth_shift:]) | (not dynamic_depth),
-                self.sink.connect(reader_fifo.sink, keep={"valid", "ready"})
-            ),
-            # Connect Reader FIFO to Reader Source.
-            reader_fifo.source.connect(self.next_source),
-        ]
+        if with_reader:
+            reader_fifo = SyncFIFO(dma_layout(data_width), reader_depth//(data_width//8), buffered=True)
+            self.submodules += reader_fifo
+            self.comb += [
+                # Connect Reader Sink to Reader FIFO when Level < Configured Depth.
+                self.sink.connect(reader_fifo.sink, omit={"valid", "ready"}),
+                If((reader_fifo.level < self.reader_fifo_control.fields.depth[depth_shift:]) | (not dynamic_depth),
+                    self.sink.connect(reader_fifo.sink, keep={"valid", "ready"})
+                ),
+                # Connect Reader FIFO to Reader Source.
+                reader_fifo.source.connect(self.next_source),
+            ]
 
-        # Store Min.
-        reader_fifo_level_min = Signal.like(reader_fifo.level)
-        self.sync += If(reader_fifo.level < reader_fifo_level_min, reader_fifo_level_min.eq(reader_fifo.level))
-        # Clear on Status write or when in Instantaneous mode.
-        reader_fifo_level_clr = (self.reader_fifo_status.re | (self.reader_fifo_control.fields.level_mode == 0))
-        self.sync += If(reader_fifo_level_clr, reader_fifo_level_min.eq(2**len(reader_fifo_level_min)-1))
-        # Return Reader FIFO level.
-        self.comb += [
-            # Instantaneous.
-            If(self.reader_fifo_control.fields.level_mode == 0,
-                self.reader_fifo_status.fields.level[depth_shift:].eq(reader_fifo.level)
-            # Min.
-            ).Else(
-                self.reader_fifo_status.fields.level[depth_shift:].eq(reader_fifo_level_min)
-            )
-        ]
+            # Store Min.
+            reader_fifo_level_min = Signal.like(reader_fifo.level)
+            self.sync += If(reader_fifo.level < reader_fifo_level_min, reader_fifo_level_min.eq(reader_fifo.level))
+            # Clear on Status write or when in Instantaneous mode.
+            reader_fifo_level_clr = (self.reader_fifo_status.re | (self.reader_fifo_control.fields.level_mode == 0))
+            self.sync += If(reader_fifo_level_clr, reader_fifo_level_min.eq(2**len(reader_fifo_level_min)-1))
+            # Return Reader FIFO level.
+            self.comb += [
+                # Instantaneous.
+                If(self.reader_fifo_control.fields.level_mode == 0,
+                    self.reader_fifo_status.fields.level[depth_shift:].eq(reader_fifo.level)
+                # Min.
+                ).Else(
+                    self.reader_fifo_status.fields.level[depth_shift:].eq(reader_fifo_level_min)
+                )
+            ]
 
         # Writer FIFO.
-        writer_fifo = SyncFIFO(dma_layout(data_width), writer_depth//(data_width//8), buffered=True)
-        self.submodules += writer_fifo
-        self.comb += [
-            # Connect Writer Sink to Writer FIFO when Level < Configured Depth.
-            self.next_sink.connect(writer_fifo.sink, omit={"valid", "ready"}),
-            If((writer_fifo.level < self.writer_fifo_control.fields.depth[depth_shift:]) | (not dynamic_depth),
-                self.next_sink.connect(writer_fifo.sink, keep={"valid", "ready"})
-            ),
-            # Connect Writer FIFO to Writer Source.
-            writer_fifo.source.connect(self.source),
-        ]
-        # Store Max.
-        writer_fifo_level_max = Signal.like(writer_fifo.level)
-        self.sync += If(writer_fifo.level > writer_fifo_level_max, writer_fifo_level_max.eq(writer_fifo.level))
-        # Clear on Status write or when in Instantaneous mode.
-        writer_fifo_level_clr = (self.writer_fifo_status.re | (self.writer_fifo_control.fields.level_mode == 0))
-        self.sync += If(writer_fifo_level_clr, writer_fifo_level_max.eq(0))
-        # Return Writer FIFO level.
-        self.comb += [
-            # Instantaneous.
-            If(self.writer_fifo_control.fields.level_mode == 0,
-                self.writer_fifo_status.fields.level[depth_shift:].eq(writer_fifo.level)
-            # Min.
-            ).Else(
-                self.writer_fifo_status.fields.level[depth_shift:].eq(writer_fifo_level_max)
-            )
-        ]
+        if with_writer:
+            writer_fifo = SyncFIFO(dma_layout(data_width), writer_depth//(data_width//8), buffered=True)
+            self.submodules += writer_fifo
+            self.comb += [
+                # Connect Writer Sink to Writer FIFO when Level < Configured Depth.
+                self.next_sink.connect(writer_fifo.sink, omit={"valid", "ready"}),
+                If((writer_fifo.level < self.writer_fifo_control.fields.depth[depth_shift:]) | (not dynamic_depth),
+                    self.next_sink.connect(writer_fifo.sink, keep={"valid", "ready"})
+                ),
+                # Connect Writer FIFO to Writer Source.
+                writer_fifo.source.connect(self.source),
+            ]
+
+            # Store Max.
+            writer_fifo_level_max = Signal.like(writer_fifo.level)
+            self.sync += If(writer_fifo.level > writer_fifo_level_max, writer_fifo_level_max.eq(writer_fifo.level))
+            # Clear on Status write or when in Instantaneous mode.
+            writer_fifo_level_clr = (self.writer_fifo_status.re | (self.writer_fifo_control.fields.level_mode == 0))
+            self.sync += If(writer_fifo_level_clr, writer_fifo_level_max.eq(0))
+            # Return Writer FIFO level.
+            self.comb += [
+                # Instantaneous.
+                If(self.writer_fifo_control.fields.level_mode == 0,
+                    self.writer_fifo_status.fields.level[depth_shift:].eq(writer_fifo.level)
+                # Min.
+                ).Else(
+                    self.writer_fifo_status.fields.level[depth_shift:].eq(writer_fifo_level_max)
+                )
+            ]
 
 # LitePCIeDMAStatus --------------------------------------------------------------------------------
 
@@ -851,7 +856,7 @@ class LitePCIeDMA(Module, AutoCSR):
 
     Optional buffering, loopback, synchronization and monitoring.
     """
-    def __init__(self, phy, endpoint, table_depth=256, address_width=32,
+    def __init__(self, phy, endpoint, table_depth=256, address_width=32, with_writer=True, with_reader=True,
         # Loopback.
         with_loopback     = False,
         # Synchronizer.
@@ -866,36 +871,47 @@ class LitePCIeDMA(Module, AutoCSR):
         with_writer_splitter_buffer = True,
         with_reader_splitter_buffer = True,
     ):
-
         # Parameters -------------------------------------------------------------------------------
         self.data_width = data_width = phy.data_width
 
+        # Endoints ---------------------------------------------------------------------------------
+        self.sink   = stream.Endpoint(dma_layout(data_width))
+        self.source = stream.Endpoint(dma_layout(data_width))
+
         # Writer/Reader ----------------------------------------------------------------------------
-        writer = LitePCIeDMAWriter(
-            endpoint             = endpoint,
-            port                 = endpoint.crossbar.get_master_port(write_only=True),
-            table_depth          = table_depth,
-            address_width        = address_width,
-            with_splitter_buffer = with_writer_splitter_buffer,
-        )
-        reader = LitePCIeDMAReader(
-            endpoint             = endpoint,
-            port                 = endpoint.crossbar.get_master_port(read_only=True),
-            table_depth          = table_depth,
-            address_width        = address_width,
-            with_splitter_buffer = with_reader_splitter_buffer,
-        )
-        self.submodules.writer = writer
-        self.submodules.reader = reader
-        self.sink, self.source = writer.sink, reader.source
+        if with_writer:
+            writer = LitePCIeDMAWriter(
+                endpoint             = endpoint,
+                port                 = endpoint.crossbar.get_master_port(write_only=True),
+                table_depth          = table_depth,
+                address_width        = address_width,
+                with_splitter_buffer = with_writer_splitter_buffer,
+            )
+            self.submodules.writer = writer
+            self.comb += self.sink.connect(self.writer.sink)
+
+        if with_reader:
+            reader = LitePCIeDMAReader(
+                endpoint             = endpoint,
+                port                 = endpoint.crossbar.get_master_port(read_only=True),
+                table_depth          = table_depth,
+                address_width        = address_width,
+                with_splitter_buffer = with_reader_splitter_buffer,
+            )
+            self.submodules.reader = reader
+            self.comb += reader.source.connect(self.source)
 
         # Loopback ---------------------------------------------------------------------------------
         if with_loopback:
+            if not (with_writer and with_reader):
+                raise ValueError("Loopback capability requires DMAWriter and DMAReader to be enabled.")
             self.submodules.loopback = LitePCIeDMALoopback(data_width)
             self.add_plugin_module(self.loopback)
 
         # Synchronizer -----------------------------------------------------------------------------
         if with_synchronizer:
+            if not (with_writer and with_reader):
+                raise ValueError("Synchronizer capability requires DMAWriter and DMAReader to be enabled.")
             self.submodules.synchronizer = LitePCIeDMASynchronizer(data_width)
             self.add_plugin_module(self.synchronizer)
 
@@ -905,17 +921,24 @@ class LitePCIeDMA(Module, AutoCSR):
             reader_depth = reader_buffering_depth if reader_buffering_depth is not None else buffering_depth
             self.submodules.buffering = LitePCIeDMABuffering(
                 data_width   = data_width,
+                with_reader  = with_reader,
+                with_writer  = with_writer,
+                reader_depth = reader_depth,
                 writer_depth = writer_depth,
-                reader_depth = reader_depth)
+            )
             self.add_plugin_module(self.buffering)
 
         # Monitor ----------------------------------------------------------------------------------
         if with_monitor:
-            self.submodules.writer_monitor = stream.Monitor(self.sink,   count_width=16, with_overflows  = True)
-            self.submodules.reader_monitor = stream.Monitor(self.source, count_width=16, with_underflows = True)
+            if with_writer:
+                self.submodules.writer_monitor = stream.Monitor(self.sink,   count_width=16, with_overflows  = True)
+            if with_reader:
+                self.submodules.reader_monitor = stream.Monitor(self.source, count_width=16, with_underflows = True)
 
         # Status -----------------------------------------------------------------------------------
         if with_status:
+            if not (with_writer and with_reader):
+                raise ValueError("Status capability requires DMAWriter and DMAReader to be enabled.")
             self.submodules.status = LitePCIeDMAStatus(
                 endpoint      = endpoint,
                 writer        = writer,
