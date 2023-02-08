@@ -512,7 +512,7 @@ class LitePCIeTLPHeaderInserter256b(LitePCIeTLPHeaderInserter3DWs4DWs):
 
 # LitePCIeTLPHeaderInserter512b --------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter512b(Module):
+class LitePCIeTLPHeaderInserter512b3DWs(Module):
     def __init__(self, fmt):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(512))
         self.source = source = stream.Endpoint(phy_layout(512))
@@ -539,16 +539,16 @@ class LitePCIeTLPHeaderInserter512b(Module):
                 source.first.eq(1),
                 source.last.eq(sink.last & (sink.be[4*13:] == 0)),
 
-                source.dat[ 32*0: 32*1].eq(sink.header[32*0:]),
-                source.dat[ 32*1: 32*2].eq(sink.header[32*1:]),
-                source.dat[ 32*2: 32*3].eq(sink.header[32*2:]),
-                source.dat[ 32*3: 32*4].eq(sink.dat[32* 0:]),
-                source.dat[ 32*4: 32*5].eq(sink.dat[32* 1:]),
-                source.dat[ 32*5: 32*6].eq(sink.dat[32* 2:]),
-                source.dat[ 32*6: 32*7].eq(sink.dat[32* 3:]),
-                source.dat[ 32*7: 32*8].eq(sink.dat[32* 4:]),
-                source.dat[ 32*8: 32*9].eq(sink.dat[32* 5:]),
-                source.dat[ 32*9:32*10].eq(sink.dat[32* 6:]),
+                source.dat[32* 0:32* 1].eq(sink.header[32*0:]),
+                source.dat[32* 1:32* 2].eq(sink.header[32*1:]),
+                source.dat[32* 2:32* 3].eq(sink.header[32*2:]),
+                source.dat[32* 3:32* 4].eq(sink.dat[32* 0:]),
+                source.dat[32* 4:32* 5].eq(sink.dat[32* 1:]),
+                source.dat[32* 5:32* 6].eq(sink.dat[32* 2:]),
+                source.dat[32* 6:32* 7].eq(sink.dat[32* 3:]),
+                source.dat[32* 7:32* 8].eq(sink.dat[32* 4:]),
+                source.dat[32* 8:32* 9].eq(sink.dat[32* 5:]),
+                source.dat[32* 9:32*10].eq(sink.dat[32* 6:]),
                 source.dat[32*10:32*11].eq(sink.dat[32* 7:]),
                 source.dat[32*11:32*12].eq(sink.dat[32* 8:]),
                 source.dat[32*12:32*13].eq(sink.dat[32* 9:]),
@@ -556,19 +556,19 @@ class LitePCIeTLPHeaderInserter512b(Module):
                 source.dat[32*14:32*15].eq(sink.dat[32*11:]),
                 source.dat[32*15:32*16].eq(sink.dat[32*12:]),
 
-                source.be[ 4*0: 4*1].eq(0xf),
-                source.be[ 4*1: 4*2].eq(0xf),
-                source.be[ 4*2: 4*3].eq(0xf),
-                source.be[ 4*3: 4*4].eq(sink.be[ 4*0:]),
-                source.be[ 4*4: 4*5].eq(sink.be[ 4*1:]),
-                source.be[ 4*5: 4*6].eq(sink.be[ 4*2:]),
-                source.be[ 4*6: 4*7].eq(sink.be[ 4*3:]),
-                source.be[ 4*7: 4*8].eq(sink.be[ 4*4:]),
-                source.be[ 4*8: 4*9].eq(sink.be[ 4*5:]),
-                source.be[ 4*9:4*10].eq(sink.be[ 4*6:]),
-                source.be[4*10:4*11].eq(sink.be[ 4*7:]),
-                source.be[4*11:4*12].eq(sink.be[ 4*8:]),
-                source.be[4*12:4*13].eq(sink.be[ 4*9:]),
+                source.be[4* 0:4* 1].eq(0xf),
+                source.be[4* 1:4* 2].eq(0xf),
+                source.be[4* 2:4* 3].eq(0xf),
+                source.be[4* 3:4* 4].eq(sink.be[4* 0:]),
+                source.be[4* 4:4* 5].eq(sink.be[4* 1:]),
+                source.be[4* 5:4* 6].eq(sink.be[4* 2:]),
+                source.be[4* 6:4* 7].eq(sink.be[4* 3:]),
+                source.be[4* 7:4* 8].eq(sink.be[4* 4:]),
+                source.be[4* 8:4* 9].eq(sink.be[4* 5:]),
+                source.be[4* 9:4*10].eq(sink.be[4* 6:]),
+                source.be[4*10:4*11].eq(sink.be[4* 7:]),
+                source.be[4*11:4*12].eq(sink.be[4* 8:]),
+                source.be[4*12:4*13].eq(sink.be[4* 9:]),
                 source.be[4*13:4*14].eq(sink.be[4*10:]),
                 source.be[4*14:4*15].eq(sink.be[4*11:]),
                 source.be[4*15:4*16].eq(sink.be[4*12:]),
@@ -585,16 +585,16 @@ class LitePCIeTLPHeaderInserter512b(Module):
             source.valid.eq(sink.valid | last),
             source.last.eq(last),
 
-            source.dat[ 32*0: 32*1].eq(     dat[32*13:]),
-            source.dat[ 32*1: 32*2].eq(     dat[32*14:]),
-            source.dat[ 32*2: 32*3].eq(     dat[32*15:]),
-            source.dat[ 32*3: 32*4].eq(sink.dat[32* 0:]),
-            source.dat[ 32*4: 32*5].eq(sink.dat[32* 1:]),
-            source.dat[ 32*5: 32*6].eq(sink.dat[32* 2:]),
-            source.dat[ 32*6: 32*7].eq(sink.dat[32* 3:]),
-            source.dat[ 32*7: 32*8].eq(sink.dat[32* 4:]),
-            source.dat[ 32*8: 32*9].eq(sink.dat[32* 5:]),
-            source.dat[ 32*9:32*10].eq(sink.dat[32* 6:]),
+            source.dat[32* 0:32* 1].eq(     dat[32*13:]),
+            source.dat[32* 1:32* 2].eq(     dat[32*14:]),
+            source.dat[32* 2:32* 3].eq(     dat[32*15:]),
+            source.dat[32* 3:32* 4].eq(sink.dat[32* 0:]),
+            source.dat[32* 4:32* 5].eq(sink.dat[32* 1:]),
+            source.dat[32* 5:32* 6].eq(sink.dat[32* 2:]),
+            source.dat[32* 6:32* 7].eq(sink.dat[32* 3:]),
+            source.dat[32* 7:32* 8].eq(sink.dat[32* 4:]),
+            source.dat[32* 8:32* 9].eq(sink.dat[32* 5:]),
+            source.dat[32* 9:32*10].eq(sink.dat[32* 6:]),
             source.dat[32*10:32*11].eq(sink.dat[32* 7:]),
             source.dat[32*11:32*12].eq(sink.dat[32* 8:]),
             source.dat[32*12:32*13].eq(sink.dat[32* 9:]),
@@ -608,13 +608,13 @@ class LitePCIeTLPHeaderInserter512b(Module):
             If(last,
                 source.be[4*3:4*16].eq(0x0)
             ).Else(
-                source.be[ 4*3: 4*4].eq(sink.be[4* 0:]),
-                source.be[ 4*4: 4*5].eq(sink.be[4* 1:]),
-                source.be[ 4*5: 4*6].eq(sink.be[4* 2:]),
-                source.be[ 4*6: 4*7].eq(sink.be[4* 3:]),
-                source.be[ 4*7: 4*8].eq(sink.be[4* 4:]),
-                source.be[ 4*8: 4*9].eq(sink.be[4* 5:]),
-                source.be[ 4*9:4*10].eq(sink.be[4* 6:]),
+                source.be[4* 3:4* 4].eq(sink.be[4* 0:]),
+                source.be[4* 4:4* 5].eq(sink.be[4* 1:]),
+                source.be[4* 5:4* 6].eq(sink.be[4* 2:]),
+                source.be[4* 6:4* 7].eq(sink.be[4* 3:]),
+                source.be[4* 7:4* 8].eq(sink.be[4* 4:]),
+                source.be[4* 8:4* 9].eq(sink.be[4* 5:]),
+                source.be[4* 9:4*10].eq(sink.be[4* 6:]),
                 source.be[4*10:4*11].eq(sink.be[4* 7:]),
                 source.be[4*11:4*12].eq(sink.be[4* 8:]),
                 source.be[4*12:4*13].eq(sink.be[4* 9:]),
@@ -630,6 +630,134 @@ class LitePCIeTLPHeaderInserter512b(Module):
             )
         )
 
+class LitePCIeTLPHeaderInserter512b4DWs(Module):
+    def __init__(self, fmt):
+        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(512))
+        self.source = source = stream.Endpoint(phy_layout(512))
+
+        # # #
+
+        dat  = Signal(512,    reset_less=True)
+        be   = Signal(512//8, reset_less=True)
+        last = Signal(        reset_less=True)
+        self.sync += [
+            If(sink.valid & sink.ready,
+                dat.eq(sink.dat),
+                be.eq(sink.be),
+                last.eq(sink.last)
+            )
+        ]
+
+        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        fsm.act("HEADER",
+            sink.ready.eq(1),
+            If(sink.valid & sink.first,
+                sink.ready.eq(0),
+                source.valid.eq(1),
+                source.first.eq(1),
+                source.last.eq(sink.last & (sink.be[4*12:] == 0)),
+
+                source.dat[32* 0:32* 1].eq(sink.header[32*0:]),
+                source.dat[32* 1:32* 2].eq(sink.header[32*1:]),
+                source.dat[32* 2:32* 3].eq(sink.header[32*2:]),
+                source.dat[32* 3:32* 4].eq(sink.header[32*3:]),
+                source.dat[32* 4:32* 5].eq(sink.dat[32* 0:]),
+                source.dat[32* 5:32* 6].eq(sink.dat[32* 1:]),
+                source.dat[32* 6:32* 7].eq(sink.dat[32* 2:]),
+                source.dat[32* 7:32* 8].eq(sink.dat[32* 3:]),
+                source.dat[32* 8:32* 9].eq(sink.dat[32* 4:]),
+                source.dat[32* 9:32*10].eq(sink.dat[32* 5:]),
+                source.dat[32*10:32*11].eq(sink.dat[32* 6:]),
+                source.dat[32*11:32*12].eq(sink.dat[32* 7:]),
+                source.dat[32*12:32*13].eq(sink.dat[32* 8:]),
+                source.dat[32*13:32*14].eq(sink.dat[32* 9:]),
+                source.dat[32*14:32*15].eq(sink.dat[32*10:]),
+                source.dat[32*15:32*16].eq(sink.dat[32*11:]),
+
+                source.be[4* 0:4* 1].eq(0xf),
+                source.be[4* 1:4* 2].eq(0xf),
+                source.be[4* 2:4* 3].eq(0xf),
+                source.be[4* 3:4* 4].eq(0xf),
+                source.be[4* 4:4* 5].eq(sink.be[4* 0:]),
+                source.be[4* 5:4* 6].eq(sink.be[4* 1:]),
+                source.be[4* 6:4* 7].eq(sink.be[4* 2:]),
+                source.be[4* 7:4* 8].eq(sink.be[4* 3:]),
+                source.be[4* 8:4* 9].eq(sink.be[4* 4:]),
+                source.be[4* 9:4*10].eq(sink.be[4* 5:]),
+                source.be[4*10:4*11].eq(sink.be[4* 6:]),
+                source.be[4*11:4*12].eq(sink.be[4* 7:]),
+                source.be[4*12:4*13].eq(sink.be[4* 8:]),
+                source.be[4*13:4*14].eq(sink.be[4* 9:]),
+                source.be[4*14:4*15].eq(sink.be[4*10:]),
+                source.be[4*15:4*16].eq(sink.be[4*11:]),
+
+                If(source.valid & source.ready,
+                    sink.ready.eq(1),
+                    If(~source.last,
+                        NextState("DATA"),
+                    )
+                )
+            )
+        )
+        fsm.act("DATA",
+            source.valid.eq(sink.valid | last),
+            source.last.eq(last),
+
+            source.dat[32* 0:32* 1].eq(     dat[32*12:]),
+            source.dat[32* 1:32* 2].eq(     dat[32*13:]),
+            source.dat[32* 2:32* 3].eq(     dat[32*14:]),
+            source.dat[32* 3:32* 4].eq(     dat[32*15:]),
+            source.dat[32* 4:32* 5].eq(sink.dat[32* 0:]),
+            source.dat[32* 5:32* 6].eq(sink.dat[32* 1:]),
+            source.dat[32* 6:32* 7].eq(sink.dat[32* 2:]),
+            source.dat[32* 7:32* 8].eq(sink.dat[32* 3:]),
+            source.dat[32* 8:32* 9].eq(sink.dat[32* 4:]),
+            source.dat[32* 9:32*10].eq(sink.dat[32* 5:]),
+            source.dat[32*10:32*11].eq(sink.dat[32* 6:]),
+            source.dat[32*11:32*12].eq(sink.dat[32* 7:]),
+            source.dat[32*12:32*13].eq(sink.dat[32* 8:]),
+            source.dat[32*13:32*14].eq(sink.dat[32* 9:]),
+            source.dat[32*14:32*15].eq(sink.dat[32*10:]),
+            source.dat[32*15:32*16].eq(sink.dat[32*11:]),
+
+            source.be[4*0:4*1].eq(be[4*12:]),
+            source.be[4*1:4*2].eq(be[4*13:]),
+            source.be[4*2:4*3].eq(be[4*14:]),
+            source.be[4*3:4*4].eq(be[4*15:]),
+
+            If(last,
+                source.be[4*4:4*16].eq(0x0)
+            ).Else(
+                source.be[ 4*4: 4*5].eq(sink.be[4* 0:]),
+                source.be[ 4*5: 4*6].eq(sink.be[4* 1:]),
+                source.be[ 4*6: 4*7].eq(sink.be[4* 2:]),
+                source.be[ 4*7: 4*8].eq(sink.be[4* 3:]),
+                source.be[ 4*8: 4*9].eq(sink.be[4* 4:]),
+                source.be[ 4*9:4*10].eq(sink.be[4* 5:]),
+                source.be[4*10:4*11].eq(sink.be[4* 6:]),
+                source.be[4*11:4*12].eq(sink.be[4* 7:]),
+                source.be[4*12:4*13].eq(sink.be[4* 8:]),
+                source.be[4*13:4*14].eq(sink.be[4* 9:]),
+                source.be[4*14:4*15].eq(sink.be[4*10:]),
+                source.be[4*15:4*16].eq(sink.be[4*11:]),
+            ),
+            If(source.valid & source.ready,
+                sink.ready.eq(~last),
+                If(source.last,
+                    NextState("HEADER")
+                )
+            )
+        )
+
+class LitePCIeTLPHeaderInserter512b(LitePCIeTLPHeaderInserter3DWs4DWs):
+    def __init__(self, fmt):
+        LitePCIeTLPHeaderInserter3DWs4DWs.__init__(self,
+            data_width               = 512,
+            header_inserter_3dws_cls = LitePCIeTLPHeaderInserter512b3DWs,
+            header_inserter_4dws_cls = LitePCIeTLPHeaderInserter512b4DWs,
+            fmt                      = fmt,
+        )
+
 # LitePCIeTLPPacketizer ----------------------------------------------------------------------------
 
 class LitePCIeTLPPacketizer(Module):
@@ -637,7 +765,7 @@ class LitePCIeTLPPacketizer(Module):
         assert data_width%32 == 0
         assert address_width in [32, 64]
         if address_width == 64:
-            assert data_width in [64, 128, 256] # FIXME: Extend support to 512-bit data_widths.
+            assert data_width in [64, 128, 256, 512]
         self.req_sink = req_sink = stream.Endpoint(request_layout(data_width, address_width))
         self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
         self.source   = stream.Endpoint(phy_layout(data_width))
