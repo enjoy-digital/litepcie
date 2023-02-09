@@ -513,7 +513,7 @@ class LitePCIeTLPHeaderInserter256b(LitePCIeTLPHeaderInserter3DWs4DWs):
 # LitePCIeTLPHeaderInserter512b --------------------------------------------------------------------
 
 class LitePCIeTLPHeaderInserter512b3DWs(Module):
-    def __init__(self, fmt):
+    def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(512))
         self.source = source = stream.Endpoint(phy_layout(512))
 
@@ -631,7 +631,7 @@ class LitePCIeTLPHeaderInserter512b3DWs(Module):
         )
 
 class LitePCIeTLPHeaderInserter512b4DWs(Module):
-    def __init__(self, fmt):
+    def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(512))
         self.source = source = stream.Endpoint(phy_layout(512))
 
