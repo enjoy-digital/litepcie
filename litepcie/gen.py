@@ -153,6 +153,7 @@ class LitePCIeCore(SoCMini):
         "pcie_phy":       2,
         "pcie_msi":       3,
         "pcie_msi_table": 4,
+        "pcie_endpoint":  5,
     }
     def __init__(self, platform, core_config):
         platform.add_extension(get_pcie_ios(core_config["phy_lanes"]))
@@ -196,6 +197,7 @@ class LitePCIeCore(SoCMini):
             address_width        = ep_address_width,
             max_pending_requests = ep_max_pending_requests,
         )
+        self.pcie_endpoint.add_csr()
 
         # PCIe Wishbone Master ---------------------------------------------------------------------
         pcie_wishbone_master = LitePCIeWishboneMaster(self.pcie_endpoint,

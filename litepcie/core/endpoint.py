@@ -77,3 +77,29 @@ class LitePCIeEndpoint(Module):
             crossbar.phy_master.source.connect(req_sink),
             cmp_source.connect(crossbar.phy_master.sink),
         ]
+
+    def add_csr(self):
+        self.control = CSRStorage(fields=[CSRField("rst", size=1, offset=0, pulse=True, description="Endpoint Reset.")])
+
+        # # #
+
+        if hasattr(self, "depacketizer"):
+            self.depacketizer = ResetInserter()(self.depacketizer)
+            self.packetizer   = ResetInserter()(self.packetizer)
+            self.comb += self.depacketizer.reset.eq(self.control.fields.rst)
+            self.comb += self.packetizer.reset.eq(self.control.fields.rst)
+        if hasattr(self, "cmp_depacketizer"):
+            self.cmp_depacketizer = ResetInserter()(self.cmp_depacketizer)
+            self.req_depacketizer = ResetInserter()(self.req_depacketizer)
+            self.cmp_packetizer   = ResetInserter()(self.cmp_packetizer)
+            self.req_packetizer   = ResetInserter()(self.req_packetizer)
+            self.comb += self.cmp_depacketizer.reset.eq(self.control.fields.rst)
+            self.comb += self.req_depacketizer.reset.eq(self.control.fields.rst)
+            self.comb += self.cmp_packetizer.reset.eq(self.control.fields.rst)
+            self.comb += self.req_packetizer.reset.eq(self.control.fields.rst)
+
+        self.crossbar = ResetInserter()(self.crossbar)
+        self.comb += self.crossbar.reset.eq(self.control.fields.rst)
+
+    def get_csrs(self):
+        return [self.control]
