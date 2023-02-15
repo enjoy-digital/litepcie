@@ -264,7 +264,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
 
         # Control.
-        self._enable = CSRStorage(description="DMA Reader Control. Write ``1`` to enable DMA Reader.", reset=0 if with_table else 1)
+        self._enable = CSRStorage(size=2, description="DMA Reader Control. Write ``1`` to enable DMA Reader.", reset=0 if with_table else 1)
 
         # IRQ.
         self.irq = Signal()
@@ -272,7 +272,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # # #
 
         # CSR/Parameters ---------------------------------------------------------------------------
-        self.enable = enable = self._enable.storage
+        self.enable = enable = self._enable.storage[0]
 
         length_shift          = log2_int(endpoint.phy.data_width//8)
         max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
@@ -348,12 +348,13 @@ class LitePCIeDMAReader(Module, AutoCSR):
             If(~enable,
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
-            ),
-            # Wait for a Descriptor and to have enough Space to generate the Request.
-            If(splitter.source.valid & (pending_words < (data_fifo_depth - max_words_per_request)),
+            # Else wait for a Descriptor and to have enough Space to generate the Request.
+            ).Elif(splitter.source.valid & (pending_words < (data_fifo_depth - max_words_per_request)),
                 NextState("MEM-RD-REQ"),
             )
         )
+        # Report Idle Status.
+        self.sync += self._enable.storage[1].eq(fsm.ongoing("IDLE"))
         # Request Data-Path.
         self.comb += [
             port.source.channel.eq(port.channel),
@@ -405,7 +406,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         self.sink = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
 
         # Control.
-        self._enable = CSRStorage(description="DMA Writer Control. Write ``1`` to enable DMA Writer.", reset=0 if with_table else 1)
+        self._enable = CSRStorage(size=2, description="DMA Writer Control. Write ``1`` to enable DMA Writer.", reset=0 if with_table else 1)
 
         # IRQ.
         self.irq = Signal()
@@ -413,7 +414,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         # # #
 
         # CSR/Parameters ---------------------------------------------------------------------------
-        self.enable = enable = self._enable.storage
+        self.enable = enable = self._enable.storage[0]
 
         length_shift          = log2_int(endpoint.phy.data_width//8)
         max_words_per_request = max_payload_size//(endpoint.phy.data_width//8)
@@ -444,7 +445,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         data_fifo_depth = 4*max_words_per_request
         data_fifo = stream.SyncFIFO([("data", endpoint.phy.data_width)], data_fifo_depth, buffered=True)
         self.submodules.data_fifo = ResetInserter()(data_fifo)
-         # By default, accept incoming stream when disabled.
+        # By default, accept incoming stream when disabled.
         self.comb += sink.ready.eq(1)
         # When Enabled, connect Sink to Data FIFO.
         self.comb += If(enable, sink.connect(data_fifo.sink))
@@ -453,18 +454,19 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         req_count = Signal.like(splitter.source.length)
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
+            # Reset Request Count.
+            NextValue(req_count, 0),
             # Reset Splitter/FIFO when disabled.
             If(~enable,
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
-            ),
-            # Reset Request Count.
-            NextValue(req_count, 0),
-            # Wait for a Descriptor and to have enough Data to generate the Request.
-            If(splitter.source.valid & (data_fifo.level >= splitter.source.length[length_shift:]),
+            # Else wait for a Descriptor and to have enough Data to generate the Request.
+            ).Elif(splitter.source.valid & (data_fifo.level >= splitter.source.length[length_shift:]),
                 NextState("MEM-WR"),
             )
         )
+        # Report Idle Status.
+        self.sync += self._enable.storage[1].eq(fsm.ongoing("IDLE"))
         # Request Data-Path.
         self.comb += [
             port.source.channel.eq(port.channel),
