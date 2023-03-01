@@ -152,8 +152,8 @@ class S7PCIEPHY(Module, AutoCSR):
             p_C_DATA_WIDTH            = pcie_data_width,
             p_KEEP_WIDTH              = pcie_data_width//8,
             p_PCIE_REFCLK_FREQ        = 0, # 100MHz refclk
-            p_PCIE_USERCLK1_FREQ      = 3 if nlanes <= 2 else 4,
-            p_PCIE_USERCLK2_FREQ      = 3 if (pcie_clk_freq == 125e6) else 4,
+            p_PCIE_USERCLK1_FREQ      = {1:3, 2:3, 4:4, 8:4}[nlanes],
+            p_PCIE_USERCLK2_FREQ      = {1:3, 2:3, 4:3, 8:4}[nlanes],
             p_PCIE_GT_DEVICE          = self.pcie_gt_device,
 
             # PCI Express Interface ----------------------------------------------------------------
