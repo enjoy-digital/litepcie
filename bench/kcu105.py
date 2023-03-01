@@ -79,7 +79,7 @@ class LitePCIeSoC(SoCMini):
         # Wishbone bridge
         self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint,
             base_address = self.mem_map["csr"])
-        self.add_wb_master(self.pcie_bridge.wishbone)
+        self.bus.add_master(master=self.pcie_bridge.wishbone)
 
         # DMA0
         self.submodules.pcie_dma0 = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
