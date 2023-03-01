@@ -84,7 +84,6 @@ class S7PCIEPHY(Module, AutoCSR):
         )
         platform.add_period_constraint(pads.clk_p, 1e9/100e6)
         self.clock_domains.cd_pcie = ClockDomain()
-        pcie_clk_freq = max(125e6, nlanes*62.5e6*64/pcie_data_width)
 
         # TX (FPGA --> HOST) CDC / Data Width Conversion -------------------------------------------
         self.submodules.tx_datapath = PHYTXDatapath(
@@ -152,7 +151,7 @@ class S7PCIEPHY(Module, AutoCSR):
             p_C_DATA_WIDTH            = pcie_data_width,
             p_KEEP_WIDTH              = pcie_data_width//8,
             p_PCIE_REFCLK_FREQ        = 0, # 100MHz refclk
-            p_PCIE_USERCLK1_FREQ      = {1:3, 2:3, 4:4, 8:4}[nlanes],
+            p_PCIE_USERCLK1_FREQ      = {1:3, 2:3, 4:4, 8:5}[nlanes],
             p_PCIE_USERCLK2_FREQ      = {1:3, 2:3, 4:3, 8:4}[nlanes],
             p_PCIE_GT_DEVICE          = self.pcie_gt_device,
 
