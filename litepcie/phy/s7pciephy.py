@@ -18,7 +18,7 @@ from litepcie.phy.common import *
 
 # S7PCIEPHY ----------------------------------------------------------------------------------------
 
-class S7PCIEPHY(Module, AutoCSR):
+class S7PCIEPHY(LiteXModule):
     endianness    = "big"
     qword_aligned = False
     def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
@@ -85,10 +85,10 @@ class S7PCIEPHY(Module, AutoCSR):
             o_O   = pcie_refclk
         )
         platform.add_period_constraint(pads.clk_p, 1e9/100e6)
-        self.clock_domains.cd_pcie = ClockDomain()
+        self.cd_pcie = ClockDomain()
 
         # TX (FPGA --> HOST) CDC / Data Width Conversion -------------------------------------------
-        self.submodules.tx_datapath = PHYTXDatapath(
+        self.tx_datapath = PHYTXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
             clock_domain    = cd)
@@ -96,7 +96,7 @@ class S7PCIEPHY(Module, AutoCSR):
         s_axis_tx = self.tx_datapath.source
 
         # RX (HOST --> FPGA) CDC / Data Width Conversion -------------------------------------------
-        self.submodules.rx_datapath = PHYRXDatapath(
+        self.rx_datapath = PHYRXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
             clock_domain    = cd,
@@ -108,7 +108,7 @@ class S7PCIEPHY(Module, AutoCSR):
         if cd == "pcie":
             cfg_msi = self.msi
         else:
-            self.submodules.msi_cdc = msi_cdc = stream.ClockDomainCrossing(
+            self.msi_cdc = msi_cdc = stream.ClockDomainCrossing(
                 layout          = msi_layout(),
                 cd_from         = cd,
                 cd_to           = "pcie",
@@ -409,7 +409,7 @@ class S7PCIEPHY(Module, AutoCSR):
 
     # LTSSM Tracer ---------------------------------------------------------------------------------
     def add_ltssm_tracer(self):
-        self.submodules.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
+        self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename=None):
