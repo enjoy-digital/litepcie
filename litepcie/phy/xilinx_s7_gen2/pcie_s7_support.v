@@ -80,20 +80,6 @@ module pcie_support # (
   input   [(LINK_CAP_MAX_LINK_WIDTH - 1) : 0] pci_exp_rxp,
 
   //----------------------------------------------------------------------------------------------------------------//
-  // Clocking Sharing Interface                                                                                     //
-  //----------------------------------------------------------------------------------------------------------------//
-  output                                     pipe_pclk_out_slave,
-  output                                     pipe_rxusrclk_out,
-  output [(LINK_CAP_MAX_LINK_WIDTH - 1) : 0] pipe_rxoutclk_out,
-  output                                     pipe_dclk_out,
-  output                                     pipe_userclk1_out,
-  output                                     pipe_userclk2_out,
-  output                                     pipe_oobclk_out,
-  output                                     pipe_mmcm_lock_out,
-  input  [(LINK_CAP_MAX_LINK_WIDTH - 1) : 0] pipe_pclk_sel_slave,
-  input                                      pipe_mmcm_rst_n,
-
-  //----------------------------------------------------------------------------------------------------------------//
   // AXI-S Interface                                                                                                //
   //----------------------------------------------------------------------------------------------------------------//
 
@@ -340,6 +326,15 @@ module pcie_support # (
   wire                                        qpll_drp_gen3;
   wire                                        qpll_drp_start;
 
+  // Clocking.
+  wire                                     pipe_rxusrclk_out;
+  wire [(LINK_CAP_MAX_LINK_WIDTH - 1) : 0] pipe_rxoutclk_out;
+  wire                                     pipe_dclk_out;
+  wire                                     pipe_userclk1_out;
+  wire                                     pipe_userclk2_out;
+  wire                                     pipe_oobclk_out;
+  wire                                     pipe_mmcm_lock_out;
+
   //---------- PIPE Clock Shared Mode ------------------------------//
 
 pcie_pipe_clock #
@@ -357,14 +352,12 @@ pcie_pipe_clock #
           .CLK_CLK                        ( sys_clk ),
           .CLK_TXOUTCLK                   ( pipe_txoutclk_in ),     // Reference clock from lane 0
           .CLK_RXOUTCLK_IN                ( pipe_rxoutclk_in ),
-          .CLK_RST_N                      ( pipe_mmcm_rst_n ),      // Allow system reset for error_recovery
+          .CLK_RST_N                      ( 1),
           .CLK_PCLK_SEL                   ( pipe_pclk_sel_in ),
-          .CLK_PCLK_SEL_SLAVE             ( pipe_pclk_sel_slave),
           .CLK_GEN3                       ( pipe_gen3_in ),
 
           //---------- Output ------------------------------------
           .CLK_PCLK                       ( pipe_pclk_out),
-          .CLK_PCLK_SLAVE                 ( pipe_pclk_out_slave),
           .CLK_RXUSRCLK                   ( pipe_rxusrclk_out),
           .CLK_RXOUTCLK_OUT               ( pipe_rxoutclk_out),
           .CLK_DCLK                       ( pipe_dclk_out),
@@ -398,7 +391,7 @@ pcie_s7 pcie_i
     .pipe_pclk_in(pipe_pclk_out),
     .pipe_rxusrclk_in(pipe_rxusrclk_out),
     .pipe_rxoutclk_in(pipe_rxoutclk_out),
-    .pipe_mmcm_rst_n(pipe_mmcm_rst_n),
+    .pipe_mmcm_rst_n(1),
     .pipe_dclk_in(pipe_dclk_out),
     .pipe_userclk1_in(pipe_userclk1_out),
     .pipe_userclk2_in(pipe_userclk2_out),

@@ -9,6 +9,8 @@ import os
 from migen import *
 from migen.genlib.cdc import MultiReg
 
+from litex.gen import *
+
 from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
@@ -164,18 +166,6 @@ class S7PCIEPHY(Module, AutoCSR):
             # RX
             i_pci_exp_rxp = pads.rx_p,
             i_pci_exp_rxn = pads.rx_n,
-
-            # Clocking Sharing Interface -----------------------------------------------------------
-            o_pipe_pclk_out_slave = Open(),
-            o_pipe_rxusrclk_out   = Open(),
-            o_pipe_rxoutclk_out   = Open(),
-            o_pipe_dclk_out       = Open(),
-            o_pipe_userclk1_out   = Open(),
-            o_pipe_userclk2_out   = Open(),
-            o_pipe_oobclk_out     = Open(),
-            o_pipe_mmcm_lock_out  = Open(),
-            i_pipe_pclk_sel_slave = 0b00,
-            i_pipe_mmcm_rst_n     = 1,
 
             # AXI-S Interface ----------------------------------------------------------------------
             # Common

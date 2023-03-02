@@ -79,12 +79,10 @@ module pcie_pipe_clock #
     input       [PCIE_LANE-1:0] CLK_RXOUTCLK_IN,
     input                       CLK_RST_N,
     input       [PCIE_LANE-1:0] CLK_PCLK_SEL,
-    input       [PCIE_LANE-1:0] CLK_PCLK_SEL_SLAVE,
     input                       CLK_GEN3,
     
     //---------- Output ------------------------------------
     output                      CLK_PCLK,
-    output                      CLK_PCLK_SLAVE,
     output                      CLK_RXUSRCLK,
     output      [PCIE_LANE-1:0] CLK_RXOUTCLK_OUT,
     output                      CLK_DCLK,
@@ -121,11 +119,9 @@ module pcie_pipe_clock #
        
     //---------- Input Registers ---------------------------
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg         [PCIE_LANE-1:0] pclk_sel_reg1 = {PCIE_LANE{1'd0}};
-(* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg         [PCIE_LANE-1:0] pclk_sel_slave_reg1 = {PCIE_LANE{1'd0}};
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg                         gen3_reg1     = 1'd0;
     
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg         [PCIE_LANE-1:0] pclk_sel_reg2 = {PCIE_LANE{1'd0}};
-(* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg         [PCIE_LANE-1:0] pclk_sel_slave_reg2 = {PCIE_LANE{1'd0}};
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg                         gen3_reg2     = 1'd0;   
        
     //---------- Internal Signals -------------------------- 
@@ -138,7 +134,6 @@ module pcie_pipe_clock #
     wire                            userclk2;
     wire                            oobclk;
     reg    pclk_sel = 1'd0;
-    reg                             pclk_sel_slave = 1'd0;
 
     //---------- Output Registers --------------------------
     wire                        pclk_1;
@@ -160,22 +155,18 @@ begin
         begin
         //---------- 1st Stage FF --------------------------
         pclk_sel_reg1 <= {PCIE_LANE{1'd0}};
-        pclk_sel_slave_reg1 <= {PCIE_LANE{1'd0}};
         gen3_reg1     <= 1'd0;
         //---------- 2nd Stage FF --------------------------
         pclk_sel_reg2 <= {PCIE_LANE{1'd0}};
-        pclk_sel_slave_reg2 <= {PCIE_LANE{1'd0}};
         gen3_reg2     <= 1'd0;
         end
     else
         begin  
         //---------- 1st Stage FF --------------------------
         pclk_sel_reg1 <= CLK_PCLK_SEL;
-        pclk_sel_slave_reg1 <= CLK_PCLK_SEL_SLAVE;
         gen3_reg1     <= CLK_GEN3;
         //---------- 2nd Stage FF --------------------------
         pclk_sel_reg2 <= pclk_sel_reg1;
-        pclk_sel_slave_reg2 <= pclk_sel_slave_reg1;
         gen3_reg2     <= gen3_reg1;
         end
         
@@ -234,8 +225,7 @@ mmcm_i
 
      //---------- Input ------------------------------------
     .CLKIN1                     (refclk),
-    .CLKIN2                     (1'd0),                     // not used, comment out CLKIN2 if it cause implementation issues
-  //.CLKIN2                     (refclk),                   // not used, comment out CLKIN2 if it cause implementation issues
+    .CLKIN2                     (1'd0),
     .CLKINSEL                   (1'd1),
     .CLKFBIN                    (mmcm_fb),
     .RST                        (!CLK_RST_N),
@@ -296,10 +286,6 @@ BUFGCTRL pclk_i1
     //---------- Output --------------------------------
     .O                          (pclk_1)
 );
-
-//---------- Select PCLK MUX for Slave---------------------------------------------------
-//---------- PCLK MUX for Slave------------------//
-assign CLK_PCLK_SLAVE = 1'b0;
 
 //---------- Generate RXOUTCLK Buffer for Debug --------------------------------
 //---------- Disable RXOUTCLK Buffer for Normal Operation
@@ -371,28 +357,6 @@ begin
         end
 
 end        
-
-always @ (posedge pclk)
-begin
-
-    if (!CLK_RST_N)
-        pclk_sel_slave<= 1'd0;
-    else
-        begin 
-        //---------- Select 250 MHz ------------------------
-        if (&pclk_sel_slave_reg2)
-            pclk_sel_slave <= 1'd1;
-        //---------- Select 125 MHz ------------------------  
-        else if (&(~pclk_sel_slave_reg2))
-            pclk_sel_slave <= 1'd0;  
-        //---------- Hold PCLK -----------------------------
-        else
-            pclk_sel_slave <= pclk_sel_slave;
-        end
-
-end     
-
-
 
 //---------- PIPE Clock Output -------------------------------------------------
 assign CLK_PCLK      = pclk;
