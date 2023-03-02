@@ -66,18 +66,9 @@
 (* DowngradeIPIdentifiedWarnings = "yes" *)
 module pcie_pipe_clock #
 (
-
-    parameter PCIE_ASYNC_EN      = "FALSE",                 // PCIe async enable
-    parameter PCIE_TXBUF_EN      = "FALSE",                 // PCIe TX buffer enable for Gen1/Gen2 only
-    parameter PCIE_CLK_SHARING_EN= "FALSE",                 // Enable Clock Sharing
     parameter PCIE_LANE          = 1,                       // PCIe number of lanes
-    parameter PCIE_LINK_SPEED    = 3,                       // PCIe link speed 
-    parameter PCIE_REFCLK_FREQ   = 0,                       // PCIe reference clock frequency
     parameter PCIE_USERCLK1_FREQ = 2,                       // PCIe user clock 1 frequency
-    parameter PCIE_USERCLK2_FREQ = 2,                       // PCIe user clock 2 frequency
-    parameter PCIE_OOBCLK_MODE   = 1,                       // PCIe oob clock mode
-    parameter PCIE_DEBUG_MODE    = 0                        // PCIe Debug mode
-    
+    parameter PCIE_USERCLK2_FREQ = 2                       // PCIe user clock 2 frequency
 )
 
 (
@@ -105,14 +96,11 @@ module pcie_pipe_clock #
 );
     
     //---------- Select Clock Divider ----------------------
-    localparam          DIVCLK_DIVIDE    = (PCIE_REFCLK_FREQ == 2) ? 1 :
-                                           (PCIE_REFCLK_FREQ == 1) ? 1 : 1;
+    localparam          DIVCLK_DIVIDE    = 1;
                                                
-    localparam          CLKFBOUT_MULT_F  = (PCIE_REFCLK_FREQ == 2) ? 4 :
-                                           (PCIE_REFCLK_FREQ == 1) ? 8 : 10;
+    localparam          CLKFBOUT_MULT_F  = 10;
                
-    localparam          CLKIN1_PERIOD    = (PCIE_REFCLK_FREQ == 2) ? 4 :
-                                           (PCIE_REFCLK_FREQ == 1) ? 8 : 10;
+    localparam          CLKIN1_PERIOD    = 10;
                                                
     localparam          CLKOUT0_DIVIDE_F = 8;
     
@@ -129,8 +117,6 @@ module pcie_pipe_clock #
                                            (PCIE_USERCLK2_FREQ == 1) ? 32 : 16;
                                            
     localparam          CLKOUT4_DIVIDE   = 20;
-
-    localparam          PCIE_GEN1_MODE    = 1'b0;             // PCIe link speed is GEN1 only
                                     
        
     //---------- Input Registers ---------------------------
@@ -198,48 +184,19 @@ end
 
    
 //---------- Select Reference clock or TXOUTCLK --------------------------------   
-generate if ((PCIE_TXBUF_EN == "TRUE") && (PCIE_LINK_SPEED != 3))
+BUFG txoutclk_i
+(
 
-    begin : refclk_i
+    //---------- Input -------------------------------------
+    .I                          (CLK_TXOUTCLK),
+    //---------- Output ------------------------------------
+    .O                          (refclk)
 
-    //---------- Select Reference Clock ----------------------------------------
-    BUFG refclk_i
-    (
-    
-        //---------- Input -------------------------------------
-        .I                          (CLK_CLK),
-        //---------- Output ------------------------------------
-        .O                          (refclk)
-       
-    );
-      
-    end
-
-else
-
-    begin : txoutclk_i
-    
-    //---------- Select TXOUTCLK -----------------------------------------------
-    BUFG txoutclk_i
-    (
-    
-        //---------- Input -------------------------------------
-        .I                          (CLK_TXOUTCLK),
-        //---------- Output ------------------------------------
-        .O                          (refclk)
-       
-    );
-   
-    end
-
-endgenerate
-
-
+);
 
 //---------- MMCM --------------------------------------------------------------
 MMCME2_ADV #
 (
-
     .BANDWIDTH                  ("OPTIMIZED"),
     .CLKOUT4_CASCADE            ("FALSE"),
     .COMPENSATION               ("ZHOLD"),
@@ -324,197 +281,56 @@ mmcm_i
 
 
 //---------- Select PCLK MUX ---------------------------------------------------
-generate if (PCIE_LINK_SPEED != 1) 
 
-    begin : pclk_i1_bufgctrl
-    //---------- PCLK Mux ----------------------------------
-    BUFGCTRL pclk_i1
-    (
-        //---------- Input ---------------------------------
-        .CE0                        (1'd1),         
-        .CE1                        (1'd1),        
-        .I0                         (clk_125mhz),   
-        .I1                         (clk_250mhz),   
-        .IGNORE0                    (1'd0),        
-        .IGNORE1                    (1'd0),        
-        .S0                         (~pclk_sel),    
-        .S1                         ( pclk_sel),    
-        //---------- Output --------------------------------
-        .O                          (pclk_1)
-    );
-    end
-
-else 
-
-    //---------- Select PCLK Buffer ------------------------
-    begin : pclk_i1_bufg
-    //---------- PCLK Buffer -------------------------------
-    BUFG pclk_i1
-    (
-        //---------- Input ---------------------------------
-        .I                          (clk_125mhz), 
-        //---------- Output --------------------------------
-        .O                          (clk_125mhz_buf)
-    );
-    assign pclk_1 = clk_125mhz_buf;
-    end 
-
-endgenerate
+BUFGCTRL pclk_i1
+(
+    //---------- Input ---------------------------------
+    .CE0                        (1'd1),
+    .CE1                        (1'd1),
+    .I0                         (clk_125mhz),
+    .I1                         (clk_250mhz),
+    .IGNORE0                    (1'd0),
+    .IGNORE1                    (1'd0),
+    .S0                         (~pclk_sel),
+    .S1                         ( pclk_sel),
+    //---------- Output --------------------------------
+    .O                          (pclk_1)
+);
 
 //---------- Select PCLK MUX for Slave---------------------------------------------------
-generate  if(PCIE_CLK_SHARING_EN == "FALSE")
-   //---------- PCLK MUX for Slave------------------// 
-    begin : pclk_slave_disable
-    assign CLK_PCLK_SLAVE = 1'b0;
-    end  
-
-else if (PCIE_LINK_SPEED != 1) 
-
-    begin : pclk_slave_bufgctrl
-    //---------- PCLK Mux ----------------------------------
-    BUFGCTRL pclk_slave
-    (
-        //---------- Input ---------------------------------
-        .CE0                        (1'd1),         
-        .CE1                        (1'd1),        
-        .I0                         (clk_125mhz),   
-        .I1                         (clk_250mhz),   
-        .IGNORE0                    (1'd0),        
-        .IGNORE1                    (1'd0),        
-        .S0                         (~pclk_sel_slave),    
-        .S1                         ( pclk_sel_slave),    
-        //---------- Output --------------------------------
-        .O                          (CLK_PCLK_SLAVE)
-    );
-    end
-
-else 
-
-    //---------- Select PCLK Buffer ------------------------
-    begin : pclk_slave_bufg
-    //---------- PCLK Buffer -------------------------------
-    BUFG pclk_slave
-    (
-        //---------- Input ---------------------------------
-        .I                          (clk_125mhz), 
-        //---------- Output --------------------------------
-        .O                          (CLK_PCLK_SLAVE)
-    );
-    end 
-
-endgenerate
-
-
+//---------- PCLK MUX for Slave------------------//
+assign CLK_PCLK_SLAVE = 1'b0;
 
 //---------- Generate RXOUTCLK Buffer for Debug --------------------------------
-generate if ((PCIE_DEBUG_MODE == 1) || (PCIE_ASYNC_EN == "TRUE"))
-        
-    begin : rxoutclk_per_lane
-    //---------- Generate per Lane -------------------------
-    for (i=0; i<PCIE_LANE; i=i+1) 
-    
-        begin : rxoutclk_i
-        //---------- RXOUTCLK Buffer -----------------------
-        BUFG rxoutclk_i
-        (
-            //---------- Input -----------------------------
-            .I                          (CLK_RXOUTCLK_IN[i]), 
-            //---------- Output ----------------------------
-            .O                          (CLK_RXOUTCLK_OUT[i])
-        );
-        end
+//---------- Disable RXOUTCLK Buffer for Normal Operation
+assign CLK_RXOUTCLK_OUT = {PCIE_LANE{1'd0}};
 
-    end 
-        
-else
-
-    //---------- Disable RXOUTCLK Buffer for Normal Operation 
-    begin : rxoutclk_i_disable
-    assign CLK_RXOUTCLK_OUT = {PCIE_LANE{1'd0}};
-    end       
-            
-endgenerate 
-
-
-//---------- Generate DCLK Buffer ----------------------------------------------
-//generate if (PCIE_USERCLK2_FREQ <= 3)
-//---------- Disable DCLK Buffer -----------------------
-//    begin : dclk_i
-//    assign CLK_DCLK = userclk2_1;                       // always less than 125Mhz
-//   end
-//else
-//    begin : dclk_i_bufg
 //---------- DCLK Buffer -------------------------------
-//    BUFG dclk_i
-//    (
-//---------- Input ---------------------------------
-//        .I                          (clk_125mhz), 
-//---------- Output --------------------------------
-//        .O                          (CLK_DCLK)
-//    );
-//    end 
-//endgenerate
-
-generate if (PCIE_LINK_SPEED != 1)
-
-    begin : dclk_i_bufg
-    //---------- DCLK Buffer -------------------------------
-    BUFG dclk_i
-    (
-        //---------- Input ---------------------------------
-        .I                          (clk_125mhz),
-        //---------- Output --------------------------------
-        .O                          (CLK_DCLK)
-    );
-    end
-
-else
-
-    //---------- Disable DCLK Buffer -----------------------
-    begin : dclk_i
-    assign CLK_DCLK = clk_125mhz_buf;                       // always 125 MHz in Gen1
-    end
-
-endgenerate
-
-
-
+BUFG dclk_i
+(
+    //---------- Input ---------------------------------
+    .I                          (clk_125mhz),
+    //---------- Output --------------------------------
+    .O                          (CLK_DCLK)
+);
 
 //---------- Generate USERCLK1 Buffer ------------------------------------------
-generate if (PCIE_GEN1_MODE == 1'b1 && PCIE_USERCLK1_FREQ == 3) 
-    //---------- USERCLK1 same as PCLK -------------------
-    begin :userclk1_i1_no_bufg
-    assign userclk1_1 = pclk_1;
-    end 
-else
-    begin : userclk1_i1
-    //---------- USERCLK1 Buffer ---------------------------
-    BUFG usrclk1_i1
-    (
-        //---------- Input ---------------------------------
-        .I                          (userclk1),
-        //---------- Output --------------------------------
-        .O                          (userclk1_1)
-    );
-    end 
-endgenerate 
-
+//---------- USERCLK1 Buffer ---------------------------
+BUFG usrclk1_i1
+(
+    //---------- Input ---------------------------------
+    .I                          (userclk1),
+    //---------- Output --------------------------------
+    .O                          (userclk1_1)
+);
 
 
 //---------- Generate USERCLK2 Buffer ------------------------------------------
 
-generate if (PCIE_GEN1_MODE == 1'b1 && PCIE_USERCLK2_FREQ == 3 ) 
-//---------- USERCLK2 same as PCLK -------------------
-    begin : userclk2_i1_no_bufg0
-    assign userclk2_1 = pclk_1;
-    end 
-else if (PCIE_USERCLK2_FREQ == PCIE_USERCLK1_FREQ ) 
+if (PCIE_USERCLK2_FREQ == PCIE_USERCLK1_FREQ )
 //---------- USERCLK2 same as USERCLK1 -------------------
-    begin : userclk2_i1_no_bufg1
     assign userclk2_1 = userclk1_1;
-    end  
-else    
-    begin : userclk2_i1
+else
     //---------- USERCLK2 Buffer ---------------------------
     BUFG usrclk2_i1
     (
@@ -523,43 +339,17 @@ else
         //---------- Output --------------------------------
         .O                          (userclk2_1)
     );
-    end
-endgenerate 
-
-
 
 //---------- Generate OOBCLK Buffer --------------------------------------------
-generate if (PCIE_OOBCLK_MODE == 2) 
 
-    begin : oobclk_i1
-    //---------- OOBCLK Buffer -----------------------------
-    BUFG oobclk_i1
-    (
-        //---------- Input ---------------------------------
-        .I                          (oobclk),
-        //---------- Output --------------------------------
-        .O                          (CLK_OOBCLK)
-    );
-    end
-
-else 
-        
-    //---------- Disable OOBCLK Buffer ---------------------
-    begin : oobclk_i1_disable
-    assign CLK_OOBCLK = pclk;
-    end  
-
-endgenerate 
-
+//---------- Disable OOBCLK Buffer ---------------------
+assign CLK_OOBCLK = pclk;
 
 // Disabled Second Stage Buffers
-    assign pclk         = pclk_1;
-    assign CLK_RXUSRCLK = pclk_1;
-    assign CLK_USERCLK1 = userclk1_1;
-    assign CLK_USERCLK2 = userclk2_1;
- 
-
-
+assign pclk         = pclk_1;
+assign CLK_RXUSRCLK = pclk_1;
+assign CLK_USERCLK1 = userclk1_1;
+assign CLK_USERCLK2 = userclk2_1;
 
 //---------- Select PCLK -------------------------------------------------------
 always @ (posedge pclk)
@@ -607,7 +397,5 @@ end
 //---------- PIPE Clock Output -------------------------------------------------
 assign CLK_PCLK      = pclk;
 assign CLK_MMCM_LOCK = mmcm_lock;
-
-
 
 endmodule

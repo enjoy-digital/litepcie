@@ -60,14 +60,10 @@
 (* DowngradeIPIdentifiedWarnings = "yes" *)
 module pcie_support # (
   parameter LINK_CAP_MAX_LINK_WIDTH = 8,                       // PCIe Lane Width
-  parameter CLK_SHARING_EN          = "FALSE",                 // Enable Clock Sharing
   parameter C_DATA_WIDTH            = 256,                     // AXI interface data width
   parameter KEEP_WIDTH              = C_DATA_WIDTH / 8,        // TSTRB width
-  parameter PCIE_REFCLK_FREQ        = 0,                       // PCIe reference clock frequency
   parameter PCIE_USERCLK1_FREQ      = 2,                       // PCIe user clock 1 frequency
-  parameter PCIE_USERCLK2_FREQ      = 2,                       // PCIe user clock 2 frequency
-  parameter PCIE_GT_DEVICE          = "GTX",                   // PCIe GT device
-  parameter PCIE_USE_MODE           = "2.1"                    // PCIe use mode
+  parameter PCIE_USERCLK2_FREQ      = 2                        // PCIe user clock 2 frequency
 )
 (
 
@@ -322,6 +318,7 @@ module pcie_support # (
   input                                       sys_rst_n
 
 );
+
   // Wires used for external clocking connectivity
   wire                                        pipe_pclk_out;
   wire                                        pipe_txoutclk_in;
@@ -343,21 +340,15 @@ module pcie_support # (
   wire                                        qpll_drp_gen3;
   wire                                        qpll_drp_start;
 
-
-      //---------- PIPE Clock Shared Mode ------------------------------//
+  //---------- PIPE Clock Shared Mode ------------------------------//
 
 pcie_pipe_clock #
       (
-          .PCIE_ASYNC_EN                  ( "FALSE" ),                 // PCIe async enable
-          .PCIE_TXBUF_EN                  ( "FALSE" ),                 // PCIe TX buffer enable for Gen1/Gen2 only
           .PCIE_LANE                      ( LINK_CAP_MAX_LINK_WIDTH ), // PCIe number of lanes
           // synthesis translate_off
-          .PCIE_LINK_SPEED                ( 2 ),
           // synthesis translate_on
-          .PCIE_REFCLK_FREQ               ( PCIE_REFCLK_FREQ ),        // PCIe reference clock frequency
           .PCIE_USERCLK1_FREQ             ( PCIE_USERCLK1_FREQ ),      // PCIe user clock 1 frequency
-          .PCIE_USERCLK2_FREQ             ( PCIE_USERCLK2_FREQ ),      // PCIe user clock 2 frequency
-          .PCIE_DEBUG_MODE                ( 0 )
+          .PCIE_USERCLK2_FREQ             ( PCIE_USERCLK2_FREQ )       // PCIe user clock 2 frequency
       )
       pipe_clock_i
       (
@@ -384,24 +375,19 @@ pcie_pipe_clock #
 
       );
 
-
-
-
     //---------- GT COMMON Internal Mode---------------------------------------
 
-            wire [1:0]                          qpll_qplllock;
-            wire [1:0]                          qpll_qplloutclk;
-            wire [1:0]                          qpll_qplloutrefclk;
+    wire [1:0]                          qpll_qplllock;
+    wire [1:0]                          qpll_qplloutclk;
+    wire [1:0]                          qpll_qplloutrefclk;
 
-	    assign qpll_drp_done                         =  2'd0;
-            assign qpll_drp_reset                        =  2'd0;
-            assign qpll_drp_crscode                      =  12'd0;
-            assign qpll_drp_fsm                          =  18'd0;
-            assign qpll_qplloutclk                       =  2'd0;
-            assign qpll_qplloutrefclk                    =  2'd0;
-            assign qpll_qplllock                         =  2'd0;
-
-
+    assign qpll_drp_done                         =  2'd0;
+    assign qpll_drp_reset                        =  2'd0;
+    assign qpll_drp_crscode                      =  12'd0;
+    assign qpll_drp_fsm                          =  18'd0;
+    assign qpll_qplloutclk                       =  2'd0;
+    assign qpll_qplloutrefclk                    =  2'd0;
+    assign qpll_qplllock                         =  2'd0;
 
 pcie_s7 pcie_i
 (

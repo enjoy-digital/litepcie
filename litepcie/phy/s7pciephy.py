@@ -144,16 +144,13 @@ class S7PCIEPHY(Module, AutoCSR):
         class Open(Signal): pass
         m_axis_rx_tlast = Signal()
         m_axis_rx_tuser = Signal(32)
-        self.pcie_gt_device  = {"xc7a": "GTP", "xc7k": "GTX", "xc7v": "GTX"}[platform.device[:4]]
         self.pcie_phy_params = dict(
             # Parameters ---------------------------------------------------------------------------
             p_LINK_CAP_MAX_LINK_WIDTH = nlanes,
             p_C_DATA_WIDTH            = pcie_data_width,
             p_KEEP_WIDTH              = pcie_data_width//8,
-            p_PCIE_REFCLK_FREQ        = 0, # 100MHz refclk
             p_PCIE_USERCLK1_FREQ      = {1:3, 2:3, 4:4, 8:5}[nlanes],
             p_PCIE_USERCLK2_FREQ      = {1:3, 2:3, 4:3, 8:4}[nlanes],
-            p_PCIE_GT_DEVICE          = self.pcie_gt_device,
 
             # PCI Express Interface ----------------------------------------------------------------
             # Clk/Rst
@@ -421,7 +418,7 @@ class S7PCIEPHY(Module, AutoCSR):
             ip_tcl.append("synth_ip $obj")
             platform.toolchain.pre_synthesis_commands += ip_tcl
         # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (we only want to keep Timing constraints).
-        if self.pcie_gt_device == "GTP":
+        if platform.device.startswith("xc7a"):
             platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtp_common.gtpe2_common_i}}]")
         else:
             platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtx_common.gtxe2_common_i}}]")
