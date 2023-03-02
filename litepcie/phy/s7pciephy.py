@@ -150,13 +150,10 @@ class S7PCIEPHY(Module, AutoCSR):
         # Wires used for external clocking connectivity
         pipe_pclk_out    = Signal()
         pipe_txoutclk_in = Signal()
-        pipe_rxoutclk_in = Signal(nlanes)
         pipe_pclk_sel_in = Signal(nlanes)
-        pipe_gen3_in     = Signal()
 
         # Clocking.
         pipe_rxusrclk_out  = Signal()
-        pipe_rxoutclk_out  = Signal(nlanes)
         pipe_dclk_out      = Signal()
         pipe_userclk1_out  = Signal()
         pipe_userclk2_out  = Signal()
@@ -168,16 +165,12 @@ class S7PCIEPHY(Module, AutoCSR):
             p_PCIE_USERCLK1_FREQ = {1:3, 2:3, 4:4, 8:5}[nlanes],
             p_PCIE_USERCLK2_FREQ = {1:3, 2:3, 4:3, 8:4}[nlanes],
 
-            i_CLK_CLK            = pcie_refclk,
             i_CLK_TXOUTCLK       = pipe_txoutclk_in ,
-            i_CLK_RXOUTCLK_IN    = pipe_rxoutclk_in,
             i_CLK_RST_N          = 1,
             i_CLK_PCLK_SEL       = pipe_pclk_sel_in,
-            i_CLK_GEN3           = pipe_gen3_in,
 
             o_CLK_PCLK          = pipe_pclk_out,
             o_CLK_RXUSRCLK      = pipe_rxusrclk_out,
-            o_CLK_RXOUTCLK_OUT  = pipe_rxoutclk_out,
             o_CLK_DCLK          = pipe_dclk_out,
             o_CLK_OOBCLK        = pipe_oobclk_out ,
             o_CLK_USERCLK1      = pipe_userclk1_out,
@@ -189,11 +182,11 @@ class S7PCIEPHY(Module, AutoCSR):
             # pcie_s7_support ports ----------------------------------------------------------------
             i_pipe_pclk_in      = pipe_pclk_out,
             o_pipe_txoutclk_out = pipe_txoutclk_in,
-            o_pipe_rxoutclk_out = pipe_rxoutclk_in,
+            o_pipe_rxoutclk_out = Open(),
             o_pipe_pclk_sel_out = pipe_pclk_sel_in,
-            o_pipe_gen3_out     = pipe_gen3_in,
+            o_pipe_gen3_out     = Open(),
             i_pipe_rxusrclk_in  = pipe_rxusrclk_out,
-            i_pipe_rxoutclk_in  = pipe_rxoutclk_out,
+            i_pipe_rxoutclk_in  = 0,
             i_pipe_dclk_in      = pipe_dclk_out,
             i_pipe_userclk1_in  = pipe_userclk1_out,
             i_pipe_userclk2_in  = pipe_userclk2_out,

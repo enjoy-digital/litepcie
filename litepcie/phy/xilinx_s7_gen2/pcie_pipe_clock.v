@@ -74,17 +74,13 @@ module pcie_pipe_clock #
 (
 
     //---------- Input -------------------------------------
-    input                       CLK_CLK,
     input                       CLK_TXOUTCLK,
-    input       [PCIE_LANE-1:0] CLK_RXOUTCLK_IN,
     input                       CLK_RST_N,
     input       [PCIE_LANE-1:0] CLK_PCLK_SEL,
-    input                       CLK_GEN3,
-    
+
     //---------- Output ------------------------------------
     output                      CLK_PCLK,
     output                      CLK_RXUSRCLK,
-    output      [PCIE_LANE-1:0] CLK_RXOUTCLK_OUT,
     output                      CLK_DCLK,
     output                      CLK_OOBCLK,
     output                      CLK_USERCLK1,
@@ -119,16 +115,12 @@ module pcie_pipe_clock #
        
     //---------- Input Registers ---------------------------
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg         [PCIE_LANE-1:0] pclk_sel_reg1 = {PCIE_LANE{1'd0}};
-(* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg                         gen3_reg1     = 1'd0;
-    
 (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg         [PCIE_LANE-1:0] pclk_sel_reg2 = {PCIE_LANE{1'd0}};
-(* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *)    reg                         gen3_reg2     = 1'd0;   
        
     //---------- Internal Signals -------------------------- 
     wire                            refclk;
     wire                            mmcm_fb;
     wire                            clk_125mhz;
-    wire                            clk_125mhz_buf;
     wire                            clk_250mhz;
     wire                            userclk1;
     wire                            userclk2;
@@ -141,11 +133,6 @@ module pcie_pipe_clock #
     wire                        userclk1_1;
     wire                        userclk2_1;
     wire                        mmcm_lock;
-    
-    //---------- Generate Per-Lane Signals -----------------
-    genvar              i;                                  // Index for per-lane signals
-
-
 
 //---------- Input FF ----------------------------------------------------------
 always @ (posedge pclk)
@@ -155,24 +142,17 @@ begin
         begin
         //---------- 1st Stage FF --------------------------
         pclk_sel_reg1 <= {PCIE_LANE{1'd0}};
-        gen3_reg1     <= 1'd0;
         //---------- 2nd Stage FF --------------------------
         pclk_sel_reg2 <= {PCIE_LANE{1'd0}};
-        gen3_reg2     <= 1'd0;
         end
     else
         begin  
         //---------- 1st Stage FF --------------------------
         pclk_sel_reg1 <= CLK_PCLK_SEL;
-        gen3_reg1     <= CLK_GEN3;
         //---------- 2nd Stage FF --------------------------
         pclk_sel_reg2 <= pclk_sel_reg1;
-        gen3_reg2     <= gen3_reg1;
         end
-        
 end
-
-
    
 //---------- Select Reference clock or TXOUTCLK --------------------------------   
 BUFG txoutclk_i
@@ -286,10 +266,6 @@ BUFGCTRL pclk_i1
     //---------- Output --------------------------------
     .O                          (pclk_1)
 );
-
-//---------- Generate RXOUTCLK Buffer for Debug --------------------------------
-//---------- Disable RXOUTCLK Buffer for Normal Operation
-assign CLK_RXOUTCLK_OUT = {PCIE_LANE{1'd0}};
 
 //---------- DCLK Buffer -------------------------------
 BUFG dclk_i
