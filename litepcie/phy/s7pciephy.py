@@ -146,13 +146,60 @@ class S7PCIEPHY(Module, AutoCSR):
         class Open(Signal): pass
         m_axis_rx_tlast = Signal()
         m_axis_rx_tuser = Signal(32)
+
+        # Wires used for external clocking connectivity
+        pipe_pclk_out    = Signal()
+        pipe_txoutclk_in = Signal()
+        pipe_rxoutclk_in = Signal(nlanes)
+        pipe_pclk_sel_in = Signal(nlanes)
+        pipe_gen3_in     = Signal()
+
+        # Clocking.
+        pipe_rxusrclk_out  = Signal()
+        pipe_rxoutclk_out  = Signal(nlanes)
+        pipe_dclk_out      = Signal()
+        pipe_userclk1_out  = Signal()
+        pipe_userclk2_out  = Signal()
+        pipe_oobclk_out    = Signal()
+        pipe_mmcm_lock_out = Signal()
+
+        self.specials += Instance("pcie_pipe_clock",
+            p_PCIE_LANE = nlanes,
+            p_PCIE_USERCLK1_FREQ = {1:3, 2:3, 4:4, 8:5}[nlanes],
+            p_PCIE_USERCLK2_FREQ = {1:3, 2:3, 4:3, 8:4}[nlanes],
+
+            i_CLK_CLK            = pcie_refclk,
+            i_CLK_TXOUTCLK       = pipe_txoutclk_in ,
+            i_CLK_RXOUTCLK_IN    = pipe_rxoutclk_in,
+            i_CLK_RST_N          = 1,
+            i_CLK_PCLK_SEL       = pipe_pclk_sel_in,
+            i_CLK_GEN3           = pipe_gen3_in,
+
+            o_CLK_PCLK          = pipe_pclk_out,
+            o_CLK_RXUSRCLK      = pipe_rxusrclk_out,
+            o_CLK_RXOUTCLK_OUT  = pipe_rxoutclk_out,
+            o_CLK_DCLK          = pipe_dclk_out,
+            o_CLK_OOBCLK        = pipe_oobclk_out ,
+            o_CLK_USERCLK1      = pipe_userclk1_out,
+            o_CLK_USERCLK2      = pipe_userclk2_out,
+            o_CLK_MMCM_LOCK     = pipe_mmcm_lock_out,
+        )
+
         self.pcie_phy_params = dict(
-            # Parameters ---------------------------------------------------------------------------
-            p_LINK_CAP_MAX_LINK_WIDTH = nlanes,
-            p_C_DATA_WIDTH            = pcie_data_width,
-            p_KEEP_WIDTH              = pcie_data_width//8,
-            p_PCIE_USERCLK1_FREQ      = {1:3, 2:3, 4:4, 8:5}[nlanes],
-            p_PCIE_USERCLK2_FREQ      = {1:3, 2:3, 4:3, 8:4}[nlanes],
+            # pcie_s7_support ports ----------------------------------------------------------------
+            i_pipe_pclk_in      = pipe_pclk_out,
+            o_pipe_txoutclk_out = pipe_txoutclk_in,
+            o_pipe_rxoutclk_out = pipe_rxoutclk_in,
+            o_pipe_pclk_sel_out = pipe_pclk_sel_in,
+            o_pipe_gen3_out     = pipe_gen3_in,
+            i_pipe_rxusrclk_in  = pipe_rxusrclk_out,
+            i_pipe_rxoutclk_in  = pipe_rxoutclk_out,
+            i_pipe_dclk_in      = pipe_dclk_out,
+            i_pipe_userclk1_in  = pipe_userclk1_out,
+            i_pipe_userclk2_in  = pipe_userclk2_out,
+            i_pipe_oobclk_in    = pipe_oobclk_out,
+            i_pipe_mmcm_lock_in = pipe_mmcm_lock_out,
+            i_pipe_mmcm_rst_n   = 1,
 
             # PCI Express Interface ----------------------------------------------------------------
             # Clk/Rst
@@ -374,7 +421,7 @@ class S7PCIEPHY(Module, AutoCSR):
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename=None):
         platform.add_source(os.path.join(phy_path, "pcie_pipe_clock.v"))
-        platform.add_source(os.path.join(phy_path, "pcie_s7_support.v"))
+        #platform.add_source(os.path.join(phy_path, "pcie_s7_support.v"))
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
@@ -409,11 +456,11 @@ class S7PCIEPHY(Module, AutoCSR):
             platform.toolchain.pre_synthesis_commands += ip_tcl
         # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (we only want to keep Timing constraints).
         if platform.device.startswith("xc7a"):
-            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtp_common.gtpe2_common_i}}]")
+            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtp_common.gtpe2_common_i}}]")
         else:
-            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtx_common.gtxe2_common_i}}]")
+            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtx_common.gtxe2_common_i}}]")
         if self.nlanes != 8:
-            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*genblk*.bram36_tdp_bl.bram36_tdp_bl}}]")
+            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*genblk*.bram36_tdp_bl.bram36_tdp_bl}}]")
 
     # External Hard IP -----------------------------------------------------------------------------
     def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
@@ -427,4 +474,4 @@ class S7PCIEPHY(Module, AutoCSR):
             self.add_sources(self.platform,
                 phy_path     = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
             )
-        self.specials += Instance("pcie_support", **self.pcie_phy_params)
+        self.specials += Instance("pcie_s7", **self.pcie_phy_params)
