@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 import os
@@ -119,6 +119,7 @@ class S7PCIEPHY(LiteXModule):
             cfg_msi = msi_cdc.source
 
         # Hard IP Configuration --------------------------------------------------------------------
+
         def convert_size(command, size, max_size):
             cases = {}
             value = 128
@@ -143,132 +144,59 @@ class S7PCIEPHY(LiteXModule):
             MultiReg(self.max_payload_size, self._max_payload_size.status)
         ]
 
+        # Hard IP Clocking -------------------------------------------------------------------------
+
+        # Signals.
+        pipe_txoutclk      = Signal()
+        pipe_txoutclk_bufg = Signal()
+        pipe_pclk_sel      = Signal(nlanes)
+
+        # Clock Domains.
+        self.cd_clk125   = ClockDomain()
+        self.cd_clk250   = ClockDomain()
+        self.cd_userclk1 = ClockDomain()
+        self.cd_userclk2 = ClockDomain()
+        self.cd_pclk     = ClockDomain()
+
+        # MMCM.
+        userclk1_freq = {1:125e6, 2:125e6, 4:250e6, 8:500e6}[nlanes]
+        userclk2_freq = {1:125e6, 2:125e6, 4:125e6, 8:250e6}[nlanes]
+        self.mmcm = mmcm = S7MMCM(speedgrade=-2)
+        self.specials += Instance("BUFG",
+            i_I = pipe_txoutclk,
+            o_O = pipe_txoutclk_bufg,
+        )
+        mmcm.register_clkin(pipe_txoutclk_bufg, 100e6)
+        mmcm.create_clkout(self.cd_clk125,           125e6, margin=0)
+        mmcm.create_clkout(self.cd_clk250,           250e6, margin=0)
+        mmcm.create_clkout(self.cd_userclk1, userclk1_freq, margin=0)
+        mmcm.create_clkout(self.cd_userclk2, userclk2_freq, margin=0)
+
+        # PClk Selection.
+        pipe_pclk_sel_r = Signal(nlanes)
+        pclk_sel        = Signal()
+        self.specials += MultiReg(pipe_pclk_sel, pipe_pclk_sel_r, "pclk")
+        self.sync.pclk += [
+            If(pipe_pclk_sel_r == (2**nlanes - 1), pclk_sel.eq(1)),
+            If(pipe_pclk_sel_r ==               0, pclk_sel.eq(0)),
+        ]
+        self.specials += [
+            Instance("BUFGCTRL",
+                i_CE0 = 0b1,
+                i_CE1 = 0b1,
+                i_I0  = ClockSignal("clk125"),
+                i_I1  = ClockSignal("clk250"),
+                i_S0  = (pclk_sel == 0),
+                i_S1  = (pclk_sel == 1),
+                o_O   = ClockSignal("pclk"),
+            )
+        ]
+
         # Hard IP ----------------------------------------------------------------------------------
-        class Open(Signal): pass
         m_axis_rx_tlast = Signal()
         m_axis_rx_tuser = Signal(32)
 
-        # Wires used for external clocking connectivity
-        pipe_pclk_out    = Signal()
-        pipe_txoutclk_in = Signal()
-        pipe_pclk_sel_in = Signal(nlanes)
-        pipe_pclk_sel_in_r = Signal(nlanes)
-
-        # Clocking.
-        pipe_rxusrclk_out  = Signal()
-        pipe_dclk_out      = Signal()
-        pipe_userclk1_out  = Signal()
-        pipe_userclk2_out  = Signal()
-        pipe_oobclk_out    = Signal()
-        pipe_mmcm_lock_out = Signal()
-
-        if 0:
-            self.specials += Instance("pcie_pipe_clock",
-                p_PCIE_LANE = nlanes,
-                p_PCIE_USERCLK1_FREQ = {1:3, 2:3, 4:4, 8:5}[nlanes],
-                p_PCIE_USERCLK2_FREQ = {1:3, 2:3, 4:3, 8:4}[nlanes],
-
-                i_CLK_TXOUTCLK       = pipe_txoutclk_in ,
-                i_CLK_RST_N          = 1,
-                i_CLK_PCLK_SEL       = pipe_pclk_sel_in,
-
-                o_CLK_PCLK          = pipe_pclk_out,
-                o_CLK_RXUSRCLK      = pipe_rxusrclk_out,
-                o_CLK_DCLK          = pipe_dclk_out,
-                o_CLK_OOBCLK        = pipe_oobclk_out ,
-                o_CLK_USERCLK1      = pipe_userclk1_out,
-                o_CLK_USERCLK2      = pipe_userclk2_out,
-                o_CLK_MMCM_LOCK     = pipe_mmcm_lock_out,
-            )
-        else:
-            userclk1_freq = {
-                1 : 125e6,
-                2 : 125e6,
-                4 : 250e6,
-                8 : 500e6,
-            }[nlanes]
-            userclk2_freq = {
-                1 : 125e6,
-                2 : 125e6,
-                4 : 125e6,
-                8 : 250e6,
-            }[nlanes]
-
-            pipe_txoutclk_in_bufg = Signal()
-            self.specials += Instance("BUFG",
-                i_I = pipe_txoutclk_in,
-                o_O = pipe_txoutclk_in_bufg,
-            )
-
-            self.cd_clk125   = ClockDomain()
-            self.cd_clk250   = ClockDomain()
-            self.cd_userclk1 = ClockDomain()
-            self.cd_userclk2 = ClockDomain()
-            self.cd_pclk     = ClockDomain()
-
-            self.mmcm = mmcm = S7MMCM(speedgrade=-1)
-            self.comb += mmcm.reset.eq(0)
-            mmcm.register_clkin(pipe_txoutclk_in_bufg, 100e6)
-            mmcm.create_clkout(self.cd_clk125,           125e6, margin=0, buf=None, with_reset=False)
-            mmcm.create_clkout(self.cd_clk250,           250e6, margin=0, buf=None, with_reset=False)
-            mmcm.create_clkout(self.cd_userclk1, userclk1_freq, margin=0, buf=None, with_reset=False)
-            mmcm.create_clkout(self.cd_userclk1, userclk2_freq, margin=0, buf=None, with_reset=False)
-
-            pclk_sel = Signal()
-
-            self.specials += [
-                Instance("BUFGCTRL",
-                    i_CE0 = 0b1,
-                    i_CE1 = 0b1,
-                    i_I0  = ClockSignal("clk125"),
-                    i_I1  = ClockSignal("clk250"),
-                    i_S0  = ~pclk_sel,
-                    i_S1  = pclk_sel,
-                    o_O   = ClockSignal("pclk"),
-                ),
-                Instance("BUFG",
-                    i_I = ClockSignal("pclk"),
-                    o_O = pipe_dclk_out,
-                ),
-                Instance("BUFG",
-                    i_I = ClockSignal("userclk1"),
-                    o_O = pipe_userclk1_out,
-                ),
-               Instance("BUFG",
-                    i_I = ClockSignal("userclk2"),
-                    o_O = pipe_userclk2_out,
-                ),
-            ]
-            self.comb += pipe_pclk_out.eq(ClockSignal("pclk"))
-            self.comb += pipe_oobclk_out.eq(ClockSignal("pclk"))
-            self.comb += pipe_rxusrclk_out.eq(ClockSignal("pclk"))
-            self.comb += pipe_mmcm_lock_out.eq(mmcm.locked)
-            self.specials += MultiReg(pipe_pclk_sel_in, pipe_pclk_sel_in_r, "pclk")
-            self.sync.pclk += [
-                If(pipe_pclk_sel_in_r == (2**len(pipe_pclk_sel_in_r) - 1),
-                    pclk_sel.eq(1)
-                ),
-                If(pipe_pclk_sel_in_r == 0,
-                    pclk_sel.eq(0)
-                )
-            ]
-
         self.pcie_phy_params = dict(
-            # pcie_s7_support ports ----------------------------------------------------------------
-            i_pipe_pclk_in      = pipe_pclk_out,
-            o_pipe_txoutclk_out = pipe_txoutclk_in,
-            o_pipe_rxoutclk_out = Open(),
-            o_pipe_pclk_sel_out = pipe_pclk_sel_in,
-            o_pipe_gen3_out     = Open(),
-            i_pipe_rxusrclk_in  = pipe_rxusrclk_out,
-            i_pipe_rxoutclk_in  = 0,
-            i_pipe_dclk_in      = pipe_dclk_out,
-            i_pipe_userclk1_in  = pipe_userclk1_out,
-            i_pipe_userclk2_in  = pipe_userclk2_out,
-            i_pipe_oobclk_in    = pipe_oobclk_out,
-            i_pipe_mmcm_lock_in = pipe_mmcm_lock_out,
-            i_pipe_mmcm_rst_n   = 1,
-
             # PCI Express Interface ----------------------------------------------------------------
             # Clk/Rst
             i_sys_clk     = pcie_refclk,
@@ -281,6 +209,21 @@ class S7PCIEPHY(LiteXModule):
             # RX
             i_pci_exp_rxp = pads.rx_p,
             i_pci_exp_rxn = pads.rx_n,
+
+            # PIPE Clocking Interface --------------------------------------------------------------
+            i_pipe_pclk_in      = ClockSignal("pclk"),
+            o_pipe_txoutclk_out = pipe_txoutclk,
+            o_pipe_rxoutclk_out = Open(),
+            o_pipe_pclk_sel_out = pipe_pclk_sel,
+            o_pipe_gen3_out     = Open(),
+            i_pipe_rxusrclk_in  = ClockSignal("pclk"),
+            i_pipe_rxoutclk_in  = 0,
+            i_pipe_dclk_in      = ClockSignal("clk125"),
+            i_pipe_userclk1_in  = ClockSignal("userclk1"),
+            i_pipe_userclk2_in  = ClockSignal("userclk2"),
+            i_pipe_oobclk_in    = ClockSignal("pclk"),
+            i_pipe_mmcm_lock_in = mmcm.locked,
+            i_pipe_mmcm_rst_n   = 1,
 
             # AXI-S Interface ----------------------------------------------------------------------
             # Common
@@ -488,8 +431,6 @@ class S7PCIEPHY(LiteXModule):
 
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename=None):
-        platform.add_source(os.path.join(phy_path, "pcie_pipe_clock.v"))
-        #platform.add_source(os.path.join(phy_path, "pcie_s7_support.v"))
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
