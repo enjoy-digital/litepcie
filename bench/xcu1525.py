@@ -41,20 +41,16 @@ class _CRG(Module):
 
 class LitePCIeSoC(SoCMini):
     configs = {
-        # Gen2  data_width, sys_clk_freq
-        "gen2:x4": (64,  int(200e6)),
         # Gen3  data_width, sys_clk_freq
         "gen3:x4" : (128, int(200e6)),
         "gen3:x8" : (256, int(200e6)),
         "gen3:x16": (512, int(200e6)),
     }
-    def __init__(self, platform, speed="gen2", nlanes=4):
-        data_width, sys_clk_freq = self.configs[speed + ":x{}".format(nlanes)]
+    def __init__(self, platform, speed="gen3", nlanes=4):
+        data_width, sys_clk_freq = self.configs[speed + f":x{nlanes}"]
 
         # SoCMini ----------------------------------------------------------------------------------
-        SoCMini.__init__(self, platform, sys_clk_freq,
-            ident = "LitePCIe example design on XCU1525 ({}:x{})".format(speed, nlanes)
-        )
+        SoCMini.__init__(self, platform, sys_clk_freq, ident=f"LitePCIe example design on XCU1525 ({speed}:x{nlanes})")
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
@@ -64,7 +60,7 @@ class LitePCIeSoC(SoCMini):
 
         # PCIe -------------------------------------------------------------------------------------
         # PHY
-        self.submodules.pcie_phy = USPPCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
+        self.submodules.pcie_phy = USPPCIEPHY(platform, platform.request(f"pcie_x{nlanes}"),
             speed      = speed,
             data_width = data_width,
             bar0_size  = 0x20000,
@@ -115,7 +111,7 @@ def main():
     parser.add_argument("--build",  action="store_true", help="Build bitstream")
     parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
     parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
-    parser.add_argument("--speed",  default="gen2",      help="PCIe speed: gen2 (default) or gen3")
+    parser.add_argument("--speed",  default="gen3",      help="PCIe speed: gen3")
     parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 4 (default) or 8")
     args = parser.parse_args()
 

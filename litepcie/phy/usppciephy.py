@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2020 Enjoy-Digital <enjoy-digital.fr>
+# Copyright (c) 2020-2023 Enjoy-Digital <enjoy-digital.fr>
 # Copyright (c) 2022 Sylvain Munaut <tnt@246tNt.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
@@ -19,7 +19,7 @@ from litepcie.phy.common import *
 class USPPCIEPHY(Module, AutoCSR):
     endianness    = "little"
     qword_aligned = False
-    def __init__(self, platform, pads, speed="gen2", data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
+    def __init__(self, platform, pads, speed="gen3", data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
         self.cmp_sink   = stream.Endpoint(phy_layout(data_width))
@@ -81,7 +81,7 @@ class USPPCIEPHY(Module, AutoCSR):
         self.speed  = speed
         self.nlanes = nlanes = len(pads.tx_p)
 
-        assert speed           in ["gen2", "gen3", "gen4"]
+        assert speed           in ["gen3", "gen4"]
         assert nlanes          in [1, 2, 4, 8, 16]
         assert data_width      in [64, 128, 256, 512]
         assert pcie_data_width in [64, 128, 256, 512]
@@ -210,7 +210,7 @@ class USPPCIEPHY(Module, AutoCSR):
             p_PCIE_USE_MODE           = "2.0",
 
             # PCI Express Interface ----------------------------------------------------------------
-            # Clk/Rst
+            # Clk / Rst
             i_sys_clk     = pcie_refclk,
             i_sys_clk_gt  = pcie_refclk_gt,
             i_sys_rst_n   = pcie_rst_n,
@@ -224,69 +224,69 @@ class USPPCIEPHY(Module, AutoCSR):
 
             # AXI-S Interface ----------------------------------------------------------------------
             # Common
-            o_user_clk_out         = ClockSignal("pcie"),
-            o_user_reset_out       = ResetSignal("pcie"),
-            o_user_lnk_up          = link_status,
-            o_user_app_rdy         = Open(),
+            o_user_clk_out          = ClockSignal("pcie"),
+            o_user_reset_out        = ResetSignal("pcie"),
+            o_user_lnk_up           = link_status,
+            o_user_app_rdy          = Open(),
 
             # (FPGA -> Host) Requester Request
-            o_pcie_tfc_nph_av      = Open(2),
-            o_pcie_tfc_npd_av      = Open(2),
-            o_pcie_rq_tag_av       = Open(2),
-            o_pcie_rq_seq_num      = Open(4),
-            o_pcie_rq_seq_num_vld  = Open(),
-            o_pcie_rq_tag          = Open(6),
-            o_pcie_rq_tag_vld      = Open(),
-            i_s_axis_rq_tvalid     = s_axis_rq.valid,
-            i_s_axis_rq_tlast      = s_axis_rq.last,
-            o_s_axis_rq_tready     = s_axis_rq.ready,
-            i_s_axis_rq_tdata      = s_axis_rq.dat,
-            i_s_axis_rq_tkeep      = s_axis_rq.be,
-            i_s_axis_rq_tuser      = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
+            o_pcie_tfc_nph_av       = Open(2),
+            o_pcie_tfc_npd_av       = Open(2),
+            o_pcie_rq_tag_av        = Open(2),
+            o_pcie_rq_seq_num       = Open(4),
+            o_pcie_rq_seq_num_vld   = Open(),
+            o_pcie_rq_tag           = Open(6),
+            o_pcie_rq_tag_vld       = Open(),
+            i_s_axis_rq_tvalid      = s_axis_rq.valid,
+            i_s_axis_rq_tlast       = s_axis_rq.last,
+            o_s_axis_rq_tready      = s_axis_rq.ready,
+            i_s_axis_rq_tdata       = s_axis_rq.dat,
+            i_s_axis_rq_tkeep       = s_axis_rq.be,
+            i_s_axis_rq_tuser       = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
 
             # (Host -> FPGA) Completer Request
-            i_pcie_cq_np_req       = 1,
-            o_pcie_cq_np_req_count = Open(6),
-            o_m_axis_cq_tvalid     = m_axis_cq.valid,
-            o_m_axis_cq_tlast      = m_axis_cq_tlast,
-            i_m_axis_cq_tready     = m_axis_cq.ready,
-            o_m_axis_cq_tdata      = m_axis_cq.dat,
-            o_m_axis_cq_tkeep      = m_axis_cq.be,
-            o_m_axis_cq_tuser      = m_axis_cq_tuser,
+            i_pcie_cq_np_req        = 1,
+            o_pcie_cq_np_req_count  = Open(6),
+            o_m_axis_cq_tvalid      = m_axis_cq.valid,
+            o_m_axis_cq_tlast       = m_axis_cq_tlast,
+            i_m_axis_cq_tready      = m_axis_cq.ready,
+            o_m_axis_cq_tdata       = m_axis_cq.dat,
+            o_m_axis_cq_tkeep       = m_axis_cq.be,
+            o_m_axis_cq_tuser       = m_axis_cq_tuser,
 
             # (Host -> FPGA) Requester Completion
-            o_m_axis_rc_tvalid     = m_axis_rc.valid,
-            o_m_axis_rc_tlast      = m_axis_rc_tlast,
-            i_m_axis_rc_tready     = m_axis_rc.ready,
-            o_m_axis_rc_tdata      = m_axis_rc.dat,
-            o_m_axis_rc_tkeep      = m_axis_rc.be,
-            o_m_axis_rc_tuser      = m_axis_rc_tuser,
+            o_m_axis_rc_tvalid      = m_axis_rc.valid,
+            o_m_axis_rc_tlast       = m_axis_rc_tlast,
+            i_m_axis_rc_tready      = m_axis_rc.ready,
+            o_m_axis_rc_tdata       = m_axis_rc.dat,
+            o_m_axis_rc_tkeep       = m_axis_rc.be,
+            o_m_axis_rc_tuser       = m_axis_rc_tuser,
 
             # (FPGA -> Host) Completer Completion
-            i_s_axis_cc_tvalid     = s_axis_cc.valid,
-            i_s_axis_cc_tlast      = s_axis_cc.last,
-            o_s_axis_cc_tready     = s_axis_cc.ready,
-            i_s_axis_cc_tdata      = s_axis_cc.dat,
-            i_s_axis_cc_tkeep      = s_axis_cc.be,
-            i_s_axis_cc_tuser      = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
+            i_s_axis_cc_tvalid      = s_axis_cc.valid,
+            i_s_axis_cc_tlast       = s_axis_cc.last,
+            o_s_axis_cc_tready      = s_axis_cc.ready,
+            i_s_axis_cc_tdata       = s_axis_cc.dat,
+            i_s_axis_cc_tkeep       = s_axis_cc.be,
+            i_s_axis_cc_tuser       = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
 
             # Management Interface -----------------------------------------------------------------
-            o_cfg_mgmt_do         = Open(32),
-            o_cfg_mgmt_rd_wr_done = Open(),
-            i_cfg_mgmt_di         = 0,
-            i_cfg_mgmt_byte_en    = 0,
-            i_cfg_mgmt_dwaddr     = 0,
-            i_cfg_mgmt_wr_en      = 0,
-            i_cfg_mgmt_rd_en      = 0,
+            o_cfg_mgmt_do           = Open(32),
+            o_cfg_mgmt_rd_wr_done   = Open(),
+            i_cfg_mgmt_di           = 0,
+            i_cfg_mgmt_byte_en      = 0,
+            i_cfg_mgmt_dwaddr       = 0,
+            i_cfg_mgmt_wr_en        = 0,
+            i_cfg_mgmt_rd_en        = 0,
 
             # Flow Control & Status ----------------------------------------------------------------
-            o_cfg_fc_cpld = Open(12),
-            o_cfg_fc_cplh = Open(8),
-            o_cfg_fc_npd  = Open(12),
-            o_cfg_fc_nph  = Open(8),
-            o_cfg_fc_pd   = Open(12),
-            o_cfg_fc_ph   = Open(8),
-            i_cfg_fc_sel  = 0, # Use PF0
+            o_cfg_fc_cpld           = Open(12),
+            o_cfg_fc_cplh           = Open(8),
+            o_cfg_fc_npd            = Open(12),
+            o_cfg_fc_nph            = Open(8),
+            o_cfg_fc_pd             = Open(12),
+            o_cfg_fc_ph             = Open(8),
+            i_cfg_fc_sel            = 0, # Use PF0
 
             # Configuration Tx/Rx Message ----------------------------------------------------------
             o_cfg_msg_received      = Open(),

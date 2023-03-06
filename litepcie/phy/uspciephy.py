@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2020-2022 Enjoy-Digital <enjoy-digital.fr>
+# Copyright (c) 2020-2023 Enjoy-Digital <enjoy-digital.fr>
 # Copyright (c) 2022 Sylvain Munaut <tnt@246tNt.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
@@ -19,7 +19,7 @@ from litepcie.phy.common import *
 class USPCIEPHY(Module, AutoCSR):
     endianness    = "little"
     qword_aligned = False
-    def __init__(self, platform, pads, speed="gen2", data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
+    def __init__(self, platform, pads, speed="gen3", data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
         self.cmp_sink   = stream.Endpoint(phy_layout(data_width))
@@ -80,7 +80,7 @@ class USPCIEPHY(Module, AutoCSR):
         self.speed  = speed
         self.nlanes = nlanes = len(pads.tx_p)
 
-        assert speed           in ["gen2", "gen3"]
+        assert speed           in ["gen3"]
         assert nlanes          in [1, 2, 4, 8]
         assert data_width      in [64, 128, 256]
         assert pcie_data_width in [64, 128, 256]

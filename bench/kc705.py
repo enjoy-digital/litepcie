@@ -47,12 +47,10 @@ class LitePCIeSoC(SoCMini):
         "gen2:x8": (128,  int(200e6)),
     }
     def __init__(self, platform, speed="gen2", nlanes=4):
-        data_width, sys_clk_freq = self.configs[speed + ":x{}".format(nlanes)]
+        data_width, sys_clk_freq = self.configs[speed + f":x{nlanes}"]
 
         # SoCMini ----------------------------------------------------------------------------------
-        SoCMini.__init__(self, platform, sys_clk_freq,
-            csr_data_width = 32,
-            ident          = "LitePCIe example design on KC705 ({}:x{})".format(speed, nlanes))
+        SoCMini.__init__(self, platform, sys_clk_freq, ident=f"LitePCIe example design on KC705 ({speed}:x{nlanes})")
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
@@ -62,7 +60,7 @@ class LitePCIeSoC(SoCMini):
 
         # PCIe -------------------------------------------------------------------------------------
         # PHY
-        self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request("pcie_x" + str(nlanes)),
+        self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request(f"pcie_x{nlanes}"),
             data_width = data_width,
             bar0_size  = 0x20000,
         )
