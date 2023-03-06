@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 import os
@@ -9,14 +9,17 @@ import os
 from migen import *
 from migen.genlib.cdc import MultiReg
 
+from litex.gen import *
+
 from litex.soc.interconnect.csr import *
+from litex.soc.cores.clock import S7MMCM
 
 from litepcie.common import *
 from litepcie.phy.common import *
 
 # S7PCIEPHY ----------------------------------------------------------------------------------------
 
-class S7PCIEPHY(Module, AutoCSR):
+class S7PCIEPHY(LiteXModule):
     endianness    = "big"
     qword_aligned = False
     def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
@@ -83,10 +86,10 @@ class S7PCIEPHY(Module, AutoCSR):
             o_O   = pcie_refclk
         )
         platform.add_period_constraint(pads.clk_p, 1e9/100e6)
-        self.clock_domains.cd_pcie = ClockDomain()
+        self.cd_pcie = ClockDomain()
 
         # TX (FPGA --> HOST) CDC / Data Width Conversion -------------------------------------------
-        self.submodules.tx_datapath = PHYTXDatapath(
+        self.tx_datapath = PHYTXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
             clock_domain    = cd)
@@ -94,7 +97,7 @@ class S7PCIEPHY(Module, AutoCSR):
         s_axis_tx = self.tx_datapath.source
 
         # RX (HOST --> FPGA) CDC / Data Width Conversion -------------------------------------------
-        self.submodules.rx_datapath = PHYRXDatapath(
+        self.rx_datapath = PHYRXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
             clock_domain    = cd,
@@ -106,7 +109,7 @@ class S7PCIEPHY(Module, AutoCSR):
         if cd == "pcie":
             cfg_msi = self.msi
         else:
-            self.submodules.msi_cdc = msi_cdc = stream.ClockDomainCrossing(
+            self.msi_cdc = msi_cdc = stream.ClockDomainCrossing(
                 layout          = msi_layout(),
                 cd_from         = cd,
                 cd_to           = "pcie",
@@ -116,6 +119,7 @@ class S7PCIEPHY(Module, AutoCSR):
             cfg_msi = msi_cdc.source
 
         # Hard IP Configuration --------------------------------------------------------------------
+
         def convert_size(command, size, max_size):
             cases = {}
             value = 128
@@ -140,21 +144,59 @@ class S7PCIEPHY(Module, AutoCSR):
             MultiReg(self.max_payload_size, self._max_payload_size.status)
         ]
 
+        # Hard IP Clocking -------------------------------------------------------------------------
+
+        # Signals.
+        pipe_txoutclk      = Signal()
+        pipe_txoutclk_bufg = Signal()
+        pipe_pclk_sel      = Signal(nlanes)
+
+        # Clock Domains.
+        self.cd_clk125   = ClockDomain()
+        self.cd_clk250   = ClockDomain()
+        self.cd_userclk1 = ClockDomain()
+        self.cd_userclk2 = ClockDomain()
+        self.cd_pclk     = ClockDomain()
+
+        # MMCM.
+        userclk1_freq = {1:125e6, 2:125e6, 4:250e6, 8:500e6}[nlanes]
+        userclk2_freq = {1:125e6, 2:125e6, 4:125e6, 8:250e6}[nlanes]
+        self.mmcm = mmcm = S7MMCM(speedgrade=-2)
+        self.specials += Instance("BUFG",
+            i_I = pipe_txoutclk,
+            o_O = pipe_txoutclk_bufg,
+        )
+        mmcm.register_clkin(pipe_txoutclk_bufg, 100e6)
+        mmcm.create_clkout(self.cd_clk125,           125e6, margin=0)
+        mmcm.create_clkout(self.cd_clk250,           250e6, margin=0)
+        mmcm.create_clkout(self.cd_userclk1, userclk1_freq, margin=0)
+        mmcm.create_clkout(self.cd_userclk2, userclk2_freq, margin=0)
+
+        # PClk Selection.
+        pipe_pclk_sel_r = Signal(nlanes)
+        pclk_sel        = Signal()
+        self.specials += MultiReg(pipe_pclk_sel, pipe_pclk_sel_r, "pclk")
+        self.sync.pclk += [
+            If(pipe_pclk_sel_r == (2**nlanes - 1), pclk_sel.eq(1)),
+            If(pipe_pclk_sel_r ==               0, pclk_sel.eq(0)),
+        ]
+        self.specials += [
+            Instance("BUFGCTRL",
+                i_CE0 = 0b1,
+                i_CE1 = 0b1,
+                i_I0  = ClockSignal("clk125"),
+                i_I1  = ClockSignal("clk250"),
+                i_S0  = (pclk_sel == 0),
+                i_S1  = (pclk_sel == 1),
+                o_O   = ClockSignal("pclk"),
+            )
+        ]
+
         # Hard IP ----------------------------------------------------------------------------------
-        class Open(Signal): pass
         m_axis_rx_tlast = Signal()
         m_axis_rx_tuser = Signal(32)
-        self.pcie_gt_device  = {"xc7a": "GTP", "xc7k": "GTX", "xc7v": "GTX"}[platform.device[:4]]
-        self.pcie_phy_params = dict(
-            # Parameters ---------------------------------------------------------------------------
-            p_LINK_CAP_MAX_LINK_WIDTH = nlanes,
-            p_C_DATA_WIDTH            = pcie_data_width,
-            p_KEEP_WIDTH              = pcie_data_width//8,
-            p_PCIE_REFCLK_FREQ        = 0, # 100MHz refclk
-            p_PCIE_USERCLK1_FREQ      = {1:3, 2:3, 4:4, 8:5}[nlanes],
-            p_PCIE_USERCLK2_FREQ      = {1:3, 2:3, 4:3, 8:4}[nlanes],
-            p_PCIE_GT_DEVICE          = self.pcie_gt_device,
 
+        self.pcie_phy_params = dict(
             # PCI Express Interface ----------------------------------------------------------------
             # Clk/Rst
             i_sys_clk     = pcie_refclk,
@@ -168,17 +210,20 @@ class S7PCIEPHY(Module, AutoCSR):
             i_pci_exp_rxp = pads.rx_p,
             i_pci_exp_rxn = pads.rx_n,
 
-            # Clocking Sharing Interface -----------------------------------------------------------
-            o_pipe_pclk_out_slave = Open(),
-            o_pipe_rxusrclk_out   = Open(),
-            o_pipe_rxoutclk_out   = Open(),
-            o_pipe_dclk_out       = Open(),
-            o_pipe_userclk1_out   = Open(),
-            o_pipe_userclk2_out   = Open(),
-            o_pipe_oobclk_out     = Open(),
-            o_pipe_mmcm_lock_out  = Open(),
-            i_pipe_pclk_sel_slave = 0b00,
-            i_pipe_mmcm_rst_n     = 1,
+            # PIPE Clocking Interface --------------------------------------------------------------
+            i_pipe_pclk_in      = ClockSignal("pclk"),
+            o_pipe_txoutclk_out = pipe_txoutclk,
+            o_pipe_rxoutclk_out = Open(),
+            o_pipe_pclk_sel_out = pipe_pclk_sel,
+            o_pipe_gen3_out     = Open(),
+            i_pipe_rxusrclk_in  = ClockSignal("pclk"),
+            i_pipe_rxoutclk_in  = 0,
+            i_pipe_dclk_in      = ClockSignal("clk125"),
+            i_pipe_userclk1_in  = ClockSignal("userclk1"),
+            i_pipe_userclk2_in  = ClockSignal("userclk2"),
+            i_pipe_oobclk_in    = ClockSignal("pclk"),
+            i_pipe_mmcm_lock_in = mmcm.locked,
+            i_pipe_mmcm_rst_n   = 1,
 
             # AXI-S Interface ----------------------------------------------------------------------
             # Common
@@ -382,12 +427,10 @@ class S7PCIEPHY(Module, AutoCSR):
 
     # LTSSM Tracer ---------------------------------------------------------------------------------
     def add_ltssm_tracer(self):
-        self.submodules.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
+        self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename=None):
-        platform.add_source(os.path.join(phy_path, "pcie_pipe_clock.v"))
-        platform.add_source(os.path.join(phy_path, "pcie_s7_support.v"))
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
@@ -421,12 +464,12 @@ class S7PCIEPHY(Module, AutoCSR):
             ip_tcl.append("synth_ip $obj")
             platform.toolchain.pre_synthesis_commands += ip_tcl
         # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (we only want to keep Timing constraints).
-        if self.pcie_gt_device == "GTP":
-            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtp_common.gtpe2_common_i}}]")
+        if platform.device.startswith("xc7a"):
+            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtp_common.gtpe2_common_i}}]")
         else:
-            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*gtx_common.gtxe2_common_i}}]")
+            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtx_common.gtxe2_common_i}}]")
         if self.nlanes != 8:
-            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_support/*genblk*.bram36_tdp_bl.bram36_tdp_bl}}]")
+            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*genblk*.bram36_tdp_bl.bram36_tdp_bl}}]")
 
     # External Hard IP -----------------------------------------------------------------------------
     def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
@@ -440,4 +483,4 @@ class S7PCIEPHY(Module, AutoCSR):
             self.add_sources(self.platform,
                 phy_path     = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
             )
-        self.specials += Instance("pcie_support", **self.pcie_phy_params)
+        self.specials += Instance("pcie_s7", **self.pcie_phy_params)
