@@ -9,6 +9,8 @@ import os
 from migen import *
 from migen.genlib.cdc import MultiReg
 
+from litex.gen import *
+
 from litex.soc.interconnect.csr import *
 from litex.soc.interconnect.avalon import *
 
@@ -16,7 +18,7 @@ from litepcie.common import *
 
 # --------------------------------------------------------------------------------------------------
 
-class C5PCIEPHY(Module, AutoCSR):
+class C5PCIEPHY(LiteXModule):
     endianness    = "little"
     qword_aligned = True
     def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys"):
@@ -60,7 +62,7 @@ class C5PCIEPHY(Module, AutoCSR):
             o_o    = pcie_refclk
         )
 
-        self.clock_domains.cd_pcie = ClockDomain()
+        self.cd_pcie = ClockDomain()
 
         # TX CDC (FPGA --> HOST) -------------------------------------------------------------------
         if cd == "pcie":

@@ -16,7 +16,7 @@ from litepcie.phy.common import *
 
 # USPPCIEPHY ----------------------------------------------------------------------------------------
 
-class USPPCIEPHY(Module, AutoCSR):
+class USPPCIEPHY(LiteXModule):
     endianness    = "little"
     qword_aligned = False
     def __init__(self, platform, pads, speed="gen3", data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
@@ -101,17 +101,17 @@ class USPPCIEPHY(Module, AutoCSR):
             o_ODIV2 = pcie_refclk
         )
         platform.add_period_constraint(pads.clk_p, 1e9/100e6)
-        self.clock_domains.cd_pcie = ClockDomain()
+        self.cd_pcie = ClockDomain()
 
         # TX (FPGA --> HOST) CDC / Data Width Conversion -------------------------------------------
-        self.submodules.cc_datapath = PHYTXDatapath(
+        self.cc_datapath = PHYTXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
             clock_domain    = cd)
         self.comb += self.cmp_sink.connect(self.cc_datapath.sink)
         s_axis_cc = self.cc_datapath.source
 
-        self.submodules.rq_datapath = PHYTXDatapath(
+        self.rq_datapath = PHYTXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
             clock_domain    = cd)
@@ -119,14 +119,14 @@ class USPPCIEPHY(Module, AutoCSR):
         s_axis_rq = self.rq_datapath.source
 
         # RX (HOST --> FPGA) CDC / Data Width Conversion -------------------------------------------
-        self.submodules.cq_datapath = PHYRXDatapath(
+        self.cq_datapath = PHYRXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
             clock_domain    = cd)
         m_axis_cq = self.cq_datapath.sink
         self.comb += self.cq_datapath.source.connect(self.req_source)
 
-        self.submodules.rc_datapath = PHYRXDatapath(
+        self.rc_datapath = PHYRXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
             clock_domain    = cd)
@@ -137,7 +137,7 @@ class USPPCIEPHY(Module, AutoCSR):
         if cd == "pcie":
             cfg_msi = self.msi
         else:
-            self.submodules.msi_cdc = msi_cdc = stream.ClockDomainCrossing(
+            self.msi_cdc = msi_cdc = stream.ClockDomainCrossing(
                 layout          = msi_layout(),
                 cd_from         = cd,
                 cd_to           = "pcie",
@@ -369,7 +369,7 @@ class USPPCIEPHY(Module, AutoCSR):
 
     # LTSSM Tracer ---------------------------------------------------------------------------------
     def add_ltssm_tracer(self):
-        self.submodules.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
+        self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename):
