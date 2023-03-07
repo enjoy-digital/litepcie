@@ -34,6 +34,8 @@ from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
 from migen.genlib.misc import WaitTimer
 
+from litex.gen import *
+
 from litex.soc.cores.clock import *
 from litex.soc.interconnect.csr import *
 from litex.soc.interconnect import wishbone
@@ -114,9 +116,9 @@ def get_msi_irqs_ios(width=16):
 
 # CRG ----------------------------------------------------------------------------------------------
 
-class LitePCIeCRG(Module):
+class LitePCIeCRG(LiteXModule):
     def __init__(self, platform, sys_clk_freq, clk_external):
-        self.clock_domains.cd_sys = ClockDomain()
+        self.cd_sys = ClockDomain()
 
         # # #
 
