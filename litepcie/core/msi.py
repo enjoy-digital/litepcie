@@ -41,7 +41,7 @@ class LitePCIeMSI(Module, AutoCSR):
         msi = Signal(width)
         self.comb += self.source.valid.eq(msi != 0)
         self.sync += [
-            msi.eq(msi | (self.irqs & enable)),
+            msi.eq((msi | self.irqs) & enable),
             If(self.source.ready,
                 msi.eq(self.irqs & enable)
             )
