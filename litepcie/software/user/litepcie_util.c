@@ -276,6 +276,14 @@ static inline int64_t add_mod_int(int64_t a, int64_t b, int64_t m)
     return a;
 }
 
+static int get_next_pow2(int data_width)
+{
+    int x = 1;
+    while (x < data_width)
+        x <<= 1;
+    return x;
+}
+
 #ifdef DMA_CHECK_DATA
 
 static inline uint32_t seed_to_data(uint32_t seed)
@@ -287,14 +295,6 @@ static inline uint32_t seed_to_data(uint32_t seed)
     /* Return seed. */
     return seed;
 #endif
-}
-
-static int get_next_pow2(int data_width)
-{
-    int x = 1;
-    while (x < data_width)
-        x <<= 1;
-    return x;
 }
 
 static uint32_t get_data_mask(int data_width)
@@ -362,6 +362,8 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
     uint32_t seed_wr = 0;
     uint32_t seed_rd = 0;
     uint8_t  run = (auto_rx_delay == 0);
+#else
+    uint8_t run = 1;
 #endif
 
     signal(SIGINT, intHandler);
@@ -462,7 +464,9 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
 
 
     /* Cleanup DMA. */
+#ifdef DMA_CHECK_DATA
 end:
+#endif
     litepcie_dma_cleanup(&dma);
 }
 
