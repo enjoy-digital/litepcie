@@ -3,7 +3,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2019-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2019-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # Copyright (c) 2020 Antmicro <www.antmicro.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
@@ -43,6 +43,11 @@ from litex.soc.interconnect.axi import *
 from litex.soc.integration.soc import SoCRegion
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
+
+from litepcie.phy.c5pciephy import C5PCIEPHY
+from litepcie.phy.s7pciephy import S7PCIEPHY
+from litepcie.phy.uspciephy import USPCIEPHY
+from litepcie.phy.usppciephy import USPPCIEPHY
 
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI, LitePCIeMSIMultiVector, LitePCIeMSIX
 from litepcie.frontend.dma import LitePCIeDMA
@@ -244,7 +249,6 @@ class LitePCIeCore(SoCMini):
                 self.comb += wb.connect(pcie_wishbone_slave.wishbone)
 
         # PCIe DMA ---------------------------------------------------------------------------------
-
         with_writer = core_config.get("dma_writer", True)
         with_reader = core_config.get("dma_reader", True)
 
@@ -252,7 +256,6 @@ class LitePCIeCore(SoCMini):
         self.add_constant("DMA_CHANNELS",   core_config["dma_channels"])
         self.add_constant("DMA_ADDR_WIDTH", ep_address_width)
         for i in range(core_config["dma_channels"]):
-
             pcie_dma = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
                 address_width     = ep_address_width,
                 with_writer       = with_writer,
@@ -313,7 +316,13 @@ class LitePCIeCore(SoCMini):
                 self.pcie_msi = LitePCIeMSIMultiVector(width=32)
             else:
                 self.pcie_msi = LitePCIeMSI(width=32)
-            self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
+            # On Ultrascale/Ultrascale+ limit rate of IRQs to 1MHz (to prevent issue with IRQs stalled).
+            if isinstance(self.pcie_phy, (USPCIEPHY, USPPCIEPHY)):
+                self.pcie_msi_timer = WaitTimer(int(sys_clk_freq/1e6))
+                self.comb += self.pcie_msi_timer.wait.eq(~self.pcie_msi_timer.done)
+                self.comb += If(self.pcie_msi_timer.done, self.pcie_msi.source.connect(self.pcie_phy.msi))
+            else:
+                self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
             self.comb += self.pcie_msi.irqs[16:16+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
         self.interrupts = {}
         for i in range(core_config["dma_channels"]):
@@ -353,22 +362,18 @@ def main():
     # Generate core --------------------------------------------------------------------------------
     if core_config["phy"]  == "C5PCIEPHY":
         from litex.build.altera import AlteraPlatform
-        from litepcie.phy.c5pciephy import C5PCIEPHY
         platform = AlteraPlatform("", io=[])
         core_config["phy"] = C5PCIEPHY
     elif core_config["phy"] == "S7PCIEPHY":
         from litex.build.xilinx import XilinxPlatform
-        from litepcie.phy.s7pciephy import S7PCIEPHY
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
         core_config["phy"] = S7PCIEPHY
     elif core_config["phy"] == "USPCIEPHY":
         from litex.build.xilinx import XilinxPlatform
-        from litepcie.phy.uspciephy import USPCIEPHY
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
         core_config["phy"] = USPCIEPHY
     elif core_config["phy"] == "USPPCIEPHY":
         from litex.build.xilinx import XilinxPlatform
-        from litepcie.phy.usppciephy import USPPCIEPHY
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
         core_config["phy"] = USPPCIEPHY
     else:
