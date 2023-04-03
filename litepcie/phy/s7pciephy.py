@@ -481,6 +481,6 @@ class S7PCIEPHY(LiteXModule):
         if not self.external_hard_ip:
             phy_path     = "xilinx_s7_gen2"
             self.add_sources(self.platform,
-                phy_path     = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
+                phy_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
             )
         self.specials += Instance("pcie_s7", **self.pcie_phy_params)

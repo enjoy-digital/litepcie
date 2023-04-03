@@ -373,8 +373,35 @@ class USPCIEPHY(LiteXModule):
         self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
     # Hard IP sources ------------------------------------------------------------------------------
-    def add_sources(self, platform, phy_path, phy_filename):
-        platform.add_ip(os.path.join(phy_path, phy_filename))
+    def add_sources(self, platform, phy_path, phy_filename=None):
+        if phy_filename is not None:
+            platform.add_ip(os.path.join(phy_path, phy_filename))
+        else:
+            # FIXME: Add missing parameters?
+            config = {
+                "pf0_bar0_scale"             : "Megabytes",
+                "pf0_bar0_size"              : 1,
+                "PF0_INTERRUPT_PIN"          : "NONE",
+                "PL_LINK_CAP_MAX_LINK_WIDTH" : f"X{self.nlanes}",
+                "PL_LINK_CAP_MAX_LINK_SPEED" : "8.0_GT/s", # CHECKME.
+                "axisten_if_width"           : f"{self.pcie_data_width}_bit",
+                "AXISTEN_IF_RC_STRADDLE"     : True,
+                "PF0_DEVICE_ID"              : 8030 + self.nlanes,
+                "axisten_freq"               : 250, # CHECKME.
+                "aspm_support"               : "No_ASPM",
+                "coreclk_freq"               : 500, # CHECKME.
+                "plltype"                    : "QPLL1",
+            }
+            ip_tcl = []
+            ip_tcl.append("create_ip -vendor xilinx.com -name pcie3_ultrascale -module_name pcie_us")
+            ip_tcl.append("set obj [get_ips pcie_us]")
+            ip_tcl.append("set_property -dict [list \\")
+            for config, value in config.items():
+                ip_tcl.append("CONFIG.{} {} \\".format(config, '{{' + str(value) + '}}'))
+            ip_tcl.append(f"] $obj")
+            ip_tcl.append("synth_ip $obj")
+            platform.toolchain.pre_synthesis_commands += ip_tcl
+
         platform.add_source(os.path.join(phy_path, "..", "axis_iff.v"))
 
         platform.add_source(os.path.join(phy_path, "..", "s_axis_rq_adapt_x4.v"))
@@ -399,7 +426,6 @@ class USPCIEPHY(LiteXModule):
         if not self.external_hard_ip:
             phy_path     = "xilinx_us_{}_x{}".format(self.speed, self.nlanes)
             self.add_sources(self.platform,
-                phy_path     = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
-                phy_filename = "pcie_us.xci"
+                phy_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
             )
         self.specials += Instance("pcie_support", **self.pcie_phy_params)
