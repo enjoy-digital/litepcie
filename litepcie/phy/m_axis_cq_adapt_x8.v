@@ -21,12 +21,12 @@
        input                    m_axis_cq_tvalid_a
     );
 
-  wire            m_axis_cq_tvalid_a;
-  wire            m_axis_cq_tready_a;
-  wire [7:0]      m_axis_cq_tkeep_a;
-  wire [255:0]    m_axis_cq_tdata_a;
-  wire [84:0]     m_axis_cq_tuser_a;
-  wire            m_axis_cq_tlast_a;
+  wire                  m_axis_cq_tvalid_a;
+  wire                  m_axis_cq_tready_a;
+  wire [KEEP_WIDTH-1:0] m_axis_cq_tkeep_a;
+  wire [DATA_WIDTH-1:0] m_axis_cq_tdata_a;
+  wire [84:0]           m_axis_cq_tuser_a;
+  wire                  m_axis_cq_tlast_a;
 
   //dword counter: //0-2 & latch
   reg [1:0]       m_axis_cq_cnt;
@@ -62,7 +62,7 @@
       else if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_lat <= 1'd0;
       else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a && m_axis_cq_tlast_a)
           begin
-          if (m_axis_cq_sop) m_axis_cq_tlast_lat <= 1'b1;
+          if (m_axis_cq_sop) m_axis_cq_tlast_lat <= 1'b1; //read
           else if (m_axis_cq_tlast_dly_en) m_axis_cq_tlast_lat <= 1'b1;
           end
 
@@ -75,8 +75,8 @@
 
 
   ////keep address (low) or data (high), not header
-  reg [255:0]     m_axis_cq_tdata_a1;
-  reg [31:0]      m_axis_cq_tlast_be1;
+  reg [DATA_WIDTH-1:0]     m_axis_cq_tdata_a1;
+  reg [DATA_WIDTH/8-1:0]      m_axis_cq_tlast_be1;
   always @(posedge user_clk)
      if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
           begin

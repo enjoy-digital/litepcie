@@ -24,14 +24,18 @@
   wire          s_axis_cc_tready_ff,
                 s_axis_cc_tvalid_ff,
                 s_axis_cc_tlast_ff;
-  wire [3:0]    s_axis_cc_tkeep_or = {|s_axis_cc_tkeep[15:12], |s_axis_cc_tkeep[11:8],
-                                      |s_axis_cc_tkeep[7:4], |s_axis_cc_tkeep[3:0]};
+  wire [KEEP_WIDTH-1:0] s_axis_cc_tkeep_or = {
+  	|s_axis_cc_tkeep[15:12],
+	|s_axis_cc_tkeep[11:8],
+	|s_axis_cc_tkeep[7:4],
+	|s_axis_cc_tkeep[3:0]
+  };
 
   wire [3:0]    s_axis_cc_tuser_ff;
-  wire [3:0]    s_axis_cc_tkeep_ff;
-  wire [127:0]  s_axis_cc_tdata_ff;
+  wire [KEEP_WIDTH-1:0]    s_axis_cc_tkeep_ff;
+  wire [DATA_WIDTH-1:0]  s_axis_cc_tdata_ff;
 
-  axis_iff #(.DAT_B(128+4+4))  s_axis_cc_iff
+  axis_iff #(.DAT_B(DATA_WIDTH+KEEP_WIDTH+4))  s_axis_cc_iff
   (
         .clk    (user_clk),
         .rst    (user_reset),
@@ -105,9 +109,9 @@
 
   wire            s_axis_cc_tvalid_a = s_axis_cc_tvalid_ff;
   assign          s_axis_cc_tready_ff = s_axis_cc_tready_a[0];
-  wire [127:0]    s_axis_cc_tdata_a  = s_axis_cc_tfirst ? {s_axis_cc_header1, s_axis_cc_header0} : s_axis_cc_tdata_ff;
+  wire [DATA_WIDTH-1:0]    s_axis_cc_tdata_a  = s_axis_cc_tfirst ? {s_axis_cc_header1, s_axis_cc_header0} : s_axis_cc_tdata_ff;
   wire            s_axis_cc_tlast_a = s_axis_cc_tlast_ff;
-  wire [3:0]      s_axis_cc_tkeep_a = s_axis_cc_tkeep_ff;
+  wire [KEEP_WIDTH-1:0]      s_axis_cc_tkeep_a = s_axis_cc_tkeep_ff;
   wire [32:0]     s_axis_cc_tuser_a  = {32'b0, s_axis_cc_tuser_ff[3]};    //{parity, discontinue}
 
 endmodule

@@ -21,13 +21,6 @@
        input                    m_axis_rc_tvalid_a
     );
 
-  wire            m_axis_rc_tvalid_a;
-  wire            m_axis_rc_tready_a;
-  wire [7:0]      m_axis_rc_tkeep_a;
-  wire [255:0]    m_axis_rc_tdata_a;
-  wire [74:0]     m_axis_rc_tuser_a;
-  wire            m_axis_rc_tlast_a;
-
   reg [1:0]       m_axis_rc_cnt;  //0-2
   always @(posedge user_clk)
       if (user_reset) m_axis_rc_cnt <= 2'd0;

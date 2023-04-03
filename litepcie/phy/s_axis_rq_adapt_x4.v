@@ -24,13 +24,18 @@
   wire          s_axis_rq_tready_ff,
                 s_axis_rq_tvalid_ff,
                 s_axis_rq_tlast_ff;
-  wire [3:0]    s_axis_rq_tkeep_or = {|s_axis_rq_tkeep[15:12], |s_axis_rq_tkeep[11:8], |s_axis_rq_tkeep[7:4], |s_axis_rq_tkeep[3:0]};
+  wire [KEEP_WIDTH-1:0] s_axis_rq_tkeep_or = {
+  	|s_axis_rq_tkeep[15:12], 
+	|s_axis_rq_tkeep[11:8], 
+	|s_axis_rq_tkeep[7:4], 
+	|s_axis_rq_tkeep[3:0]
+  };
 
-  wire [3:0]    s_axis_rq_tuser_ff;
-  wire [3:0]    s_axis_rq_tkeep_ff;
-  wire [127:0]  s_axis_rq_tdata_ff;
+  wire [3:0]            s_axis_rq_tuser_ff;
+  wire [KEEP_WIDTH-1:0] s_axis_rq_tkeep_ff;
+  wire [DATA_WIDTH-1:0] s_axis_rq_tdata_ff;
 
-  axis_iff #(.DAT_B(128+4+4))  s_axis_rq_iff
+  axis_iff #(.DAT_B(DATA_WIDTH+KEEP_WIDTH+4))  s_axis_rq_iff
   (
         .clk    (user_clk),
         .rst    (user_reset),
@@ -61,7 +66,7 @@
   wire            s_axis_rq_tfirst = (s_axis_rq_cnt == 0) && (!s_axis_rq_tlast_lat);
   wire            s_axis_rq_tsecond = s_axis_rq_cnt == 1;
 
-  //processing for tlast: generate new last in case write & last num of dword = 5, 9, 13, ...
+  //processing for tlast: generate new last in case write & last num of dword = 5 + i*4
   wire            s_axis_rq_read = (s_axis_rq_tdata_ff[31:30] == 2'b0);  //Read request
   wire            s_axis_rq_write = !s_axis_rq_read;
   reg             s_axis_rq_tlast_dly_en;
@@ -135,8 +140,8 @@
       if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
           s_axis_rq_tdata_l <= s_axis_rq_tdata_ff[127:96];
 
-  wire [127:0]    s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_header, 32'b0, s_axis_rq_tdata_ff[95:64]} : {s_axis_rq_tdata_ff[95:0], s_axis_rq_tdata_l[31:0]};
-  wire [3:0]      s_axis_rq_tkeep_a  = s_axis_rq_tlast_lat ? 4'b0001 : 4'b1111; //{s_axis_rq_tkeep_ff[2:0], 1'b1};
+  wire [DATA_WIDTH-1:0]    s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_header, 32'b0, s_axis_rq_tdata_ff[95:64]} : {s_axis_rq_tdata_ff[95:0], s_axis_rq_tdata_l[31:0]};
+  wire [KEEP_WIDTH-1:0]      s_axis_rq_tkeep_a  = s_axis_rq_tlast_lat ? 4'b0001 : 4'b1111; //{s_axis_rq_tkeep_ff[2:0], 1'b1};
   wire [59:0]     s_axis_rq_tuser_a;
   assign          s_axis_rq_tuser_a[59:8] = {32'b0, 4'b0, 1'b0, 8'b0, 2'b0, 1'b0, s_axis_rq_tuser_ff[3], 3'b0};
   assign          s_axis_rq_tuser_a[7:0]  = s_axis_rq_tfirst ? {s_axis_rq_lastbe, s_axis_rq_firstbe} : {s_axis_rq_lastbe_l, s_axis_rq_firstbe_l};
