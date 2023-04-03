@@ -375,6 +375,7 @@ class USPCIEPHY(LiteXModule):
     # Hard IP sources ------------------------------------------------------------------------------
     def add_sources(self, platform, phy_path, phy_filename):
         platform.add_ip(os.path.join(phy_path, phy_filename))
+        platform.add_source(os.path.join(phy_path, "..", "axis_iff.v"))
         platform.add_source(os.path.join(phy_path, "pcie_us_support.v"))
 
     # External Hard IP -----------------------------------------------------------------------------
