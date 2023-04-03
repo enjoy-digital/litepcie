@@ -379,6 +379,7 @@ class USPCIEPHY(LiteXModule):
         platform.add_source(os.path.join(phy_path, "..", "s_axis_rq_adapt_x4.v"))
         platform.add_source(os.path.join(phy_path, "..", "m_axis_rc_adapt_x4.v"))
         platform.add_source(os.path.join(phy_path, "..", "m_axis_cq_adapt_x4.v"))
+        platform.add_source(os.path.join(phy_path, "..", "s_axis_cc_adapt_x4.v"))
         platform.add_source(os.path.join(phy_path, "pcie_us_support.v"))
 
     # External Hard IP -----------------------------------------------------------------------------
