@@ -359,10 +359,7 @@ module pcie_support # (
   output                           [11:0]     cfg_interrupt_msi_mmenable,
   output                                      cfg_interrupt_msi_mask_update,
   output                           [31:0]     cfg_interrupt_msi_data,
-  output                            [7:0]     cfg_interrupt_msi_vf_enable,
-
-  //Debug
-  output [15:0]                               debug              //for cmp_source {error_code[3:], error_trigger}
+  output                            [7:0]     cfg_interrupt_msi_vf_enable
 );
 
   //----------------------------------------------------------------------------------------------------------------//
@@ -637,9 +634,6 @@ module pcie_support # (
                                      m_axis_rc_tuser_a[42]         //ECRC mapped to discontinue
                                      };
 
-  wire [3:0]      rc_errcode = m_axis_rc_tdata_a[15:12];
-  wire            rc_status_err = ((m_axis_rc_cmpstatus != 3'b0) | (rc_errcode != 4'b0)) && m_axis_rc_tvalid && m_axis_rc_tready && m_axis_rc_sop;
-
   //----------------------------------------------------- CQ AXIS --------------------------------------------------//
   wire            m_axis_cq_tvalid_a;
   wire            m_axis_cq_tready_a;
@@ -862,23 +856,9 @@ module pcie_support # (
   wire [3:0]      s_axis_cc_tkeep_a = s_axis_cc_tkeep_ff;
   wire [32:0]     s_axis_cc_tuser_a  = {32'b0, s_axis_cc_tuser_ff[3]};    //{parity, discontinue}
 
-  wire            cc_status_err = (s_axis_cc_cmpstatus != 3'b0) && s_axis_cc_tvalid_ff && s_axis_cc_tready_ff && s_axis_cc_tfirst;
-
-  reg [31:0]      cccnt;
-  always @(posedge user_clk_out)
-      if (user_reset_out) cccnt <= 16'b0;
-      else if (s_axis_cc_tvalid_a && s_axis_cc_tready_a[0] && s_axis_cc_tfirst) cccnt <= cccnt + s_axis_cc_dwordcnt;
-
-  //----------------------------------------------------------------------------------------------------------------//
-  //Debug only
-
-  //Condition trigger
-  wire            cmperr_trigger = (m_axis_rc_tdata_a[15:12] != 4'b0) & m_axis_rc_tvalid_a & m_axis_rc_tready_a & m_axis_rc_sop;
-  assign          debug  = {m_axis_rc_tdata_a[15:12], cmperr_trigger};
-
-  //----------------------------------------------------------------------------------------------------------------//
-  //   MSI Adaption Logic                                                                                          //
-  //----------------------------------------------------------------------------------------------------------------//
+  //---------------------------------------------------------------------------------------------------------------//
+  //   MSI Adaptation Logic                                                                                        //
+  //---------------------------------------------------------------------------------------------------------------//
 
   wire [3:0]      cfg_interrupt_msi_enable_x4;
   assign          cfg_interrupt_msi_enable = cfg_interrupt_msi_enable_x4[0];
