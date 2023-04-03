@@ -25,10 +25,10 @@
                 s_axis_rq_tvalid_ff,
                 s_axis_rq_tlast_ff;
   wire [KEEP_WIDTH-1:0] s_axis_rq_tkeep_or = {
-  	|s_axis_rq_tkeep[15:12], 
-	|s_axis_rq_tkeep[11:8], 
-	|s_axis_rq_tkeep[7:4], 
-	|s_axis_rq_tkeep[3:0]
+    |s_axis_rq_tkeep[15:12],
+    |s_axis_rq_tkeep[11:8],
+    |s_axis_rq_tkeep[7:4],
+    |s_axis_rq_tkeep[3:0]
   };
 
   wire [3:0]            s_axis_rq_tuser_ff;
@@ -103,28 +103,30 @@
                                        s_axis_rq_tdata_ff[31:24] == 8'b00000101                           ? 4'b1001 :  //Cfg Read Type 1
                                        s_axis_rq_tdata_ff[31:24] == 8'b01000101                           ? 4'b1011 :  //Cfg Write Type 1
                                                                                                           4'b1111;
-  wire            s_axis_rq_poisoning = s_axis_rq_tdata_ff[14] | s_axis_rq_tuser_ff[1];   //EP must be 0 for request
-  wire [15:0]     s_axis_rq_requesterid = s_axis_rq_tdata_ff[63:48];
-  wire [7:0]      s_axis_rq_tag = s_axis_rq_tdata_ff[47:40];
-  wire [15:0]     s_axis_rq_completerid = 16'b0;   //applicable only to Configuration requests and messages routed by ID
+  wire            s_axis_rq_poisoning    = s_axis_rq_tdata_ff[14] | s_axis_rq_tuser_ff[1];   //EP must be 0 for request
+  wire [15:0]     s_axis_rq_requesterid  = s_axis_rq_tdata_ff[63:48];
+  wire [7:0]      s_axis_rq_tag          = s_axis_rq_tdata_ff[47:40];
+  wire [15:0]     s_axis_rq_completerid  = 16'b0;   //applicable only to Configuration requests and messages routed by ID
   wire            s_axis_rq_requester_en = 1'b0;   //Must be 0 for Endpoint
-  wire [2:0]      s_axis_rq_tc = s_axis_rq_tdata_ff[22:20];
-  wire [2:0]      s_axis_rq_attr = {1'b0, s_axis_rq_tdata_ff[13:12]};
-  wire            s_axis_rq_ecrc = s_axis_rq_tdata_ff[15] | s_axis_rq_tuser_ff[0];     //TLP Digest
+  wire [2:0]      s_axis_rq_tc           = s_axis_rq_tdata_ff[22:20];
+  wire [2:0]      s_axis_rq_attr         = {1'b0, s_axis_rq_tdata_ff[13:12]};
+  wire            s_axis_rq_ecrc         = s_axis_rq_tdata_ff[15] | s_axis_rq_tuser_ff[0];     //TLP Digest
 
-  wire [63:0]     s_axis_rq_tdata_header  = {s_axis_rq_ecrc,
-                                             s_axis_rq_attr,
-                                             s_axis_rq_tc,
-                                             s_axis_rq_requester_en,
-                                             s_axis_rq_completerid,
-                                             s_axis_rq_tag,
-                                             s_axis_rq_requesterid,
-                                             s_axis_rq_poisoning, s_axis_rq_reqtype, s_axis_rq_dwlen};
+  wire [63:0]     s_axis_rq_tdata_header  = {
+    s_axis_rq_ecrc,
+    s_axis_rq_attr,
+    s_axis_rq_tc,
+    s_axis_rq_requester_en,
+    s_axis_rq_completerid,
+    s_axis_rq_tag,
+    s_axis_rq_requesterid,
+    s_axis_rq_poisoning, s_axis_rq_reqtype, s_axis_rq_dwlen
+  };
 
-  wire [3:0]      s_axis_rq_firstbe = s_axis_rq_tdata_ff[35:32];
-  wire [3:0]      s_axis_rq_lastbe = s_axis_rq_tdata_ff[39:36];
-  reg  [3:0]      s_axis_rq_firstbe_l;
-  reg  [3:0]      s_axis_rq_lastbe_l;
+  wire [3:0] s_axis_rq_firstbe = s_axis_rq_tdata_ff[35:32];
+  wire [3:0] s_axis_rq_lastbe  = s_axis_rq_tdata_ff[39:36];
+  reg  [3:0] s_axis_rq_firstbe_l;
+  reg  [3:0] s_axis_rq_lastbe_l;
 
   always @(posedge user_clk)
   begin
