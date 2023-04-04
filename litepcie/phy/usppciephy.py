@@ -374,7 +374,7 @@ class USPPCIEPHY(LiteXModule):
         self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
     # Hard IP sources ------------------------------------------------------------------------------
-    def add_sources(self, platform, phy_path, phy_filename=None, hbm=False):
+    def add_sources(self, platform, phy_path=None, phy_filename=None, hbm=False):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
@@ -414,25 +414,25 @@ class USPPCIEPHY(LiteXModule):
             ip_tcl.append("synth_ip $obj")
             platform.toolchain.pre_synthesis_commands += ip_tcl
 
-        platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "axis_iff.v"))
-
+        verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx_usp")
+        platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
         if self.nlanes == 4:
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "s_axis_rq_adapt_x4.v"))
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "m_axis_rc_adapt_x4.v"))
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "m_axis_cq_adapt_x4.v"))
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "s_axis_cc_adapt_x4.v"))
+            platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt_x4.v"))
+            platform.add_source(os.path.join(verilog_path, "m_axis_rc_adapt_x4.v"))
+            platform.add_source(os.path.join(verilog_path, "m_axis_cq_adapt_x4.v"))
+            platform.add_source(os.path.join(verilog_path, "s_axis_cc_adapt_x4.v"))
         if self.nlanes == 8:
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "s_axis_rq_adapt_x8.v"))
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "m_axis_rc_adapt_x8.v"))
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "m_axis_cq_adapt_x8.v"))
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "s_axis_cc_adapt_x8.v"))
+            platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt_x8.v"))
+            platform.add_source(os.path.join(verilog_path, "m_axis_rc_adapt_x8.v"))
+            platform.add_source(os.path.join(verilog_path, "m_axis_cq_adapt_x8.v"))
+            platform.add_source(os.path.join(verilog_path, "s_axis_cc_adapt_x8.v"))
         if self.nlanes == 16:
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "s_axis_rq_adapt_x16.v"))
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "m_axis_rc_adapt_x16.v"))
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "m_axis_cq_adapt_x16.v"))
-            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "s_axis_cc_adapt_x16.v"))
+            platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt_x16.v"))
+            platform.add_source(os.path.join(verilog_path, "m_axis_rc_adapt_x16.v"))
+            platform.add_source(os.path.join(verilog_path, "m_axis_cq_adapt_x16.v"))
+            platform.add_source(os.path.join(verilog_path, "s_axis_cc_adapt_x16.v"))
 
-        platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "pcie_usp_support.v"))
+        platform.add_source(os.path.join(verilog_path, "pcie_usp_support.v"))
 
     # External Hard IP -----------------------------------------------------------------------------
     def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
@@ -442,15 +442,7 @@ class USPPCIEPHY(LiteXModule):
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_hard_ip:
-            phy_path = "xilinx_usp{}_{}_x{}".format(
-                 "_hbm" if isinstance(self, USPHBMPCIEPHY) else "",
-                 self.speed,
-                 self.nlanes
-            )
-            self.add_sources(self.platform,
-                phy_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
-                hbm      = isinstance(self, USPHBMPCIEPHY),
-            )
+            self.add_sources(self.platform, hbm=isinstance(self, USPHBMPCIEPHY))
         self.specials += Instance("pcie_support", **self.pcie_phy_params)
 
 # USPHBMPCIEPHY ------------------------------------------------------------------------------------
