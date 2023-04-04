@@ -381,24 +381,26 @@ class USPCIEPHY(LiteXModule):
             config = {
                 # Generic Config.
                 # ---------------
-                "PL_LINK_CAP_MAX_LINK_WIDTH" : f"X{self.nlanes}",
-                "PL_LINK_CAP_MAX_LINK_SPEED" : "8.0_GT/s", # CHECKME.
-                "axisten_if_width"           : f"{self.pcie_data_width}_bit",
-                "AXISTEN_IF_RC_STRADDLE"     : True,
-                "PF0_DEVICE_ID"              : 8030 + self.nlanes,
-                "axisten_freq"               : 250, # CHECKME.
-                "aspm_support"               : "No_ASPM",
-                "coreclk_freq"               : 500, # CHECKME.
-                "plltype"                    : "QPLL1",
+                "Component_Name"               : "pcie_us",
+                "PL_LINK_CAP_MAX_LINK_WIDTH  " : f"X{self.nlanes}",
+                "PL_LINK_CAP_MAX_LINK_SPEED  " : "8.0_GT/s", # CHECKME.
+                "axisten_if_width"             : f"{self.pcie_data_width}_bit",
+                "AXISTEN_IF_RC_STRADDLE"       : True,
+                "PF0_DEVICE_ID"                : 8030 + self.nlanes,
+                "axisten_freq"                 : 250, # CHECKME.
+                "axisten_if_enable_client_tag" : True,
+                "aspm_support"                 : "No_ASPM",
+                "coreclk_freq"                 : 500, # CHECKME.
+                "plltype"                      : "QPLL1",
 
                 # BAR0 Config.
                 # ------------
-                "pf0_bar0_scale"             : "Megabytes",               # FIXME.
-                "pf0_bar0_size"              : max(self.bar0_size/MB, 1), # FIXME.
+                "pf0_bar0_scale"               : "Megabytes",               # FIXME.
+                "pf0_bar0_size"                : max(self.bar0_size/MB, 1), # FIXME.
 
                 # Interrupt Config.
                 # -----------------
-                "PF0_INTERRUPT_PIN"          : "NONE",
+                "PF0_INTERRUPT_PIN"            : "NONE",
             }
             ip_tcl = []
             ip_tcl.append("create_ip -vendor xilinx.com -name pcie3_ultrascale -module_name pcie_us")
