@@ -1,4 +1,4 @@
- module m_axis_rc_adapt_x16 # (
+module m_axis_rc_adapt # (
       parameter DATA_WIDTH  = 128,
       parameter KEEP_WIDTH  = DATA_WIDTH/8
     )(
@@ -21,16 +21,9 @@
        input                    m_axis_rc_tvalid_a
     );
 
-  wire            m_axis_rc_tvalid_a;
-  wire            m_axis_rc_tready_a;
-  wire [15:0]     m_axis_rc_tkeep_a;
-  wire [511:0]    m_axis_rc_tdata_a;
-  wire [74:0]     m_axis_rc_tuser_a;
-  wire            m_axis_rc_tlast_a;
-
   reg [1:0]       m_axis_rc_cnt;  //0-2
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_rc_cnt <= 2'd0;
+  always @(posedge user_clk)
+      if (user_reset) m_axis_rc_cnt <= 2'd0;
       else if (m_axis_rc_tvalid_a && m_axis_rc_tready_a)
           begin
               if (m_axis_rc_tlast_a) m_axis_rc_cnt <= 2'd0;
@@ -43,7 +36,7 @@
   //header process
   wire            m_axis_rc_poisoning = m_axis_rc_tdata_a[46];
   reg             m_axis_rc_poisoning_l;
-  always @(posedge user_clk_out)
+  always @(posedge user_clk)
      if (m_axis_rc_tvalid_a && m_axis_rc_sop)
          begin
              m_axis_rc_poisoning_l <= m_axis_rc_poisoning;

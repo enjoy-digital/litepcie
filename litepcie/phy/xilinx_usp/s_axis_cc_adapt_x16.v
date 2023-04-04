@@ -1,4 +1,4 @@
- module s_axis_cc_adapt_x16 # (
+module s_axis_cc_adapt # (
       parameter DATA_WIDTH  = 128,
       parameter KEEP_WIDTH  = DATA_WIDTH/8
     )(
@@ -39,8 +39,8 @@
 
   axis_iff #(.DAT_B(512+16+4))  s_axis_cc_iff
   (
-        .clk    (user_clk_out),
-        .rst    (user_reset_out),
+        .clk    (user_clk),
+        .rst    (user_reset),
 
         .i_vld  (s_axis_cc_tvalid),
         .o_rdy  (s_axis_cc_tready),
@@ -56,8 +56,8 @@
     );
 
   reg [1:0]       s_axis_cc_cnt;  //0-2
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_cc_cnt <= 2'd0;
+  always @(posedge user_clk)
+      if (user_reset) s_axis_cc_cnt <= 2'd0;
       else if (s_axis_cc_tvalid_ff && s_axis_cc_tready_ff)
           begin
               if (s_axis_cc_tlast_ff) s_axis_cc_cnt <= 2'd0;

@@ -1,4 +1,4 @@
- module m_axis_cq_adapt_x8 # (
+module m_axis_cq_adapt # (
       parameter DATA_WIDTH  = 128,
       parameter KEEP_WIDTH  = DATA_WIDTH/8
     )(
@@ -21,17 +21,10 @@
        input                    m_axis_cq_tvalid_a
     );
 
-  wire            m_axis_cq_tvalid_a;
-  wire            m_axis_cq_tready_a;
-  wire [7:0]      m_axis_cq_tkeep_a;
-  wire [255:0]    m_axis_cq_tdata_a;
-  wire [84:0]     m_axis_cq_tuser_a;
-  wire            m_axis_cq_tlast_a;
-
   //dword counter: //0-2 & latch
   reg [1:0]       m_axis_cq_cnt;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_cnt <= 2'd0;
+  always @(posedge user_clk)
+      if (user_reset) m_axis_cq_cnt <= 2'd0;
       else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
           begin
               if (m_axis_cq_tlast_a) m_axis_cq_cnt <= 2'd0;
@@ -42,8 +35,8 @@
   wire            m_axis_cq_second = m_axis_cq_cnt == 1;
 
   reg             m_axis_cq_rdwr_l;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_rdwr_l <= 1'd0;
+  always @(posedge user_clk)
+      if (user_reset) m_axis_cq_rdwr_l <= 1'd0;
       else if (m_axis_cq_tvalid_a && m_axis_cq_sop) m_axis_cq_rdwr_l <= m_axis_cq_tlast_a;
 
   //processing for tlast: generate new last in case write & last num of dword != 5 + i*8
@@ -51,14 +44,14 @@
   wire            m_axis_cq_write = !m_axis_cq_read;
   wire [9:0]      m_axis_cq_dwlen;
   reg             m_axis_cq_tlast_dly_en;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_tlast_dly_en <= 1'd0;
+  always @(posedge user_clk)
+      if (user_reset) m_axis_cq_tlast_dly_en <= 1'd0;
       else if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_dly_en <= 1'd0;
       else if (m_axis_cq_tvalid_a && m_axis_cq_sop) m_axis_cq_tlast_dly_en <= m_axis_cq_tlast_a | (m_axis_cq_dwlen[2:0] != 3'd5);
 
   reg             m_axis_cq_tlast_lat;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_tlast_lat <= 1'd0;
+  always @(posedge user_clk)
+      if (user_reset) m_axis_cq_tlast_lat <= 1'd0;
       else if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_lat <= 1'd0;
       else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a && m_axis_cq_tlast_a)
           begin
@@ -77,7 +70,7 @@
   ////keep address (low) or data (high), not header
   reg [255:0]     m_axis_cq_tdata_a1;
   reg [31:0]      m_axis_cq_tlast_be1;
-  always @(posedge user_clk_out)
+  always @(posedge user_clk)
      if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
           begin
           m_axis_cq_tdata_a1 <= m_axis_cq_tdata_a;
@@ -110,12 +103,12 @@
                                                                                             8'b000_00000;   //Mem read Request
 
   reg [7:0]        m_axis_cq_tuser_barhit;
-  always @(posedge user_clk_out)
+  always @(posedge user_clk)
       if (m_axis_cq_tvalid_a && m_axis_cq_sop)
           m_axis_cq_tuser_barhit <= {1'b0, m_axis_cq_tdata_hdr[50:48], m_axis_cq_tdata_hdr[14:11]};  //only valid @sop
 
   reg [63:0]       m_axis_cq_header;
-  always @(posedge user_clk_out)
+  always @(posedge user_clk)
       if (m_axis_cq_tvalid_a && m_axis_cq_sop)
           m_axis_cq_header = {m_axis_cq_requesterid,
                               m_axis_cq_tag,

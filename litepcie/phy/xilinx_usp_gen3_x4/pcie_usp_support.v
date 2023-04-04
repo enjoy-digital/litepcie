@@ -314,10 +314,10 @@ module pcie_support # (
 
    //----------------------------------------------------- RQ AXIS -------------------------------------------------//
 
-   s_axis_rq_adapt_x4 #(
+   s_axis_rq_adapt #(
     .DATA_WIDTH(C_DATA_WIDTH),
     .KEEP_WIDTH(KEEP_WIDTH)
-   ) s_axis_rq_adapt_x4_i (
+   ) s_axis_rq_adapt_i (
     .user_clk(user_clk_out),
     .user_reset(user_reset_out),
 
@@ -345,10 +345,10 @@ module pcie_support # (
   wire [74:0]     m_axis_rc_tuser_a;
   wire            m_axis_rc_tlast_a;
 
-   m_axis_rc_adapt_x4 #(
+   m_axis_rc_adapt #(
     .DATA_WIDTH(C_DATA_WIDTH),
     .KEEP_WIDTH(KEEP_WIDTH)
-   ) m_axis_rc_adapt_x4_i (
+   ) m_axis_rc_adapt_i (
     .user_clk(user_clk_out),
     .user_reset(user_reset_out),
 
@@ -376,10 +376,10 @@ module pcie_support # (
   wire [84:0]     m_axis_cq_tuser_a;
   wire            m_axis_cq_tlast_a;
 
-   m_axis_cq_adapt_x4 #(
+   m_axis_cq_adapt #(
     .DATA_WIDTH(C_DATA_WIDTH),
     .KEEP_WIDTH(KEEP_WIDTH)
-   ) m_axis_cq_adapt_x4_i (
+   ) m_axis_cq_adapt_i (
     .user_clk(user_clk_out),
     .user_reset(user_reset_out),
 
@@ -400,10 +400,10 @@ module pcie_support # (
 
   //----------------------------------------------------- CC AXIS --------------------------------------------------//
 
-  s_axis_cc_adapt_x4 #(
+  s_axis_cc_adapt #(
     .DATA_WIDTH(C_DATA_WIDTH),
     .KEEP_WIDTH(KEEP_WIDTH)
-   ) s_axis_cc_adapt_x4_i (
+   ) s_axis_cc_adapt_i (
     .user_clk(user_clk_out),
     .user_reset(user_reset_out),
 

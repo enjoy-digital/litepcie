@@ -1,4 +1,4 @@
- module s_axis_rq_adapt_x4 # (
+module s_axis_rq_adapt # (
       parameter DATA_WIDTH  = 128,
       parameter KEEP_WIDTH  = DATA_WIDTH/8
     )(

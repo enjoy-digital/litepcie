@@ -1,4 +1,4 @@
- module s_axis_rq_adapt_x8 # (
+module s_axis_rq_adapt # (
       parameter DATA_WIDTH  = 128,
       parameter KEEP_WIDTH  = DATA_WIDTH/8
     )(
@@ -33,8 +33,8 @@
 
   axis_iff #(.DAT_B(256+8+4))  s_axis_rq_iff
   (
-        .clk    (user_clk_out),
-        .rst    (user_reset_out),
+        .clk    (user_clk),
+        .rst    (user_reset),
 
         .i_vld  (s_axis_rq_tvalid),
         .o_rdy  (s_axis_rq_tready),
@@ -51,8 +51,8 @@
 
 
   reg [1:0]       s_axis_rq_cnt;  //0-2
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_cnt <= 2'd0;
+  always @(posedge user_clk)
+      if (user_reset) s_axis_rq_cnt <= 2'd0;
       else if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
           begin
               if (s_axis_rq_tlast_ff) s_axis_rq_cnt <= 2'd0;
@@ -68,12 +68,12 @@
   reg             s_axis_rq_tlast_dly_en;
   reg             s_axis_rq_tlast_lat;
   wire [3:0]      s_axis_rq_tready_a;
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_tlast_dly_en <= 1'd0;
+  always @(posedge user_clk)
+      if (user_reset) s_axis_rq_tlast_dly_en <= 1'd0;
       else if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst && s_axis_rq_write) s_axis_rq_tlast_dly_en <= (s_axis_rq_tdata_ff[2:0] == 3'b101);
 
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_tlast_lat <= 1'd0;
+  always @(posedge user_clk)
+      if (user_reset) s_axis_rq_tlast_lat <= 1'd0;
       else if (s_axis_rq_tlast_lat && s_axis_rq_tready_a[0]) s_axis_rq_tlast_lat <= 1'd0;
       else if (s_axis_rq_tvalid_ff && s_axis_rq_tlast_ff && s_axis_rq_tready_a[0])
           begin
@@ -122,7 +122,7 @@
   reg  [3:0]      s_axis_rq_firstbe_l;
   reg  [3:0]      s_axis_rq_lastbe_l;
 
-  always @(posedge user_clk_out)
+  always @(posedge user_clk)
   begin
       if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst)
           begin
@@ -132,7 +132,7 @@
       end
 
   reg [31:0]       s_axis_rq_tdata_l;
-  always @(posedge user_clk_out)
+  always @(posedge user_clk)
       if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
           s_axis_rq_tdata_l <= s_axis_rq_tdata_ff[255:224];
 

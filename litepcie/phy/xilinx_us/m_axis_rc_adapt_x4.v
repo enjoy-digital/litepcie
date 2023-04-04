@@ -1,4 +1,4 @@
- module m_axis_rc_adapt_x4 # (
+module m_axis_rc_adapt # (
       parameter DATA_WIDTH  = 128,
       parameter KEEP_WIDTH  = DATA_WIDTH/8
     )(
