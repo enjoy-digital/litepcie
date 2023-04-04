@@ -435,24 +435,42 @@ class S7PCIEPHY(LiteXModule):
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
             config = {
-                "Bar0_Scale"               : "Megabytes",
-                "Bar0_Size"                : 1,
-                "Buf_Opt_BMA"              : True,
+                # Generic Config.
+                # ---------------
                 "Component_Name"           : "pcie",
                 "Device_ID"                : 7020 + self.nlanes,
-                "IntX_Generation"          : False,
-                "Interface_Width"          : f"{self.pcie_data_width}_bit",
-                "Legacy_Interrupt"         : None,
-                "Multiple_Message_Capable" : '1_vector',
                 "Link_Speed"               : "5.0_GT/s",
-                "MSI_64b"                  : False,
-                "Max_Payload_Size"         : "512_bytes" if self.nlanes != 8 else "256_bytes",
+                "Trgt_Link_Speed"          : "4'h2",
+                "Max_Payload_Size"         : {
+                    1 : "256_bytes",
+                    2 : "256_bytes",
+                    4 : "256_bytes",
+                    8 : "512_bytes",
+                }[self.nlanes],
+                "Interface_Width"          : f"{self.pcie_data_width}_bit",
+                "Buf_Opt_BMA"              : True,
                 "Maximum_Link_Width"       : f"X{self.nlanes}",
                 "PCIe_Blk_Locn"            : "X0Y0",
                 "Ref_Clk_Freq"             : "100_MHz",
                 "Trans_Buf_Pipeline"       : None,
-                "Trgt_Link_Speed"          : "4'h2",
-                "User_Clk_Freq"            : 125 if self.nlanes != 8 else 250,
+                "User_Clk_Freq"            : {
+                    1 : 125,
+                    2 : 125,
+                    4 : 125,
+                    8 : 250,
+                }[self.nlanes],
+
+                # BAR0 Config.
+                # ------------
+                "Bar0_Scale"               : "Megabytes",
+                "Bar0_Size"                : 1,
+
+                # Interrupt Config.
+                # -----------------
+                "IntX_Generation"          : False,
+                "Legacy_Interrupt"         : None,
+                "MSI_64b"                  : False,
+                "Multiple_Message_Capable" : '1_vector',
             }
             ip_tcl = []
             ip_tcl.append("create_ip -vendor xilinx.com -name pcie_7x -module_name pcie_s7")
