@@ -313,410 +313,114 @@ module pcie_support # (
   //----------------------------------------------------------------------------------------------------------------//
 
   //----------------------------------------------------- RQ AXIS --------------------------------------------------//
-  wire          s_axis_rq_tready_ff,
-                s_axis_rq_tvalid_ff,
-                s_axis_rq_tlast_ff;
-  wire [15:0]   s_axis_rq_tkeep_or = {s_axis_rq_tkeep[60], s_axis_rq_tkeep[56], s_axis_rq_tkeep[52], s_axis_rq_tkeep[48],
-                                      s_axis_rq_tkeep[44], s_axis_rq_tkeep[40], s_axis_rq_tkeep[36], s_axis_rq_tkeep[32],
-                                      s_axis_rq_tkeep[28], s_axis_rq_tkeep[24], s_axis_rq_tkeep[20], s_axis_rq_tkeep[16],
-                                      s_axis_rq_tkeep[12], s_axis_rq_tkeep[8], s_axis_rq_tkeep[4], s_axis_rq_tkeep[0]};
 
-  wire [3:0]    s_axis_rq_tuser_ff;
-  wire [15:0]    s_axis_rq_tkeep_ff;
-  wire [511:0]  s_axis_rq_tdata_ff;
+   s_axis_rq_adapt_x16 #(
+    .DATA_WIDTH(C_DATA_WIDTH),
+    .KEEP_WIDTH(KEEP_WIDTH)
+   ) s_axis_rq_adapt_x16_i (
+    .user_clk(user_clk_out),
+    .user_reset(user_reset_out),
 
-  axis_iff #(.DAT_B(512+16+4))  s_axis_rq_iff
-  (
-        .clk    (user_clk_out),
-        .rst    (user_reset_out),
+    .s_axis_rq_tdata(s_axis_rq_tdata),
+    .s_axis_rq_tkeep(s_axis_rq_tkeep),
+    .s_axis_rq_tlast(s_axis_rq_tlast),
+    .s_axis_rq_tready(s_axis_rq_tready),
+    .s_axis_rq_tuser(s_axis_rq_tuser),
+    .s_axis_rq_tvalid(s_axis_rq_tvalid),
 
-        .i_vld  (s_axis_rq_tvalid),
-        .o_rdy  (s_axis_rq_tready),
-        .i_sop  (1'b0),
-        .i_eop  (s_axis_rq_tlast),
-        .i_dat  ({s_axis_rq_tuser, s_axis_rq_tkeep_or, s_axis_rq_tdata}),
-
-        .o_vld  (s_axis_rq_tvalid_ff),
-        .i_rdy  (s_axis_rq_tready_ff),
-        .o_sop  (),
-        .o_eop  (s_axis_rq_tlast_ff),
-        .o_dat  ({s_axis_rq_tuser_ff, s_axis_rq_tkeep_ff, s_axis_rq_tdata_ff})
-    );
-
-
-  reg [1:0]       s_axis_rq_cnt;  //0-2
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_cnt <= 2'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
-          begin
-              if (s_axis_rq_tlast_ff) s_axis_rq_cnt <= 2'd0;
-              else if (!s_axis_rq_cnt[1]) s_axis_rq_cnt <= s_axis_rq_cnt + 1;
-          end
-
-  wire            s_axis_rq_tfirst = (s_axis_rq_cnt == 0) && (!s_axis_rq_tlast_lat);
-  wire            s_axis_rq_tsecond = s_axis_rq_cnt == 1;
-
-  //processing for tlast: generate new last in case write & last num of dword = 13 + i*16
-  wire            s_axis_rq_read = (s_axis_rq_tdata_ff[31:30] == 2'b0);  //Read request
-  wire            s_axis_rq_write = !s_axis_rq_read;
-  reg             s_axis_rq_tlast_dly_en;
-  reg             s_axis_rq_tlast_lat;
-  wire [3:0]      s_axis_rq_tready_a;
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_tlast_dly_en <= 1'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst && s_axis_rq_write) s_axis_rq_tlast_dly_en <= (s_axis_rq_tdata_ff[3:0] == 5'd13);
-
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_tlast_lat <= 1'd0;
-      else if (s_axis_rq_tlast_lat && s_axis_rq_tready_a[0]) s_axis_rq_tlast_lat <= 1'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tlast_ff && s_axis_rq_tready_a[0])
-          begin
-          if (s_axis_rq_tfirst) s_axis_rq_tlast_lat <= s_axis_rq_write ? (s_axis_rq_dwlen == 11'd13) : 1'b0; //write 13 dwords
-          else s_axis_rq_tlast_lat <= s_axis_rq_tlast_dly_en;
-          end
-
-  wire            s_axis_rq_tlast_a  = s_axis_rq_tfirst       ? (s_axis_rq_read | (s_axis_rq_dwlen < 11'd13)) :
-                                       s_axis_rq_tlast_dly_en ? s_axis_rq_tlast_lat : s_axis_rq_tlast_ff;
-
-  //Generae ready for TLP
-  assign          s_axis_rq_tready_ff = s_axis_rq_tready_a[0] && (!s_axis_rq_tlast_lat);
-  wire            s_axis_rq_tvalid_a = s_axis_rq_tvalid_ff | s_axis_rq_tlast_lat;
-
-  wire [10:0]     s_axis_rq_dwlen = {1'b0, s_axis_rq_tdata_ff[9:0]};
-  wire [3:0]      s_axis_rq_reqtype = {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0000000 ? 4'b0000 :  //Mem read Request
-                                      {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0000001 ? 4'b0111 :  //Mem Read request-locked
-                                      {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0100000 ? 4'b0001 :  //Mem write request
-                                       s_axis_rq_tdata_ff[31:24] == 8'b00000010                           ? 4'b0010 :  //I/O Read request
-                                       s_axis_rq_tdata_ff[31:24] == 8'b01000010                           ? 4'b0011 :  //I/O Write request
-                                       s_axis_rq_tdata_ff[31:24] == 8'b00000100                           ? 4'b1000 :  //Cfg Read Type 0
-                                       s_axis_rq_tdata_ff[31:24] == 8'b01000100                           ? 4'b1010 :  //Cfg Write Type 0
-                                       s_axis_rq_tdata_ff[31:24] == 8'b00000101                           ? 4'b1001 :  //Cfg Read Type 1
-                                       s_axis_rq_tdata_ff[31:24] == 8'b01000101                           ? 4'b1011 :  //Cfg Write Type 1
-                                                                                                          4'b1111;
-  wire            s_axis_rq_poisoning = s_axis_rq_tdata_ff[14] | s_axis_rq_tuser_ff[1];   //EP must be 0 for request
-  wire [15:0]     s_axis_rq_requesterid = s_axis_rq_tdata_ff[63:48];
-  wire [7:0]      s_axis_rq_tag = s_axis_rq_tdata_ff[47:40];
-  wire [15:0]     s_axis_rq_completerid = 16'b0;   //applicable only to Configuration requests and messages routed by ID
-  wire            s_axis_rq_requester_en = 1'b0;   //Must be 0 for Endpoint
-  wire [2:0]      s_axis_rq_tc = s_axis_rq_tdata_ff[22:20];
-  wire [2:0]      s_axis_rq_attr = {1'b0, s_axis_rq_tdata_ff[13:12]};
-  wire            s_axis_rq_ecrc = s_axis_rq_tdata_ff[15] | s_axis_rq_tuser_ff[0];     //TLP Digest
-
-  wire [63:0]     s_axis_rq_tdata_header  = {s_axis_rq_ecrc,
-                                             s_axis_rq_attr,
-                                             s_axis_rq_tc,
-                                             s_axis_rq_requester_en,
-                                             s_axis_rq_completerid,
-                                             s_axis_rq_tag,
-                                             s_axis_rq_requesterid,
-                                             s_axis_rq_poisoning, s_axis_rq_reqtype, s_axis_rq_dwlen};
-
-  wire [3:0]      s_axis_rq_firstbe = s_axis_rq_tdata_ff[35:32];
-  wire [3:0]      s_axis_rq_lastbe = s_axis_rq_tdata_ff[39:36];
-  reg  [3:0]      s_axis_rq_firstbe_l;
-  reg  [3:0]      s_axis_rq_lastbe_l;
-
-  always @(posedge user_clk_out)
-  begin
-      if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst)
-          begin
-          s_axis_rq_firstbe_l <= s_axis_rq_firstbe;
-          s_axis_rq_lastbe_l <= s_axis_rq_lastbe;
-          end
-      end
-
-  reg [31:0]       s_axis_rq_tdata_l;
-  always @(posedge user_clk_out)
-      if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
-          s_axis_rq_tdata_l <= s_axis_rq_tdata_ff[511:480];
-
-  wire [511:0]    s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_ff[479:96], s_axis_rq_tdata_header, 32'b0, s_axis_rq_tdata_ff[95:64]} :
-                                                          {s_axis_rq_tdata_ff[479:0], s_axis_rq_tdata_l[31:0]};
-  wire [15:0]     s_axis_rq_tkeep_a  = s_axis_rq_tlast_lat ? 16'h1 : {s_axis_rq_tkeep_ff[14:0], 1'b1};
-  wire [136:0]    s_axis_rq_tuser_a;
-  assign          s_axis_rq_tuser_a[36] = s_axis_rq_tuser_ff[3]; //discontinue
-  assign          s_axis_rq_tuser_a[15:0]  = {4'b0, s_axis_rq_lastbe, 4'b0, s_axis_rq_firstbe};
+    .s_axis_rq_tdata_a(s_axis_rq_tdata_a),
+    .s_axis_rq_tkeep_a(s_axis_rq_tkeep_a),
+    .s_axis_rq_tlast_a(s_axis_rq_tlast_a),
+    .s_axis_rq_tready_a(s_axis_rq_tready_a),
+    .s_axis_rq_tuser_a(s_axis_rq_tuser_a),
+    .s_axis_rq_tvalid_a(s_axis_rq_tvalid_a)
+   );
 
   //----------------------------------------------------- RC AXIS --------------------------------------------------//
+
   wire            m_axis_rc_tvalid_a;
   wire            m_axis_rc_tready_a;
-  wire [15:0]     m_axis_rc_tkeep_a;
-  wire [511:0]    m_axis_rc_tdata_a;
+  wire [7:0]      m_axis_rc_tkeep_a;
+  wire [127:0]    m_axis_rc_tdata_a;
   wire [74:0]     m_axis_rc_tuser_a;
   wire            m_axis_rc_tlast_a;
 
-  reg [1:0]       m_axis_rc_cnt;  //0-2
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_rc_cnt <= 2'd0;
-      else if (m_axis_rc_tvalid_a && m_axis_rc_tready_a)
-          begin
-              if (m_axis_rc_tlast_a) m_axis_rc_cnt <= 2'd0;
-              else if (!m_axis_rc_cnt[1]) m_axis_rc_cnt <= m_axis_rc_cnt + 1;
-          end
+   m_axis_rc_adapt_x16 #(
+    .DATA_WIDTH(C_DATA_WIDTH),
+    .KEEP_WIDTH(KEEP_WIDTH)
+   ) m_axis_rc_adapt_x16_i (
+    .user_clk(user_clk_out),
+    .user_reset(user_reset_out),
 
-  wire            m_axis_rc_sop = (m_axis_rc_cnt == 0); //m_axis_rc_tuser_a[40]
-  wire            m_axis_rc_second = m_axis_rc_cnt == 1;
+    .m_axis_rc_tdata( m_axis_rc_tdata),
+    .m_axis_rc_tkeep( m_axis_rc_tkeep),
+    .m_axis_rc_tlast( m_axis_rc_tlast),
+    .m_axis_rc_tready(m_axis_rc_tready),
+    .m_axis_rc_tuser( m_axis_rc_tuser),
+    .m_axis_rc_tvalid(m_axis_rc_tvalid),
 
-  //header process
-  wire            m_axis_rc_poisoning = m_axis_rc_tdata_a[46];
-  reg             m_axis_rc_poisoning_l;
-  always @(posedge user_clk_out)
-     if (m_axis_rc_tvalid_a && m_axis_rc_sop)
-         begin
-             m_axis_rc_poisoning_l <= m_axis_rc_poisoning;
-         end
-
-  wire [9:0]      m_axis_rc_dwlen = m_axis_rc_tdata_a[41:32];
-  wire [1:0]      m_axis_rc_attr = m_axis_rc_tdata_a[93:92];
-  wire            m_axis_rc_ep = 1'b0;
-  wire            m_axis_rc_td = 1'b0;
-  wire [2:0]      m_axis_rc_tc = m_axis_rc_tdata_a[91:89];
-  wire [4:0]      m_axis_rc_type;
-  wire [2:0]      m_axis_rc_fmt;
-  wire [11:0]     m_axis_rc_bytecnt = m_axis_rc_tdata_a[27:16];
-  wire            m_axis_rc_bmc = 1'b0;
-  wire [2:0]      m_axis_rc_cmpstatus = m_axis_rc_tdata_a[45:43];
-  wire [15:0]     m_axis_rc_completerid = m_axis_rc_tdata_a[87:72];
-
-  wire [6:0]      m_axis_rc_lowaddr = m_axis_rc_tdata_a[6:0];
-  wire [7:0]      m_axis_rc_tag = m_axis_rc_tdata_a[71:64];
-  wire [15:0]     m_axis_rc_requesterid = m_axis_rc_tdata_a[63:48];
-
-  assign          {m_axis_rc_fmt,
-                   m_axis_rc_type} = m_axis_rc_tdata_a[29] ? ((m_axis_rc_bytecnt == 0) ? 8'b000_01011 :    //Read-Locked Completion w/o data
-                                                                                         8'b010_01011) :   //Read-Locked Completion w/ data
-                                                             ((m_axis_rc_bytecnt == 0) ? 8'b000_01010 :    //Completion w/o data
-                                                                                         8'b010_01010);    //Completion w/ data
-
-  wire [63:0]     m_axis_rc_header0 = {m_axis_rc_completerid,
-                                       m_axis_rc_cmpstatus,
-                                       m_axis_rc_bmc,
-                                       m_axis_rc_bytecnt,
-                                       m_axis_rc_fmt[2:0], m_axis_rc_type,
-                                       1'b0, m_axis_rc_tc, 4'b0,
-                                       m_axis_rc_td, m_axis_rc_ep, m_axis_rc_attr,
-                                       2'b0, m_axis_rc_dwlen};
-  wire [63:0]     m_axis_rc_header1 = {m_axis_rc_tdata_a[127:96],
-                                       m_axis_rc_requesterid,
-                                       m_axis_rc_tag,
-                                       1'b0, m_axis_rc_lowaddr};
-
-  assign          m_axis_rc_tvalid = m_axis_rc_tvalid_a;
-  assign          m_axis_rc_tready_a = m_axis_rc_tready;
-  assign          m_axis_rc_tlast = m_axis_rc_tlast_a;
-  assign          m_axis_rc_tdata = m_axis_rc_sop ? {m_axis_rc_tdata_a[511:128], m_axis_rc_header1, m_axis_rc_header0} : m_axis_rc_tdata_a;
-  assign          m_axis_rc_tkeep = m_axis_rc_sop ? {m_axis_rc_tuser_a[63:12], 12'hFFF} : m_axis_rc_tuser_a[63:0];
-  assign          m_axis_rc_tuser = {
-                                     5'b0,                         //rx_is_eof only for 128-bit I/F
-                                     2'b0,                         //reserved
-                                     5'b0,                         //m_axis_rc_tuser_a[32],4'b0,   //rx_is_sof, only for 128-bit I/F  ?????????????????????
-                                     8'b0,                         //BAR hit no equivalent for RC
-                                     m_axis_rc_sop ? m_axis_rc_poisoning : m_axis_rc_poisoning_l,  //rx_err_fwd mapped to Poisoned completion
-                                     m_axis_rc_tuser_a[42]         //ECRC mapped to discontinue
-                                     };
+    .m_axis_rc_tdata_a( m_axis_rc_tdata_a),
+    .m_axis_rc_tkeep_a( m_axis_rc_tkeep_a),
+    .m_axis_rc_tlast_a( m_axis_rc_tlast_a),
+    .m_axis_rc_tready_a(m_axis_rc_tready_a),
+    .m_axis_rc_tuser_a( m_axis_rc_tuser_a),
+    .m_axis_rc_tvalid_a(m_axis_rc_tvalid_a)
+   );
 
   //----------------------------------------------------- CQ AXIS --------------------------------------------------//
+
   wire            m_axis_cq_tvalid_a;
   wire            m_axis_cq_tready_a;
-  wire [15:0]     m_axis_cq_tkeep_a;
-  wire [511:0]    m_axis_cq_tdata_a;
-  wire [96:0]     m_axis_cq_tuser_a;
+  wire [7:0]      m_axis_cq_tkeep_a;
+  wire [127:0]    m_axis_cq_tdata_a;
+  wire [84:0]     m_axis_cq_tuser_a;
   wire            m_axis_cq_tlast_a;
 
-  //dword counter: //0-2 & latch
-  reg [1:0]       m_axis_cq_cnt;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_cnt <= 2'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
-          begin
-              if (m_axis_cq_tlast_a) m_axis_cq_cnt <= 2'd0;
-              else if (!m_axis_cq_cnt[1]) m_axis_cq_cnt <= m_axis_cq_cnt + 1;
-          end
+   m_axis_cq_adapt_x16 #(
+    .DATA_WIDTH(C_DATA_WIDTH),
+    .KEEP_WIDTH(KEEP_WIDTH)
+   ) m_axis_cq_adapt_x16_i (
+    .user_clk(user_clk_out),
+    .user_reset(user_reset_out),
 
-  wire            m_axis_cq_sop    = (m_axis_cq_cnt == 0) && (!m_axis_cq_tlast_lat);
-  wire            m_axis_cq_second = m_axis_cq_cnt == 1;
+    .m_axis_cq_tdata( m_axis_cq_tdata),
+    .m_axis_cq_tkeep( m_axis_cq_tkeep),
+    .m_axis_cq_tlast( m_axis_cq_tlast),
+    .m_axis_cq_tready(m_axis_cq_tready),
+    .m_axis_cq_tuser( m_axis_cq_tuser),
+    .m_axis_cq_tvalid(m_axis_cq_tvalid),
 
-  reg             m_axis_cq_rdwr_l;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_rdwr_l <= 1'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_sop) m_axis_cq_rdwr_l <= m_axis_cq_tlast_a;
-
-  //processing for tlast: generate new last in case write & last num of dword != 13 + i*16
-  wire            m_axis_cq_read = (m_axis_cq_fmt[1:0] == 2'b0);  //Read request
-  wire            m_axis_cq_write = !m_axis_cq_read;
-  wire [9:0]      m_axis_cq_dwlen;
-  reg             m_axis_cq_tlast_dly_en;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_tlast_dly_en <= 1'd0;
-      else if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_dly_en <= 1'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_sop) m_axis_cq_tlast_dly_en <= m_axis_cq_tlast_a | (m_axis_cq_dwlen[3:0] != 4'd13);
-
-  reg             m_axis_cq_tlast_lat;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_tlast_lat <= 1'd0;
-      else if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_lat <= 1'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a && m_axis_cq_tlast_a)
-          begin
-          if (m_axis_cq_sop) m_axis_cq_tlast_lat <= 1'b1;  //read or write
-          else if (m_axis_cq_tlast_dly_en) m_axis_cq_tlast_lat <= 1'b1;
-          end
-
-  //Generae ready for PCIe IP
-  assign          m_axis_cq_tready_a = ((m_axis_cq_cnt == 0) | m_axis_cq_tready) && (!m_axis_cq_tlast_lat);
-
-  //output for TLP
-  assign          m_axis_cq_tlast = m_axis_cq_tlast_dly_en ? m_axis_cq_tlast_lat : m_axis_cq_tlast_a;
-  assign          m_axis_cq_tvalid = (m_axis_cq_tvalid_a & (|m_axis_cq_cnt)) | m_axis_cq_tlast_lat;
-
-
-  ////keep address (low) or data (high), not header
-  reg [511:0]     m_axis_cq_tdata_a1;
-  reg [63:0]      m_axis_cq_tlast_be1;
-  always @(posedge user_clk_out)
-     if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
-          begin
-          m_axis_cq_tdata_a1 <= m_axis_cq_tdata_a;
-          m_axis_cq_tlast_be1 <= m_axis_cq_tuser_a[79:16];
-          end
-
-  //data processing
-  wire [63:0]     m_axis_cq_tdata_hdr = m_axis_cq_tdata_a[127:64];
-
-  assign          m_axis_cq_dwlen = m_axis_cq_tdata_hdr[9:0];
-  wire [1:0]      m_axis_cq_attr = m_axis_cq_tdata_hdr[61:60];
-  wire            m_axis_cq_ep = 1'b0;
-  wire            m_axis_cq_td = 1'b0;
-  wire [2:0]      m_axis_cq_tc = m_axis_cq_tdata_hdr[59:57];
-  wire [4:0]      m_axis_cq_type;
-  wire [2:0]      m_axis_cq_fmt;
-  wire [7:0]      m_axis_cq_be = {m_axis_cq_tuser_a[11:8], m_axis_cq_tuser_a[3:0]};
-  wire [7:0]      m_axis_cq_tag = m_axis_cq_tdata_hdr[39:32];
-  wire [15:0]     m_axis_cq_requesterid = m_axis_cq_tdata_hdr[31:16];
-
-  assign          {m_axis_cq_fmt, m_axis_cq_type} = m_axis_cq_tdata_hdr[14:11] == 4'b0000 ? 8'b000_00000 :  //Mem read Request
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b0111 ? 8'b000_00001 :  //Mem Read request-locked
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b0001 ? 8'b010_00000 :  //Mem write request
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b0010 ? 8'b000_00010 :  //I/O Read request
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b0011 ? 8'b010_00010 :  //I/O Write request
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b1000 ? 8'b000_00100 :  //Cfg Read Type 0
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b1010 ? 8'b010_00100 :  //Cfg Write Type 0
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b1001 ? 8'b000_00101 :  //Cfg Read Type 1
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b1011 ? 8'b010_00101 :  //Cfg Write Type 1
-                                                                                            8'b000_00000;   //Mem read Request
-
-  reg [7:0]        m_axis_cq_tuser_barhit;
-  always @(posedge user_clk_out)
-      if (m_axis_cq_tvalid_a && m_axis_cq_sop)
-          m_axis_cq_tuser_barhit <= {1'b0, m_axis_cq_tdata_hdr[50:48], m_axis_cq_tdata_hdr[14:11]};  //only valid @sop
-
-  reg [63:0]       m_axis_cq_header;
-  always @(posedge user_clk_out)
-      if (m_axis_cq_tvalid_a && m_axis_cq_sop)
-          m_axis_cq_header = {m_axis_cq_requesterid,
-                              m_axis_cq_tag,
-                              m_axis_cq_be,
-                              m_axis_cq_fmt, m_axis_cq_type,
-                              1'b0, m_axis_cq_tc, 4'b0,
-                              m_axis_cq_td, m_axis_cq_ep, m_axis_cq_attr,
-                              2'b0, m_axis_cq_dwlen};
-
-  assign          m_axis_cq_tdata = (m_axis_cq_rdwr_l | m_axis_cq_second) ? {m_axis_cq_tdata_a[31:0], m_axis_cq_tdata_a1[511:128], m_axis_cq_tdata_a1[31:0], m_axis_cq_header} :
-                                                                            {m_axis_cq_tdata_a[31:0], m_axis_cq_tdata_a1[511:32]};
-  assign          m_axis_cq_tkeep = m_axis_cq_rdwr_l    ? {4'b0, m_axis_cq_tlast_be1[63:16], 12'hFFF} :
-                                    m_axis_cq_tlast_lat ? {4'b0, m_axis_cq_tlast_be1[63:4]} : {64{1'b1}};
-  assign          m_axis_cq_tuser = {
-                                     5'b0,                     //rx_is_eof only for 128-bit I/F
-                                     2'b0,                     //reserved
-                                     5'b0,                     //rx_is_sof only for 128-bit I/F
-                                     m_axis_cq_tuser_barhit,
-                                     1'b0,                    //rx_err_fwd -> no equivalent
-                                     m_axis_cq_tuser_a[96]    //ECRC mapped to discontinue
-                                     };
+    .m_axis_cq_tdata_a( s_axis_cq_tdata_a),
+    .m_axis_cq_tkeep_a( s_axis_cq_tkeep_a),
+    .m_axis_cq_tlast_a( s_axis_cq_tlast_a),
+    .m_axis_cq_tready_a(s_axis_cq_tready_a),
+    .m_axis_cq_tuser_a( s_axis_cq_tuser_a),
+    .m_axis_cq_tvalid_a(s_axis_cq_tvalid_a)
+   );
 
   //----------------------------------------------------- CC AXIS --------------------------------------------------//
-  wire          s_axis_cc_tready_ff,
-                s_axis_cc_tvalid_ff,
-                s_axis_cc_tlast_ff;
-  wire [15:0]   s_axis_cc_tkeep_or = {s_axis_cc_tkeep[60], s_axis_cc_tkeep[56],
-                                      s_axis_cc_tkeep[52], s_axis_cc_tkeep[48],
-                                      s_axis_cc_tkeep[44], s_axis_cc_tkeep[40],
-                                      s_axis_cc_tkeep[36], s_axis_cc_tkeep[32],
-                                      s_axis_cc_tkeep[28], s_axis_cc_tkeep[24],
-                                      s_axis_cc_tkeep[20], s_axis_cc_tkeep[16],
-                                      s_axis_cc_tkeep[12], s_axis_cc_tkeep[8],
-                                      s_axis_cc_tkeep[4], s_axis_cc_tkeep[0]};
 
-  wire [3:0]    s_axis_cc_tuser_ff;
-  wire [15:0]   s_axis_cc_tkeep_ff;
-  wire [511:0]  s_axis_cc_tdata_ff;
+  s_axis_cc_adapt_x16 #(
+    .DATA_WIDTH(C_DATA_WIDTH),
+    .KEEP_WIDTH(KEEP_WIDTH)
+   ) s_axis_cc_adapt_x16_i (
+    .user_clk(user_clk_out),
+    .user_reset(user_reset_out),
 
-  axis_iff #(.DAT_B(512+16+4))  s_axis_cc_iff
-  (
-        .clk    (user_clk_out),
-        .rst    (user_reset_out),
+    .s_axis_cc_tdata(s_axis_cc_tdata),
+    .s_axis_cc_tkeep(s_axis_cc_tkeep),
+    .s_axis_cc_tlast(s_axis_cc_tlast),
+    .s_axis_cc_tready(s_axis_cc_tready),
+    .s_axis_cc_tuser(s_axis_cc_tuser),
+    .s_axis_cc_tvalid(s_axis_cc_tvalid),
 
-        .i_vld  (s_axis_cc_tvalid),
-        .o_rdy  (s_axis_cc_tready),
-        .i_sop  (1'b0),
-        .i_eop  (s_axis_cc_tlast),
-        .i_dat  ({s_axis_cc_tuser, s_axis_cc_tkeep_or, s_axis_cc_tdata}),
-
-        .o_vld  (s_axis_cc_tvalid_ff),
-        .i_rdy  (s_axis_cc_tready_ff),
-        .o_sop  (),
-        .o_eop  (s_axis_cc_tlast_ff),
-        .o_dat  ({s_axis_cc_tuser_ff, s_axis_cc_tkeep_ff, s_axis_cc_tdata_ff})
-    );
-
-  reg [1:0]       s_axis_cc_cnt;  //0-2
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_cc_cnt <= 2'd0;
-      else if (s_axis_cc_tvalid_ff && s_axis_cc_tready_ff)
-          begin
-              if (s_axis_cc_tlast_ff) s_axis_cc_cnt <= 2'd0;
-              else if (!s_axis_cc_cnt[1]) s_axis_cc_cnt <= s_axis_cc_cnt + 1;
-          end
-
-  wire            s_axis_cc_tfirst = s_axis_cc_cnt == 0;
-  wire            s_axis_cc_tsecond = s_axis_cc_cnt == 1;
-
-  wire [3:0]      s_axis_cc_tready_a;
-
-  wire [6:0]      s_axis_cc_lowaddr = s_axis_cc_tdata_ff[70:64];
-  wire [1:0]      s_axis_cc_at = 2'b0; //address translation
-  wire [12:0]     s_axis_cc_bytecnt = {1'b0, s_axis_cc_tdata_ff[43:32]};
-  wire            s_axis_cc_lockedrdcmp = (s_axis_cc_tdata_ff[29:24] == 6'b0_01011);    //Read-Locked Completion
-  wire [9:0]      s_axis_cc_dwordcnt = s_axis_cc_tdata_ff[9:0];
-  wire [2:0]      s_axis_cc_cmpstatus = s_axis_cc_tdata_ff[47:45];
-  wire            s_axis_cc_poison = s_axis_cc_tdata_ff[14];
-  wire [15:0]     s_axis_cc_requesterid = s_axis_cc_tdata_ff[95:80];
-
-  wire [7:0]      s_axis_cc_tag = s_axis_cc_tdata_ff[79:72];
-  wire [15:0]     s_axis_cc_completerid = s_axis_cc_tdata_ff[63:48];
-  wire            s_axis_cc_completerid_en = 1'b0;     //must be 0 for End-point
-  wire [2:0]      s_axis_cc_tc = s_axis_cc_tdata_ff[22:20];
-  wire [2:0]      s_axis_cc_attr = {1'b0, s_axis_cc_tdata_ff[13:12]};
-  wire            s_axis_cc_td = s_axis_cc_tdata_ff[15] | s_axis_cc_tuser_ff[0];  //ECRC @sop
-
-
-  wire [63:0]     s_axis_cc_header0 = {s_axis_cc_requesterid,
-                                       2'b0, s_axis_cc_poison, s_axis_cc_cmpstatus, s_axis_cc_dwordcnt,
-                                       2'b0, s_axis_cc_lockedrdcmp, s_axis_cc_bytecnt,
-                                       6'b0, s_axis_cc_at,
-                                       1'b0, s_axis_cc_lowaddr};
-  wire [63:0]     s_axis_cc_header1 = {s_axis_cc_tdata_ff[127:96],
-                                       s_axis_cc_td, s_axis_cc_attr, s_axis_cc_tc, s_axis_cc_completerid_en,
-                                       s_axis_cc_completerid,
-                                       s_axis_cc_tag
-                                       };
-
-  wire            s_axis_cc_tvalid_a = s_axis_cc_tvalid_ff;
-
-  assign          s_axis_cc_tready_ff = s_axis_cc_tready_a[0];
-  wire [511:0]    s_axis_cc_tdata_a  = s_axis_cc_tfirst ? {s_axis_cc_tdata_ff[511:128], s_axis_cc_header1, s_axis_cc_header0} : s_axis_cc_tdata_ff;
-  wire            s_axis_cc_tlast_a = s_axis_cc_tlast_ff;
-  wire [15:0]     s_axis_cc_tkeep_a = s_axis_cc_tkeep_ff;
-  wire [32:0]     s_axis_cc_tuser_a  = {32'b0, s_axis_cc_tuser_ff[3]};    //{parity, discontinue}
+    .s_axis_cc_tdata_a(s_axis_cc_tdata_a),
+    .s_axis_cc_tkeep_a(s_axis_cc_tkeep_a),
+    .s_axis_cc_tlast_a(s_axis_cc_tlast_a),
+    .s_axis_cc_tready_a(s_axis_cc_tready_a),
+    .s_axis_cc_tuser_a(s_axis_cc_tuser_a),
+    .s_axis_cc_tvalid_a(s_axis_cc_tvalid_a)
+   );
 
   //---------------------------------------------------------------------------------------------------------------//
   //   MSI Adaptation Logic                                                                                        //
