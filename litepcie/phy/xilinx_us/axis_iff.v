@@ -1,3 +1,8 @@
+// This file is part of LitePCIe.
+//
+// Copyright (c) 2020-2023 Enjoy-Digital <enjoy-digital.fr>
+// SPDX-License-Identifier: BSD-2-Clause
+
 module axis_iff
    #(
         parameter           DAT_B  = 32

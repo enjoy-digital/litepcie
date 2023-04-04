@@ -1,3 +1,8 @@
+// This file is part of LitePCIe.
+//
+// Copyright (c) 2020-2023 Enjoy-Digital <enjoy-digital.fr>
+// SPDX-License-Identifier: BSD-2-Clause
+
 module s_axis_cc_adapt # (
       parameter DATA_WIDTH  = 128,
       parameter KEEP_WIDTH  = DATA_WIDTH/8
