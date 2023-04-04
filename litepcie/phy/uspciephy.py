@@ -393,8 +393,8 @@ class USPCIEPHY(LiteXModule):
 
                 # BAR0 Config.
                 # ------------
-                "pf0_bar0_scale"             : "Megabytes",
-                "pf0_bar0_size"              : 1,
+                "pf0_bar0_scale"             : "Megabytes",               # FIXME.
+                "pf0_bar0_size"              : max(self.bar0_size/MB, 1), # FIXME.
 
                 # Interrupt Config.
                 # -----------------

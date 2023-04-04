@@ -462,8 +462,8 @@ class S7PCIEPHY(LiteXModule):
 
                 # BAR0 Config.
                 # ------------
-                "Bar0_Scale"               : "Megabytes",
-                "Bar0_Size"                : 1,
+                "Bar0_Scale"               : "Megabytes",               # FIXME.
+                "Bar0_Size"                : max(self.bar0_size/MB, 1), # FIXME.
 
                 # Interrupt Config.
                 # -----------------
