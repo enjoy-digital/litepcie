@@ -112,7 +112,7 @@ def main():
     parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
     parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
     parser.add_argument("--speed",  default="gen3",      help="PCIe speed: gen3")
-    parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 4 (default) or 8")
+    parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 4 (default), 8 or 16")
     args = parser.parse_args()
 
     platform = sqrl_xcu1525.Platform()

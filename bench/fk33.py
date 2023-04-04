@@ -42,7 +42,9 @@ class _CRG(Module):
 class LitePCIeSoC(SoCMini):
     configs = {
         # Gen3  data_width, sys_clk_freq
-        "gen3:x4": (128, int(200e6)),
+        "gen3:x4" : (128, int(200e6)),
+        "gen3:x8" : (256, int(200e6)),
+        "gen3:x16": (512, int(200e6)),
     }
     def __init__(self, platform, speed="gen3", nlanes=4):
         data_width, sys_clk_freq = self.configs[speed + f":x{nlanes}"]
@@ -109,7 +111,7 @@ def main():
     parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
     parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
     parser.add_argument("--speed",  default="gen3",      help="PCIe speed: gen3")
-    parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 4 (default) or 8")
+    parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 4 (default), 8 or 16")
     args = parser.parse_args()
 
     platform = sqrl_fk33.Platform()
