@@ -374,7 +374,7 @@ class USPPCIEPHY(LiteXModule):
         self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
     # Hard IP sources ------------------------------------------------------------------------------
-    def add_sources(self, platform, phy_path, phy_filename=None):
+    def add_sources(self, platform, phy_path, phy_filename=None, hbm=False):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
@@ -404,7 +404,8 @@ class USPPCIEPHY(LiteXModule):
                 "PF0_INTERRUPT_PIN"            : "NONE",
             }
             ip_tcl = []
-            ip_tcl.append("create_ip -vendor xilinx.com -name pcie4_uscale_plus -module_name pcie_usp")
+            ip_name = {False: "pcie4_uscale_plus", True: "pcie4c_uscale_plus"}[hbm]
+            ip_tcl.append(f"create_ip -vendor xilinx.com -name {ip_name} -module_name pcie_usp")
             ip_tcl.append("set obj [get_ips pcie_usp]")
             ip_tcl.append("set_property -dict [list \\")
             for config, value in config.items():
@@ -448,6 +449,7 @@ class USPPCIEPHY(LiteXModule):
             )
             self.add_sources(self.platform,
                 phy_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
+                hbm      = isinstance(self, USPHBMPCIEPHY),
             )
         self.specials += Instance("pcie_support", **self.pcie_phy_params)
 
