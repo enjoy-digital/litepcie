@@ -431,7 +431,7 @@ class USPPCIEPHY(LiteXModule):
             platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "m_axis_cq_adapt_x16.v"))
             platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "s_axis_cc_adapt_x16.v"))
 
-        platform.add_source(os.path.join(phy_path, "pcie_usp_support.v"))
+        platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "pcie_usp_support.v"))
 
     # External Hard IP -----------------------------------------------------------------------------
     def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
