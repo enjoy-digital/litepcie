@@ -379,9 +379,8 @@ class USPCIEPHY(LiteXModule):
         else:
             # FIXME: Add missing parameters?
             config = {
-                "pf0_bar0_scale"             : "Megabytes",
-                "pf0_bar0_size"              : 1,
-                "PF0_INTERRUPT_PIN"          : "NONE",
+                # Generic Config.
+                # ---------------
                 "PL_LINK_CAP_MAX_LINK_WIDTH" : f"X{self.nlanes}",
                 "PL_LINK_CAP_MAX_LINK_SPEED" : "8.0_GT/s", # CHECKME.
                 "axisten_if_width"           : f"{self.pcie_data_width}_bit",
@@ -391,6 +390,15 @@ class USPCIEPHY(LiteXModule):
                 "aspm_support"               : "No_ASPM",
                 "coreclk_freq"               : 500, # CHECKME.
                 "plltype"                    : "QPLL1",
+
+                # BAR0 Config.
+                # ------------
+                "pf0_bar0_scale"             : "Megabytes",
+                "pf0_bar0_size"              : 1,
+
+                # Interrupt Config.
+                # -----------------
+                "PF0_INTERRUPT_PIN"          : "NONE",
             }
             ip_tcl = []
             ip_tcl.append("create_ip -vendor xilinx.com -name pcie3_ultrascale -module_name pcie_us")
