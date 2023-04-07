@@ -1,4 +1,4 @@
-graft litedram
+graft litepcie
 
 include CONTRIBUTORS
 include LICENSE
