@@ -196,6 +196,7 @@ module axis_iff
     assign          rda = ff_rd ? (rdcnt + 1) : rdcnt;
     assign          wra = wrcnt;
 
+    reg [3:0]        pktcnt;
     wire [DAT_B+1:0] ff_wdat;
     wire [DAT_B+1:0] ff_rdat;
     assign           ff_wdat = {i_sop, i_eop, i_dat};
@@ -203,7 +204,6 @@ module axis_iff
     assign           o_rdy = !(ff_len[FF_B] | pktcnt[3]);
     assign           o_vld = (pktcnt > 0);
 
-    reg [3:0]        pktcnt;
     assign           ff_wr = i_vld & (!(ff_len[FF_B] | pktcnt[3]));
     assign           ff_rd = i_rdy & (pktcnt > 0);
 
@@ -507,154 +507,79 @@ module pcie_support # (
   //----------------------------------------------------------------------------------------------------------------//
 
   //----------------------------------------------------- RQ AXIS --------------------------------------------------//
-  wire          s_axis_rq_tready_ff,
-                s_axis_rq_tvalid_ff,
-                s_axis_rq_tlast_ff;
-  wire [3:0]    s_axis_rq_tkeep_or = {|s_axis_rq_tkeep[15:12], |s_axis_rq_tkeep[11:8], |s_axis_rq_tkeep[7:4], |s_axis_rq_tkeep[3:0]};
 
-  wire [3:0]    s_axis_rq_tuser_ff;
-  wire [3:0]    s_axis_rq_tkeep_ff;
-  wire [127:0]  s_axis_rq_tdata_ff;
+  wire s_axis_rq_tvalid_a;
+  wire s_axis_rq_tready_a;
+  wire s_axis_rq_tlast_a;
 
-  axis_iff #(.DAT_B(128+4+4))  s_axis_rq_iff
-  (
-        .clk    (user_clk_out),
-        .rst    (user_reset_out),
-
-        .i_vld  (s_axis_rq_tvalid),
-        .o_rdy  (s_axis_rq_tready),
-        .i_sop  (1'b0),
-        .i_eop  (s_axis_rq_tlast),
-        .i_dat  ({s_axis_rq_tuser, s_axis_rq_tkeep_or, s_axis_rq_tdata}),
-
-        .o_vld  (s_axis_rq_tvalid_ff),
-        .i_rdy  (s_axis_rq_tready_ff),
-        .o_sop  (),
-        .o_eop  (s_axis_rq_tlast_ff),
-        .o_dat  ({s_axis_rq_tuser_ff, s_axis_rq_tkeep_ff, s_axis_rq_tdata_ff})
-    );
-
-
-  reg [1:0]       s_axis_rq_cnt;  //0-2
+  reg s_axis_rq_first;
   always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_cnt <= 2'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
-          begin
-              if (s_axis_rq_tlast_ff) s_axis_rq_cnt <= 2'd0;
-              else if (!s_axis_rq_cnt[1]) s_axis_rq_cnt <= s_axis_rq_cnt + 1;
+      if (user_reset_out) begin
+        s_axis_rq_first <= 1'd1;
+      end
+      else if (s_axis_rq_tvalid && s_axis_rq_tready) begin
+          s_axis_rq_first <= 1'd0;
+          if (s_axis_rq_tlast) begin
+             s_axis_rq_first <= 1'd1;
           end
+      end
 
-  wire            s_axis_rq_tfirst = (s_axis_rq_cnt == 0) && (!s_axis_rq_tlast_lat);
-  wire            s_axis_rq_tsecond = s_axis_rq_cnt == 1;
+  assign s_axis_rq_tlast_a  = s_axis_rq_tlast;
+  assign s_axis_rq_tready   = s_axis_rq_tready_a;
+  assign s_axis_rq_tvalid_a = s_axis_rq_tvalid;
 
-  //processing for tlast: generate new last in case write & last num of dword = 5, 9, 13, ...
-  wire            s_axis_rq_read = (s_axis_rq_tdata_ff[31:30] == 2'b0);  //Read request
-  wire            s_axis_rq_write = !s_axis_rq_read;
-  reg             s_axis_rq_tlast_dly_en;
-  reg             s_axis_rq_tlast_lat;
-  wire [3:0]      s_axis_rq_tready_a;
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_tlast_dly_en <= 1'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst && s_axis_rq_tready_ff && s_axis_rq_write) s_axis_rq_tlast_dly_en <= (s_axis_rq_tdata_ff[1:0] == 2'd1);
+  wire [10:0] s_axis_rq_dwlen = {1'b0, s_axis_rq_tdata[9:0]};
+  wire [3:0]  s_axis_rq_reqtype =
+    {s_axis_rq_tdata[31:30], s_axis_rq_tdata[28:24]} == 7'b0000000  ? 4'b0000 :  //Mem read Request
+    {s_axis_rq_tdata[31:30], s_axis_rq_tdata[28:24]} == 7'b0000001  ? 4'b0111 :  //Mem Read request-locked
+    {s_axis_rq_tdata[31:30], s_axis_rq_tdata[28:24]} == 7'b0100000  ? 4'b0001 :  //Mem write request
+                             s_axis_rq_tdata[31:24]  == 8'b00000010 ? 4'b0010 :  //I/O Read request
+                             s_axis_rq_tdata[31:24]  == 8'b01000010 ? 4'b0011 :  //I/O Write request
+                             s_axis_rq_tdata[31:24]  == 8'b00000100 ? 4'b1000 :  //Cfg Read Type 0
+                             s_axis_rq_tdata[31:24]  == 8'b01000100 ? 4'b1010 :  //Cfg Write Type 0
+                             s_axis_rq_tdata[31:24]  == 8'b00000101 ? 4'b1001 :  //Cfg Read Type 1
+                             s_axis_rq_tdata[31:24]  == 8'b01000101 ? 4'b1011 :  //Cfg Write Type 1
+                             4'b1111;
+  wire            s_axis_rq_poisoning    = s_axis_rq_tdata[14] | s_axis_rq_tuser[1];   //EP must be 0 for request
+  wire [15:0]     s_axis_rq_requesterid  = s_axis_rq_tdata[63:48];
+  wire [7:0]      s_axis_rq_tag          = s_axis_rq_tdata[47:40];
+  wire [15:0]     s_axis_rq_completerid  = 16'b0; // Applicable only to Configuration requests and messages routed by ID.
+  wire            s_axis_rq_requester_en = 1'b0;  // Must be 0 for Endpoint.
+  wire [2:0]      s_axis_rq_tc           = s_axis_rq_tdata[22:20];
+  wire [2:0]      s_axis_rq_attr         = {1'b0, s_axis_rq_tdata[13:12]};
+  wire            s_axis_rq_ecrc         = s_axis_rq_tdata[15] | s_axis_rq_tuser[0];     //TLP Digest
 
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_tlast_lat <= 1'd0;
-      else if (s_axis_rq_tlast_lat && s_axis_rq_tready_a[0]) s_axis_rq_tlast_lat <= 1'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tlast_ff && s_axis_rq_tready_a[0])
-          begin
-          if (s_axis_rq_tfirst) s_axis_rq_tlast_lat <= s_axis_rq_write ? 1'b1 : 1'b0; //write 1-dword
-          else s_axis_rq_tlast_lat <= s_axis_rq_tlast_dly_en;
-          end
+  wire [63:0]     s_axis_rq_tdata_header  = {
+    s_axis_rq_ecrc,
+    s_axis_rq_attr,
+    s_axis_rq_tc,
+    s_axis_rq_requester_en,
+    s_axis_rq_completerid,
+    s_axis_rq_tag,
+    s_axis_rq_requesterid,
+    s_axis_rq_poisoning, s_axis_rq_reqtype, s_axis_rq_dwlen
+  };
 
-  wire            s_axis_rq_tlast_a  = s_axis_rq_tfirst       ? s_axis_rq_read :
-                                       s_axis_rq_tlast_dly_en ? s_axis_rq_tlast_lat : s_axis_rq_tlast_ff;
-
-  //Generae ready for TLP
-  assign          s_axis_rq_tready_ff = s_axis_rq_tready_a[0] && (!s_axis_rq_tlast_lat);
-
-  wire            s_axis_rq_tvalid_a = s_axis_rq_tvalid_ff | s_axis_rq_tlast_lat;
-
-  wire [10:0]     s_axis_rq_dwlen = {1'b0, s_axis_rq_tdata_ff[9:0]};
-  wire [3:0]      s_axis_rq_reqtype = {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0000000 ? 4'b0000 :  //Mem read Request
-                                      {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0000001 ? 4'b0111 :  //Mem Read request-locked
-                                      {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0100000 ? 4'b0001 :  //Mem write request
-                                       s_axis_rq_tdata_ff[31:24] == 8'b00000010                           ? 4'b0010 :  //I/O Read request
-                                       s_axis_rq_tdata_ff[31:24] == 8'b01000010                           ? 4'b0011 :  //I/O Write request
-                                       s_axis_rq_tdata_ff[31:24] == 8'b00000100                           ? 4'b1000 :  //Cfg Read Type 0
-                                       s_axis_rq_tdata_ff[31:24] == 8'b01000100                           ? 4'b1010 :  //Cfg Write Type 0
-                                       s_axis_rq_tdata_ff[31:24] == 8'b00000101                           ? 4'b1001 :  //Cfg Read Type 1
-                                       s_axis_rq_tdata_ff[31:24] == 8'b01000101                           ? 4'b1011 :  //Cfg Write Type 1
-                                                                                                          4'b1111;
-  wire            s_axis_rq_poisoning = s_axis_rq_tdata_ff[14] | s_axis_rq_tuser_ff[1];   //EP must be 0 for request
-  wire [15:0]     s_axis_rq_requesterid = s_axis_rq_tdata_ff[63:48];
-  wire [7:0]      s_axis_rq_tag = s_axis_rq_tdata_ff[47:40];
-  wire [15:0]     s_axis_rq_completerid = 16'b0;   //applicable only to Configuration requests and messages routed by ID
-  wire            s_axis_rq_requester_en = 1'b0;   //Must be 0 for Endpoint
-  wire [2:0]      s_axis_rq_tc = s_axis_rq_tdata_ff[22:20];
-  wire [2:0]      s_axis_rq_attr = {1'b0, s_axis_rq_tdata_ff[13:12]};
-  wire            s_axis_rq_ecrc = s_axis_rq_tdata_ff[15] | s_axis_rq_tuser_ff[0];     //TLP Digest
-
-  wire [63:0]     s_axis_rq_tdata_header  = {s_axis_rq_ecrc,
-                                             s_axis_rq_attr,
-                                             s_axis_rq_tc,
-                                             s_axis_rq_requester_en,
-                                             s_axis_rq_completerid,
-                                             s_axis_rq_tag,
-                                             s_axis_rq_requesterid,
-                                             s_axis_rq_poisoning, s_axis_rq_reqtype, s_axis_rq_dwlen};
-
-  wire [3:0]      s_axis_rq_firstbe = s_axis_rq_tdata_ff[35:32];
-  wire [3:0]      s_axis_rq_lastbe = s_axis_rq_tdata_ff[39:36];
+wire [3:0]      s_axis_rq_firstbe = s_axis_rq_tdata[35:32];
+  wire [3:0]      s_axis_rq_lastbe = s_axis_rq_tdata[39:36];
   reg  [3:0]      s_axis_rq_firstbe_l;
   reg  [3:0]      s_axis_rq_lastbe_l;
 
   always @(posedge user_clk_out)
   begin
-      if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst)
+      if (s_axis_rq_tvalid && s_axis_rq_first)
           begin
           s_axis_rq_firstbe_l <= s_axis_rq_firstbe;
-          s_axis_rq_lastbe_l <= s_axis_rq_lastbe;
+          s_axis_rq_lastbe_l  <= s_axis_rq_lastbe;
           end
       end
 
-  reg [31:0]       s_axis_rq_tdata_l;
-  always @(posedge user_clk_out)
-      if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
-          s_axis_rq_tdata_l <= s_axis_rq_tdata_ff[127:96];
-
-  wire [127:0]    s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_header, 32'b0, s_axis_rq_tdata_ff[95:64]} : {s_axis_rq_tdata_ff[95:0], s_axis_rq_tdata_l[31:0]};
-  wire [3:0]      s_axis_rq_tkeep_a  = s_axis_rq_tlast_lat ? 4'b0001 : 4'b1111; //{s_axis_rq_tkeep_ff[2:0], 1'b1};
+  wire [127:0]    s_axis_rq_tdata_a  = s_axis_rq_first ? {s_axis_rq_tdata_header, s_axis_rq_tdata[95:64], s_axis_rq_tdata[127:96]} : s_axis_rq_tdata;
+  wire [3:0]      s_axis_rq_tkeep_a  = 4'b1111;
   wire [59:0]     s_axis_rq_tuser_a;
-  assign          s_axis_rq_tuser_a[59:8] = {32'b0, 4'b0, 1'b0, 8'b0, 2'b0, 1'b0, s_axis_rq_tuser_ff[3], 3'b0};
-  assign          s_axis_rq_tuser_a[7:0]  = s_axis_rq_tfirst ? {s_axis_rq_lastbe, s_axis_rq_firstbe} : {s_axis_rq_lastbe_l, s_axis_rq_firstbe_l};
+  assign          s_axis_rq_tuser_a[59:8] = {32'b0, 4'b0, 1'b0, 8'b0, 2'b0, 1'b0, s_axis_rq_tuser[3], 3'b0};
+  assign          s_axis_rq_tuser_a[7:0]  = s_axis_rq_first ? {s_axis_rq_lastbe, s_axis_rq_firstbe} : {s_axis_rq_lastbe_l, s_axis_rq_firstbe_l};
 
-  //Debug counter
-  reg [31:0]      rqcnt_rd;
-  always @(posedge user_clk_out)
-      if (user_reset_out) rqcnt_rd <= 16'b0;
-      else if (s_axis_rq_tvalid_a && s_axis_rq_tready_a[0] && s_axis_rq_tfirst && s_axis_rq_read) rqcnt_rd <= rqcnt_rd + s_axis_rq_dwlen;
-
-  reg [15:0]      rqcnt_wr;
-  always @(posedge user_clk_out)
-      if (user_reset_out) rqcnt_wr <= 16'b0;
-      else if (s_axis_rq_tvalid_a && s_axis_rq_tready_a[0] && s_axis_rq_tfirst && (!s_axis_rq_read)) rqcnt_wr <= rqcnt_wr + 1;
-
-   wire          rq_err;
-   axis_check_req   rq_check
-    (
-     .clk        (user_clk_out),
-     .rst        (user_reset_out),
-
-     .i_vld      (s_axis_rq_tvalid_a && s_axis_rq_tready_a[0]),
-     .i_read     (s_axis_rq_read),
-     .i_hdr3byte (1'b0),
-     .i_keep     (s_axis_rq_tkeep_a),
-     .i_eop      (s_axis_rq_tlast_a),
-     .i_sop      (s_axis_rq_tfirst),
-     .i_length   (s_axis_rq_dwlen),
-
-     .o_err      (rq_err)
-    );
 
   //----------------------------------------------------- RC AXIS --------------------------------------------------//
   wire            m_axis_rc_tvalid_a;
@@ -737,28 +662,6 @@ module pcie_support # (
   wire [3:0]      rc_errcode = m_axis_rc_tdata_a[15:12];
   wire            rc_status_err = ((m_axis_rc_cmpstatus != 3'b0) | (rc_errcode != 4'b0)) && m_axis_rc_tvalid && m_axis_rc_tready && m_axis_rc_sop;
 
-  //Debug counter
-  reg [31:0]      rccnt;
-  always @(posedge user_clk_out)
-      if (user_reset_out) rccnt <= 32'b0;
-      else if (m_axis_rc_tvalid_a && m_axis_rc_tready_a && m_axis_rc_sop) rccnt <= rccnt + m_axis_rc_dwlen;
-
-   wire          rc_err;
-   axis_check_cmp   rc_check
-    (
-     .clk        (user_clk_out),
-     .rst        (user_reset_out),
-
-     .i_vld      (m_axis_rc_tvalid && m_axis_rc_tready),
-     .i_hdr3byte (1'b1),
-     .i_keep     ({m_axis_rc_tkeep[12],m_axis_rc_tkeep[8],
-                   m_axis_rc_tkeep[4], m_axis_rc_tkeep[0]}),
-     .i_eop      (m_axis_rc_tlast),
-     .i_sop      (m_axis_rc_sop),
-     .i_length   (m_axis_rc_dwlen),
-
-     .o_err      (rc_err)
-    );
 
   //----------------------------------------------------- CQ AXIS --------------------------------------------------//
   wire            m_axis_cq_tvalid_a;
@@ -891,34 +794,6 @@ module pcie_support # (
                                      m_axis_cq_ecrc           //ECRC mapped to discontinue
                                      };
 
-  //Debug counter
-  reg [31:0]      cqcnt_rd;
-  always @(posedge user_clk_out)
-      if (user_reset_out) cqcnt_rd <= 16'b0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a && m_axis_cq_sop && m_axis_cq_read) cqcnt_rd <= cqcnt_rd + m_axis_cq_dwlen;
-
-  reg [15:0]      cqcnt_wr;
-  always @(posedge user_clk_out)
-      if (user_reset_out) cqcnt_wr <= 16'b0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a && m_axis_cq_sop && (!m_axis_cq_read)) cqcnt_wr <= cqcnt_wr + 1;
-
-   wire          cq_err;
-   axis_check_req   cq_check
-    (
-     .clk        (user_clk_out),
-     .rst        (user_reset_out),
-
-     .i_vld      (m_axis_cq_tvalid && m_axis_cq_tready),
-     .i_read     (m_axis_cq_read_l),
-     .i_hdr3byte (1'b1),
-     .i_keep     ({m_axis_cq_tkeep[12], m_axis_cq_tkeep[8], m_axis_cq_tkeep[4], m_axis_cq_tkeep[0]}),
-     .i_eop      (m_axis_cq_tlast),
-     .i_sop      (m_axis_cq_second | m_axis_cq_read_l),
-     .i_length   (m_axis_cq_header[9:0]),
-
-     .o_err      (cq_err)
-    );
-
   //----------------------------------------------------- CC AXIS --------------------------------------------------//
   wire          s_axis_cc_tready_ff,
                 s_axis_cc_tvalid_ff,
@@ -1032,14 +907,6 @@ module pcie_support # (
 
      .o_err      (cc_err)
     );
-
-  //----------------------------------------------------------------------------------------------------------------//
-  //Debug only
-
-  //Condition trigger
-  wire            cmperr_trigger = (m_axis_rc_tdata_a[15:12] != 4'b0) & m_axis_rc_tvalid_a & m_axis_rc_tready_a & m_axis_rc_sop;
-  //assign          debug  = {m_axis_rc_tdata_a[15:12], cmperr_trigger};
-  assign          debug = {rq_err, cq_err, rc_err, cc_err};
 
   //----------------------------------------------------------------------------------------------------------------//
   //   MSI Adaption Logic                                                                                          //

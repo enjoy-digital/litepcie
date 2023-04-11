@@ -791,7 +791,8 @@ class LitePCIeTLPPacketizer(Module):
         if address_width == 64:
             self.comb += [
                 # Use WR64/RD64 only when 64-bit Address's MSB != 0, else use WR32/RD32.
-                If(req_sink.adr[32:] != 0,
+                # FIXME: Always use 4DWs on Ultrascale(+).
+                #If(req_sink.adr[32:] != 0,
                     # Address's MSB on DW2, LSB on DW3 with 64-bit addressing: Requires swap due to
                     # Packetizer's behavior.
                     tlp_req.address[:32].eq(req_sink.adr[32:]),
@@ -801,7 +802,7 @@ class LitePCIeTLPPacketizer(Module):
                     ).Else(
                         tlp_req.fmt.eq( fmt_dict[ f"mem_rd64"]),
                     ),
-                )
+                #)
             ]
 
         self.comb += [
