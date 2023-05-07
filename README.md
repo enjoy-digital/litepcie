@@ -48,7 +48,7 @@ Frontend:
   - MMAP (AXI/Wishbone Slave/Master).
 
 Software:
-  - Linux Driver (MMAP and DMA).
+  - Linux Driver (MMAP, DMA, Nvidia RDMA).
 
 [> FPGA Proven
 ---------------
@@ -89,6 +89,14 @@ Tests can also be run individually:
 ```sh
 $ python3 -m unittest test.test_name
 ```
+
+[> Nvidia RDMA Support
+----------------------
+The Linux driver supports Nvidia's RDMA (Remote Direct Memory Access) API,
+allowing for direct data transfers between the FPGA and an Nvidia GPU.
+No gateware changes are required to enable this feature.
+It is recommended that the [Nvidia open-source GPU kernel module](https://github.com/NVIDIA/open-gpu-kernel-modules)
+ be used.
 
 [> License
 ----------

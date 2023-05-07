@@ -5,6 +5,11 @@ AR=ar
 
 PROGS=litepcie_util litepcie_test
 
+ifeq ($(NV_DMA),true)
+	LDFLAGS += -L$(CUDA_PREFIX)/lib -L$(CUDA_PREFIX)/lib64 -L$(CUDA_PREFIX)/lib64/stubs  -lcuda
+	CFLAGS += -I$(CUDA_PREFIX)/include -DNV_DMA
+endif
+
 all: $(PROGS)
 
 liblitepcie/liblitepcie.a: liblitepcie/litepcie_dma.o liblitepcie/litepcie_flash.o liblitepcie/litepcie_helpers.o

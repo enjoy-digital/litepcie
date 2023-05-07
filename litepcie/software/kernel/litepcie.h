@@ -33,6 +33,12 @@ struct litepcie_ioctl_icap {
 	uint32_t data;
 };
 
+struct litepcie_ioctl_dma_init {
+	uint8_t use_gpu;
+	uint64_t gpu_addr;
+	uint64_t gpu_size;
+};
+
 struct litepcie_ioctl_dma {
 	uint8_t loopback_enable;
 };
@@ -78,6 +84,7 @@ struct litepcie_ioctl_mmap_dma_update {
 #define LITEPCIE_IOCTL_FLASH             _IOWR(LITEPCIE_IOCTL,  1, struct litepcie_ioctl_flash)
 #define LITEPCIE_IOCTL_ICAP              _IOWR(LITEPCIE_IOCTL,  2, struct litepcie_ioctl_icap)
 
+#define LITEPCIE_IOCTL_DMA_INIT                  _IOW(LITEPCIE_IOCTL,  19, struct litepcie_ioctl_dma_init)
 #define LITEPCIE_IOCTL_DMA                       _IOW(LITEPCIE_IOCTL,  20, struct litepcie_ioctl_dma)
 #define LITEPCIE_IOCTL_DMA_WRITER                _IOWR(LITEPCIE_IOCTL, 21, struct litepcie_ioctl_dma_writer)
 #define LITEPCIE_IOCTL_DMA_READER                _IOWR(LITEPCIE_IOCTL, 22, struct litepcie_ioctl_dma_reader)

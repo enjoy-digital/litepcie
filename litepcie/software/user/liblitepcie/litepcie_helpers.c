@@ -24,7 +24,7 @@ int64_t get_time_ms(void)
 }
 
 uint32_t litepcie_readl(int fd, uint32_t addr) {
-    struct litepcie_ioctl_reg m;
+    struct litepcie_ioctl_reg m = {0};
     m.is_write = 0;
     m.addr = addr;
     checked_ioctl(fd, LITEPCIE_IOCTL_REG, &m);
@@ -32,7 +32,7 @@ uint32_t litepcie_readl(int fd, uint32_t addr) {
 }
 
 void litepcie_writel(int fd, uint32_t addr, uint32_t val) {
-    struct litepcie_ioctl_reg m;
+    struct litepcie_ioctl_reg m = {0};
     m.is_write = 1;
     m.addr = addr;
     m.val = val;
@@ -52,3 +52,20 @@ void _check_ioctl(int status, const char *file, int line) {
         abort();
     }
 }
+
+#ifdef NV_DMA
+void _check_cuda_call(CUresult status, const char *file, int line) {
+    if (status != CUDA_SUCCESS) {
+        const char *perrstr = 0;
+        CUresult ok = cuGetErrorString(status, &perrstr);
+        if (ok == CUDA_SUCCESS) {
+            if (perrstr) {
+                fprintf(stderr, "CUDA error at %s:%d: %s\n", file, line, perrstr);
+            } else {
+                fprintf(stderr, "CUDA error at %s:%d: unknown error\n", file, line);
+            }
+        }
+        abort();
+    }
+}
+#endif

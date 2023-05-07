@@ -29,6 +29,8 @@
 static char litepcie_device[1024];
 static int litepcie_device_num;
 
+static int cuda_device_num;
+
 sig_atomic_t keep_running = 1;
 
 void intHandler(int dummy) {
@@ -74,6 +76,32 @@ static void info(void)
            (double)litepcie_readl(fd, CSR_XADC_VCCBRAM_ADDR) / 4096 * 3);
 #endif
     close(fd);
+#ifdef NV_DMA
+    if (cuda_device_num >= 0) {
+        checked_cuda_call(cuInit(0));
+
+        CUdevice device;
+        checked_cuda_call(cuDeviceGet(&device, cuda_device_num));
+
+        char name[256];
+        checked_cuda_call(cuDeviceGetName(name, 256, device));
+        fprintf(stderr, "GPU identification: %s\n", name);
+
+        // get compute capabilities and the devicename
+        int major = 0, minor = 0;
+        checked_cuda_call(
+            cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
+        checked_cuda_call(
+            cuDeviceGetAttribute(&minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device));
+        fprintf(stderr, "GPU compute capability: %d.%d\n", major, minor);
+
+        size_t global_mem = 0;
+        checked_cuda_call(cuDeviceTotalMem(&global_mem, device));
+        fprintf(stderr, "GPU global memory: %llu MB\n", (unsigned long long)(global_mem >> 20));
+        if (global_mem > (unsigned long long)4 * 1024 * 1024 * 1024L)
+            fprintf(stderr, "GPU 64-bit memory address support\n");
+    }
+#endif
 }
 
 /* Scratch */
@@ -366,12 +394,22 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
     uint8_t run = 1;
 #endif
 
+#ifdef NV_DMA
+    CUdevice gpu_dev;
+    CUcontext gpu_ctx;
+    if (cuda_device_num >= 0) {
+        checked_cuda_call(cuInit(0));
+        checked_cuda_call(cuDeviceGet(&gpu_dev, cuda_device_num));
+        checked_cuda_call(cuCtxCreate(&gpu_ctx, 0, gpu_dev));
+    }
+#endif
+
     signal(SIGINT, intHandler);
 
     printf("\e[1m[> DMA loopback test:\e[0m\n");
     printf("---------------------\n");
 
-    if (litepcie_dma_init(&dma, litepcie_device, zero_copy))
+    if (litepcie_dma_init(&dma, litepcie_device, zero_copy, cuda_device_num >= 0))
         exit(1);
 
     /* Test loop. */
@@ -388,8 +426,11 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
         char *buf_wr;
         char *buf_rd;
 
+        // XXX: these individual read/write operations are very expensive
+        //      when backed by a GPU buffer, so disable data verification.
+
         /* DMA-TX Write. */
-        while (1) {
+        while (cuda_device_num == -1) {
             /* Get Write buffer. */
             buf_wr = litepcie_dma_next_write_buffer(&dma);
             /* Break when no buffer available for Write. */
@@ -400,7 +441,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
         }
 
         /* DMA-RX Read/Check */
-        while (1) {
+        while (cuda_device_num == -1) {
             /* Get Read buffer. */
             buf_rd = litepcie_dma_next_read_buffer(&dma);
             /* Break when no buffer available for Read. */
@@ -480,7 +521,10 @@ static void help(void)
            "\n"
            "options:\n"
            "-h                                Help.\n"
-           "-c device_num                     Select the device (default = 0).\n"
+           "-c device_num                     Select the FPGA device (default = 0).\n"
+#ifdef NV_DMA
+           "-g device_num                     Select the GPU device (default = -1, disabled).\n"
+#endif
            "-z                                Enable zero-copy DMA mode.\n"
            "-e                                Use external loopback (default = internal).\n"
            "-w data_width                     Width of data bus (default = 16).\n"
@@ -519,9 +563,11 @@ int main(int argc, char **argv)
     litepcie_device_zero_copy = 0;
     litepcie_device_external_loopback = 0;
 
+    cuda_device_num = -1;
+
     /* Parameters. */
     for (;;) {
-        c = getopt(argc, argv, "hc:w:zea");
+        c = getopt(argc, argv, "hc:g:w:zea");
         if (c == -1)
             break;
         switch(c) {
@@ -537,6 +583,11 @@ int main(int argc, char **argv)
         case 'z':
             litepcie_device_zero_copy = 1;
             break;
+#ifdef NV_DMA
+        case 'g':
+            cuda_device_num = atoi(optarg);
+            break;
+#endif
         case 'e':
             litepcie_device_external_loopback = 1;
             break;
