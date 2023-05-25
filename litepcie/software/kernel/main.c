@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: BSD-2-Clause
-
-/*
+/* SPDX-License-Identifier: BSD-2-Clause
+ *
  * LitePCIe driver
  *
  * This file is part of LitePCIe.
  *
- * Copyright (C) 2018-2020 / EnjoyDigital  / florent@enjoy-digital.fr
+ * Copyright (C) 2018-2023 / EnjoyDigital  / florent@enjoy-digital.fr
+ *
  */
 
 #include <linux/kernel.h>
