@@ -49,6 +49,10 @@
 #define LITEPCIE_NAME "litepcie"
 #define LITEPCIE_MINOR_COUNT 32
 
+#ifndef CSR_BASE
+#define CSR_BASE 0x00000000
+#endif
+
 struct litepcie_dma_chan {
 	uint32_t base;
 	uint32_t writer_interrupt;
