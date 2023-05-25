@@ -1,10 +1,11 @@
-/*
+/* SPDX-License-Identifier: BSD-2-Clause
+ *
  * LitePCIe library
  *
  * This file is part of LitePCIe.
  *
- * Copyright (C) 2018-2020 / EnjoyDigital  / florent@enjoy-digital.fr
- * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (C) 2018-2023 / EnjoyDigital  / florent@enjoy-digital.fr
+ *
  */
 
 #ifndef LITEPCIE_LIB_H
