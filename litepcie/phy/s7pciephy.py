@@ -470,7 +470,6 @@ class S7PCIEPHY(LiteXModule):
                 })
             if self.msi_type == "msi-x":
                 config.update({
-                    "Multiple_Message_Capable"  : "1_vector",
                     "mode_selection"            : "Advanced",
                     "MSIx_Enabled"              : True,
                     "MSIx_Table_Size"           : "20",   # Hexa.
