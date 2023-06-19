@@ -82,8 +82,9 @@ class LitePCIeMSIMultiVector(Module, AutoCSR):
 # LitePCIeMSIX -------------------------------------------------------------------------------------
 
 class LitePCIeMSIX(Module, AutoCSR):
-    def __init__(self, endpoint, width=32):
+    def __init__(self, endpoint, width=32, csr_ordering="little"):
         assert width <= 64
+        assert csr_ordering in ["big", "little"]
         self.irqs           = Signal(width)
         self.enable         = CSRStorage(width, description="""MSI-X Enable Control.\n
            Write bit(s) to ``1`` to enable corresponding MSI-X IRQ(s).""")
@@ -122,7 +123,7 @@ class LitePCIeMSIX(Module, AutoCSR):
             ]
 
         # Send MSI-X as TLP-Write ------------------------------------------------------------------
-        port     = endpoint.crossbar.get_master_port()
+        port       = endpoint.crossbar.get_master_port()
         table_port = self.table.get_port(has_re=True)
         self.specials += table_port
 
@@ -134,15 +135,23 @@ class LitePCIeMSIX(Module, AutoCSR):
                 NextState("ISSUE-WRITE")
             )
         )
+        port_source_adr = { # Lower Address from table.
+           "little": table_port.dat_r[3*32:4*32],
+           "big"   : table_port.dat_r[0*32:1*32],
+        }[csr_ordering]
+        port_source_dat = { # Message Data from table.
+            "little" : table_port.dat_r[1*32:2*32],
+            "big"    : table_port.dat_r[2*32:3*32],
+        }[csr_ordering]
         self.comb += [
             port.source.channel.eq(port.channel),
             port.source.first.eq(1),
             port.source.last.eq(1),
-            port.source.adr.eq(table_port.dat_r[96:128]), # Lower Address from table.
+            port.source.adr.eq(port_source_adr),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(1),
-            port.source.dat.eq(table_port.dat_r[32:64]), # Message Data from table.
+            port.source.dat.eq(port_source_dat),
         ]
         fsm.act("ISSUE-WRITE",
             port.source.valid.eq(1),
