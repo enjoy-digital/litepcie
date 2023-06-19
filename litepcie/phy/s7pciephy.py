@@ -22,7 +22,7 @@ from litepcie.phy.common import *
 class S7PCIEPHY(LiteXModule):
     endianness    = "big"
     qword_aligned = False
-    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
+    def __init__(self, platform, pads, data_width=64, bar0_size=0x100000, cd="sys", pcie_data_width=None):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
