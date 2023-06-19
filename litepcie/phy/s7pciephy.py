@@ -474,8 +474,8 @@ class S7PCIEPHY(LiteXModule):
                     "mode_selection"            : "Advanced",
                     "MSIx_Enabled"              : True,
                     "MSIx_Table_Size"           : "20",   # Hexa.
-                    "MSIx_Table_Offset"         : "2000", # Hexa.
-                    "MSIx_PBA_Offset"           : "1808", # Hexa.
+                    "MSIx_Table_Offset"         : "2000", # Hexa, should match CSR_PCIE_MSI_TABLE_BASE.
+                    "MSIx_PBA_Offset"           : "1808", # Hexa, should match CSR_PCIE_MSI_PBA_ADDR.
                 })
 
             ip_tcl = []
