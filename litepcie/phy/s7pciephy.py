@@ -26,6 +26,7 @@ class S7PCIEPHY(LiteXModule):
         # PCIe hardblock parameters.
         pcie_data_width = None,
         bar0_size       = 0x100000,
+        msi_type        = "msi",
     ):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
@@ -61,6 +62,7 @@ class S7PCIEPHY(LiteXModule):
         self.platform         = platform
         self.data_width       = data_width
         self.pcie_data_width  = pcie_data_width
+        self.msi_type         = msi_type
 
         self.id               = Signal(16, reset_less=True)
         self.bar0_size        = bar0_size
@@ -447,7 +449,6 @@ class S7PCIEPHY(LiteXModule):
                 "IntX_Generation"    : False,
                 "Interface_Width"    : f"{self.pcie_data_width}_bit",
                 "Legacy_Interrupt"   : None,
-                "Multiple_Message_Capable"  : '1_vector',
                 "Link_Speed"         : "5.0_GT/s",
                 "MSI_64b"            : False,
                 "Max_Payload_Size"   : "512_bytes" if self.nlanes != 8 else "256_bytes",
@@ -458,6 +459,25 @@ class S7PCIEPHY(LiteXModule):
                 "Trgt_Link_Speed"    : "4'h2",
                 "User_Clk_Freq"      : 125 if self.nlanes != 8 else 250,
             }
+            assert self.msi_type in ["msi", "msi-multi-vector", "msi-x"]
+            if self.msi_type == "msi":
+                config.update({
+                    "Multiple_Message_Capable"  : "1_vector",
+                })
+            if self.msi_type == "msi-multi-vector":
+                config.update({
+                    "Multiple_Message_Capable"  : "1_vector", # FIXME.
+                })
+            if self.msi_type == "msi-x":
+                config.update({
+                    "Multiple_Message_Capable"  : "1_vector",
+                    "mode_selection"            : "Advanced",
+                    "MSIx_Enabled"              : True,
+                    "MSIx_Table_Size"           : "20",   # Hexa.
+                    "MSIx_Table_Offset"         : "2000", # Hexa.
+                    "MSIx_PBA_Offset"           : "1808", # Hexa.
+                })
+
             ip_tcl = []
             ip_tcl.append("create_ip -vendor xilinx.com -name pcie_7x -module_name pcie_s7")
             ip_tcl.append("set obj [get_ips pcie_s7]")
