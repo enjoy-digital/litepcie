@@ -440,17 +440,15 @@ class S7PCIEPHY(LiteXModule):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
+            # Global parameters.
             config = {
                 "Bar0_Scale"         : "Megabytes",
                 "Bar0_Size"          : 1,
                 "Buf_Opt_BMA"        : True,
                 "Component_Name"     : "pcie",
                 "Device_ID"          : 7020 + self.nlanes,
-                "IntX_Generation"    : False,
                 "Interface_Width"    : f"{self.pcie_data_width}_bit",
-                "Legacy_Interrupt"   : None,
                 "Link_Speed"         : "5.0_GT/s",
-                "MSI_64b"            : False,
                 "Max_Payload_Size"   : "512_bytes" if self.nlanes != 8 else "256_bytes",
                 "Maximum_Link_Width" : f"X{self.nlanes}",
                 "PCIe_Blk_Locn"      : "X0Y0",
@@ -459,22 +457,30 @@ class S7PCIEPHY(LiteXModule):
                 "Trgt_Link_Speed"    : "4'h2",
                 "User_Clk_Freq"      : 125 if self.nlanes != 8 else 250,
             }
+            # Interrupts parameters.
             assert self.msi_type in ["msi", "msi-multi-vector", "msi-x"]
+            config.update({
+                    "Legacy_Interrupt" : None,
+                    "IntX_Generation"  : False,
+            })
             if self.msi_type == "msi":
                 config.update({
-                    "Multiple_Message_Capable"  : "1_vector",
+                    "MSI_64b"                  : False,
+                    "Multiple_Message_Capable" : "1_vector",
                 })
             if self.msi_type == "msi-multi-vector":
                 config.update({
-                    "Multiple_Message_Capable"  : "1_vector", # FIXME.
+                    "MSI_64b"                  : False,
+                    "Multiple_Message_Capable" : "1_vector", # FIXME.
                 })
             if self.msi_type == "msi-x":
                 config.update({
-                    "mode_selection"            : "Advanced",
-                    "MSIx_Enabled"              : True,
-                    "MSIx_Table_Size"           : "20",   # Hexa.
-                    "MSIx_Table_Offset"         : "2000", # Hexa, should match CSR_PCIE_MSI_TABLE_BASE.
-                    "MSIx_PBA_Offset"           : "1808", # Hexa, should match CSR_PCIE_MSI_PBA_ADDR.
+                    "mode_selection"    : "Advanced",
+                    "MSI_Enabled"       : False,
+                    "MSIx_Enabled"      : True,
+                    "MSIx_Table_Size"   : "20",   # Hexa.
+                    "MSIx_Table_Offset" : "2000", # Hexa, should match CSR_PCIE_MSI_TABLE_BASE.
+                    "MSIx_PBA_Offset"   : "1808", # Hexa, should match CSR_PCIE_MSI_PBA_ADDR.
                 })
 
             ip_tcl = []
