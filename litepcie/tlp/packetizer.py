@@ -822,7 +822,11 @@ class LitePCIeTLPPacketizer(Module):
             tlp_req.first_be.eq(0xf),
             tlp_req.dat.eq(req_sink.dat),
             If(req_sink.we,
-                tlp_req.be.eq(2**(data_width//8)-1)
+                If(req_sink.len == 1,
+                    tlp_req.be.eq(0xf)
+                ).Else(
+                    tlp_req.be.eq(2**(data_width//8)-1)
+                )
             ).Else(
                 tlp_req.be.eq(0x00)
             )
