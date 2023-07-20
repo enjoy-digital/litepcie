@@ -1,11 +1,13 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # Copyright (c) 2020 Antmicro <www.antmicro.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
+
+from litex.gen import *
 
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.csr import *
@@ -24,7 +26,7 @@ def descriptor_layout(address_width=32, with_user_id=False):
 
 # LitePCIeDMAScatterGather --------------------------------------------------------------------------
 
-class LitePCIeDMAScatterGather(Module, AutoCSR):
+class LitePCIeDMAScatterGather(LiteXModule):
     """LitePCIe DMA Scatter-Gather
 
     Software programmable table storing a list of DMA descriptors.
@@ -167,7 +169,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
 
 # LitePCIeDMADescriptorSplitter --------------------------------------------------------------------
 
-class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
+class LitePCIeDMADescriptorSplitter(LiteXModule):
     """LitePCIe DMA Descriptor Splitter
 
     Splits descriptors from LitePCIeDMAScatterGather in shorter descriptors of:
@@ -194,7 +196,7 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
         desc_id      = Signal(32)
 
         # FSM --------------------------------------------------------------------------------------
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             # Set Descriptor Offset/Length.
             NextValue(desc_offset, 0),
@@ -244,7 +246,7 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
 
 # LitePCIeDMAReader --------------------------------------------------------------------------------
 
-class LitePCIeDMAReader(Module, AutoCSR):
+class LitePCIeDMAReader(LiteXModule):
     """LitePCIe DMA Reader
 
     Generates a data stream from Host's memory.
@@ -280,7 +282,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
-            self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width=address_width)
+            self.table = LitePCIeDMAScatterGather(table_depth, address_width=address_width)
         else:
             self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
 
@@ -293,7 +295,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         splitter = ResetInserter()(splitter)
         if with_splitter_buffer: # For timings.
             splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
-        self.submodules.splitter = splitter
+        self.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
         else:
@@ -308,7 +310,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_pending_words
         data_fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), data_fifo_depth, buffered=True)
-        self.submodules.data_fifo = ResetInserter()(data_fifo)
+        self.data_fifo = ResetInserter()(data_fifo)
         self.comb += [
             # Connect Data FIFO to Source.
             data_fifo.source.connect(self.source),
@@ -342,7 +344,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.sync += If(~enable, pending_words.eq(0))
 
         # FSM --------------------------------------------------------------------------------------
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             # Reset Splitter/FIFO when disabled.
             If(~enable,
@@ -386,7 +388,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
 # LitePCIeDMAWriter --------------------------------------------------------------------------------
 
-class LitePCIeDMAWriter(Module, AutoCSR):
+class LitePCIeDMAWriter(LiteXModule):
     """LitePCIe DMA Writer
 
     Stores a data stream to Host's memory.
@@ -421,7 +423,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
-            self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width)
+            self.table = LitePCIeDMAScatterGather(table_depth, address_width)
         else:
             self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
 
@@ -435,7 +437,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         if with_splitter_buffer: # For timings.
             # FIXME: Prevent early termination, so don't use when early termination is required.
             splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
-        self.submodules.splitter = splitter
+        self.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
         else:
@@ -444,7 +446,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_words_per_request
         data_fifo = stream.SyncFIFO([("data", endpoint.phy.data_width)], data_fifo_depth, buffered=True)
-        self.submodules.data_fifo = ResetInserter()(data_fifo)
+        self.data_fifo = ResetInserter()(data_fifo)
         # By default, accept incoming stream when disabled.
         self.comb += sink.ready.eq(1)
         # When Enabled, connect Sink to Data FIFO.
@@ -452,7 +454,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # FSM --------------------------------------------------------------------------------------
         req_count = Signal.like(splitter.source.length)
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             # Reset Request Count.
             NextValue(req_count, 0),
@@ -511,7 +513,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
 # LitePCIeDMALoopback ------------------------------------------------------------------------------
 
-class LitePCIeDMALoopback(Module, AutoCSR):
+class LitePCIeDMALoopback(LiteXModule):
     """LitePCIe DMA Loopback
 
     Optional DMA Reader to DMA Writer loopback.
@@ -544,7 +546,7 @@ class LitePCIeDMALoopback(Module, AutoCSR):
 
 # LitePCIeDMASynchronizer --------------------------------------------------------------------------
 
-class LitePCIeDMASynchronizer(Module, AutoCSR):
+class LitePCIeDMASynchronizer(LiteXModule):
     """LitePCIe DMA Synchronizer
 
     Optional DMA synchronization.
@@ -612,7 +614,7 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
 
 # LitePCIeDMABuffering -----------------------------------------------------------------------------
 
-class LitePCIeDMABuffering(Module, AutoCSR):
+class LitePCIeDMABuffering(LiteXModule):
     """LitePCIe DMA Buffering
 
     Optional DMA buffering with dynamically configurable depth.
@@ -732,7 +734,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
 
 # LitePCIeDMAStatus --------------------------------------------------------------------------------
 
-class LitePCIeDMAStatus(Module, AutoCSR):
+class LitePCIeDMAStatus(LiteXModule):
     """LitePCIe DMA Status
 
     Optional DMA Status writer to Host Memory.
@@ -804,7 +806,7 @@ class LitePCIeDMAStatus(Module, AutoCSR):
         offset = Signal(4)
         assert len(status)%dwords == 0
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             If(self.control.fields.enable,
                 If(update,
@@ -849,7 +851,7 @@ class LitePCIeDMAStatus(Module, AutoCSR):
 
 # LitePCIeDMA --------------------------------------------------------------------------------------
 
-class LitePCIeDMA(Module, AutoCSR):
+class LitePCIeDMA(LiteXModule):
     """LitePCIe DMA
 
     Scatter-Gather bi-directional DMA:
@@ -882,46 +884,44 @@ class LitePCIeDMA(Module, AutoCSR):
 
         # Writer/Reader ----------------------------------------------------------------------------
         if with_writer:
-            writer = LitePCIeDMAWriter(
+            self.writer = LitePCIeDMAWriter(
                 endpoint             = endpoint,
                 port                 = endpoint.crossbar.get_master_port(write_only=True),
                 table_depth          = table_depth,
                 address_width        = address_width,
                 with_splitter_buffer = with_writer_splitter_buffer,
             )
-            self.submodules.writer = writer
             self.comb += self.sink.connect(self.writer.sink)
 
         if with_reader:
-            reader = LitePCIeDMAReader(
+            self.reader = LitePCIeDMAReader(
                 endpoint             = endpoint,
                 port                 = endpoint.crossbar.get_master_port(read_only=True),
                 table_depth          = table_depth,
                 address_width        = address_width,
                 with_splitter_buffer = with_reader_splitter_buffer,
             )
-            self.submodules.reader = reader
-            self.comb += reader.source.connect(self.source)
+            self.comb += self.reader.source.connect(self.source)
 
         # Loopback ---------------------------------------------------------------------------------
         if with_loopback:
             if not (with_writer and with_reader):
                 raise ValueError("Loopback capability requires DMAWriter and DMAReader to be enabled.")
-            self.submodules.loopback = LitePCIeDMALoopback(data_width)
+            self.loopback = LitePCIeDMALoopback(data_width)
             self.add_plugin_module(self.loopback)
 
         # Synchronizer -----------------------------------------------------------------------------
         if with_synchronizer:
             if not (with_writer and with_reader):
                 raise ValueError("Synchronizer capability requires DMAWriter and DMAReader to be enabled.")
-            self.submodules.synchronizer = LitePCIeDMASynchronizer(data_width)
+            self.synchronizer = LitePCIeDMASynchronizer(data_width)
             self.add_plugin_module(self.synchronizer)
 
         # Buffering --------------------------------------------------------------------------------
         if with_buffering:
             writer_depth = writer_buffering_depth if writer_buffering_depth is not None else buffering_depth
             reader_depth = reader_buffering_depth if reader_buffering_depth is not None else buffering_depth
-            self.submodules.buffering = LitePCIeDMABuffering(
+            self.buffering = LitePCIeDMABuffering(
                 data_width   = data_width,
                 with_reader  = with_reader,
                 with_writer  = with_writer,
@@ -933,18 +933,18 @@ class LitePCIeDMA(Module, AutoCSR):
         # Monitor ----------------------------------------------------------------------------------
         if with_monitor:
             if with_writer:
-                self.submodules.writer_monitor = stream.Monitor(self.sink,   count_width=16, with_overflows  = True)
+                self.writer_monitor = stream.Monitor(self.sink,   count_width=16, with_overflows  = True)
             if with_reader:
-                self.submodules.reader_monitor = stream.Monitor(self.source, count_width=16, with_underflows = True)
+                self.reader_monitor = stream.Monitor(self.source, count_width=16, with_underflows = True)
 
         # Status -----------------------------------------------------------------------------------
         if with_status:
             if not (with_writer and with_reader):
                 raise ValueError("Status capability requires DMAWriter and DMAReader to be enabled.")
-            self.submodules.status = LitePCIeDMAStatus(
+            self.status = LitePCIeDMAStatus(
                 endpoint      = endpoint,
-                writer        = writer,
-                reader        = reader,
+                writer        = self.writer,
+                reader        = self.reader,
                 address_width = address_width,
             )
 
