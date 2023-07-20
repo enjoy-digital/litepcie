@@ -260,10 +260,11 @@ class LitePCIeDMAReader(LiteXModule):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, with_splitter_buffer=True):
-        self.port = port
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None, with_splitter_buffer=True):
+        self.port       = port
+        self.data_width = data_width or endpoint.phy.data_width
         # Stream Endpoint.
-        self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
+        self.source = stream.Endpoint(dma_layout(self.data_width))
 
         # Control.
         self._enable = CSRStorage(size=2, description="DMA Reader Control. Write ``1`` to enable DMA Reader.", reset=0 if with_table else 1)
@@ -307,13 +308,18 @@ class LitePCIeDMAReader(LiteXModule):
             last_user_id.eq(port.sink.user_id)
         )
 
+        # Data Converter ---------------------------------------------------------------------------
+
+        self.data_conv = stream.Converter(endpoint.phy.data_width, self.data_width)
+        self.comb += self.data_conv.source.connect(self.source)
+
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_pending_words
         data_fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), data_fifo_depth, buffered=True)
         self.data_fifo = ResetInserter()(data_fifo)
         self.comb += [
-            # Connect Data FIFO to Source.
-            data_fifo.source.connect(self.source),
+            # Connect Data FIFO to Data Converter.
+            data_fifo.source.connect(self.data_conv.sink),
             # When Enabled, connect Sink to Data FIFO.
             If(enable,
                 port.sink.connect(data_fifo.sink, keep={"valid", "ready"}),
@@ -402,10 +408,11 @@ class LitePCIeDMAWriter(LiteXModule):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, with_splitter_buffer=True):
-        self.port = port
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None, with_splitter_buffer=True):
+        self.port       = port
+        self.data_width = data_width or endpoint.phy.data_width
         # Stream Endpoint.
-        self.sink = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
+        self.sink = stream.Endpoint(dma_layout(self.data_width))
 
         # Control.
         self._enable = CSRStorage(size=2, description="DMA Writer Control. Write ``1`` to enable DMA Writer.", reset=0 if with_table else 1)
@@ -443,14 +450,19 @@ class LitePCIeDMAWriter(LiteXModule):
         else:
             self.comb += self.desc_sink.connect(splitter.sink)
 
+        # Data Converter ---------------------------------------------------------------------------
+
+        self.data_conv = stream.Converter(self.data_width, endpoint.phy.data_width)
+        self.comb += self.sink.connect(self.data_conv.sink)
+
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_words_per_request
         data_fifo = stream.SyncFIFO([("data", endpoint.phy.data_width)], data_fifo_depth, buffered=True)
         self.data_fifo = ResetInserter()(data_fifo)
         # By default, accept incoming stream when disabled.
-        self.comb += sink.ready.eq(1)
-        # When Enabled, connect Sink to Data FIFO.
-        self.comb += If(enable, sink.connect(data_fifo.sink))
+        self.comb += self.data_conv.source.ready.eq(1)
+        # When Enabled, connect Data Converter to Data FIFO.
+        self.comb += If(enable, self.data_conv.source.connect(data_fifo.sink))
 
         # FSM --------------------------------------------------------------------------------------
         req_count = Signal.like(splitter.source.length)
@@ -860,7 +872,7 @@ class LitePCIeDMA(LiteXModule):
 
     Optional buffering, loopback, synchronization and monitoring.
     """
-    def __init__(self, phy, endpoint, table_depth=256, address_width=32, with_writer=True, with_reader=True,
+    def __init__(self, phy, endpoint, table_depth=256, address_width=32, data_width=None, with_writer=True, with_reader=True,
         # Loopback.
         with_loopback     = False,
         # Synchronizer.
@@ -876,11 +888,11 @@ class LitePCIeDMA(LiteXModule):
         with_reader_splitter_buffer = True,
     ):
         # Parameters -------------------------------------------------------------------------------
-        self.data_width = data_width = phy.data_width
+        self.data_width = data_width or phy.data_width
 
         # Endoints ---------------------------------------------------------------------------------
-        self.sink   = stream.Endpoint(dma_layout(data_width))
-        self.source = stream.Endpoint(dma_layout(data_width))
+        self.sink   = stream.Endpoint(dma_layout(self.data_width))
+        self.source = stream.Endpoint(dma_layout(self.data_width))
 
         # Writer/Reader ----------------------------------------------------------------------------
         if with_writer:
@@ -889,6 +901,7 @@ class LitePCIeDMA(LiteXModule):
                 port                 = endpoint.crossbar.get_master_port(write_only=True),
                 table_depth          = table_depth,
                 address_width        = address_width,
+                data_width           = self.data_width,
                 with_splitter_buffer = with_writer_splitter_buffer,
             )
             self.comb += self.sink.connect(self.writer.sink)
@@ -899,6 +912,7 @@ class LitePCIeDMA(LiteXModule):
                 port                 = endpoint.crossbar.get_master_port(read_only=True),
                 table_depth          = table_depth,
                 address_width        = address_width,
+                data_width           = self.data_width,
                 with_splitter_buffer = with_reader_splitter_buffer,
             )
             self.comb += self.reader.source.connect(self.source)
@@ -907,14 +921,14 @@ class LitePCIeDMA(LiteXModule):
         if with_loopback:
             if not (with_writer and with_reader):
                 raise ValueError("Loopback capability requires DMAWriter and DMAReader to be enabled.")
-            self.loopback = LitePCIeDMALoopback(data_width)
+            self.loopback = LitePCIeDMALoopback(self.data_width)
             self.add_plugin_module(self.loopback)
 
         # Synchronizer -----------------------------------------------------------------------------
         if with_synchronizer:
             if not (with_writer and with_reader):
                 raise ValueError("Synchronizer capability requires DMAWriter and DMAReader to be enabled.")
-            self.synchronizer = LitePCIeDMASynchronizer(data_width)
+            self.synchronizer = LitePCIeDMASynchronizer(self.data_width)
             self.add_plugin_module(self.synchronizer)
 
         # Buffering --------------------------------------------------------------------------------
@@ -922,7 +936,7 @@ class LitePCIeDMA(LiteXModule):
             writer_depth = writer_buffering_depth if writer_buffering_depth is not None else buffering_depth
             reader_depth = reader_buffering_depth if reader_buffering_depth is not None else buffering_depth
             self.buffering = LitePCIeDMABuffering(
-                data_width   = data_width,
+                data_width   = self.data_width,
                 with_reader  = with_reader,
                 with_writer  = with_writer,
                 reader_depth = reader_depth,
