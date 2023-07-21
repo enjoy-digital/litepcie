@@ -856,7 +856,7 @@ module pcie_support # (
   wire            cfg_interrupt_msi_int_valid_edge = cfg_interrupt_msi_int_valid_sh == 2'b01;
   always @(posedge user_clk_out)
       if (user_reset_out) cfg_interrupt_msi_int_valid_sh <= 2'd0;
-      else cfg_interrupt_msi_int_valid_sh <= {cfg_interrupt_msi_int_valid_sh[0], cfg_interrupt_msi_int_valid};
+      else cfg_interrupt_msi_int_valid_sh <= {cfg_interrupt_msi_int_valid_sh[0], cfg_interrupt_msi_int_valid & ~(cfg_interrupt_msi_sent | cfg_interrupt_msi_fail)};
 
   //latch int_enc
   reg [31:0]      cfg_interrupt_msi_int_enc_lat = 32'b0;
