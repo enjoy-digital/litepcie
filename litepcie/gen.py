@@ -316,13 +316,7 @@ class LitePCIeCore(SoCMini):
                 self.pcie_msi = LitePCIeMSIMultiVector(width=32)
             else:
                 self.pcie_msi = LitePCIeMSI(width=32)
-            # On Ultrascale/Ultrascale+ limit rate of IRQs to 1MHz (to prevent issue with IRQs stalled).
-            if isinstance(self.pcie_phy, (USPCIEPHY, USPPCIEPHY)):
-                self.pcie_msi_timer = WaitTimer(int(sys_clk_freq/1e6))
-                self.comb += self.pcie_msi_timer.wait.eq(~self.pcie_msi_timer.done)
-                self.comb += If(self.pcie_msi_timer.done, self.pcie_msi.source.connect(self.pcie_phy.msi))
-            else:
-                self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
+            self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
             self.comb += self.pcie_msi.irqs[16:16+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
         self.interrupts = {}
         for i in range(core_config["dma_channels"]):
