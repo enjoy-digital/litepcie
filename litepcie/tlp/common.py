@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
@@ -20,6 +20,8 @@ fmt_dict = {
     "mem_wr64": 0b11,
     "cpld":     0b10,
     "cpl":      0b00,
+    "cfg_rd0":  0b00,
+    "cfg_wr0":  0b10,
 }
 
 type_dict = {
@@ -29,6 +31,8 @@ type_dict = {
     "mem_wr64": 0b00000,
     "cpld":     0b01010,
     "cpl":      0b01010,
+    "cfg_rd0":  0b00101,
+    "cfg_wr0":  0b00101,
 }
 
 fmt_type_dict = {
@@ -38,6 +42,8 @@ fmt_type_dict = {
     "mem_wr64": 0b11_00000,
     "cpld":     0b10_01010,
     "cpl":      0b00_01010,
+    "cfg_rd0":  0b00_00101,
+    "cfg_wr0":  0b10_00101,
 }
 
 cpl_dict = {
