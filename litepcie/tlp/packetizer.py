@@ -1,18 +1,19 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
 
+from litex.gen import *
 from litex.gen.genlib.misc import chooser
 
 from litepcie.tlp.common import *
 
 # LitePCIeTLPHeaderInserter ------------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter3DWs4DWs(Module):
+class LitePCIeTLPHeaderInserter3DWs4DWs(LiteXModule):
     def __init__(self, data_width, header_inserter_3dws_cls, header_inserter_4dws_cls, fmt):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(data_width))
         self.source = source = stream.Endpoint(phy_layout(data_width))
@@ -51,7 +52,7 @@ class LitePCIeTLPHeaderInserter3DWs4DWs(Module):
 
 # LitePCIeTLPHeaderInserter64b ---------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter64b3DWs(Module):
+class LitePCIeTLPHeaderInserter64b3DWs(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(64))
         self.source = source = stream.Endpoint(phy_layout(64))
@@ -70,7 +71,7 @@ class LitePCIeTLPHeaderInserter64b3DWs(Module):
             )
         ]
 
-        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        self.fsm = fsm = FSM(reset_state="HEADER")
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid & sink.first,
@@ -123,7 +124,7 @@ class LitePCIeTLPHeaderInserter64b3DWs(Module):
             )
         )
 
-class LitePCIeTLPHeaderInserter64b4DWs(Module):
+class LitePCIeTLPHeaderInserter64b4DWs(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(64))
         self.source = source = stream.Endpoint(phy_layout(64))
@@ -131,7 +132,7 @@ class LitePCIeTLPHeaderInserter64b4DWs(Module):
         # # #
 
         count = Signal()
-        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        self.fsm = fsm = FSM(reset_state="HEADER")
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid & sink.first,
@@ -191,7 +192,7 @@ class LitePCIeTLPHeaderInserter64b(LitePCIeTLPHeaderInserter3DWs4DWs):
 
 # LitePCIeTLPHeaderInserter128b --------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter128b3DWs(Module):
+class LitePCIeTLPHeaderInserter128b3DWs(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(128))
         self.source = source = stream.Endpoint(phy_layout(128))
@@ -209,7 +210,7 @@ class LitePCIeTLPHeaderInserter128b3DWs(Module):
             )
         ]
 
-        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        self.fsm = fsm = FSM(reset_state="HEADER")
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid & sink.first,
@@ -262,14 +263,14 @@ class LitePCIeTLPHeaderInserter128b3DWs(Module):
             )
         )
 
-class LitePCIeTLPHeaderInserter128b4DWs(Module):
+class LitePCIeTLPHeaderInserter128b4DWs(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(128))
         self.source = source = stream.Endpoint(phy_layout(128))
 
         # # #
 
-        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        self.fsm = fsm = FSM(reset_state="HEADER")
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid & sink.first,
@@ -330,7 +331,7 @@ class LitePCIeTLPHeaderInserter128b(LitePCIeTLPHeaderInserter3DWs4DWs):
 
 # LitePCIeTLPHeaderInserter256b --------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter256b3DWs(Module):
+class LitePCIeTLPHeaderInserter256b3DWs(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(256))
         self.source = source = stream.Endpoint(phy_layout(256))
@@ -348,7 +349,7 @@ class LitePCIeTLPHeaderInserter256b3DWs(Module):
             )
         ]
 
-        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        self.fsm = fsm = FSM(reset_state="HEADER")
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid & sink.first,
@@ -416,7 +417,7 @@ class LitePCIeTLPHeaderInserter256b3DWs(Module):
             )
         )
 
-class LitePCIeTLPHeaderInserter256b4DWs(Module):
+class LitePCIeTLPHeaderInserter256b4DWs(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(256))
         self.source = source = stream.Endpoint(phy_layout(256))
@@ -434,7 +435,7 @@ class LitePCIeTLPHeaderInserter256b4DWs(Module):
             )
         ]
 
-        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        self.fsm = fsm = FSM(reset_state="HEADER")
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid & sink.first,
@@ -513,7 +514,7 @@ class LitePCIeTLPHeaderInserter256b(LitePCIeTLPHeaderInserter3DWs4DWs):
 
 # LitePCIeTLPHeaderInserter512b --------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter512b3DWs(Module):
+class LitePCIeTLPHeaderInserter512b3DWs(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(512))
         self.source = source = stream.Endpoint(phy_layout(512))
@@ -531,7 +532,7 @@ class LitePCIeTLPHeaderInserter512b3DWs(Module):
             )
         ]
 
-        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        self.fsm = fsm = FSM(reset_state="HEADER")
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid & sink.first,
@@ -631,7 +632,7 @@ class LitePCIeTLPHeaderInserter512b3DWs(Module):
             )
         )
 
-class LitePCIeTLPHeaderInserter512b4DWs(Module):
+class LitePCIeTLPHeaderInserter512b4DWs(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(512))
         self.source = source = stream.Endpoint(phy_layout(512))
@@ -649,7 +650,7 @@ class LitePCIeTLPHeaderInserter512b4DWs(Module):
             )
         ]
 
-        self.submodules.fsm = fsm = FSM(reset_state="HEADER")
+        self.fsm = fsm = FSM(reset_state="HEADER")
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid & sink.first,
@@ -761,7 +762,7 @@ class LitePCIeTLPHeaderInserter512b(LitePCIeTLPHeaderInserter3DWs4DWs):
 
 # LitePCIeTLPPacketizer ----------------------------------------------------------------------------
 
-class LitePCIeTLPPacketizer(Module):
+class LitePCIeTLPPacketizer(LiteXModule):
     def __init__(self, data_width, endianness, address_width=32):
         assert data_width%32 == 0
         assert address_width in [32, 64]
@@ -906,7 +907,7 @@ class LitePCIeTLPPacketizer(Module):
         # Arbitrate --------------------------------------------------------------------------------
 
         tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))
-        self.submodules.arbitrer = Arbiter(
+        self.arbitrer = Arbiter(
             masters = [tlp_raw_req, tlp_raw_cmp],
             slave   = tlp_raw
         )

@@ -6,12 +6,14 @@
 
 from migen import *
 
+from litex.gen import *
+
 from litepcie.common import *
 from litepcie.core.common import *
 from litepcie.tlp.common import *
 
 
-class LitePCIeTLPController(Module):
+class LitePCIeTLPController(LiteXModule):
     """LitePCIe TLP requests/completions controller.
 
     Arbitrate/throttle TLP requests and reorder/assemble/redirect completions.
@@ -33,19 +35,19 @@ class LitePCIeTLPController(Module):
         # to the host. A tag is dequeued when a read requests is issued to the host and queued when
         # a readcomplementation is received from the host.
         tag_queue = SyncFIFO([("tag", tag_bits)], max_pending_requests, buffered=True)
-        self.submodules.tag_queue = tag_queue
+        self.tag_queue = tag_queue
 
         # Requests queue ---------------------------------------------------------------------------
         # Store the read requests tags as emitted to the host, datas will be dequeued in this order
         req_queue_layout = [("tag", tag_bits), ("channel", 8), ("user_id", 8)]
         req_queue        = SyncFIFO(req_queue_layout, max_pending_requests, buffered=True)
-        self.submodules.req_queue = req_queue
+        self.req_queue = req_queue
 
         # Requests Management ----------------------------------------------------------------------
 
         # Connect Data-Path.
         self.comb += req_sink.connect(req_source, omit={"valid", "ready", "tag"})
-        self.submodules.req_fsm = req_fsm = FSM(reset_state="WAIT-REQ")
+        self.req_fsm = req_fsm = FSM(reset_state="WAIT-REQ")
 
         # FSM.
         req_fsm.act("WAIT-REQ",
@@ -139,7 +141,7 @@ class LitePCIeTLPController(Module):
         self.comb += cmp_sink.connect(cmp_reorder, omit={"valid", "ready"})
 
         # FSM
-        self.submodules.cmp_fsm = cmp_fsm = FSM(reset_state="FILL-TAG-QUEUE")
+        self.cmp_fsm = cmp_fsm = FSM(reset_state="FILL-TAG-QUEUE")
         cmp_fsm.act("FILL-TAG-QUEUE",
             # Pre-fill Tags.
             tag_queue.sink.valid.eq(1),

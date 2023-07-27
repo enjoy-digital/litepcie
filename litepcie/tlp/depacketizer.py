@@ -6,11 +6,13 @@
 
 from migen import *
 
+from litex.gen import *
+
 from litepcie.tlp.common import *
 
 # LitePCIeTLPHeaderExtracter64b --------------------------------------------------------------------
 
-class LitePCIeTLPHeaderExtracter64b(Module):
+class LitePCIeTLPHeaderExtracter64b(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(phy_layout(64))
         self.source = source = stream.Endpoint(tlp_raw_layout(64))
@@ -28,7 +30,7 @@ class LitePCIeTLPHeaderExtracter64b(Module):
                 be.eq(sink.be)
             )
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             NextValue(first, 1),
             NextValue(last,  0),
@@ -68,7 +70,7 @@ class LitePCIeTLPHeaderExtracter64b(Module):
 
 # LitePCIeTLPHeaderExtracter128b -------------------------------------------------------------------
 
-class LitePCIeTLPHeaderExtracter128b(Module):
+class LitePCIeTLPHeaderExtracter128b(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(phy_layout(128))
         self.source = source = stream.Endpoint(tlp_raw_layout(128))
@@ -85,7 +87,7 @@ class LitePCIeTLPHeaderExtracter128b(Module):
                 be.eq(sink.be)
             )
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             NextValue(first, 1),
             NextValue(last,  0),
@@ -131,7 +133,7 @@ class LitePCIeTLPHeaderExtracter128b(Module):
 
 # LitePCIeTLPHeaderExtracter256b -------------------------------------------------------------------
 
-class LitePCIeTLPHeaderExtracter256b(Module):
+class LitePCIeTLPHeaderExtracter256b(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(phy_layout(256))
         self.source = source = stream.Endpoint(tlp_raw_layout(256))
@@ -148,7 +150,7 @@ class LitePCIeTLPHeaderExtracter256b(Module):
                 be.eq(sink.be)
             )
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             NextValue(first, 1),
             NextValue(last,  0),
@@ -203,7 +205,7 @@ class LitePCIeTLPHeaderExtracter256b(Module):
 
 # LitePCIeTLPHeaderExtracter512b -------------------------------------------------------------------
 
-class LitePCIeTLPHeaderExtracter512b(Module):
+class LitePCIeTLPHeaderExtracter512b(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(phy_layout(512))
         self.source = source = stream.Endpoint(tlp_raw_layout(512))
@@ -220,7 +222,7 @@ class LitePCIeTLPHeaderExtracter512b(Module):
                 be.eq(sink.be)
             )
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             NextValue(first, 1),
             NextValue(last,  0),
@@ -292,7 +294,7 @@ class LitePCIeTLPHeaderExtracter512b(Module):
 
 # LitePCIeTLPDepacketizer --------------------------------------------------------------------------
 
-class LitePCIeTLPDepacketizer(Module):
+class LitePCIeTLPDepacketizer(LiteXModule):
     def __init__(self, data_width, endianness, address_mask=0):
         self.sink       = stream.Endpoint(phy_layout(data_width))
         self.req_source = stream.Endpoint(request_layout(data_width))
@@ -338,7 +340,7 @@ class LitePCIeTLPDepacketizer(Module):
             endianness = endianness,
             mode       = "be",
         )
-        self.submodules.dispatcher = Dispatcher(dispatch_source, dispatch_sinks)
+        self.dispatcher = Dispatcher(dispatch_source, dispatch_sinks)
 
         fmt_type = Cat(dispatch_source.type, dispatch_source.fmt)
         self.comb += [
