@@ -296,9 +296,10 @@ class LitePCIeTLPHeaderExtracter512b(LiteXModule):
 
 class LitePCIeTLPDepacketizer(LiteXModule):
     def __init__(self, data_width, endianness, address_mask=0):
-        self.sink       = stream.Endpoint(phy_layout(data_width))
-        self.req_source = stream.Endpoint(request_layout(data_width))
-        self.cmp_source = stream.Endpoint(completion_layout(data_width))
+        self.sink        = stream.Endpoint(phy_layout(data_width))
+        self.req_source  = req_source  = stream.Endpoint(request_layout(data_width))
+        self.cmp_source  = cmp_source  = stream.Endpoint(completion_layout(data_width))
+        self.conf_source = conf_source = stream.Endpoint(configuration_layout(data_width))
 
         # # #
 
@@ -316,7 +317,7 @@ class LitePCIeTLPDepacketizer(LiteXModule):
 
         # Dispatch data according to fmt/type ------------------------------------------------------
         dispatch_source = stream.Endpoint(tlp_common_layout(data_width))
-        dispatch_sinks  = [stream.Endpoint(tlp_common_layout(data_width)) for i in range(3)]
+        dispatch_sinks  = [stream.Endpoint(tlp_common_layout(data_width)) for i in range(4)]
         self.comb += dispatch_sinks[0b00].ready.eq(1) # Always ready when unknown.
 
         self.comb += [
@@ -345,13 +346,20 @@ class LitePCIeTLPDepacketizer(LiteXModule):
         fmt_type = Cat(dispatch_source.type, dispatch_source.fmt)
         self.comb += [
             self.dispatcher.sel.eq(0b00),
+            # Memory Write/Read.
             If((fmt_type == fmt_type_dict["mem_rd32"]) |
                (fmt_type == fmt_type_dict["mem_wr32"]),
                 self.dispatcher.sel.eq(0b01),
             ),
+            # Completion.
             If((fmt_type == fmt_type_dict["cpld"]) |
                (fmt_type == fmt_type_dict["cpl"]),
                self.dispatcher.sel.eq(0b10),
+            ),
+            # Configuration.
+            If((fmt_type == fmt_type_dict["cfg_rd0"]) |
+               (fmt_type == fmt_type_dict["cfg_wr0"]),
+               self.dispatcher.sel.eq(0b11),
             ),
         ]
 
@@ -360,8 +368,7 @@ class LitePCIeTLPDepacketizer(LiteXModule):
         self.comb += dispatch_sinks[0b01].connect(tlp_req)
         self.comb += tlp_request_header.decode(header, tlp_req)
 
-        req_type   = Cat(tlp_req.type, tlp_req.fmt)
-        req_source = self.req_source
+        req_type = Cat(tlp_req.type, tlp_req.fmt)
         self.comb += [
             req_source.valid.eq(tlp_req.valid),
             req_source.we.eq(tlp_req.valid & (req_type == fmt_type_dict["mem_wr32"])),
@@ -380,7 +387,6 @@ class LitePCIeTLPDepacketizer(LiteXModule):
         self.comb += dispatch_sinks[0b10].connect(tlp_cmp)
         self.comb += tlp_completion_header.decode(header, tlp_cmp)
 
-        cmp_source = self.cmp_source
         self.comb += [
             cmp_source.valid.eq(tlp_cmp.valid),
             tlp_cmp.ready.eq(cmp_source.ready),
@@ -394,4 +400,23 @@ class LitePCIeTLPDepacketizer(LiteXModule):
             cmp_source.err.eq(tlp_cmp.status != 0),
             cmp_source.tag.eq(tlp_cmp.tag),
             cmp_source.dat.eq(tlp_cmp.dat)
+        ]
+
+
+        # Decode TLP configuration and format local configuraiton ----------------------------------
+        self.tlp_conf = tlp_conf = stream.Endpoint(tlp_configuration_layout(data_width))
+        self.comb += dispatch_sinks[0b11].connect(tlp_conf)
+        self.comb += tlp_configuration_header.decode(header, tlp_conf)
+
+        self.comb += [
+            conf_source.valid.eq(tlp_conf.valid),
+            tlp_conf.ready.eq(conf_source.ready),
+            conf_source.first.eq(tlp_conf.first),
+            conf_source.last.eq(tlp_conf.last),
+            conf_source.bus_number.eq(tlp_conf.bus_number),
+            conf_source.device_no.eq(tlp_conf.device_no),
+            conf_source.func.eq(tlp_conf.func),
+            conf_source.ext_reg.eq(tlp_conf.ext_reg),
+            conf_source.register_no.eq(tlp_conf.register_no),
+            req_source.dat.eq(tlp_req.dat)
         ]
