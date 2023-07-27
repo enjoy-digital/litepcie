@@ -38,6 +38,25 @@ def phy_layout(data_width):
     ]
     return EndpointDescription(layout)
 
+def configuration_layout(data_width, address_width=32):
+    layout = [
+        # Request Parameters.
+        ("req_id",          16), # Requester ID.
+        ("we",               1), # Configuration type; 0 : Read / 1 : Write.
+        ("bus_number",       8), # Configuration Bus number.
+        ("device_no",        5), # Configuration Device number.
+        ("func",             3), # Configuration Function number.
+        ("ext_reg",          3), # Configuration Extended Register.
+        ("register_no",      6), # Configuration Register number.
+
+        # Data Stream.
+        ("dat", data_width),
+
+        # Internal LitePCIe Routing/Identification.
+        ("channel", 8), # Crossbar's channel (Used for internal routing).
+    ]
+    return EndpointDescription(layout)
+
 def request_layout(data_width, address_width=32):
     layout = [
         # Request Parameters.
