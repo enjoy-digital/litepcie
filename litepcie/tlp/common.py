@@ -74,6 +74,32 @@ tlp_common_header = Header(
     swap_field_bytes = False # No byte swapping required.
 )
 
+# Length of the TLP configuration header (in bytes).
+tlp_configuration_header_length = 16
+# Define TLP request header fields.
+tlp_configuration_header_fields = {
+    "fmt":          HeaderField(byte=0*4, offset=29, width= 2), # Format.
+    "type":         HeaderField(byte=0*4, offset=24, width= 5), # Type.
+    "td":           HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
+    "ep":           HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
+
+    "requester_id": HeaderField(byte=1*4, offset=16, width=16), # Requester ID.
+    "tag":          HeaderField(byte=1*4, offset= 8, width= 8), # Tag.
+    "first_be":     HeaderField(byte=1*4, offset= 0, width= 4), # First Byte Enable.
+
+    "bus_number":   HeaderField(byte=2*4, offset=24, width=8), # Bus number.
+    "device_no":    HeaderField(byte=2*4, offset=19, width=5), # Device number.
+    "func":         HeaderField(byte=2*4, offset=16, width=3), # Function number.
+    "ext_reg":      HeaderField(byte=2*4, offset= 8, width=3), # Extended Register.
+    "register_no":  HeaderField(byte=2*4, offset= 2, width=6), # Register number.
+}
+# Define TLP configuration header.
+tlp_configuration_header = Header(
+    fields           = tlp_configuration_header_fields,
+    length           = tlp_configuration_header_length,
+    swap_field_bytes = False # No byte swapping required.
+)
+
 # Length of the TLP request header (in bytes).
 tlp_request_header_length = 16
 # Define TLP request header fields.
@@ -200,6 +226,23 @@ def tlp_common_layout(data_width):
         EndpointDescription: Common TLP endpoint description.
     """
     layout = tlp_common_header.get_layout() + [
+        ("dat", data_width),   # Data field.
+        ("be",  data_width//8) # Byte Enable field.
+    ]
+    return EndpointDescription(layout)
+
+
+def tlp_configuration_layout(data_width):
+    """
+    Generate a configuration TLP endpoint description.
+
+    Parameters:
+        data_width (int): Width of the data (in bits).
+
+    Returns:
+        EndpointDescription: Configuration TLP endpoint description.
+    """
+    layout = tlp_configuration_header.get_layout() + [
         ("dat", data_width),   # Data field.
         ("be",  data_width//8) # Byte Enable field.
     ]
