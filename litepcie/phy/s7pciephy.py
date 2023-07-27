@@ -27,6 +27,7 @@ class S7PCIEPHY(LiteXModule):
         pcie_data_width = None,
         bar0_size       = 0x100000,
         msi_type        = "msi",
+        with_ptm        = False,
     ):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
@@ -63,6 +64,7 @@ class S7PCIEPHY(LiteXModule):
         self.data_width       = data_width
         self.pcie_data_width  = pcie_data_width
         self.msi_type         = msi_type
+        self.with_ptm         = with_ptm
 
         self.id               = Signal(16, reset_less=True)
         self.bar0_size        = bar0_size
@@ -457,6 +459,7 @@ class S7PCIEPHY(LiteXModule):
                 "Trgt_Link_Speed"    : "4'h2",
                 "User_Clk_Freq"      : 125 if self.nlanes != 8 else 250,
             }
+
             # Interrupts parameters.
             assert self.msi_type in ["msi", "msi-multi-vector", "msi-x"]
             config.update({
@@ -483,6 +486,14 @@ class S7PCIEPHY(LiteXModule):
                     "MSIx_PBA_Offset"   : "1808", # Hexa, should match CSR_PCIE_MSI_PBA_ADDR.
                 })
 
+            # Extended Capabilities Registers.
+            if self.with_ptm:
+                config.update({
+                    "EXT_PCI_CFG_Space"      : True,
+                    "EXT_PCI_CFG_Space_Addr" : "6B", # 0x1AC.
+                })
+
+            # Tcl generation.
             ip_tcl = []
             ip_tcl.append("create_ip -vendor xilinx.com -name pcie_7x -module_name pcie_s7")
             ip_tcl.append("set obj [get_ips pcie_s7]")
@@ -492,6 +503,7 @@ class S7PCIEPHY(LiteXModule):
             ip_tcl.append(f"] $obj")
             ip_tcl.append("synth_ip $obj")
             platform.toolchain.pre_synthesis_commands += ip_tcl
+
         # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (we only want to keep Timing constraints).
         if platform.device.startswith("xc7a"):
             platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtp_common.gtpe2_common_i}}]")
