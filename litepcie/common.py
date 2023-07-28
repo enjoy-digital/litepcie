@@ -95,6 +95,21 @@ def completion_layout(data_width, address_width=32):
     ]
     return EndpointDescription(layout)
 
+def ptm_layout(data_width):
+    layout = [
+        ("requester_id", 16), # Requester ID.
+        ("length",       16), # Length.
+        ("message_code", 16), # Message Code.
+
+        # Data Stream.
+        ("dat", data_width),
+
+        # Internal LitePCIe Routing/Identification.
+        ("channel", 8), # Crossbar's channel (Used for internal routing).
+    ]
+    return EndpointDescription(layout)
+
+
 def msi_layout():
     return [("dat", 8)]
 

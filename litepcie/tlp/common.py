@@ -312,34 +312,17 @@ def tlp_completion_layout(data_width):
     ]
     return EndpointDescription(layout)
 
-def tlp_ptm_request_layout(data_width):
+def tlp_ptm_layout(data_width):
     """
-    Generate a request TLP endpoint description.
+    Generate a PTM TLP endpoint description.
 
     Parameters:
         data_width (int): Width of the data (in bits).
 
     Returns:
-        EndpointDescription: Request TLP endpoint description.
+        EndpointDescription: PTM TLP endpoint description.
     """
-    layout = tlp_request_header.get_layout() + [
-        ("dat", data_width),   # Data field.
-        ("be",  data_width//8) # Byte Enable field.
-    ]
-    return EndpointDescription(layout)
-
-
-def tlp_completion_layout(data_width):
-    """
-    Generate a completion TLP endpoint description.
-
-    Parameters:
-        data_width (int): Width of the data (in bits).
-
-    Returns:
-        EndpointDescription: Completion TLP endpoint description.
-    """
-    layout = tlp_completion_header.get_layout() + [
+    layout = tlp_ptm_header.get_layout() + [
         ("dat", data_width),   # Data field.
         ("be",  data_width//8) # Byte Enable field.
     ]
