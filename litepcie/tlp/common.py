@@ -24,6 +24,8 @@ fmt_dict = {
     "cpl"      : 0b00, # Completion without Data.
     "cfg_rd0"  : 0b00, # Configuration Read Request (Type 0).
     "cfg_wr0"  : 0b10, # Configuration Write Request (Type 0).
+    "ptm_req"  : 0b01, # PTM Request.
+    "ptm_res"  : 0b11, # PTM Response.
 }
 
 # Type (type) field of different types of TLPs.
@@ -36,6 +38,8 @@ type_dict = {
     "cpl"      : 0b01010, # Completion without Data.
     "cfg_rd0"  : 0b00101, # Configuration Read Request (Type 0).
     "cfg_wr0"  : 0b00101, # Configuration Write Request (Type 0).
+    "ptm_req"  : 0b10100, # PTM Request.
+    "ptm_res"  : 0b10100, # PTM Response.
 }
 
 # Format and Type fields for different types of TLPs.
@@ -48,6 +52,8 @@ fmt_type_dict = {
     "cpl"      : 0b00_01010, # Completion without Data.
     "cfg_rd0"  : 0b00_00101, # Configuration Read Request (Type 0).
     "cfg_wr0"  : 0b10_00101, # Configuration Write Request (Type 0).
+    "ptm_req"  : 0b01_10100, # PTM Request.
+    "ptm_res"  : 0b11_10100, # PTM Response.
 }
 
 # Completion Status (cpl) field of Completion TLPs.
@@ -154,6 +160,30 @@ tlp_completion_header = Header(
     swap_field_bytes = False # No byte swapping required.
 )
 
+# Length of the TLP PTM header (in bytes).
+tlp_ptm_header_length = 8
+# Define TLP request header fields.
+tlp_ptm_header_fields = {
+    "fmt":          HeaderField(byte=0*4, offset=29, width= 2), # Format.
+    "type":         HeaderField(byte=0*4, offset=24, width= 5), # Type.
+    "tc":           HeaderField(byte=0*4, offset=20, width= 3), # Traffic Class.
+    "ln":           HeaderField(byte=0*4, offset=17, width= 1), # ?.
+    "th":           HeaderField(byte=0*4, offset=16, width= 1), # ?.
+    "td":           HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
+    "ep":           HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
+    "attr":         HeaderField(byte=0*4, offset=12, width= 2), # Attributes.
+    "length":       HeaderField(byte=0*4, offset= 0, width=10), # Length.
+
+    "requester_id": HeaderField(byte=1*4, offset=16, width=16), # Requester ID.
+    "message_code": HeaderField(byte=1*4, offset=0,  width= 8), # Message Code.
+}
+# Define TLP PTM header.
+tlp_ptm_header = Header(
+    fields           = tlp_ptm_header_fields,
+    length           = tlp_ptm_header_length,
+    swap_field_bytes = False # No byte swapping required.
+)
+
 # Helpers ------------------------------------------------------------------------------------------
 
 def dword_endianness_swap(src, dst, data_width, endianness, mode="dat", ndwords=None):
@@ -250,6 +280,39 @@ def tlp_configuration_layout(data_width):
 
 
 def tlp_request_layout(data_width):
+    """
+    Generate a request TLP endpoint description.
+
+    Parameters:
+        data_width (int): Width of the data (in bits).
+
+    Returns:
+        EndpointDescription: Request TLP endpoint description.
+    """
+    layout = tlp_request_header.get_layout() + [
+        ("dat", data_width),   # Data field.
+        ("be",  data_width//8) # Byte Enable field.
+    ]
+    return EndpointDescription(layout)
+
+
+def tlp_completion_layout(data_width):
+    """
+    Generate a completion TLP endpoint description.
+
+    Parameters:
+        data_width (int): Width of the data (in bits).
+
+    Returns:
+        EndpointDescription: Completion TLP endpoint description.
+    """
+    layout = tlp_completion_header.get_layout() + [
+        ("dat", data_width),   # Data field.
+        ("be",  data_width//8) # Byte Enable field.
+    ]
+    return EndpointDescription(layout)
+
+def tlp_ptm_request_layout(data_width):
     """
     Generate a request TLP endpoint description.
 
