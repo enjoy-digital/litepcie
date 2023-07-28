@@ -763,152 +763,167 @@ class LitePCIeTLPHeaderInserter512b(LitePCIeTLPHeaderInserter3DWs4DWs):
 # LitePCIeTLPPacketizer ----------------------------------------------------------------------------
 
 class LitePCIeTLPPacketizer(LiteXModule):
-    def __init__(self, data_width, endianness, address_width=32):
+    def __init__(self, data_width, endianness, address_width=32, capabilities=["REQUEST", "COMPLETION"]):
         assert data_width%32 == 0
         assert address_width in [32, 64]
         if address_width == 64:
             assert data_width in [64, 128, 256, 512]
-        self.req_sink = req_sink = stream.Endpoint(request_layout(data_width, address_width))
-        self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
+        for c in capabilities:
+            assert c in ["REQUEST", "COMPLETION"]
+        # Sink Endpoints.
+        if "REQUEST" in capabilities:
+            self.req_sink = req_sink = stream.Endpoint(request_layout(data_width, address_width))
+        if "COMPLETION" in capabilities:
+            self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
+        # Source Endpoints.
         self.source   = stream.Endpoint(phy_layout(data_width))
 
         # # #
 
-        # Format TLP request and encode it ---------------------------------------------------------
-        self.tlp_req = tlp_req = stream.Endpoint(tlp_request_layout(data_width))
-        self.comb += [
-            tlp_req.valid.eq(req_sink.valid),
-            req_sink.ready.eq(tlp_req.ready),
-            tlp_req.first.eq(req_sink.first),
-            tlp_req.last.eq(req_sink.last),
+        # Format and Encode TLP Requests -----------------------------------------------------------
 
-            tlp_req.type.eq(0b00000),
-            If(req_sink.we,
-                tlp_req.fmt.eq( fmt_dict[ f"mem_wr32"]),
-            ).Else(
-                tlp_req.fmt.eq( fmt_dict[ f"mem_rd32"]),
-            ),
-            tlp_req.address.eq(req_sink.adr),
-        ]
-        if address_width == 64:
+        if "REQUEST" in capabilities:
+            self.tlp_req = tlp_req = stream.Endpoint(tlp_request_layout(data_width))
             self.comb += [
-                # Use WR64/RD64 only when 64-bit Address's MSB != 0, else use WR32/RD32.
-                If(req_sink.adr[32:] != 0,
-                    # Address's MSB on DW2, LSB on DW3 with 64-bit addressing: Requires swap due to
-                    # Packetizer's behavior.
-                    tlp_req.address[:32].eq(req_sink.adr[32:]),
-                    tlp_req.address[32:].eq(req_sink.adr[:32]),
-                    If(req_sink.we,
-                        tlp_req.fmt.eq( fmt_dict[ f"mem_wr64"]),
+                tlp_req.valid.eq(req_sink.valid),
+                req_sink.ready.eq(tlp_req.ready),
+                tlp_req.first.eq(req_sink.first),
+                tlp_req.last.eq(req_sink.last),
+
+                tlp_req.type.eq(0b00000),
+                If(req_sink.we,
+                    tlp_req.fmt.eq( fmt_dict[ f"mem_wr32"]),
+                ).Else(
+                    tlp_req.fmt.eq( fmt_dict[ f"mem_rd32"]),
+                ),
+                tlp_req.address.eq(req_sink.adr),
+            ]
+            if address_width == 64:
+                self.comb += [
+                    # Use WR64/RD64 only when 64-bit Address's MSB != 0, else use WR32/RD32.
+                    If(req_sink.adr[32:] != 0,
+                        # Address's MSB on DW2, LSB on DW3 with 64-bit addressing: Requires swap due to
+                        # Packetizer's behavior.
+                        tlp_req.address[:32].eq(req_sink.adr[32:]),
+                        tlp_req.address[32:].eq(req_sink.adr[:32]),
+                        If(req_sink.we,
+                            tlp_req.fmt.eq( fmt_dict[ f"mem_wr64"]),
+                        ).Else(
+                            tlp_req.fmt.eq( fmt_dict[ f"mem_rd64"]),
+                        ),
+                    )
+                ]
+
+            self.comb += [
+                tlp_req.tc.eq(0),
+                tlp_req.td.eq(0),
+                tlp_req.ep.eq(0),
+                tlp_req.attr.eq(0),
+                tlp_req.length.eq(req_sink.len),
+
+                tlp_req.requester_id.eq(req_sink.req_id),
+                tlp_req.tag.eq(req_sink.tag),
+                If(req_sink.len > 1,
+                    tlp_req.last_be.eq(0xf)
+                ).Else(
+                    tlp_req.last_be.eq(0x0)
+                ),
+                tlp_req.first_be.eq(0xf),
+                tlp_req.dat.eq(req_sink.dat),
+                If(req_sink.we,
+                    If(req_sink.len == 1,
+                        tlp_req.be.eq(0xf)
                     ).Else(
-                        tlp_req.fmt.eq( fmt_dict[ f"mem_rd64"]),
-                    ),
+                        tlp_req.be.eq(2**(data_width//8)-1)
+                    )
+                ).Else(
+                    tlp_req.be.eq(0x00)
                 )
             ]
 
-        self.comb += [
-            tlp_req.tc.eq(0),
-            tlp_req.td.eq(0),
-            tlp_req.ep.eq(0),
-            tlp_req.attr.eq(0),
-            tlp_req.length.eq(req_sink.len),
-
-            tlp_req.requester_id.eq(req_sink.req_id),
-            tlp_req.tag.eq(req_sink.tag),
-            If(req_sink.len > 1,
-                tlp_req.last_be.eq(0xf)
-            ).Else(
-                tlp_req.last_be.eq(0x0)
-            ),
-            tlp_req.first_be.eq(0xf),
-            tlp_req.dat.eq(req_sink.dat),
-            If(req_sink.we,
-                If(req_sink.len == 1,
-                    tlp_req.be.eq(0xf)
-                ).Else(
-                    tlp_req.be.eq(2**(data_width//8)-1)
-                )
-            ).Else(
-                tlp_req.be.eq(0x00)
+            tlp_raw_req        = stream.Endpoint(tlp_raw_layout(data_width))
+            tlp_raw_req_header = Signal(len(tlp_raw_req.header))
+            self.comb += [
+                tlp_req.connect(tlp_raw_req, omit={*tlp_request_header_fields.keys()}),
+                tlp_raw_req.fmt.eq(tlp_req.fmt),
+                tlp_request_header.encode(tlp_req, tlp_raw_req_header),
+            ]
+            self.comb += dword_endianness_swap(
+                src        = tlp_raw_req_header,
+                dst        = tlp_raw_req.header,
+                data_width = data_width,
+                endianness = endianness,
+                mode       = "dat",
+                ndwords    = 4
             )
-        ]
 
-        tlp_raw_req        = stream.Endpoint(tlp_raw_layout(data_width))
-        tlp_raw_req_header = Signal(len(tlp_raw_req.header))
-        self.comb += [
-            tlp_req.connect(tlp_raw_req, omit={*tlp_request_header_fields.keys()}),
-            tlp_raw_req.fmt.eq(tlp_req.fmt),
-            tlp_request_header.encode(tlp_req, tlp_raw_req_header),
-        ]
-        self.comb += dword_endianness_swap(
-            src        = tlp_raw_req_header,
-            dst        = tlp_raw_req.header,
-            data_width = data_width,
-            endianness = endianness,
-            mode       = "dat",
-            ndwords    = 4
-        )
+        # Format and Encode TLP Completions --------------------------------------------------------
 
-        # Format TLP completion and encode it ------------------------------------------------------
-        self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
-        self.comb += [
-            tlp_cmp.valid.eq(cmp_sink.valid),
-            cmp_sink.ready.eq(tlp_cmp.ready),
-            tlp_cmp.first.eq(cmp_sink.first),
-            tlp_cmp.last.eq(cmp_sink.last),
+        if "COMPLETION" in capabilities:
+            self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
+            self.comb += [
+                tlp_cmp.valid.eq(cmp_sink.valid),
+                cmp_sink.ready.eq(tlp_cmp.ready),
+                tlp_cmp.first.eq(cmp_sink.first),
+                tlp_cmp.last.eq(cmp_sink.last),
 
-            tlp_cmp.tc.eq(0),
-            tlp_cmp.td.eq(0),
-            tlp_cmp.ep.eq(0),
-            tlp_cmp.attr.eq(0),
-            tlp_cmp.length.eq(cmp_sink.len),
+                tlp_cmp.tc.eq(0),
+                tlp_cmp.td.eq(0),
+                tlp_cmp.ep.eq(0),
+                tlp_cmp.attr.eq(0),
+                tlp_cmp.length.eq(cmp_sink.len),
 
-            tlp_cmp.completer_id.eq(cmp_sink.cmp_id),
-            If(cmp_sink.err,
-                tlp_cmp.type.eq(type_dict["cpl"]),
-                tlp_cmp.fmt.eq( fmt_dict["cpl"]),
-                tlp_cmp.status.eq(cpl_dict["ur"])
-            ).Else(
-                tlp_cmp.type.eq(type_dict["cpld"]),
-                tlp_cmp.fmt.eq( fmt_dict["cpld"]),
-                tlp_cmp.status.eq(cpl_dict["sc"])
-            ),
-            tlp_cmp.bcm.eq(0),
-            tlp_cmp.byte_count.eq(cmp_sink.len*4),
+                tlp_cmp.completer_id.eq(cmp_sink.cmp_id),
+                If(cmp_sink.err,
+                    tlp_cmp.type.eq(type_dict["cpl"]),
+                    tlp_cmp.fmt.eq( fmt_dict["cpl"]),
+                    tlp_cmp.status.eq(cpl_dict["ur"])
+                ).Else(
+                    tlp_cmp.type.eq(type_dict["cpld"]),
+                    tlp_cmp.fmt.eq( fmt_dict["cpld"]),
+                    tlp_cmp.status.eq(cpl_dict["sc"])
+                ),
+                tlp_cmp.bcm.eq(0),
+                tlp_cmp.byte_count.eq(cmp_sink.len*4),
 
-            tlp_cmp.requester_id.eq(cmp_sink.req_id),
-            tlp_cmp.tag.eq(cmp_sink.tag),
-            tlp_cmp.lower_address.eq(cmp_sink.adr),
+                tlp_cmp.requester_id.eq(cmp_sink.req_id),
+                tlp_cmp.tag.eq(cmp_sink.tag),
+                tlp_cmp.lower_address.eq(cmp_sink.adr),
 
-            tlp_cmp.dat.eq(cmp_sink.dat),
-            If(cmp_sink.last & cmp_sink.first,
-                tlp_cmp.be.eq(0xf)
-            ).Else(
-                tlp_cmp.be.eq(2**(data_width//8)-1)
-            ),
-        ]
+                tlp_cmp.dat.eq(cmp_sink.dat),
+                If(cmp_sink.last & cmp_sink.first,
+                    tlp_cmp.be.eq(0xf)
+                ).Else(
+                    tlp_cmp.be.eq(2**(data_width//8)-1)
+                ),
+            ]
 
-        tlp_raw_cmp        = stream.Endpoint(tlp_raw_layout(data_width))
-        tlp_raw_cmp_header = Signal(len(tlp_raw_cmp.header))
-        self.comb += [
-            tlp_cmp.connect(tlp_raw_cmp, omit={*tlp_completion_header_fields.keys()}),
-            tlp_raw_cmp.fmt.eq(tlp_cmp.fmt),
-            tlp_completion_header.encode(tlp_cmp, tlp_raw_cmp_header),
-        ]
-        self.comb += dword_endianness_swap(
-            src        = tlp_raw_cmp_header,
-            dst        = tlp_raw_cmp.header,
-            data_width = data_width,
-            endianness = endianness,
-            mode       = "dat",
-            ndwords    = 4
-        )
+            tlp_raw_cmp        = stream.Endpoint(tlp_raw_layout(data_width))
+            tlp_raw_cmp_header = Signal(len(tlp_raw_cmp.header))
+            self.comb += [
+                tlp_cmp.connect(tlp_raw_cmp, omit={*tlp_completion_header_fields.keys()}),
+                tlp_raw_cmp.fmt.eq(tlp_cmp.fmt),
+                tlp_completion_header.encode(tlp_cmp, tlp_raw_cmp_header),
+            ]
+            self.comb += dword_endianness_swap(
+                src        = tlp_raw_cmp_header,
+                dst        = tlp_raw_cmp.header,
+                data_width = data_width,
+                endianness = endianness,
+                mode       = "dat",
+                ndwords    = 4
+            )
 
         # Arbitrate --------------------------------------------------------------------------------
 
+        tlp_raws = []
+        if "REQUEST" in capabilities:
+            tlp_raws.append(tlp_raw_req)
+        if "COMPLETION" in capabilities:
+            tlp_raws.append(tlp_raw_cmp)
         tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))
         self.arbitrer = Arbiter(
-            masters = [tlp_raw_req, tlp_raw_cmp],
+            masters = tlp_raws,
             slave   = tlp_raw
         )
 
