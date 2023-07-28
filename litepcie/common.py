@@ -97,6 +97,8 @@ def completion_layout(data_width, address_width=32):
 
 def ptm_layout(data_width):
     layout = [
+        ("request",       1), # Request.
+        ("response",      1), # Response.
         ("requester_id", 16), # Requester ID.
         ("length",       16), # Length.
         ("message_code", 16), # Message Code.

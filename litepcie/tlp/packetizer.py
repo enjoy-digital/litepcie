@@ -769,12 +769,14 @@ class LitePCIeTLPPacketizer(LiteXModule):
         if address_width == 64:
             assert data_width in [64, 128, 256, 512]
         for c in capabilities:
-            assert c in ["REQUEST", "COMPLETION"]
+            assert c in ["REQUEST", "COMPLETION", "PTM"]
         # Sink Endpoints.
         if "REQUEST" in capabilities:
             self.req_sink = req_sink = stream.Endpoint(request_layout(data_width, address_width))
         if "COMPLETION" in capabilities:
             self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
+        if "PTM" in capabilities:
+            self.ptm_sink = ptm_sink = stream.Endpoint(ptm_layout(data_width))
         # Source Endpoints.
         self.source   = stream.Endpoint(phy_layout(data_width))
 
@@ -914,6 +916,56 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 ndwords    = 4
             )
 
+        # Format and Encode TLP Completions --------------------------------------------------------
+
+        if "PTM" in capabilities:
+            self.tlp_ptm = tlp_ptm = stream.Endpoint(tlp_ptm_layout(data_width))
+            self.comb += [
+                tlp_ptm.valid.eq(ptm_sink.valid),
+                ptm_sink.ready.eq(tlp_ptm.ready),
+                tlp_ptm.first.eq(ptm_sink.first),
+                tlp_ptm.last.eq(ptm_sink.last),
+
+                tlp_ptm.tc.eq(0),   # CHECKME.
+                tlp_ptm.ln.eq(0),   # CHECKME.
+                tlp_ptm.th.eq(0),   # CHECKME.
+                tlp_ptm.td.eq(0),   # CHECKME.
+                tlp_ptm.ep.eq(0),   # CHECKME.
+                tlp_ptm.attr.eq(0), # CHECKME.
+                tlp_ptm.length.eq(ptm_sink.length),
+
+                tlp_ptm.requester_id.eq(ptm_sink.requester_id),
+                tlp_ptm.message_code.eq(ptm_sink.message_code),
+
+                If(ptm_sink.request,
+                    tlp_ptm.type.eq(type_dict["ptm_req"]),
+                    tlp_ptm.fmt.eq( fmt_dict["ptm_req"]),
+                ),
+                If(ptm_sink.response,
+                    tlp_ptm.type.eq(type_dict["ptm_res"]),
+                    tlp_ptm.fmt.eq( fmt_dict["ptm_res"]),
+                ),
+
+                tlp_ptm.dat.eq(ptm_sink.dat),
+                tlp_ptm.be.eq(2**(data_width//8)-1), # CHECKME.
+            ]
+
+            tlp_raw_ptm        = stream.Endpoint(tlp_raw_layout(data_width))
+            tlp_raw_ptm_header = Signal(len(tlp_raw_ptm.header))
+            self.comb += [
+                tlp_ptm.connect(tlp_raw_ptm, omit={*tlp_ptm_header_fields.keys()}),
+                tlp_raw_ptm.fmt.eq(tlp_ptm.fmt),
+                tlp_ptm_header.encode(tlp_ptm, tlp_raw_ptm_header),
+            ]
+            self.comb += dword_endianness_swap(
+                src        = tlp_raw_ptm_header,
+                dst        = tlp_raw_ptm.header,
+                data_width = data_width,
+                endianness = endianness,
+                mode       = "dat",
+                ndwords    = 4
+            )
+
         # Arbitrate --------------------------------------------------------------------------------
 
         tlp_raws = []
@@ -921,6 +973,8 @@ class LitePCIeTLPPacketizer(LiteXModule):
             tlp_raws.append(tlp_raw_req)
         if "COMPLETION" in capabilities:
             tlp_raws.append(tlp_raw_cmp)
+        if "PTM" in capabilities:
+            tlp_raws.append(tlp_raw_ptm)
         tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))
         self.arbitrer = Arbiter(
             masters = tlp_raws,
