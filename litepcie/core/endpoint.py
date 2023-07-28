@@ -56,25 +56,25 @@ class LitePCIeEndpoint(LiteXModule):
                 data_width   = phy.data_width,
                 endianness   = endianness,
                 address_mask = phy.bar0_mask,
-                capabilities = ["REQUEST", "COMPLETION"] + (["PTM"] if with_ptm else []), # FIXME: Remove REQUEST?.
+                capabilities = ["COMPLETION"] + (["PTM"] if with_ptm else []),
             )
             self.req_depacketizer = req_depacketizer = LitePCIeTLPDepacketizer(
                 data_width   = phy.data_width,
                 endianness   = endianness,
                 address_mask = phy.bar0_mask,
-                capabilities = ["REQUEST", "COMPLETION"] + (["PTM"] if with_ptm else []), # FIXME: Remove COMPLETION?.
+                capabilities = ["REQUEST"] + (["PTM"] if with_ptm else []),
             )
             self.cmp_packetizer = cmp_packetizer = LitePCIeTLPPacketizer(
                 data_width    = phy.data_width,
                 endianness    = endianness,
                 address_width = address_width,
-                capabilities  = ["REQUEST", "COMPLETION"] + (["PTM"] if with_ptm else []), # FIXME: Remove REQUEST?.
+                capabilities  = ["COMPLETION"] + (["PTM"] if with_ptm else []),
             )
             self.req_packetizer = req_packetizer = LitePCIeTLPPacketizer(
                 data_width    = phy.data_width,
                 endianness    = endianness,
                 address_width = address_width,
-                capabilities  = ["REQUEST", "COMPLETION"] + (["PTM"] if with_ptm else []), # FIXME: Remove COMPLETION?.
+                capabilities  = ["REQUEST"] + (["PTM"] if with_ptm else []),
             )
             self.comb += [
                 phy.cmp_source.connect(cmp_depacketizer.sink),
