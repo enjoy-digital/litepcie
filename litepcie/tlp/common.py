@@ -16,46 +16,46 @@ max_request_size = 512
 
 # Format (fmt) field of different types of TLPs.
 fmt_dict = {
-    "mem_rd32": 0b00, # Memory Read Request  (32-bit).
-    "mem_rd64": 0b01, # Memory Read Request  (64-bit).
-    "mem_wr32": 0b10, # Memory Write Request (32-bit).
-    "mem_wr64": 0b11, # Memory Write Request (64-bit).
-    "cpld":     0b10, # Completion with Data.
-    "cpl":      0b00, # Completion without Data.
-    "cfg_rd0":  0b00, # Configuration Read Request (Type 0).
-    "cfg_wr0":  0b10, # Configuration Write Request (Type 0).
+    "mem_rd32" : 0b00, # Memory Read Request  (32-bit).
+    "mem_rd64" : 0b01, # Memory Read Request  (64-bit).
+    "mem_wr32" : 0b10, # Memory Write Request (32-bit).
+    "mem_wr64" : 0b11, # Memory Write Request (64-bit).
+    "cpld"     : 0b10, # Completion with Data.
+    "cpl"      : 0b00, # Completion without Data.
+    "cfg_rd0"  : 0b00, # Configuration Read Request (Type 0).
+    "cfg_wr0"  : 0b10, # Configuration Write Request (Type 0).
 }
 
 # Type (type) field of different types of TLPs.
 type_dict = {
-    "mem_rd32": 0b00000,  # Memory Read Request  (32-bit).
-    "mem_rd64": 0b00000,  # Memory Read Request  (64-bit).
-    "mem_wr32": 0b00000,  # Memory Write Request (32-bit).
-    "mem_wr64": 0b00000,  # Memory Write Request (64-bit).
-    "cpld":     0b01010,  # Completion with Data.
-    "cpl":      0b01010,  # Completion without Data.
-    "cfg_rd0":  0b00101,   # Configuration Read Request (Type 0).
-    "cfg_wr0":  0b00101,   # Configuration Write Request (Type 0).
+    "mem_rd32" : 0b00000, # Memory Read Request  (32-bit).
+    "mem_rd64" : 0b00000, # Memory Read Request  (64-bit).
+    "mem_wr32" : 0b00000, # Memory Write Request (32-bit).
+    "mem_wr64" : 0b00000, # Memory Write Request (64-bit).
+    "cpld"     : 0b01010, # Completion with Data.
+    "cpl"      : 0b01010, # Completion without Data.
+    "cfg_rd0"  : 0b00101, # Configuration Read Request (Type 0).
+    "cfg_wr0"  : 0b00101, # Configuration Write Request (Type 0).
 }
 
 # Format and Type fields for different types of TLPs.
 fmt_type_dict = {
-    "mem_rd32": 0b00_00000, # Memory Read Request  (32-bit).
-    "mem_rd64": 0b01_00000, # Memory Read Request  (64-bit).
-    "mem_wr32": 0b10_00000, # Memory Write Request (32-bit).
-    "mem_wr64": 0b11_00000, # Memory Write Request (64-bit).
-    "cpld":     0b10_01010, # Completion with Data.
-    "cpl":      0b00_01010, # Completion without Data.
-    "cfg_rd0":  0b00_00101, # Configuration Read Request (Type 0).
-    "cfg_wr0":  0b10_00101, # Configuration Write Request (Type 0).
+    "mem_rd32" : 0b00_00000, # Memory Read Request  (32-bit).
+    "mem_rd64" : 0b01_00000, # Memory Read Request  (64-bit).
+    "mem_wr32" : 0b10_00000, # Memory Write Request (32-bit).
+    "mem_wr64" : 0b11_00000, # Memory Write Request (64-bit).
+    "cpld"     : 0b10_01010, # Completion with Data.
+    "cpl"      : 0b00_01010, # Completion without Data.
+    "cfg_rd0"  : 0b00_00101, # Configuration Read Request (Type 0).
+    "cfg_wr0"  : 0b10_00101, # Configuration Write Request (Type 0).
 }
 
 # Completion Status (cpl) field of Completion TLPs.
 cpl_dict = {
-    "sc":  0b000, # Successful Completion.
-    "ur":  0b001, # Unsupported Request.
-    "crs": 0b010, # Configuration Request Retry Status.
-    "ca":  0b011, # Completer Abort.
+    "sc"  : 0b000, # Successful Completion.
+    "ur"  : 0b001, # Unsupported Request.
+    "crs" : 0b010, # Configuration Request Retry Status.
+    "ca"  : 0b011, # Completer Abort.
 }
 
 # Headers ------------------------------------------------------------------------------------------
@@ -87,11 +87,11 @@ tlp_configuration_header_fields = {
     "tag":          HeaderField(byte=1*4, offset= 8, width= 8), # Tag.
     "first_be":     HeaderField(byte=1*4, offset= 0, width= 4), # First Byte Enable.
 
-    "bus_number":   HeaderField(byte=2*4, offset=24, width=8), # Bus number.
-    "device_no":    HeaderField(byte=2*4, offset=19, width=5), # Device number.
-    "func":         HeaderField(byte=2*4, offset=16, width=3), # Function number.
-    "ext_reg":      HeaderField(byte=2*4, offset= 8, width=3), # Extended Register.
-    "register_no":  HeaderField(byte=2*4, offset= 2, width=6), # Register number.
+    "bus_number":   HeaderField(byte=2*4, offset=24, width= 8), # Bus number.
+    "device_no":    HeaderField(byte=2*4, offset=19, width= 5), # Device number.
+    "func":         HeaderField(byte=2*4, offset=16, width= 3), # Function number.
+    "ext_reg":      HeaderField(byte=2*4, offset= 8, width= 3), # Extended Register.
+    "register_no":  HeaderField(byte=2*4, offset= 2, width= 6), # Register number.
 }
 # Define TLP configuration header.
 tlp_configuration_header = Header(
