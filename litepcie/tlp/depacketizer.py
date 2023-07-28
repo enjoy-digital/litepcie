@@ -301,13 +301,15 @@ class LitePCIeTLPDepacketizer(LiteXModule):
 
         # Source Endpoints.
         for c in capabilities:
-            assert c in ["REQUEST", "COMPLETION", "CONFIGURATION"]
+            assert c in ["REQUEST", "COMPLETION", "CONFIGURATION", "PTM"]
         if "REQUEST" in capabilities:
             self.req_source  = req_source  = stream.Endpoint(request_layout(data_width))
         if "COMPLETION" in capabilities:
             self.cmp_source  = cmp_source  = stream.Endpoint(completion_layout(data_width))
         if "CONFIGURATION" in capabilities:
             self.conf_source = conf_source = stream.Endpoint(configuration_layout(data_width))
+        if "PTM" in capabilities:
+            self.ptm_source = ptm_source = stream.Endpoint(ptm_layout(data_width))
 
         # # #
 
@@ -458,4 +460,29 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 conf_source.ext_reg.eq(tlp_conf.ext_reg),
                 conf_source.register_no.eq(tlp_conf.register_no),
                 conf_source.dat.eq(tlp_conf.dat)
+            ]
+
+        # Decode/Dispatch TLP PTM Requests/Responses -----------------------------------------------
+
+        if "PTM" in capabilities:
+            self.comb += [
+                If((fmt_type == fmt_type_dict["ptm_req"]) |
+                   (fmt_type == fmt_type_dict["ptm_res"]),
+                    self.dispatcher.sel.eq(dispatch_source_sel("PTM")),
+                )
+            ]
+
+            self.tlp_ptm = tlp_ptm = stream.Endpoint(tlp_ptm_layout(data_width))
+            self.comb += dispatch_sources["PTM"].connect(tlp_ptm)
+            self.comb += tlp_ptm_header.decode(header, tlp_ptm)
+
+            self.comb += [
+                ptm_source.valid.eq(tlp_ptm.valid),
+                tlp_ptm.ready.eq(ptm_source.ready),
+                ptm_source.first.eq(tlp_ptm.first),
+                ptm_source.last.eq(tlp_ptm.last),
+                ptm_source.requester_id.eq(tlp_ptm.requester_id),
+                ptm_source.length.eq(tlp_ptm.length),
+                ptm_source.message_code.eq(tlp_ptm.message_code),
+                ptm_source.dat.eq(tlp_ptm.dat)
             ]
