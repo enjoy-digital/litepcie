@@ -70,8 +70,8 @@ cpl_dict = {
 tlp_common_header_length = 16
 # Define TLP common header fields.
 tlp_common_header_fields = {
-    "fmt":  HeaderField(byte=0*4, offset=29, width=2), # Format.
-    "type": HeaderField(byte=0*4, offset=24, width=5), # Type.
+    "fmt"  : HeaderField(byte=0*4, offset=29, width=2), # Format.
+    "type" : HeaderField(byte=0*4, offset=24, width=5), # Type.
 }
 # Define TLP common header
 tlp_common_header = Header(
@@ -84,20 +84,20 @@ tlp_common_header = Header(
 tlp_configuration_header_length = 16
 # Define TLP request header fields.
 tlp_configuration_header_fields = {
-    "fmt":          HeaderField(byte=0*4, offset=29, width= 2), # Format.
-    "type":         HeaderField(byte=0*4, offset=24, width= 5), # Type.
-    "td":           HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
-    "ep":           HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
+    "fmt"          : HeaderField(byte=0*4, offset=29, width= 2), # Format.
+    "type"         : HeaderField(byte=0*4, offset=24, width= 5), # Type.
+    "td"           : HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
+    "ep"           : HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
 
-    "requester_id": HeaderField(byte=1*4, offset=16, width=16), # Requester ID.
-    "tag":          HeaderField(byte=1*4, offset= 8, width= 8), # Tag.
-    "first_be":     HeaderField(byte=1*4, offset= 0, width= 4), # First Byte Enable.
+    "requester_id" : HeaderField(byte=1*4, offset=16, width=16), # Requester ID.
+    "tag"          : HeaderField(byte=1*4, offset= 8, width= 8), # Tag.
+    "first_be"     : HeaderField(byte=1*4, offset= 0, width= 4), # First Byte Enable.
 
-    "bus_number":   HeaderField(byte=2*4, offset=24, width= 8), # Bus number.
-    "device_no":    HeaderField(byte=2*4, offset=19, width= 5), # Device number.
-    "func":         HeaderField(byte=2*4, offset=16, width= 3), # Function number.
-    "ext_reg":      HeaderField(byte=2*4, offset= 8, width= 3), # Extended Register.
-    "register_no":  HeaderField(byte=2*4, offset= 2, width= 6), # Register number.
+    "bus_number"   : HeaderField(byte=2*4, offset=24, width= 8), # Bus number.
+    "device_no"    : HeaderField(byte=2*4, offset=19, width= 5), # Device number.
+    "func"         : HeaderField(byte=2*4, offset=16, width= 3), # Function number.
+    "ext_reg"      : HeaderField(byte=2*4, offset= 8, width= 3), # Extended Register.
+    "register_no"  : HeaderField(byte=2*4, offset= 2, width= 6), # Register number.
 }
 # Define TLP configuration header.
 tlp_configuration_header = Header(
@@ -110,20 +110,20 @@ tlp_configuration_header = Header(
 tlp_request_header_length = 16
 # Define TLP request header fields.
 tlp_request_header_fields = {
-    "fmt":          HeaderField(byte=0*4, offset=29, width= 2), # Format.
-    "type":         HeaderField(byte=0*4, offset=24, width= 5), # Type.
-    "tc":           HeaderField(byte=0*4, offset=20, width= 3), # Traffic Class.
-    "td":           HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
-    "ep":           HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
-    "attr":         HeaderField(byte=0*4, offset=12, width= 2), # Attributes.
-    "length":       HeaderField(byte=0*4, offset= 0, width=10), # Length.
+    "fmt"          : HeaderField(byte=0*4, offset=29, width= 2), # Format.
+    "type"         : HeaderField(byte=0*4, offset=24, width= 5), # Type.
+    "tc"           : HeaderField(byte=0*4, offset=20, width= 3), # Traffic Class.
+    "td"           : HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
+    "ep"           : HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
+    "attr"         : HeaderField(byte=0*4, offset=12, width= 2), # Attributes.
+    "length"       : HeaderField(byte=0*4, offset= 0, width=10), # Length.
 
-    "requester_id": HeaderField(byte=1*4, offset=16, width=16), # Requester ID.
-    "tag":          HeaderField(byte=1*4, offset= 8, width= 8), # Tag.
-    "last_be":      HeaderField(byte=1*4, offset= 4, width= 4), # Last Byte Enable.
-    "first_be":     HeaderField(byte=1*4, offset= 0, width= 4), # First Byte Enable.
+    "requester_id" : HeaderField(byte=1*4, offset=16, width=16), # Requester ID.
+    "tag"          : HeaderField(byte=1*4, offset= 8, width= 8), # Tag.
+    "last_be"      : HeaderField(byte=1*4, offset= 4, width= 4), # Last Byte Enable.
+    "first_be"     : HeaderField(byte=1*4, offset= 0, width= 4), # First Byte Enable.
 
-    "address":      HeaderField(byte=2*4, offset= 0, width=64), # Address.
+    "address"      : HeaderField(byte=2*4, offset= 0, width=64), # Address.
 }
 # Define TLP request header.
 tlp_request_header = Header(
@@ -136,22 +136,22 @@ tlp_request_header = Header(
 tlp_completion_header_length = 16
 # Define TLP completion header fields.
 tlp_completion_header_fields = {
-    "fmt":           HeaderField(byte=0*4, offset=29, width= 2), # Format.
-    "type":          HeaderField(byte=0*4, offset=24, width= 5), # Type.
-    "tc":            HeaderField(byte=0*4, offset=20, width= 3), # Traffic Class.
-    "td":            HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
-    "ep":            HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
-    "attr":          HeaderField(byte=0*4, offset=12, width= 2), # Attributes.
-    "length":        HeaderField(byte=0*4, offset= 0, width=10), # Length.
+    "fmt"           : HeaderField(byte=0*4, offset=29, width= 2), # Format.
+    "type"          : HeaderField(byte=0*4, offset=24, width= 5), # Type.
+    "tc"            : HeaderField(byte=0*4, offset=20, width= 3), # Traffic Class.
+    "td"            : HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
+    "ep"            : HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
+    "attr"          : HeaderField(byte=0*4, offset=12, width= 2), # Attributes.
+    "length"        : HeaderField(byte=0*4, offset= 0, width=10), # Length.
 
-    "completer_id":  HeaderField(byte=1*4, offset=16, width=16), # Completer ID.
-    "status":        HeaderField(byte=1*4, offset=13, width= 3), # Completion Status.
-    "bcm":           HeaderField(byte=1*4, offset=12, width= 1), # Byte Count Mismatch.
-    "byte_count":    HeaderField(byte=1*4, offset= 0, width=12), # Byte Count.
+    "completer_id"  : HeaderField(byte=1*4, offset=16, width=16), # Completer ID.
+    "status"        : HeaderField(byte=1*4, offset=13, width= 3), # Completion Status.
+    "bcm"           : HeaderField(byte=1*4, offset=12, width= 1), # Byte Count Mismatch.
+    "byte_count"    : HeaderField(byte=1*4, offset= 0, width=12), # Byte Count.
 
-    "requester_id":  HeaderField(byte=2*4, offset=16, width=16), # Requester ID.
-    "tag":           HeaderField(byte=2*4, offset= 8, width= 8), # Tag.
-    "lower_address": HeaderField(byte=2*4, offset= 0, width= 7), # Lower Address.
+    "requester_id"  : HeaderField(byte=2*4, offset=16, width=16), # Requester ID.
+    "tag"           : HeaderField(byte=2*4, offset= 8, width= 8), # Tag.
+    "lower_address" : HeaderField(byte=2*4, offset= 0, width= 7), # Lower Address.
 }
 # Define TLP completion header.
 tlp_completion_header = Header(
@@ -164,18 +164,18 @@ tlp_completion_header = Header(
 tlp_ptm_header_length = 8
 # Define TLP request header fields.
 tlp_ptm_header_fields = {
-    "fmt":          HeaderField(byte=0*4, offset=29, width= 2), # Format.
-    "type":         HeaderField(byte=0*4, offset=24, width= 5), # Type.
-    "tc":           HeaderField(byte=0*4, offset=20, width= 3), # Traffic Class.
-    "ln":           HeaderField(byte=0*4, offset=17, width= 1), # ?.
-    "th":           HeaderField(byte=0*4, offset=16, width= 1), # ?.
-    "td":           HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
-    "ep":           HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
-    "attr":         HeaderField(byte=0*4, offset=12, width= 2), # Attributes.
-    "length":       HeaderField(byte=0*4, offset= 0, width=10), # Length.
+    "fmt"          : HeaderField(byte=0*4, offset=29, width= 2), # Format.
+    "type"         : HeaderField(byte=0*4, offset=24, width= 5), # Type.
+    "tc"           : HeaderField(byte=0*4, offset=20, width= 3), # Traffic Class.
+    "ln"           : HeaderField(byte=0*4, offset=17, width= 1), # ?.
+    "th"           : HeaderField(byte=0*4, offset=16, width= 1), # ?.
+    "td"           : HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
+    "ep"           : HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
+    "attr"         : HeaderField(byte=0*4, offset=12, width= 2), # Attributes.
+    "length"       : HeaderField(byte=0*4, offset= 0, width=10), # Length.
 
-    "requester_id": HeaderField(byte=1*4, offset=16, width=16), # Requester ID.
-    "message_code": HeaderField(byte=1*4, offset=0,  width= 8), # Message Code.
+    "requester_id" : HeaderField(byte=1*4, offset=16, width=16), # Requester ID.
+    "message_code" : HeaderField(byte=1*4, offset=0,  width= 8), # Message Code.
 }
 # Define TLP PTM header.
 tlp_ptm_header = Header(
