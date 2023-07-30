@@ -26,6 +26,13 @@ class LitePCIeEndpoint(LiteXModule):
 
         # # #
 
+        # Parameters.
+        optional_packetizer_capabilities   = []
+        optional_depacketizer_capabilities = []
+        if with_ptm:
+            optional_packetizer_capabilities   = ["PTM"]
+            optional_depacketizer_capabilities = ["PTM", "CONFIGURATION"]
+
         # TLP Packetizer / Depacketizer ------------------------------------------------------------
 
         if hasattr(phy, "sink") and hasattr(phy, "source"):
@@ -34,13 +41,13 @@ class LitePCIeEndpoint(LiteXModule):
                 data_width   = phy.data_width,
                 endianness   = endianness,
                 address_mask = phy.bar0_mask,
-                capabilities = ["REQUEST", "COMPLETION"] + (["PTM"] if with_ptm else []),
+                capabilities = ["REQUEST", "COMPLETION"] + optional_depacketizer_capabilities,
             )
             self.packetizer = packetizer = LitePCIeTLPPacketizer(
                 data_width    = phy.data_width,
                 endianness    = endianness,
                 address_width = address_width,
-                capabilities  = ["REQUEST", "COMPLETION"] + (["PTM"] if with_ptm else []),
+                capabilities  = ["REQUEST", "COMPLETION"] + optional_packetizer_capabilities,
             )
             self.comb += [
                 phy.source.connect(depacketizer.sink),
@@ -51,30 +58,32 @@ class LitePCIeEndpoint(LiteXModule):
             req_sink   = packetizer.req_sink
             cmp_source = depacketizer.cmp_source
         else:
+            if with_ptm:
+                raise NotImplementedError
             # Separate Request/Completion channels
             self.cmp_depacketizer = cmp_depacketizer = LitePCIeTLPDepacketizer(
                 data_width   = phy.data_width,
                 endianness   = endianness,
                 address_mask = phy.bar0_mask,
-                capabilities = ["COMPLETION"] + (["PTM"] if with_ptm else []),
+                capabilities = ["COMPLETION"],
             )
             self.req_depacketizer = req_depacketizer = LitePCIeTLPDepacketizer(
                 data_width   = phy.data_width,
                 endianness   = endianness,
                 address_mask = phy.bar0_mask,
-                capabilities = ["REQUEST"] + (["PTM"] if with_ptm else []),
+                capabilities = ["REQUEST"],
             )
             self.cmp_packetizer = cmp_packetizer = LitePCIeTLPPacketizer(
                 data_width    = phy.data_width,
                 endianness    = endianness,
                 address_width = address_width,
-                capabilities  = ["COMPLETION"] + (["PTM"] if with_ptm else []),
+                capabilities  = ["COMPLETION"],
             )
             self.req_packetizer = req_packetizer = LitePCIeTLPPacketizer(
                 data_width    = phy.data_width,
                 endianness    = endianness,
                 address_width = address_width,
-                capabilities  = ["REQUEST"] + (["PTM"] if with_ptm else []),
+                capabilities  = ["REQUEST"],
             )
             self.comb += [
                 phy.cmp_source.connect(cmp_depacketizer.sink),
