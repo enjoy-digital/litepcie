@@ -454,11 +454,19 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 tlp_conf.ready.eq(conf_source.ready),
                 conf_source.first.eq(tlp_conf.first),
                 conf_source.last.eq(tlp_conf.last),
+                If(fmt_type == fmt_type_dict["cfg_rd0"],
+                    conf_source.we.eq(0)
+                ),
+                If(fmt_type == fmt_type_dict["cfg_wr0"],
+                    conf_source.we.eq(1)
+                ),
+                conf_source.req_id.eq(tlp_conf.requester_id),
                 conf_source.bus_number.eq(tlp_conf.bus_number),
                 conf_source.device_no.eq(tlp_conf.device_no),
                 conf_source.func.eq(tlp_conf.func),
                 conf_source.ext_reg.eq(tlp_conf.ext_reg),
                 conf_source.register_no.eq(tlp_conf.register_no),
+                conf_source.tag.eq(tlp_conf.tag),
                 conf_source.dat.eq(tlp_conf.dat)
             ]
 

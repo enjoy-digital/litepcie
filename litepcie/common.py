@@ -48,6 +48,7 @@ def configuration_layout(data_width, address_width=32):
         ("func",             3), # Configuration Function number.
         ("ext_reg",          3), # Configuration Extended Register.
         ("register_no",      6), # Configuration Register number.
+        ("tag",              8), # Configuration tag.
 
         # Data Stream.
         ("dat", data_width),
