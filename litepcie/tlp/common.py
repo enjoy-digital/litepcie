@@ -36,8 +36,8 @@ type_dict = {
     "mem_wr64" : 0b00000, # Memory Write Request (64-bit).
     "cpld"     : 0b01010, # Completion with Data.
     "cpl"      : 0b01010, # Completion without Data.
-    "cfg_rd0"  : 0b00101, # Configuration Read Request (Type 0).
-    "cfg_wr0"  : 0b00101, # Configuration Write Request (Type 0).
+    "cfg_rd0"  : 0b00100, # Configuration Read Request (Type 0).
+    "cfg_wr0"  : 0b00100, # Configuration Write Request (Type 0).
     "ptm_req"  : 0b10100, # PTM Request.
     "ptm_res"  : 0b10100, # PTM Response.
 }
@@ -50,8 +50,8 @@ fmt_type_dict = {
     "mem_wr64" : 0b11_00000, # Memory Write Request (64-bit).
     "cpld"     : 0b10_01010, # Completion with Data.
     "cpl"      : 0b00_01010, # Completion without Data.
-    "cfg_rd0"  : 0b00_00101, # Configuration Read Request (Type 0).
-    "cfg_wr0"  : 0b10_00101, # Configuration Write Request (Type 0).
+    "cfg_rd0"  : 0b00_00100, # Configuration Read Request (Type 0).
+    "cfg_wr0"  : 0b10_00100, # Configuration Write Request (Type 0).
     "ptm_req"  : 0b01_10100, # PTM Request.
     "ptm_res"  : 0b11_10100, # PTM Response.
 }
