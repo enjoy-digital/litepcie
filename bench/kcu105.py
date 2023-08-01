@@ -90,6 +90,7 @@ class LitePCIeSoC(SoCMini):
             with_loopback  = True)
 
         self.add_constant("DMA_CHANNELS", 2)
+        self.add_constant("DMA_ADDR_WIDTH", 32)
 
         # MSI
         self.pcie_msi = LitePCIeMSI()
