@@ -321,15 +321,14 @@ class LitePCIeTLPDepacketizer(LiteXModule):
             256 : LitePCIeTLPHeaderExtracter256b,
             512 : LitePCIeTLPHeaderExtracter512b,
         }
-        header_extracter = header_extracter_cls[data_width]()
-        self.submodules += header_extracter
+        self.header_extracter = header_extracter = header_extracter_cls[data_width]()
         self.comb += self.sink.connect(header_extracter.sink)
         header = header_extracter.source.header
 
         # Create Dispatcher ------------------------------------------------------------------------
 
         # Dispatch Sources
-        dispatch_sources = {"DISCARD" : stream.Endpoint(tlp_common_layout(data_width))}
+        self.dispatch_sources = dispatch_sources = {"DISCARD" : stream.Endpoint(tlp_common_layout(data_width))}
         for source in capabilities:
             dispatch_sources[source] = stream.Endpoint(tlp_common_layout(data_width))
 
@@ -340,7 +339,7 @@ class LitePCIeTLPDepacketizer(LiteXModule):
             return None
 
         # Dispatch Sink.
-        dispatch_sink = stream.Endpoint(tlp_common_layout(data_width))
+        self.dispatch_sink = dispatch_sink = stream.Endpoint(tlp_common_layout(data_width))
 
         # Dispatcher
         self.dispatcher = Dispatcher(
