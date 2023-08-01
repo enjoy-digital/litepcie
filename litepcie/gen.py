@@ -34,7 +34,6 @@ from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.gen import *
-from litex.gen.genlib.misc import WaitTimer
 
 from litex.soc.cores.clock import *
 from litex.soc.interconnect.csr import *
