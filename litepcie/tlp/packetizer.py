@@ -36,6 +36,8 @@ class LitePCIeTLPHeaderInserter3DWs4DWs(LiteXModule):
             fmt_dict["mem_wr64"] : header_sel.eq(_4DWS_SEL),
             fmt_dict[    "cpld"] : header_sel.eq(_3DWS_SEL),
             fmt_dict[     "cpl"] : header_sel.eq(_3DWS_SEL),
+            fmt_dict[ "ptm_req"] : header_sel.eq(_4DWS_SEL),
+            fmt_dict[ "ptm_res"] : header_sel.eq(_4DWS_SEL),
         })
 
         # Header Inserters Mux.
@@ -944,10 +946,9 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 If(ptm_sink.response,
                     tlp_ptm.type.eq(type_dict["ptm_res"]),
                     tlp_ptm.fmt.eq( fmt_dict["ptm_res"]),
+                    tlp_ptm.dat.eq(ptm_sink.dat),
+                    tlp_ptm.be.eq(2**(data_width//8)-1), # CHECKME.
                 ),
-
-                tlp_ptm.dat.eq(ptm_sink.dat),
-                tlp_ptm.be.eq(2**(data_width//8)-1), # CHECKME.
             ]
 
             tlp_raw_ptm        = stream.Endpoint(tlp_raw_layout(data_width))

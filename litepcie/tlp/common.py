@@ -161,7 +161,7 @@ tlp_completion_header = Header(
 )
 
 # Length of the TLP PTM header (in bytes).
-tlp_ptm_header_length = 8
+tlp_ptm_header_length = 16
 # Define TLP request header fields.
 tlp_ptm_header_fields = {
     "fmt"          : HeaderField(byte=0*4, offset=29, width= 2), # Format.

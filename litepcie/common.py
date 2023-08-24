@@ -101,8 +101,8 @@ def ptm_layout(data_width):
         ("request",       1), # Request.
         ("response",      1), # Response.
         ("requester_id", 16), # Requester ID.
-        ("length",       16), # Length.
-        ("message_code", 16), # Message Code.
+        ("length",       10), # Length.
+        ("message_code",  8), # Message Code.
 
         # Data Stream.
         ("dat", data_width),
