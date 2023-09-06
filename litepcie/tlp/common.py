@@ -176,6 +176,7 @@ tlp_ptm_header_fields = {
 
     "requester_id" : HeaderField(byte=1*4, offset=16, width=16), # Requester ID.
     "message_code" : HeaderField(byte=1*4, offset=0,  width= 8), # Message Code.
+    "master_time"  : HeaderField(byte=2*4, offset=0,  width=64), # Master Time.
 }
 # Define TLP PTM header.
 tlp_ptm_header = Header(

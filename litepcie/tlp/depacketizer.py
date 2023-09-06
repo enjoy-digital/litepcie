@@ -491,5 +491,6 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 ptm_source.requester_id.eq(tlp_ptm.requester_id),
                 ptm_source.length.eq(tlp_ptm.length),
                 ptm_source.message_code.eq(tlp_ptm.message_code),
+                ptm_source.master_time.eq(tlp_ptm.master_time),
                 ptm_source.dat.eq(tlp_ptm.dat)
             ]

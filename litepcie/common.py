@@ -103,6 +103,7 @@ def ptm_layout(data_width):
         ("requester_id", 16), # Requester ID.
         ("length",       10), # Length.
         ("message_code",  8), # Message Code.
+        ("master_time",  64), # Master Time.
 
         # Data Stream.
         ("dat", data_width),

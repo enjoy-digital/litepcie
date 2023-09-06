@@ -938,6 +938,7 @@ class LitePCIeTLPPacketizer(LiteXModule):
 
                 tlp_ptm.requester_id.eq(ptm_sink.requester_id),
                 tlp_ptm.message_code.eq(ptm_sink.message_code),
+                tlp_ptm.master_time.eq(ptm_sink.master_time),
 
                 If(ptm_sink.request,
                     tlp_ptm.type.eq(type_dict["ptm_req"]),
