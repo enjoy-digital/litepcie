@@ -10,7 +10,7 @@ with open("README.md", "r") as fp:
 
 setup(
     name="litepcie",
-    version="2023.04",
+    version="2023.08",
     description="Small footprint and configurable PCIe core",
     long_description=long_description,
     long_description_content_type="text/markdown",
