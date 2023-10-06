@@ -260,7 +260,7 @@ class LitePCIeDMAReader(LiteXModule):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None, with_splitter_buffer=True):
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None):
         self.port       = port
         self.data_width = data_width or endpoint.phy.data_width
         # Stream Endpoint.
@@ -294,8 +294,6 @@ class LitePCIeDMAReader(LiteXModule):
             address_width = address_width
         )
         splitter = ResetInserter()(splitter)
-        if with_splitter_buffer: # For timings.
-            splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
         self.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
@@ -408,7 +406,7 @@ class LitePCIeDMAWriter(LiteXModule):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None, with_splitter_buffer=True):
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None):
         self.port       = port
         self.data_width = data_width or endpoint.phy.data_width
         # Stream Endpoint.
@@ -441,9 +439,6 @@ class LitePCIeDMAWriter(LiteXModule):
             address_width = address_width
         )
         splitter = ResetInserter()(splitter)
-        if with_splitter_buffer: # For timings.
-            # FIXME: Prevent early termination, so don't use when early termination is required.
-            splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
         self.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
@@ -883,9 +878,6 @@ class LitePCIeDMA(LiteXModule):
         with_monitor      = False,
         # Status.
         with_status       = False,
-        # Splitter Buffer.
-        with_writer_splitter_buffer = True,
-        with_reader_splitter_buffer = True,
     ):
         # Parameters -------------------------------------------------------------------------------
         self.data_width = data_width or phy.data_width
@@ -902,7 +894,6 @@ class LitePCIeDMA(LiteXModule):
                 table_depth          = table_depth,
                 address_width        = address_width,
                 data_width           = self.data_width,
-                with_splitter_buffer = with_writer_splitter_buffer,
             )
             self.comb += self.sink.connect(self.writer.sink)
 
@@ -913,7 +904,6 @@ class LitePCIeDMA(LiteXModule):
                 table_depth          = table_depth,
                 address_width        = address_width,
                 data_width           = self.data_width,
-                with_splitter_buffer = with_reader_splitter_buffer,
             )
             self.comb += self.reader.source.connect(self.source)
 
