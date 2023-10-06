@@ -191,54 +191,54 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
 
         # # #
 
-        desc_length  = Signal(32)
-        desc_offset  = Signal(32)
-        desc_id      = Signal(32)
+        # Signals.
+        # --------
+        split  = Signal()
+        length = Signal(24)
 
-        # FSM --------------------------------------------------------------------------------------
+        # FSM.
+        # ----
         self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            # Set Descriptor Offset/Length.
-            NextValue(desc_offset, 0),
-            NextValue(desc_length, sink.length),
-            # Wait for a Descriptor and go to Run.
+            # Set/Clear signals.
+            NextValue(source.first, 1),
+            NextValue(source.address, sink.address),
+            NextValue(length, sink.length),
+            # Wait for a descriptor and go to RUN.
             If(sink.valid,
-                NextState("SPLIT")
+                NextState("RUN")
             )
         )
-        # Split Data-Path.
         self.comb += [
-            source.address.eq(sink.address + desc_offset),
             source.irq_disable.eq(sink.irq_disable),
             source.last_disable.eq(sink.last_disable),
-            source.user_id.eq(desc_id),
         ]
-        fsm.act("SPLIT",
-            # Split Control-Path.
+        fsm.act("RUN",
             source.valid.eq(1),
-            source.first.eq(desc_offset == 0),
-            # Full Descriptor when Length > max_size.
-            If(desc_length > max_size,
-                source.last.eq(self.terminate),
-                source.length.eq(max_size),
-            # Partial Descriptor when Length <= max_size.
+            # Split descriptor when remaining length > Maximum Payload/Request Size...
+            split.eq(length > max_size),
+            If(split,
+                source.length.eq(max_size)
+            # ...else generate with remaining length.
             ).Else(
                 source.last.eq(1),
-                source.length.eq(desc_length),
+                source.length.eq(length)
             ),
-            # When Descriptor is accepted...
+            # When descriptor is accepted...
             If(source.ready,
-                # Increment Offset.
-                NextValue(desc_offset, desc_offset + max_size),
-                # Decrement Length.
-                NextValue(desc_length, desc_length - max_size),
-                # When Last....
-                If(source.last,
+                # Clear first.
+                NextValue(source.first, 0),
+                # Increment address.
+                NextValue(source.address, source.address + max_size),
+                # Decrement length.
+                NextValue(length, length - max_size),
+                # On last or terminate...
+                If(source.last | self.terminate,
                     # Accept Descriptor.
                     sink.ready.eq(1),
-                    # Increment ID.
-                    NextValue(desc_id, desc_id + 1),
-                    # Go to Idle.
+                    # Increment User-ID.
+                    NextValue(source.user_id, source.user_id + 1),
+                    # Return to IDLE..
                     NextState("IDLE")
                 )
             )
