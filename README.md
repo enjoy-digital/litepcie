@@ -46,6 +46,7 @@ Core:
 Frontend:
   - DMA (with Scatter-Gather).
   - MMAP (AXI/Wishbone Slave/Master).
+  - PTM (on Xilinx 7-Series/Gen2 X1 for now).
 
 Software:
   - Linux Driver (MMAP and DMA).

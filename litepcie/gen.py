@@ -52,9 +52,12 @@ from litepcie.core import LitePCIeEndpoint, LitePCIeMSI, LitePCIeMSIMultiVector,
 from litepcie.frontend.dma import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneMaster, LitePCIeWishboneSlave
 from litepcie.frontend.axi import LitePCIeAXISlave
+from litepcie.frontend.ptm import PCIePTMSniffer
+from litepcie.frontend.ptm import PTMCapabilities, PTMRequester
 from litepcie.software import generate_litepcie_software_headers
 
 from litex.build.generic_platform import *
+
 
 # IOs/Interfaces -----------------------------------------------------------------------------------
 
@@ -118,6 +121,16 @@ def get_axi_dma_ios(_id, data_width, with_writer=True, with_reader=True):
 def get_msi_irqs_ios(width=16):
     return [("msi_irqs", 0, Pins(width))]
 
+
+def get_ptm_ios(phy_lanes=4):
+    return [
+        ("ptm", 0,
+            Subsignal("time_clk", Pins(1)),
+            Subsignal("time_rst", Pins(1)),
+            Subsignal("time_ns",  Pins(64)),
+        ),
+    ]
+
 # CRG ----------------------------------------------------------------------------------------------
 
 class LitePCIeCRG(LiteXModule):
@@ -154,11 +167,13 @@ class LitePCIeCRG(LiteXModule):
 class LitePCIeCore(SoCMini):
     SoCMini.mem_map["csr"] = 0x00000000
     SoCMini.csr_map = {
-        "ctrl":           0,
-        "crg" :           1,
-        "pcie_phy":       2,
-        "pcie_msi":       3,
-        "pcie_msi_table": 4,
+        "ctrl"             : 0,
+        "crg"              : 1,
+        "pcie_phy"         : 2,
+        "pcie_msi"         : 3,
+        "pcie_msi_table"   : 4,
+        "ptm_capabilities" : 5,
+        "ptm_requester"    : 6,
     }
     def __init__(self, platform, core_config):
         platform.add_extension(get_pcie_ios(core_config["phy_lanes"]))
@@ -201,6 +216,7 @@ class LitePCIeCore(SoCMini):
             endianness           = self.pcie_phy.endianness,
             address_width        = ep_address_width,
             max_pending_requests = ep_max_pending_requests,
+            with_ptm             = core_config.get("ptm", False),
         )
 
         # PCIe Wishbone Master ---------------------------------------------------------------------
@@ -326,6 +342,89 @@ class LitePCIeCore(SoCMini):
             self.comb += self.pcie_msi.irqs[i].eq(v)
             self.add_constant(k.upper() + "_INTERRUPT", i)
         assert len(self.interrupts.keys()) <= 16
+
+        # PCIe PTM ---------------------------------------------------------------------------------
+        if core_config.get("ptm", False):
+
+            # PCIe PTM Sniffer ---------------------------------------------------------------------
+
+            # Since Xilinx PHY does not allow redirecting PTM TLP Messages to the AXI inferface, we have
+            # to sniff the GTPE2 -> PCIE2 RX Data to re-generate PTM TLP Messages.
+
+            # Sniffer Signals.
+            # ----------------
+            sniffer_rst_n   = Signal()
+            sniffer_clk     = Signal()
+            sniffer_rx_data = Signal(16)
+            sniffer_rx_ctl  = Signal(2)
+
+            # Sniffer Tap.
+            # ------------
+            rx_data = Signal(16)
+            rx_ctl  = Signal(2)
+            self.sync.pclk += rx_data.eq(rx_data + 1)
+            self.sync.pclk += rx_ctl.eq(rx_ctl + 1)
+            self.specials += Instance("sniffer_tap",
+                i_rst_n_in    = 1,
+                i_clk_in     = ClockSignal("pclk"),
+                i_rx_data_in = rx_data, # /!\ Fake, will be re-connected post-synthesis /!\.
+                i_rx_ctl_in  = rx_ctl,  # /!\ Fake, will be re-connected post-synthesis /!\.
+
+                o_rst_n_out   = sniffer_rst_n,
+                o_clk_out     = sniffer_clk,
+                o_rx_data_out = sniffer_rx_data,
+                o_rx_ctl_out  = sniffer_rx_ctl,
+            )
+
+            # Sniffer.
+            # --------
+            self.pcie_ptm_sniffer = PCIePTMSniffer(
+                rx_rst_n = sniffer_rst_n,
+                rx_clk   = sniffer_clk,
+                rx_data  = sniffer_rx_data,
+                rx_ctrl  = sniffer_rx_ctl,
+            )
+            self.pcie_ptm_sniffer.add_sources(platform)
+
+            # Sniffer Post-Synthesis connections.
+            # -----------------------------------
+            pcie_ptm_sniffer_connections = []
+            for n in range(2):
+                pcie_ptm_sniffer_connections.append((
+                    f"pcie_s7/inst/inst/gt_top_i/gt_rx_data_k_wire_filter[{n}]", # Src.
+                    f"pcie_ptm_sniffer_tap/rx_ctl_in[{n}]",                      # Dst.
+                ))
+            for n in range(16):
+                pcie_ptm_sniffer_connections.append((
+                    f"pcie_s7/inst/inst/gt_top_i/gt_rx_data_wire_filter[{n}]", # Src.
+                    f"pcie_ptm_sniffer_tap/rx_data_in[{n}]",                   # Dst.
+                ))
+            for _from, _to in pcie_ptm_sniffer_connections:
+                platform.toolchain.pre_optimize_commands.append(f"set pin_driver [get_nets -of [get_pins {_to}]]")
+                platform.toolchain.pre_optimize_commands.append(f"disconnect_net -net $pin_driver -objects {_to}")
+                platform.toolchain.pre_optimize_commands.append(f"connect_net -hier -net {_from} -objects {_to}")
+
+            # PTM IOs ------------------------------------------------------------------------------
+            platform.add_extension(get_ptm_ios())
+            ptm_ios = platform.request("ptm")
+
+            # PTM Capabilities ---------------------------------------------------------------------
+            self.ptm_capabilities = PTMCapabilities(
+                pcie_endpoint     = self.pcie_endpoint,
+                requester_capable = True,
+            )
+
+            # PTM Requester ------------------------------------------------------------------------
+            self.ptm_requester = PTMRequester(
+                pcie_endpoint    = self.pcie_endpoint,
+                pcie_ptm_sniffer = self.pcie_ptm_sniffer,
+                sys_clk_freq     = sys_clk_freq,
+            )
+            self.comb += [
+                self.ptm_requester.time_clk.eq(ptm_ios.time_clk),
+                self.ptm_requester.time_rst.eq(ptm_ios.time_rst),
+                self.ptm_requester.time.eq(ptm_ios.time_ns)
+            ]
 
     def generate_documentation(self, build_name, **kwargs):
         from litex.soc.doc import generate_docs
