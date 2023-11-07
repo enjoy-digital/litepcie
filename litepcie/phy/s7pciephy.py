@@ -22,7 +22,13 @@ from litepcie.phy.common import *
 class S7PCIEPHY(LiteXModule):
     endianness    = "big"
     qword_aligned = False
-    def __init__(self, platform, pads, data_width=64, bar0_size=1*MB, cd="sys", pcie_data_width=None):
+    def __init__(self, platform, pads, data_width=64,  cd="sys",
+        # PCIe hardblock parameters.
+        pcie_data_width = None,
+        bar0_size       = 0x100000,
+        msi_type        = "msi",
+        with_ptm        = False,
+    ):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
@@ -434,44 +440,58 @@ class S7PCIEPHY(LiteXModule):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
+            # Global parameters.
             config = {
-                # Generic Config.
-                # ---------------
-                "Component_Name"           : "pcie",
-                "Device_ID"                : 7020 + self.nlanes,
-                "Link_Speed"               : "5.0_GT/s",
-                "Trgt_Link_Speed"          : "4'h2",
-                "Max_Payload_Size"         : {
-                    1 : "256_bytes",
-                    2 : "256_bytes",
-                    4 : "256_bytes",
-                    8 : "512_bytes",
-                }[self.nlanes],
-                "Interface_Width"          : f"{self.pcie_data_width}_bit",
-                "Buf_Opt_BMA"              : True,
-                "Maximum_Link_Width"       : f"X{self.nlanes}",
-                "PCIe_Blk_Locn"            : "X0Y0",
-                "Ref_Clk_Freq"             : "100_MHz",
-                "Trans_Buf_Pipeline"       : None,
-                "User_Clk_Freq"            : {
-                    1 : 125,
-                    2 : 125,
-                    4 : 125,
-                    8 : 250,
-                }[self.nlanes],
-
-                # BAR0 Config.
-                # ------------
-                "Bar0_Scale"               : "Megabytes",               # FIXME.
-                "Bar0_Size"                : max(self.bar0_size/MB, 1), # FIXME.
-
-                # Interrupt Config.
-                # -----------------
-                "IntX_Generation"          : False,
-                "Legacy_Interrupt"         : None,
-                "MSI_64b"                  : False,
-                "Multiple_Message_Capable" : '1_vector',
+                "Bar0_Scale"         : "Megabytes",
+                "Bar0_Size"          : 1,
+                "Buf_Opt_BMA"        : True,
+                "Component_Name"     : "pcie",
+                "Device_ID"          : 7020 + self.nlanes,
+                "Interface_Width"    : f"{self.pcie_data_width}_bit",
+                "Link_Speed"         : "5.0_GT/s",
+                "Max_Payload_Size"   : "512_bytes" if self.nlanes != 8 else "256_bytes",
+                "Maximum_Link_Width" : f"X{self.nlanes}",
+                "PCIe_Blk_Locn"      : "X0Y0",
+                "Ref_Clk_Freq"       : "100_MHz",
+                "Trans_Buf_Pipeline" : None,
+                "Trgt_Link_Speed"    : "4'h2",
+                "User_Clk_Freq"      : 125 if self.nlanes != 8 else 250,
             }
+
+            # Interrupts parameters.
+            assert self.msi_type in ["msi", "msi-multi-vector", "msi-x"]
+            config.update({
+                    "Legacy_Interrupt" : None,
+                    "IntX_Generation"  : False,
+            })
+            if self.msi_type == "msi":
+                config.update({
+                    "MSI_64b"                  : False,
+                    "Multiple_Message_Capable" : "1_vector",
+                })
+            if self.msi_type == "msi-multi-vector":
+                config.update({
+                    "MSI_64b"                  : False,
+                    "Multiple_Message_Capable" : "1_vector", # FIXME.
+                })
+            if self.msi_type == "msi-x":
+                config.update({
+                    "mode_selection"    : "Advanced",
+                    "MSI_Enabled"       : False,
+                    "MSIx_Enabled"      : True,
+                    "MSIx_Table_Size"   : "20",   # Hexa.
+                    "MSIx_Table_Offset" : "2000", # Hexa, should match CSR_PCIE_MSI_TABLE_BASE.
+                    "MSIx_PBA_Offset"   : "1808", # Hexa, should match CSR_PCIE_MSI_PBA_ADDR.
+                })
+
+            # Extended Capabilities Registers.
+            if self.with_ptm:
+                config.update({
+                    "EXT_PCI_CFG_Space"      : True,
+                    "EXT_PCI_CFG_Space_Addr" : "6B", # 0x1AC.
+                })
+
+            # Tcl generation.
             ip_tcl = []
             ip_tcl.append("create_ip -vendor xilinx.com -name pcie_7x -module_name pcie_s7")
             ip_tcl.append("set obj [get_ips pcie_s7]")
@@ -481,6 +501,7 @@ class S7PCIEPHY(LiteXModule):
             ip_tcl.append(f"] $obj")
             ip_tcl.append("synth_ip $obj")
             platform.toolchain.pre_synthesis_commands += ip_tcl
+
         # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (we only want to keep Timing constraints).
         if platform.device.startswith("xc7a"):
             platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtp_common.gtpe2_common_i}}]")
@@ -499,6 +520,6 @@ class S7PCIEPHY(LiteXModule):
         if not self.external_hard_ip:
             phy_path     = "xilinx_s7_gen2"
             self.add_sources(self.platform,
-                phy_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
+                phy_path     = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
             )
         self.specials += Instance("pcie_s7", **self.pcie_phy_params)
