@@ -63,6 +63,8 @@ class S7PCIEPHY(LiteXModule):
         self.platform         = platform
         self.data_width       = data_width
         self.pcie_data_width  = pcie_data_width
+        self.msi_type         = msi_type
+        self.with_ptm         = with_ptm
 
         self.id               = Signal(16, reset_less=True)
         self.bar0_size        = bar0_size

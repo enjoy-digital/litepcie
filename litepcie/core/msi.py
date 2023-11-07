@@ -122,8 +122,8 @@ class LitePCIeMSIX(Module, AutoCSR):
             ]
 
         # Send MSI-X as TLP-Write ------------------------------------------------------------------
-        port     = endpoint.crossbar.get_master_port()
-        table_port = self.table.get_port(has_re=True)
+        self.port       = port       = endpoint.crossbar.get_master_port()
+        self.table_port = table_port = self.table.get_port(has_re=True)
         self.specials += table_port
 
         self.submodules.fsm = fsm = FSM(reset_state="IDLE")

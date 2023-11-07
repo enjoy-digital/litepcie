@@ -1,11 +1,13 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # Copyright (c) 2020 Antmicro <www.antmicro.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
+
+from litex.gen import *
 
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.csr import *
@@ -24,7 +26,7 @@ def descriptor_layout(address_width=32, with_user_id=False):
 
 # LitePCIeDMAScatterGather --------------------------------------------------------------------------
 
-class LitePCIeDMAScatterGather(Module, AutoCSR):
+class LitePCIeDMAScatterGather(LiteXModule):
     """LitePCIe DMA Scatter-Gather
 
     Software programmable table storing a list of DMA descriptors.
@@ -167,7 +169,7 @@ class LitePCIeDMAScatterGather(Module, AutoCSR):
 
 # LitePCIeDMADescriptorSplitter --------------------------------------------------------------------
 
-class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
+class LitePCIeDMADescriptorSplitter(LiteXModule):
     """LitePCIe DMA Descriptor Splitter
 
     Splits descriptors from LitePCIeDMAScatterGather in shorter descriptors of:
@@ -189,54 +191,54 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
 
         # # #
 
-        desc_length  = Signal(32)
-        desc_offset  = Signal(32)
-        desc_id      = Signal(32)
+        # Signals.
+        # --------
+        split  = Signal()
+        length = Signal(24)
 
-        # FSM --------------------------------------------------------------------------------------
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        # FSM.
+        # ----
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            # Set Descriptor Offset/Length.
-            NextValue(desc_offset, 0),
-            NextValue(desc_length, sink.length),
-            # Wait for a Descriptor and go to Run.
+            # Set/Clear signals.
+            NextValue(source.first, 1),
+            NextValue(source.address, sink.address),
+            NextValue(length, sink.length),
+            # Wait for a descriptor and go to RUN.
             If(sink.valid,
-                NextState("SPLIT")
+                NextState("RUN")
             )
         )
-        # Split Data-Path.
         self.comb += [
-            source.address.eq(sink.address + desc_offset),
             source.irq_disable.eq(sink.irq_disable),
             source.last_disable.eq(sink.last_disable),
-            source.user_id.eq(desc_id),
         ]
-        fsm.act("SPLIT",
-            # Split Control-Path.
+        fsm.act("RUN",
             source.valid.eq(1),
-            source.first.eq(desc_offset == 0),
-            # Full Descriptor when Length > max_size.
-            If(desc_length > max_size,
-                source.last.eq(self.terminate),
-                source.length.eq(max_size),
-            # Partial Descriptor when Length <= max_size.
+            # Split descriptor when remaining length > Maximum Payload/Request Size...
+            split.eq(length > max_size),
+            If(split,
+                source.length.eq(max_size)
+            # ...else generate with remaining length.
             ).Else(
                 source.last.eq(1),
-                source.length.eq(desc_length),
+                source.length.eq(length)
             ),
-            # When Descriptor is accepted...
+            # When descriptor is accepted...
             If(source.ready,
-                # Increment Offset.
-                NextValue(desc_offset, desc_offset + max_size),
-                # Decrement Length.
-                NextValue(desc_length, desc_length - max_size),
-                # When Last....
-                If(source.last,
+                # Clear first.
+                NextValue(source.first, 0),
+                # Increment address.
+                NextValue(source.address, source.address + max_size),
+                # Decrement length.
+                NextValue(length, length - max_size),
+                # On last or terminate...
+                If(source.last | self.terminate,
                     # Accept Descriptor.
                     sink.ready.eq(1),
-                    # Increment ID.
-                    NextValue(desc_id, desc_id + 1),
-                    # Go to Idle.
+                    # Increment User-ID.
+                    NextValue(source.user_id, source.user_id + 1),
+                    # Return to IDLE..
                     NextState("IDLE")
                 )
             )
@@ -244,7 +246,7 @@ class LitePCIeDMADescriptorSplitter(Module, AutoCSR):
 
 # LitePCIeDMAReader --------------------------------------------------------------------------------
 
-class LitePCIeDMAReader(Module, AutoCSR):
+class LitePCIeDMAReader(LiteXModule):
     """LitePCIe DMA Reader
 
     Generates a data stream from Host's memory.
@@ -258,10 +260,11 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, with_splitter_buffer=True):
-        self.port = port
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None):
+        self.port       = port
+        self.data_width = data_width or endpoint.phy.data_width
         # Stream Endpoint.
-        self.source = stream.Endpoint(dma_layout(endpoint.phy.data_width))
+        self.source = stream.Endpoint(dma_layout(self.data_width))
 
         # Control.
         self._enable = CSRStorage(size=2, description="DMA Reader Control. Write ``1`` to enable DMA Reader.", reset=0 if with_table else 1)
@@ -280,7 +283,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
-            self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width=address_width)
+            self.table = LitePCIeDMAScatterGather(table_depth, address_width=address_width)
         else:
             self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
 
@@ -291,9 +294,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
             address_width = address_width
         )
         splitter = ResetInserter()(splitter)
-        if with_splitter_buffer: # For timings.
-            splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
-        self.submodules.splitter = splitter
+        self.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
         else:
@@ -305,13 +306,18 @@ class LitePCIeDMAReader(Module, AutoCSR):
             last_user_id.eq(port.sink.user_id)
         )
 
+        # Data Converter ---------------------------------------------------------------------------
+
+        self.data_conv = stream.Converter(endpoint.phy.data_width, self.data_width)
+        self.comb += self.data_conv.source.connect(self.source)
+
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_pending_words
         data_fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), data_fifo_depth, buffered=True)
-        self.submodules.data_fifo = ResetInserter()(data_fifo)
+        self.data_fifo = ResetInserter()(data_fifo)
         self.comb += [
-            # Connect Data FIFO to Source.
-            data_fifo.source.connect(self.source),
+            # Connect Data FIFO to Data Converter.
+            data_fifo.source.connect(self.data_conv.sink),
             # When Enabled, connect Sink to Data FIFO.
             If(enable,
                 port.sink.connect(data_fifo.sink, keep={"valid", "ready"}),
@@ -342,7 +348,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
         self.sync += If(~enable, pending_words.eq(0))
 
         # FSM --------------------------------------------------------------------------------------
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             # Reset Splitter/FIFO when disabled.
             If(~enable,
@@ -386,7 +392,7 @@ class LitePCIeDMAReader(Module, AutoCSR):
 
 # LitePCIeDMAWriter --------------------------------------------------------------------------------
 
-class LitePCIeDMAWriter(Module, AutoCSR):
+class LitePCIeDMAWriter(LiteXModule):
     """LitePCIe DMA Writer
 
     Stores a data stream to Host's memory.
@@ -400,10 +406,11 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, with_splitter_buffer=True):
-        self.port = port
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None):
+        self.port       = port
+        self.data_width = data_width or endpoint.phy.data_width
         # Stream Endpoint.
-        self.sink = sink = stream.Endpoint(dma_layout(endpoint.phy.data_width))
+        self.sink = stream.Endpoint(dma_layout(self.data_width))
 
         # Control.
         self._enable = CSRStorage(size=2, description="DMA Writer Control. Write ``1`` to enable DMA Writer.", reset=0 if with_table else 1)
@@ -421,7 +428,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
-            self.submodules.table = LitePCIeDMAScatterGather(table_depth, address_width)
+            self.table = LitePCIeDMAScatterGather(table_depth, address_width)
         else:
             self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
 
@@ -432,27 +439,29 @@ class LitePCIeDMAWriter(Module, AutoCSR):
             address_width = address_width
         )
         splitter = ResetInserter()(splitter)
-        if with_splitter_buffer: # For timings.
-            # FIXME: Prevent early termination, so don't use when early termination is required.
-            splitter = BufferizeEndpoints({"source": DIR_SOURCE})(splitter)
-        self.submodules.splitter = splitter
+        self.splitter = splitter
         if with_table:
             self.comb += self.table.source.connect(splitter.sink)
         else:
             self.comb += self.desc_sink.connect(splitter.sink)
 
+        # Data Converter ---------------------------------------------------------------------------
+
+        self.data_conv = stream.Converter(self.data_width, endpoint.phy.data_width)
+        self.comb += self.sink.connect(self.data_conv.sink)
+
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_words_per_request
         data_fifo = stream.SyncFIFO([("data", endpoint.phy.data_width)], data_fifo_depth, buffered=True)
-        self.submodules.data_fifo = ResetInserter()(data_fifo)
+        self.data_fifo = ResetInserter()(data_fifo)
         # By default, accept incoming stream when disabled.
-        self.comb += sink.ready.eq(1)
-        # When Enabled, connect Sink to Data FIFO.
-        self.comb += If(enable, sink.connect(data_fifo.sink))
+        self.comb += self.data_conv.source.ready.eq(1)
+        # When Enabled, connect Data Converter to Data FIFO.
+        self.comb += If(enable, self.data_conv.source.connect(data_fifo.sink))
 
         # FSM --------------------------------------------------------------------------------------
         req_count = Signal.like(splitter.source.length)
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             # Reset Request Count.
             NextValue(req_count, 0),
@@ -511,7 +520,7 @@ class LitePCIeDMAWriter(Module, AutoCSR):
 
 # LitePCIeDMALoopback ------------------------------------------------------------------------------
 
-class LitePCIeDMALoopback(Module, AutoCSR):
+class LitePCIeDMALoopback(LiteXModule):
     """LitePCIe DMA Loopback
 
     Optional DMA Reader to DMA Writer loopback.
@@ -544,7 +553,7 @@ class LitePCIeDMALoopback(Module, AutoCSR):
 
 # LitePCIeDMASynchronizer --------------------------------------------------------------------------
 
-class LitePCIeDMASynchronizer(Module, AutoCSR):
+class LitePCIeDMASynchronizer(LiteXModule):
     """LitePCIe DMA Synchronizer
 
     Optional DMA synchronization.
@@ -612,7 +621,7 @@ class LitePCIeDMASynchronizer(Module, AutoCSR):
 
 # LitePCIeDMABuffering -----------------------------------------------------------------------------
 
-class LitePCIeDMABuffering(Module, AutoCSR):
+class LitePCIeDMABuffering(LiteXModule):
     """LitePCIe DMA Buffering
 
     Optional DMA buffering with dynamically configurable depth.
@@ -732,7 +741,7 @@ class LitePCIeDMABuffering(Module, AutoCSR):
 
 # LitePCIeDMAStatus --------------------------------------------------------------------------------
 
-class LitePCIeDMAStatus(Module, AutoCSR):
+class LitePCIeDMAStatus(LiteXModule):
     """LitePCIe DMA Status
 
     Optional DMA Status writer to Host Memory.
@@ -804,7 +813,7 @@ class LitePCIeDMAStatus(Module, AutoCSR):
         offset = Signal(4)
         assert len(status)%dwords == 0
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             If(self.control.fields.enable,
                 If(update,
@@ -849,7 +858,7 @@ class LitePCIeDMAStatus(Module, AutoCSR):
 
 # LitePCIeDMA --------------------------------------------------------------------------------------
 
-class LitePCIeDMA(Module, AutoCSR):
+class LitePCIeDMA(LiteXModule):
     """LitePCIe DMA
 
     Scatter-Gather bi-directional DMA:
@@ -858,7 +867,7 @@ class LitePCIeDMA(Module, AutoCSR):
 
     Optional buffering, loopback, synchronization and monitoring.
     """
-    def __init__(self, phy, endpoint, table_depth=256, address_width=32, with_writer=True, with_reader=True,
+    def __init__(self, phy, endpoint, table_depth=256, address_width=32, data_width=None, with_writer=True, with_reader=True,
         # Loopback.
         with_loopback     = False,
         # Synchronizer.
@@ -869,60 +878,55 @@ class LitePCIeDMA(Module, AutoCSR):
         with_monitor      = False,
         # Status.
         with_status       = False,
-        # Splitter Buffer.
-        with_writer_splitter_buffer = True,
-        with_reader_splitter_buffer = True,
     ):
         # Parameters -------------------------------------------------------------------------------
-        self.data_width = data_width = phy.data_width
+        self.data_width = data_width or phy.data_width
 
         # Endoints ---------------------------------------------------------------------------------
-        self.sink   = stream.Endpoint(dma_layout(data_width))
-        self.source = stream.Endpoint(dma_layout(data_width))
+        self.sink   = stream.Endpoint(dma_layout(self.data_width))
+        self.source = stream.Endpoint(dma_layout(self.data_width))
 
         # Writer/Reader ----------------------------------------------------------------------------
         if with_writer:
-            writer = LitePCIeDMAWriter(
+            self.writer = LitePCIeDMAWriter(
                 endpoint             = endpoint,
                 port                 = endpoint.crossbar.get_master_port(write_only=True),
                 table_depth          = table_depth,
                 address_width        = address_width,
-                with_splitter_buffer = with_writer_splitter_buffer,
+                data_width           = self.data_width,
             )
-            self.submodules.writer = writer
             self.comb += self.sink.connect(self.writer.sink)
 
         if with_reader:
-            reader = LitePCIeDMAReader(
+            self.reader = LitePCIeDMAReader(
                 endpoint             = endpoint,
                 port                 = endpoint.crossbar.get_master_port(read_only=True),
                 table_depth          = table_depth,
                 address_width        = address_width,
-                with_splitter_buffer = with_reader_splitter_buffer,
+                data_width           = self.data_width,
             )
-            self.submodules.reader = reader
-            self.comb += reader.source.connect(self.source)
+            self.comb += self.reader.source.connect(self.source)
 
         # Loopback ---------------------------------------------------------------------------------
         if with_loopback:
             if not (with_writer and with_reader):
                 raise ValueError("Loopback capability requires DMAWriter and DMAReader to be enabled.")
-            self.submodules.loopback = LitePCIeDMALoopback(data_width)
+            self.loopback = LitePCIeDMALoopback(self.data_width)
             self.add_plugin_module(self.loopback)
 
         # Synchronizer -----------------------------------------------------------------------------
         if with_synchronizer:
             if not (with_writer and with_reader):
                 raise ValueError("Synchronizer capability requires DMAWriter and DMAReader to be enabled.")
-            self.submodules.synchronizer = LitePCIeDMASynchronizer(data_width)
+            self.synchronizer = LitePCIeDMASynchronizer(self.data_width)
             self.add_plugin_module(self.synchronizer)
 
         # Buffering --------------------------------------------------------------------------------
         if with_buffering:
             writer_depth = writer_buffering_depth if writer_buffering_depth is not None else buffering_depth
             reader_depth = reader_buffering_depth if reader_buffering_depth is not None else buffering_depth
-            self.submodules.buffering = LitePCIeDMABuffering(
-                data_width   = data_width,
+            self.buffering = LitePCIeDMABuffering(
+                data_width   = self.data_width,
                 with_reader  = with_reader,
                 with_writer  = with_writer,
                 reader_depth = reader_depth,
@@ -933,18 +937,18 @@ class LitePCIeDMA(Module, AutoCSR):
         # Monitor ----------------------------------------------------------------------------------
         if with_monitor:
             if with_writer:
-                self.submodules.writer_monitor = stream.Monitor(self.sink,   count_width=16, with_overflows  = True)
+                self.writer_monitor = stream.Monitor(self.sink,   count_width=16, with_overflows  = True)
             if with_reader:
-                self.submodules.reader_monitor = stream.Monitor(self.source, count_width=16, with_underflows = True)
+                self.reader_monitor = stream.Monitor(self.source, count_width=16, with_underflows = True)
 
         # Status -----------------------------------------------------------------------------------
         if with_status:
             if not (with_writer and with_reader):
                 raise ValueError("Status capability requires DMAWriter and DMAReader to be enabled.")
-            self.submodules.status = LitePCIeDMAStatus(
+            self.status = LitePCIeDMAStatus(
                 endpoint      = endpoint,
-                writer        = writer,
-                reader        = reader,
+                writer        = self.writer,
+                reader        = self.reader,
                 address_width = address_width,
             )
 

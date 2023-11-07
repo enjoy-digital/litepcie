@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/*
+/* SPDX-License-Identifier: GPL-2.0
+ *
  * Common LiteX header providing
  * helper functions for accessing CSRs.
  *

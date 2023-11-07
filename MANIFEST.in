@@ -1,1 +1,10 @@
-graft litepcie/software
+graft litepcie
+
+include CONTRIBUTORS
+include LICENSE
+
+graft doc
+
+prune bench
+prune examples
+prune test

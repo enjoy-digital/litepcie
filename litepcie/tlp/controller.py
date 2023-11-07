@@ -6,12 +6,15 @@
 
 from migen import *
 
+from litex.gen import *
+
 from litepcie.common import *
 from litepcie.core.common import *
 from litepcie.tlp.common import *
 
+# LitePCIe TLP Controller --------------------------------------------------------------------------
 
-class LitePCIeTLPController(Module):
+class LitePCIeTLPController(LiteXModule):
     """LitePCIe TLP requests/completions controller.
 
     Arbitrate/throttle TLP requests and reorder/assemble/redirect completions.
@@ -32,22 +35,27 @@ class LitePCIeTLPController(Module):
         # The tag queue is filled initially with the tags that will be used to issue read requests
         # to the host. A tag is dequeued when a read requests is issued to the host and queued when
         # a readcomplementation is received from the host.
-        tag_queue = SyncFIFO([("tag", tag_bits)], max_pending_requests, buffered=True)
-        self.submodules.tag_queue = tag_queue
+        self.tag_queue = tag_queue = SyncFIFO(
+            layout   = [("tag", tag_bits)],
+            depth    = max_pending_requests,
+            buffered = True,
+        )
 
         # Requests queue ---------------------------------------------------------------------------
         # Store the read requests tags as emitted to the host, datas will be dequeued in this order
-        req_queue_layout = [("tag", tag_bits), ("channel", 8), ("user_id", 8)]
-        req_queue        = SyncFIFO(req_queue_layout, max_pending_requests, buffered=True)
-        self.submodules.req_queue = req_queue
+        self.req_queue = req_queue = SyncFIFO(
+            layout   =  [("tag", tag_bits), ("channel", 8), ("user_id", 8)],
+            depth    = max_pending_requests,
+            buffered = True,
+        )
 
         # Requests Management ----------------------------------------------------------------------
 
         # Connect Data-Path.
         self.comb += req_sink.connect(req_source, omit={"valid", "ready", "tag"})
-        self.submodules.req_fsm = req_fsm = FSM(reset_state="WAIT-REQ")
 
         # FSM.
+        self.req_fsm = req_fsm = FSM(reset_state="WAIT-REQ")
         req_fsm.act("WAIT-REQ",
             # Wait for a TLP Request...
             If(req_sink.valid & req_sink.first,
@@ -69,6 +77,10 @@ class LitePCIeTLPController(Module):
                 NextState("WAIT-REQ")
             )
         )
+        self.comb += [
+            req_queue.sink.tag.eq(tag_queue.source.tag),
+            req_sink.connect(req_queue.sink, keep={"channel", "user_id"}),
+        ]
         req_fsm.act("SEND-READ-REQ",
             # Connect Control-Path.
             req_sink.connect(req_source, keep={"valid", "ready"}),
@@ -79,8 +91,6 @@ class LitePCIeTLPController(Module):
                 tag_queue.source.ready.eq(1),
                 # Push Req to req_queue.
                 req_queue.sink.valid.eq(1),
-                req_queue.sink.tag.eq(tag_queue.source.tag),
-                req_sink.connect(req_queue.sink, keep={"channel", "user_id"}),
                 NextState("WAIT-REQ")
             )
         )
@@ -139,7 +149,7 @@ class LitePCIeTLPController(Module):
         self.comb += cmp_sink.connect(cmp_reorder, omit={"valid", "ready"})
 
         # FSM
-        self.submodules.cmp_fsm = cmp_fsm = FSM(reset_state="FILL-TAG-QUEUE")
+        self.cmp_fsm = cmp_fsm = FSM(reset_state="FILL-TAG-QUEUE")
         cmp_fsm.act("FILL-TAG-QUEUE",
             # Pre-fill Tags.
             tag_queue.sink.valid.eq(1),

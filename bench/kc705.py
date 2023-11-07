@@ -11,6 +11,8 @@ import argparse
 
 from migen import *
 
+from litex.gen import *
+
 from litex_boards.platforms import xilinx_kc705
 
 from litex.soc.cores.clock import S7MMCM
@@ -26,14 +28,14 @@ from litepcie.software import generate_litepcie_software
 
 # CRG ----------------------------------------------------------------------------------------------
 
-class _CRG(Module):
+class _CRG(LiteXModule):
     def __init__(self, platform, sys_clk_freq):
-        self.clock_domains.cd_sys = ClockDomain()
+        self.cd_sys = ClockDomain()
 
         # # #
 
         # PLL
-        self.submodules.pll = pll = S7MMCM(speedgrade=-2)
+        self.pll = pll = S7MMCM(speedgrade=-2)
         pll.register_clkin(platform.request("clk200"), 200e6)
         pll.create_clkout(self.cd_sys, sys_clk_freq)
 
@@ -53,44 +55,45 @@ class LitePCIeSoC(SoCMini):
         SoCMini.__init__(self, platform, sys_clk_freq, ident=f"LitePCIe example design on KC705 ({speed}:x{nlanes})")
 
         # CRG --------------------------------------------------------------------------------------
-        self.submodules.crg = _CRG(platform, sys_clk_freq)
+        self.crg = _CRG(platform, sys_clk_freq)
 
         # UARTBone ---------------------------------------------------------------------------------
         self.add_uartbone()
 
         # PCIe -------------------------------------------------------------------------------------
         # PHY
-        self.submodules.pcie_phy = S7PCIEPHY(platform, platform.request(f"pcie_x{nlanes}"),
+        self.pcie_phy = S7PCIEPHY(platform, platform.request(f"pcie_x{nlanes}"),
             data_width = data_width,
             bar0_size  = 0x20000,
         )
         self.pcie_phy.add_ltssm_tracer()
 
         # Endpoint
-        self.submodules.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
+        self.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
             endianness           = "big",
             max_pending_requests = 8
         )
 
         # Wishbone bridge
-        self.submodules.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint,
+        self.pcie_bridge = LitePCIeWishboneBridge(self.pcie_endpoint,
             base_address = self.mem_map["csr"])
         self.bus.add_master(master=self.pcie_bridge.wishbone)
 
         # DMA0
-        self.submodules.pcie_dma0 = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
+        self.pcie_dma0 = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
             with_buffering = True, buffering_depth=1024,
             with_loopback  = True)
 
         # DMA1
-        self.submodules.pcie_dma1 = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
+        self.pcie_dma1 = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
             with_buffering = True, buffering_depth=1024,
             with_loopback  = True)
 
         self.add_constant("DMA_CHANNELS", 2)
+        self.add_constant("DMA_ADDR_WIDTH", 32)
 
         # MSI
-        self.submodules.pcie_msi = LitePCIeMSI()
+        self.pcie_msi = LitePCIeMSI()
         self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
         self.interrupts = {
             "PCIE_DMA0_WRITER":    self.pcie_dma0.writer.irq,

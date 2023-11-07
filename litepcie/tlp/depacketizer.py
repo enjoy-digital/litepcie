@@ -6,11 +6,13 @@
 
 from migen import *
 
+from litex.gen import *
+
 from litepcie.tlp.common import *
 
 # LitePCIeTLPHeaderExtracter64b --------------------------------------------------------------------
 
-class LitePCIeTLPHeaderExtracter64b(Module):
+class LitePCIeTLPHeaderExtracter64b(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(phy_layout(64))
         self.source = source = stream.Endpoint(tlp_raw_layout(64))
@@ -28,7 +30,7 @@ class LitePCIeTLPHeaderExtracter64b(Module):
                 be.eq(sink.be)
             )
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             NextValue(first, 1),
             NextValue(last,  0),
@@ -68,7 +70,7 @@ class LitePCIeTLPHeaderExtracter64b(Module):
 
 # LitePCIeTLPHeaderExtracter128b -------------------------------------------------------------------
 
-class LitePCIeTLPHeaderExtracter128b(Module):
+class LitePCIeTLPHeaderExtracter128b(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(phy_layout(128))
         self.source = source = stream.Endpoint(tlp_raw_layout(128))
@@ -85,7 +87,7 @@ class LitePCIeTLPHeaderExtracter128b(Module):
                 be.eq(sink.be)
             )
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             NextValue(first, 1),
             NextValue(last,  0),
@@ -131,7 +133,7 @@ class LitePCIeTLPHeaderExtracter128b(Module):
 
 # LitePCIeTLPHeaderExtracter256b -------------------------------------------------------------------
 
-class LitePCIeTLPHeaderExtracter256b(Module):
+class LitePCIeTLPHeaderExtracter256b(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(phy_layout(256))
         self.source = source = stream.Endpoint(tlp_raw_layout(256))
@@ -148,7 +150,7 @@ class LitePCIeTLPHeaderExtracter256b(Module):
                 be.eq(sink.be)
             )
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             NextValue(first, 1),
             NextValue(last,  0),
@@ -203,7 +205,7 @@ class LitePCIeTLPHeaderExtracter256b(Module):
 
 # LitePCIeTLPHeaderExtracter512b -------------------------------------------------------------------
 
-class LitePCIeTLPHeaderExtracter512b(Module):
+class LitePCIeTLPHeaderExtracter512b(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(phy_layout(512))
         self.source = source = stream.Endpoint(tlp_raw_layout(512))
@@ -220,7 +222,7 @@ class LitePCIeTLPHeaderExtracter512b(Module):
                 be.eq(sink.be)
             )
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             NextValue(first, 1),
             NextValue(last,  0),
@@ -292,104 +294,203 @@ class LitePCIeTLPHeaderExtracter512b(Module):
 
 # LitePCIeTLPDepacketizer --------------------------------------------------------------------------
 
-class LitePCIeTLPDepacketizer(Module):
-    def __init__(self, data_width, endianness, address_mask=0):
-        self.sink       = stream.Endpoint(phy_layout(data_width))
-        self.req_source = stream.Endpoint(request_layout(data_width))
-        self.cmp_source = stream.Endpoint(completion_layout(data_width))
+class LitePCIeTLPDepacketizer(LiteXModule):
+    def __init__(self, data_width, endianness, address_mask=0, capabilities=["REQUEST", "COMPLETION"]):
+        # Sink Endpoint.
+        self.sink = stream.Endpoint(phy_layout(data_width))
+
+        # Source Endpoints.
+        for c in capabilities:
+            assert c in ["REQUEST", "COMPLETION", "CONFIGURATION", "PTM"]
+        if "REQUEST" in capabilities:
+            self.req_source  = req_source  = stream.Endpoint(request_layout(data_width))
+        if "COMPLETION" in capabilities:
+            self.cmp_source  = cmp_source  = stream.Endpoint(completion_layout(data_width))
+        if "CONFIGURATION" in capabilities:
+            self.conf_source = conf_source = stream.Endpoint(configuration_layout(data_width))
+        if "PTM" in capabilities:
+            self.ptm_source = ptm_source = stream.Endpoint(ptm_layout(data_width))
 
         # # #
 
-        # Extract raw header -----------------------------------------------------------------------
+        # Extract RAW Header from Sink -------------------------------------------------------------
+
         header_extracter_cls = {
              64 : LitePCIeTLPHeaderExtracter64b,
             128 : LitePCIeTLPHeaderExtracter128b,
             256 : LitePCIeTLPHeaderExtracter256b,
             512 : LitePCIeTLPHeaderExtracter512b,
         }
-        header_extracter = header_extracter_cls[data_width]()
-        self.submodules += header_extracter
+        self.header_extracter = header_extracter = header_extracter_cls[data_width]()
         self.comb += self.sink.connect(header_extracter.sink)
         header = header_extracter.source.header
 
-        # Dispatch data according to fmt/type ------------------------------------------------------
-        dispatch_source = stream.Endpoint(tlp_common_layout(data_width))
-        dispatch_sinks  = [stream.Endpoint(tlp_common_layout(data_width)) for i in range(3)]
-        self.comb += dispatch_sinks[0b00].ready.eq(1) # Always ready when unknown.
+        # Create Dispatcher ------------------------------------------------------------------------
 
+        # Dispatch Sources
+        self.dispatch_sources = dispatch_sources = {"DISCARD" : stream.Endpoint(tlp_common_layout(data_width))}
+        for source in capabilities:
+            dispatch_sources[source] = stream.Endpoint(tlp_common_layout(data_width))
+
+        def dispatch_source_sel(name):
+            for n, k in enumerate(dispatch_sources.keys()):
+                if k == name:
+                    return n
+            return None
+
+        # Dispatch Sink.
+        self.dispatch_sink = dispatch_sink = stream.Endpoint(tlp_common_layout(data_width))
+
+        # Dispatcher
+        self.dispatcher = Dispatcher(
+            master = dispatch_sink,
+            slaves = dispatch_sources.values()
+        )
+
+        # Ensure DISCARD source is always ready.
+        self.comb += dispatch_sources["DISCARD"].ready.eq(1)
+
+        # Connect Header Extracter to Dispatch Sink.
         self.comb += [
-            dispatch_source.valid.eq(header_extracter.source.valid),
-            header_extracter.source.ready.eq(dispatch_source.ready),
-            dispatch_source.first.eq(header_extracter.source.first),
-            dispatch_source.last.eq(header_extracter.source.last),
-            tlp_common_header.decode(header, dispatch_source)
+            header_extracter.source.connect(dispatch_sink, keep={"valid", "ready", "first", "last"}),
+            tlp_common_header.decode(header, dispatch_sink)
         ]
         self.comb += dword_endianness_swap(
             src        = header_extracter.source.dat,
-            dst        = dispatch_source.dat,
+            dst        = dispatch_sink.dat,
             data_width = data_width,
             endianness = endianness,
             mode       = "dat",
         )
         self.comb += dword_endianness_swap(
             src        = header_extracter.source.be,
-            dst        = dispatch_source.be,
+            dst        = dispatch_sink.be,
             data_width = data_width,
             endianness = endianness,
             mode       = "be",
         )
-        self.submodules.dispatcher = Dispatcher(dispatch_source, dispatch_sinks)
 
-        fmt_type = Cat(dispatch_source.type, dispatch_source.fmt)
-        self.comb += [
-            self.dispatcher.sel.eq(0b00),
-            If((fmt_type == fmt_type_dict["mem_rd32"]) |
-               (fmt_type == fmt_type_dict["mem_wr32"]),
-                self.dispatcher.sel.eq(0b01),
-            ),
-            If((fmt_type == fmt_type_dict["cpld"]) |
-               (fmt_type == fmt_type_dict["cpl"]),
-               self.dispatcher.sel.eq(0b10),
-            ),
-        ]
+        # Create fmt_type for destination decoding.
+        fmt_type = Cat(dispatch_sink.type, dispatch_sink.fmt)
 
-        # Decode TLP request and format local request ----------------------------------------------
-        self.tlp_req = tlp_req = stream.Endpoint(tlp_request_layout(data_width))
-        self.comb += dispatch_sinks[0b01].connect(tlp_req)
-        self.comb += tlp_request_header.decode(header, tlp_req)
+        # Set default Dispatcher select to DISCARD Sink.
+        self.comb += self.dispatcher.sel.eq(dispatch_source_sel("DISCARD"))
 
-        req_type   = Cat(tlp_req.type, tlp_req.fmt)
-        req_source = self.req_source
-        self.comb += [
-            req_source.valid.eq(tlp_req.valid),
-            req_source.we.eq(tlp_req.valid & (req_type == fmt_type_dict["mem_wr32"])),
-            tlp_req.ready.eq(req_source.ready),
-            req_source.first.eq(tlp_req.first),
-            req_source.last.eq(tlp_req.last),
-            req_source.adr.eq(tlp_req.address & (~address_mask)),
-            req_source.len.eq(tlp_req.length),
-            req_source.req_id.eq(tlp_req.requester_id),
-            req_source.tag.eq(tlp_req.tag),
-            req_source.dat.eq(tlp_req.dat)
-        ]
+        # Decode/Dispatch TLP Requests -------------------------------------------------------------
 
-        # Decode TLP completion and format local completion ----------------------------------------
-        self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
-        self.comb += dispatch_sinks[0b10].connect(tlp_cmp)
-        self.comb += tlp_completion_header.decode(header, tlp_cmp)
+        if "REQUEST" in capabilities:
+            self.comb += [
+                If((fmt_type == fmt_type_dict["mem_rd32"]) |
+                   (fmt_type == fmt_type_dict["mem_wr32"]),
+                    self.dispatcher.sel.eq(dispatch_source_sel("REQUEST")),
+                )
+            ]
 
-        cmp_source = self.cmp_source
-        self.comb += [
-            cmp_source.valid.eq(tlp_cmp.valid),
-            tlp_cmp.ready.eq(cmp_source.ready),
-            cmp_source.first.eq(tlp_cmp.first),
-            cmp_source.last.eq(tlp_cmp.last),
-            cmp_source.len.eq(tlp_cmp.length),
-            cmp_source.end.eq(tlp_cmp.length == (tlp_cmp.byte_count[2:])),
-            cmp_source.adr.eq(tlp_cmp.lower_address),
-            cmp_source.req_id.eq(tlp_cmp.requester_id),
-            cmp_source.cmp_id.eq(tlp_cmp.completer_id),
-            cmp_source.err.eq(tlp_cmp.status != 0),
-            cmp_source.tag.eq(tlp_cmp.tag),
-            cmp_source.dat.eq(tlp_cmp.dat)
-        ]
+            self.tlp_req = tlp_req = stream.Endpoint(tlp_request_layout(data_width))
+            self.comb += dispatch_sources["REQUEST"].connect(tlp_req)
+            self.comb += tlp_request_header.decode(header, tlp_req)
+
+            req_type = Cat(tlp_req.type, tlp_req.fmt)
+            self.comb += [
+                req_source.valid.eq(tlp_req.valid),
+                req_source.we.eq(tlp_req.valid & (req_type == fmt_type_dict["mem_wr32"])),
+                tlp_req.ready.eq(req_source.ready),
+                req_source.first.eq(tlp_req.first),
+                req_source.last.eq(tlp_req.last),
+                req_source.adr.eq(tlp_req.address & (~address_mask)),
+                req_source.len.eq(tlp_req.length),
+                req_source.req_id.eq(tlp_req.requester_id),
+                req_source.tag.eq(tlp_req.tag),
+                req_source.dat.eq(tlp_req.dat)
+            ]
+
+        # Decode/Dispatch TLP Completions ----------------------------------------------------------
+
+        if "COMPLETION" in capabilities:
+            self.comb += [
+                If((fmt_type == fmt_type_dict["cpld"]) |
+                   (fmt_type == fmt_type_dict["cpl"]),
+                    self.dispatcher.sel.eq(dispatch_source_sel("COMPLETION")),
+                )
+            ]
+
+            self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
+            self.comb += dispatch_sources["COMPLETION"].connect(tlp_cmp)
+            self.comb += tlp_completion_header.decode(header, tlp_cmp)
+
+            self.comb += [
+                cmp_source.valid.eq(tlp_cmp.valid),
+                tlp_cmp.ready.eq(cmp_source.ready),
+                cmp_source.first.eq(tlp_cmp.first),
+                cmp_source.last.eq(tlp_cmp.last),
+                cmp_source.len.eq(tlp_cmp.length),
+                cmp_source.end.eq(tlp_cmp.length == (tlp_cmp.byte_count[2:])),
+                cmp_source.adr.eq(tlp_cmp.lower_address),
+                cmp_source.req_id.eq(tlp_cmp.requester_id),
+                cmp_source.cmp_id.eq(tlp_cmp.completer_id),
+                cmp_source.err.eq(tlp_cmp.status != 0),
+                cmp_source.tag.eq(tlp_cmp.tag),
+                cmp_source.dat.eq(tlp_cmp.dat)
+            ]
+
+
+        # Decode/Dispatch TLP Configurations -------------------------------------------------------
+
+        if "CONFIGURATION" in capabilities:
+            self.comb += [
+                If((fmt_type == fmt_type_dict["cfg_rd0"]) |
+                   (fmt_type == fmt_type_dict["cfg_wr0"]),
+                    self.dispatcher.sel.eq(dispatch_source_sel("CONFIGURATION")),
+                )
+            ]
+
+            self.tlp_conf = tlp_conf = stream.Endpoint(tlp_configuration_layout(data_width))
+            self.comb += dispatch_sources["CONFIGURATION"].connect(tlp_conf)
+            self.comb += tlp_configuration_header.decode(header, tlp_conf)
+
+            self.comb += [
+                conf_source.valid.eq(tlp_conf.valid),
+                tlp_conf.ready.eq(conf_source.ready),
+                conf_source.first.eq(tlp_conf.first),
+                conf_source.last.eq(tlp_conf.last),
+                If(fmt_type == fmt_type_dict["cfg_rd0"],
+                    conf_source.we.eq(0)
+                ),
+                If(fmt_type == fmt_type_dict["cfg_wr0"],
+                    conf_source.we.eq(1)
+                ),
+                conf_source.req_id.eq(tlp_conf.requester_id),
+                conf_source.bus_number.eq(tlp_conf.bus_number),
+                conf_source.device_no.eq(tlp_conf.device_no),
+                conf_source.func.eq(tlp_conf.func),
+                conf_source.ext_reg.eq(tlp_conf.ext_reg),
+                conf_source.register_no.eq(tlp_conf.register_no),
+                conf_source.tag.eq(tlp_conf.tag),
+                conf_source.dat.eq(tlp_conf.dat)
+            ]
+
+        # Decode/Dispatch TLP PTM Requests/Responses -----------------------------------------------
+
+        if "PTM" in capabilities:
+            self.comb += [
+                If((fmt_type == fmt_type_dict["ptm_req"]) |
+                   (fmt_type == fmt_type_dict["ptm_res"]),
+                    self.dispatcher.sel.eq(dispatch_source_sel("PTM")),
+                )
+            ]
+
+            self.tlp_ptm = tlp_ptm = stream.Endpoint(tlp_ptm_layout(data_width))
+            self.comb += dispatch_sources["PTM"].connect(tlp_ptm)
+            self.comb += tlp_ptm_header.decode(header, tlp_ptm)
+
+            self.comb += [
+                ptm_source.valid.eq(tlp_ptm.valid),
+                tlp_ptm.ready.eq(ptm_source.ready),
+                ptm_source.first.eq(tlp_ptm.first),
+                ptm_source.last.eq(tlp_ptm.last),
+                ptm_source.requester_id.eq(tlp_ptm.requester_id),
+                ptm_source.length.eq(tlp_ptm.length),
+                ptm_source.message_code.eq(tlp_ptm.message_code),
+                ptm_source.master_time.eq(tlp_ptm.master_time),
+                ptm_source.dat.eq(tlp_ptm.dat)
+            ]

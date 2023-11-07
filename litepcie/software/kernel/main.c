@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: BSD-2-Clause
-
-/*
+/* SPDX-License-Identifier: BSD-2-Clause
+ *
  * LitePCIe driver
  *
  * This file is part of LitePCIe.
  *
- * Copyright (C) 2018-2020 / EnjoyDigital  / florent@enjoy-digital.fr
+ * Copyright (C) 2018-2023 / EnjoyDigital  / florent@enjoy-digital.fr
+ *
  */
 
 #include <linux/kernel.h>
@@ -48,6 +48,10 @@
 
 #define LITEPCIE_NAME "litepcie"
 #define LITEPCIE_MINOR_COUNT 32
+
+#ifndef CSR_BASE
+#define CSR_BASE 0x00000000
+#endif
 
 struct litepcie_dma_chan {
 	uint32_t base;
@@ -313,7 +317,7 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 #ifdef CSR_PCIE_MSI_CLEAR_ADDR
 	irq_vector = litepcie_readl(s, CSR_PCIE_MSI_VECTOR_ADDR);
 	irq_enable = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
-/* Multi-Vector MSI */
+/* MSI MultiVector / MSI-X */
 #else
 	irq_vector = 0;
 	for (i = 0; i < s->irqs; i++) {
@@ -1047,19 +1051,32 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 		goto fail1;
 	};
 
+
+/* MSI-X */
+#ifdef CSR_PCIE_MSI_PBA_ADDR
+	irqs = pci_alloc_irq_vectors(dev, 1, 32, PCI_IRQ_MSIX);
+/* MSI Single / MultiVector */
+#else
 	irqs = pci_alloc_irq_vectors(dev, 1, 32, PCI_IRQ_MSI);
+#endif
 	if (irqs < 0) {
 		dev_err(&dev->dev, "Failed to enable MSI\n");
 		ret = irqs;
 		goto fail1;
 	}
+/* MSI-X */
+#ifdef CSR_PCIE_MSI_PBA_ADDR
+	dev_info(&dev->dev, "%d MSI-X IRQs allocated.\n", irqs);
+/* MSI Single / MultiVector */
+#else
 	dev_info(&dev->dev, "%d MSI IRQs allocated.\n", irqs);
+#endif
 
 	litepcie_dev->irqs = 0;
 	for (i = 0; i < irqs; i++) {
 		int irq = pci_irq_vector(dev, i);
 
-		ret = request_irq(irq, litepcie_interrupt, IRQF_SHARED, LITEPCIE_NAME, litepcie_dev);
+		ret = request_irq(irq, litepcie_interrupt, 0, LITEPCIE_NAME, litepcie_dev);
 		if (ret < 0) {
 			dev_err(&dev->dev, " Failed to allocate IRQ %d\n", dev->irq);
 			while (--i >= 0) {

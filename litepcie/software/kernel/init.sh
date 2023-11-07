@@ -1,12 +1,20 @@
 #!/bin/sh
 # TODO: use udev instead
 
+# Check if litepcie module is already installed.
 FOUND=$(lsmod | grep litepcie)
 if [ "$FOUND" != "" ] ; then
-    echo "Module already installed"
+    echo "litepcie module already installed."
     exit 0
 fi
 
+# Automatically remove liteuart module if installed.
+FOUND=$(lsmod | grep liteuart)
+if [ "$FOUND" != "" ] ; then
+    rmmod liteuart.ko
+fi
+
+# Install litepcie module.
 INS=$(insmod litepcie.ko 2>&1)
 if [ "$?" != "0" ] ; then
     ERR=$(echo $INS | sed -s "s/.*litepcie.ko: //")
@@ -37,8 +45,10 @@ if [ "$?" != "0" ] ; then
     esac
 fi
 
+# Install liteuart module.
 insmod liteuart.ko
 
+# Change permissions on litepcie created devices.
 for i in `seq 0 16` ; do
     chmod 666 /dev/litepcie$i > /dev/null 2>&1
 done

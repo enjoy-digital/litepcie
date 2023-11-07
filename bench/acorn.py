@@ -12,6 +12,8 @@ import argparse
 
 from migen import *
 
+from litex.gen import *
+
 from litex_boards.platforms import sqrl_acorn
 
 from litex.soc.cores.clock import S7PLL
@@ -21,18 +23,16 @@ from litex.soc.integration.builder import *
 
 from litepcie.phy import s7pciephy
 
-class Open(Signal): pass
-
 # CRG ----------------------------------------------------------------------------------------------
 
-class _CRG(Module):
+class _CRG(LiteXModule):
     def __init__(self, platform, sys_clk_freq):
-        self.clock_domains.cd_sys = ClockDomain()
+        self.cd_sys = ClockDomain()
 
         # # #
 
         # PLL
-        self.submodules.pll = pll = S7PLL(speedgrade=-2)
+        self.pll = pll = S7PLL(speedgrade=-2)
         pll.register_clkin(platform.request("clk200"), 200e6)
         pll.create_clkout(self.cd_sys, sys_clk_freq)
 
@@ -41,7 +41,7 @@ class _CRG(Module):
 class LitePCIeSoC(SoCMini):
     def __init__(self,  platform, sys_clk_freq=int(125e6)):
         # CRG --------------------------------------------------------------------------------------
-        self.submodules.crg = _CRG(platform, sys_clk_freq)
+        self.crg = _CRG(platform, sys_clk_freq)
 
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, sys_clk_freq, ident="LitePCIe standalone example design on Acorn")

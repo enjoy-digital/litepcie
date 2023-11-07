@@ -1,10 +1,11 @@
-/*
+/* SPDX-License-Identifier: BSD-2-Clause
+ *
  * LitePCIe test
  *
  * This file is part of LitePCIe.
  *
- * Copyright (C) 2018-2022 / Enjoy-Digital  / florent@enjoy-digital.fr
- * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (C) 2018-2023 / EnjoyDigital  / florent@enjoy-digital.fr
+ *
  */
 
 #include <stdlib.h>
