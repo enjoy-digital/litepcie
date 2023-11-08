@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 module m_axis_rc_adapt # (
-      parameter DATA_WIDTH  = 128,
+      parameter DATA_WIDTH  = 512,
       parameter KEEP_WIDTH  = DATA_WIDTH/8
     )(
 

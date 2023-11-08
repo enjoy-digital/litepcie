@@ -11,19 +11,19 @@ module s_axis_cc_adapt # (
        input user_clk,
        input user_reset,
 
-       output [DATA_WIDTH-1:0] s_axis_cc_tdata,
-       output [KEEP_WIDTH-1:0] s_axis_cc_tkeep,
-       output                  s_axis_cc_tlast,
-       input             [3:0] s_axis_cc_tready,
-       output            [3:0] s_axis_cc_tuser,
-       output                  s_axis_cc_tvalid,
+       input [DATA_WIDTH-1:0] s_axis_cc_tdata,
+       input [KEEP_WIDTH-1:0] s_axis_cc_tkeep,
+       input                  s_axis_cc_tlast,
+       output                 s_axis_cc_tready,
+       input            [3:0] s_axis_cc_tuser,
+       input                  s_axis_cc_tvalid,
 
-       input   [DATA_WIDTH-1:0] s_axis_cc_tdata_a,
-       input   [KEEP_WIDTH-1:0] s_axis_cc_tkeep_a,
-       input                    s_axis_cc_tlast_a,
-       output             [3:0] s_axis_cc_tready_a,
-       input              [3:0] s_axis_cc_tuser_a,
-       input                    s_axis_cc_tvalid_a
+       output   [DATA_WIDTH-1:0] s_axis_cc_tdata_a,
+       output   [KEEP_WIDTH-1:0] s_axis_cc_tkeep_a,
+       output                    s_axis_cc_tlast_a,
+       input                     s_axis_cc_tready_a,
+       output             [32:0] s_axis_cc_tuser_a,
+       output                    s_axis_cc_tvalid_a
     );
 
   wire          s_axis_cc_tready_ff,
@@ -66,8 +66,6 @@ module s_axis_cc_adapt # (
   wire            s_axis_cc_tfirst = s_axis_cc_cnt == 0;
   wire            s_axis_cc_tsecond = s_axis_cc_cnt == 1;
 
-  wire [3:0]      s_axis_cc_tready_a;
-
   wire [6:0]      s_axis_cc_lowaddr = s_axis_cc_tdata_ff[70:64];
   wire [1:0]      s_axis_cc_at = 2'b0; //address translation
   wire [12:0]     s_axis_cc_bytecnt = {1'b0, s_axis_cc_tdata_ff[43:32]};
@@ -108,11 +106,11 @@ module s_axis_cc_adapt # (
               else if (s_axis_cc_tfirst) s_axis_cc_tvalid_ff_lat <= 1'd1;
           end
 
-  wire            s_axis_cc_tvalid_a = s_axis_cc_tvalid_ff;
-  assign          s_axis_cc_tready_ff = s_axis_cc_tready_a[0];
-  wire [127:0]    s_axis_cc_tdata_a  = s_axis_cc_tfirst ? {s_axis_cc_header1, s_axis_cc_header0} : s_axis_cc_tdata_ff;
-  wire            s_axis_cc_tlast_a = s_axis_cc_tlast_ff;
-  wire [3:0]      s_axis_cc_tkeep_a = s_axis_cc_tkeep_ff;
-  wire [32:0]     s_axis_cc_tuser_a  = {32'b0, s_axis_cc_tuser_ff[3]};    //{parity, discontinue}
+  assign s_axis_cc_tvalid_a = s_axis_cc_tvalid_ff;
+  assign s_axis_cc_tready_ff = s_axis_cc_tready_a;
+  assign s_axis_cc_tdata_a  = s_axis_cc_tfirst ? {s_axis_cc_header1, s_axis_cc_header0} : s_axis_cc_tdata_ff;
+  assign s_axis_cc_tlast_a = s_axis_cc_tlast_ff;
+  assign s_axis_cc_tkeep_a = s_axis_cc_tkeep_ff;
+  assign s_axis_cc_tuser_a  = {32'b0, s_axis_cc_tuser_ff[3]};    //{parity, discontinue}
 
 endmodule

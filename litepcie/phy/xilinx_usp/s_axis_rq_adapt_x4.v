@@ -11,19 +11,19 @@ module s_axis_rq_adapt # (
        input user_clk,
        input user_reset,
 
-       output [DATA_WIDTH-1:0] s_axis_rq_tdata,
-       output [KEEP_WIDTH-1:0] s_axis_rq_tkeep,
-       output                  s_axis_rq_tlast,
-       input             [3:0] s_axis_rq_tready,
-       output            [3:0] s_axis_rq_tuser,
-       output                  s_axis_rq_tvalid,
+       input  [DATA_WIDTH-1:0] s_axis_rq_tdata,
+       input  [KEEP_WIDTH-1:0] s_axis_rq_tkeep,
+       input                   s_axis_rq_tlast,
+       output                  s_axis_rq_tready,
+       input             [3:0] s_axis_rq_tuser,
+       input                   s_axis_rq_tvalid,
 
-       input   [DATA_WIDTH-1:0] s_axis_rq_tdata_a,
-       input   [KEEP_WIDTH-1:0] s_axis_rq_tkeep_a,
-       input                    s_axis_rq_tlast_a,
-       output             [3:0] s_axis_rq_tready_a,
-       input              [3:0] s_axis_rq_tuser_a,
-       input                    s_axis_rq_tvalid_a
+       output   [DATA_WIDTH-1:0] s_axis_rq_tdata_a,
+       output   [KEEP_WIDTH-1:0] s_axis_rq_tkeep_a,
+       output                    s_axis_rq_tlast_a,
+       input                     s_axis_rq_tready_a,
+       output             [59:0] s_axis_rq_tuser_a,
+       output                    s_axis_rq_tvalid_a
     );
 
   wire          s_axis_rq_tready_ff,
@@ -37,8 +37,8 @@ module s_axis_rq_adapt # (
 
   axis_iff #(.DAT_B(128+4+4))  s_axis_rq_iff
   (
-        .clk    (user_clk_out),
-        .rst    (user_reset_out),
+        .clk    (user_clk),
+        .rst    (user_reset),
 
         .i_vld  (s_axis_rq_tvalid),
         .o_rdy  (s_axis_rq_tready),
@@ -55,8 +55,8 @@ module s_axis_rq_adapt # (
 
 
   reg [1:0]       s_axis_rq_cnt;  //0-2
-  always @(posedge user_clk_out)
-      if (user_reset_out)
+  always @(posedge user_clk)
+      if (user_reset)
         s_axis_rq_cnt <= 2'd0;
       else if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
           begin
@@ -74,15 +74,14 @@ module s_axis_rq_adapt # (
   wire       s_axis_rq_write = !s_axis_rq_read;
   reg        s_axis_rq_tlast_dly_en;
   reg        s_axis_rq_tlast_lat;
-  wire [3:0] s_axis_rq_tready_a;
-  always @(posedge user_clk_out)
-      if (user_reset_out)
+  always @(posedge user_clk)
+      if (user_reset)
         s_axis_rq_tlast_dly_en <= 1'd0;
       else if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst && s_axis_rq_tready_ff && s_axis_rq_write)
         s_axis_rq_tlast_dly_en <= (s_axis_rq_tdata_ff[1:0] == 2'd1);
 
-  always @(posedge user_clk_out)
-      if (user_reset_out)
+  always @(posedge user_clk)
+      if (user_reset)
         s_axis_rq_tlast_lat <= 1'd0;
       else if (s_axis_rq_tlast_lat && s_axis_rq_tready_a[0])
         s_axis_rq_tlast_lat <= 1'd0;
@@ -94,7 +93,7 @@ module s_axis_rq_adapt # (
             s_axis_rq_tlast_lat <= s_axis_rq_tlast_dly_en;
           end
 
-  wire  s_axis_rq_tlast_a  = s_axis_rq_tfirst ? s_axis_rq_read :
+  assign  s_axis_rq_tlast_a  = s_axis_rq_tfirst ? s_axis_rq_read :
         s_axis_rq_tlast_dly_en ? s_axis_rq_tlast_lat : s_axis_rq_tlast_ff;
 
   // Generate ready for TLP
@@ -102,8 +101,8 @@ module s_axis_rq_adapt # (
 
   // Latch valid because it is uncontigous when coming from TLP request
   reg s_axis_rq_tvalid_lat;
-  always @(posedge user_clk_out)
-      if (user_reset_out)
+  always @(posedge user_clk)
+      if (user_reset)
         s_axis_rq_tvalid_lat <= 1'b0;
       else if (s_axis_rq_tvalid_lat && s_axis_rq_tready_a[0])
           begin
@@ -115,7 +114,7 @@ module s_axis_rq_adapt # (
       else if (s_axis_rq_tvalid_ff & s_axis_rq_tfirst & s_axis_rq_write)
         s_axis_rq_tvalid_lat <= 1'b1;   //latche input valid (required by PCIe IP)
 
-  wire s_axis_rq_tvalid_a = s_axis_rq_tvalid_ff | s_axis_rq_tlast_lat;
+  assign s_axis_rq_tvalid_a = s_axis_rq_tvalid_ff | s_axis_rq_tlast_lat;
 
   wire [10:0] s_axis_rq_dwlen = {1'b0, s_axis_rq_tdata_ff[9:0]};
   wire [3:0]  s_axis_rq_reqtype =
@@ -154,7 +153,7 @@ module s_axis_rq_adapt # (
   reg  [3:0] s_axis_rq_firstbe_l;
   reg  [3:0] s_axis_rq_lastbe_l;
 
-  always @(posedge user_clk_out)
+  always @(posedge user_clk)
   begin
       if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst)
           begin
@@ -164,15 +163,15 @@ module s_axis_rq_adapt # (
       end
 
   reg [31:0]       s_axis_rq_tdata_l;
-  always @(posedge user_clk_out)
+  always @(posedge user_clk)
       if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
           s_axis_rq_tdata_l <= s_axis_rq_tdata_ff[127:96];
 
-  wire [127:0]    s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_header, 32'b0, s_axis_rq_tdata_ff[95:64]} : {s_axis_rq_tdata_ff[95:0], s_axis_rq_tdata_l[31:0]};
-  wire [3:0]      s_axis_rq_tkeep_a  = s_axis_rq_tlast_lat ? 4'b0001 : 4'b1111;
-  wire [59:0]     s_axis_rq_tuser_a;
-  assign          s_axis_rq_tuser_a[59:8] = {32'b0, 4'b0, 1'b0, 8'b0, 2'b0, 1'b0, s_axis_rq_tuser_ff[3], 3'b0};
-  assign          s_axis_rq_tuser_a[7:0]  = s_axis_rq_tfirst ? {s_axis_rq_lastbe, s_axis_rq_firstbe} : {s_axis_rq_lastbe_l, s_axis_rq_firstbe_l};
+  assign s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_header, 32'b0, s_axis_rq_tdata_ff[95:64]} : {s_axis_rq_tdata_ff[95:0], s_axis_rq_tdata_l[31:0]};
+  assign s_axis_rq_tkeep_a  = s_axis_rq_tlast_lat ? 4'b0001 : 4'b1111;
+  assign s_axis_rq_tuser_a;
+  assign s_axis_rq_tuser_a[59:8] = {32'b0, 4'b0, 1'b0, 8'b0, 2'b0, 1'b0, s_axis_rq_tuser_ff[3], 3'b0};
+  assign s_axis_rq_tuser_a[7:0]  = s_axis_rq_tfirst ? {s_axis_rq_lastbe, s_axis_rq_firstbe} : {s_axis_rq_lastbe_l, s_axis_rq_firstbe_l};
 
 
 endmodule
