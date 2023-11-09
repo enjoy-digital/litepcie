@@ -83,9 +83,9 @@ module s_axis_rq_adapt # (
   always @(posedge user_clk)
       if (user_reset)
         s_axis_rq_tlast_lat <= 1'd0;
-      else if (s_axis_rq_tlast_lat && s_axis_rq_tready_a[0])
+      else if (s_axis_rq_tlast_lat && s_axis_rq_tready_a)
         s_axis_rq_tlast_lat <= 1'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tlast_ff && s_axis_rq_tready_a[0])
+      else if (s_axis_rq_tvalid_ff && s_axis_rq_tlast_ff && s_axis_rq_tready_a)
           begin
           if (s_axis_rq_tfirst)
             s_axis_rq_tlast_lat <= s_axis_rq_write ? 1'b1 : 1'b0; //write 1-dword
@@ -97,14 +97,14 @@ module s_axis_rq_adapt # (
         s_axis_rq_tlast_dly_en ? s_axis_rq_tlast_lat : s_axis_rq_tlast_ff;
 
   // Generate ready for TLP
-  assign s_axis_rq_tready_ff = s_axis_rq_tready_a[0] && (!s_axis_rq_tlast_lat);
+  assign s_axis_rq_tready_ff = s_axis_rq_tready_a && (!s_axis_rq_tlast_lat);
 
   // Latch valid because it is uncontigous when coming from TLP request
   reg s_axis_rq_tvalid_lat;
   always @(posedge user_clk)
       if (user_reset)
         s_axis_rq_tvalid_lat <= 1'b0;
-      else if (s_axis_rq_tvalid_lat && s_axis_rq_tready_a[0])
+      else if (s_axis_rq_tvalid_lat && s_axis_rq_tready_a)
           begin
           if (s_axis_rq_tlast_dly_en)
             s_axis_rq_tvalid_lat <= !s_axis_rq_tlast_lat;
@@ -169,7 +169,6 @@ module s_axis_rq_adapt # (
 
   assign s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_header, 32'b0, s_axis_rq_tdata_ff[95:64]} : {s_axis_rq_tdata_ff[95:0], s_axis_rq_tdata_l[31:0]};
   assign s_axis_rq_tkeep_a  = s_axis_rq_tlast_lat ? 4'b0001 : 4'b1111;
-  assign s_axis_rq_tuser_a;
   assign s_axis_rq_tuser_a[59:8] = {32'b0, 4'b0, 1'b0, 8'b0, 2'b0, 1'b0, s_axis_rq_tuser_ff[3], 3'b0};
   assign s_axis_rq_tuser_a[7:0]  = s_axis_rq_tfirst ? {s_axis_rq_lastbe, s_axis_rq_firstbe} : {s_axis_rq_lastbe_l, s_axis_rq_firstbe_l};
 
