@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 module m_axis_cq_adapt # (
-      parameter DATA_WIDTH  = 128,
+      parameter DATA_WIDTH  = 256,
       parameter KEEP_WIDTH  = DATA_WIDTH/8
     )(
 
@@ -60,7 +60,7 @@ module m_axis_cq_adapt # (
       else if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_lat <= 1'd0;
       else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a && m_axis_cq_tlast_a)
           begin
-          if (m_axis_cq_sop) m_axis_cq_tlast_lat <= 1'b1; //read
+          if (m_axis_cq_sop) m_axis_cq_tlast_lat <= 1'b1;
           else if (m_axis_cq_tlast_dly_en) m_axis_cq_tlast_lat <= 1'b1;
           end
 
@@ -73,8 +73,8 @@ module m_axis_cq_adapt # (
 
 
   ////keep address (low) or data (high), not header
-  reg [DATA_WIDTH-1:0]     m_axis_cq_tdata_a1;
-  reg [DATA_WIDTH/8-1:0]      m_axis_cq_tlast_be1;
+  reg [255:0]     m_axis_cq_tdata_a1;
+  reg [31:0]      m_axis_cq_tlast_be1;
   always @(posedge user_clk)
      if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
           begin
@@ -85,15 +85,15 @@ module m_axis_cq_adapt # (
   //data processing
   wire [63:0]     m_axis_cq_tdata_hdr = m_axis_cq_tdata_a[127:64];
 
-  assign          m_axis_cq_dwlen       = m_axis_cq_tdata_hdr[9:0];
-  wire [1:0]      m_axis_cq_attr        = m_axis_cq_tdata_hdr[61:60];
-  wire            m_axis_cq_ep          = 1'b0;
-  wire            m_axis_cq_td          = 1'b0;
-  wire [2:0]      m_axis_cq_tc          = m_axis_cq_tdata_hdr[59:57];
+  assign          m_axis_cq_dwlen = m_axis_cq_tdata_hdr[9:0];
+  wire [1:0]      m_axis_cq_attr = m_axis_cq_tdata_hdr[61:60];
+  wire            m_axis_cq_ep = 1'b0;
+  wire            m_axis_cq_td = 1'b0;
+  wire [2:0]      m_axis_cq_tc = m_axis_cq_tdata_hdr[59:57];
   wire [4:0]      m_axis_cq_type;
   wire [2:0]      m_axis_cq_fmt;
-  wire [7:0]      m_axis_cq_be          = m_axis_cq_tuser_a[7:0];
-  wire [7:0]      m_axis_cq_tag         = m_axis_cq_tdata_hdr[39:32];
+  wire [7:0]      m_axis_cq_be = m_axis_cq_tuser_a[7:0];
+  wire [7:0]      m_axis_cq_tag = m_axis_cq_tdata_hdr[39:32];
   wire [15:0]     m_axis_cq_requesterid = m_axis_cq_tdata_hdr[31:16];
 
   assign          {m_axis_cq_fmt, m_axis_cq_type} = m_axis_cq_tdata_hdr[14:11] == 4'b0000 ? 8'b000_00000 :  //Mem read Request
@@ -115,27 +115,25 @@ module m_axis_cq_adapt # (
   reg [63:0]       m_axis_cq_header;
   always @(posedge user_clk)
       if (m_axis_cq_tvalid_a && m_axis_cq_sop)
-          m_axis_cq_header = {
-            m_axis_cq_requesterid,
-            m_axis_cq_tag,
-            m_axis_cq_be,
-            m_axis_cq_fmt, m_axis_cq_type,
-            1'b0, m_axis_cq_tc, 4'b0,
-            m_axis_cq_td, m_axis_cq_ep, m_axis_cq_attr,
-            2'b0, m_axis_cq_dwlen
-          };
+          m_axis_cq_header = {m_axis_cq_requesterid,
+                              m_axis_cq_tag,
+                              m_axis_cq_be,
+                              m_axis_cq_fmt, m_axis_cq_type,
+                              1'b0, m_axis_cq_tc, 4'b0,
+                              m_axis_cq_td, m_axis_cq_ep, m_axis_cq_attr,
+                              2'b0, m_axis_cq_dwlen};
 
   assign          m_axis_cq_tdata = (m_axis_cq_rdwr_l | m_axis_cq_second) ? {m_axis_cq_tdata_a[31:0], m_axis_cq_tdata_a1[255:128], m_axis_cq_tdata_a1[31:0], m_axis_cq_header} :
                                                                             {m_axis_cq_tdata_a[31:0], m_axis_cq_tdata_a1[255:32]};
   assign          m_axis_cq_tkeep = m_axis_cq_rdwr_l    ? {4'b0, m_axis_cq_tlast_be1[31:16], 12'hFFF} :
                                     m_axis_cq_tlast_lat ? {4'b0, m_axis_cq_tlast_be1[31:4]} : 32'hFFFF_FFFF;
   assign          m_axis_cq_tuser = {
-      5'b0,                     //rx_is_eof only for 128-bit I/F
-      2'b0,                     //reserved
-      5'b0,                     //m_axis_cq_tuser_a[40],4'b0,     //rx_is_sof only for 128-bit I/F
-      m_axis_cq_tuser_barhit,
-      1'b0,                    //rx_err_fwd -> no equivalent
-      m_axis_cq_tuser_a[41]      //ECRC mapped to discontinue
-  };
+                                     5'b0,                     //rx_is_eof only for 128-bit I/F
+                                     2'b0,                     //reserved
+                                     5'b0,                     //m_axis_cq_tuser_a[40],4'b0,     //rx_is_sof only for 128-bit I/F
+                                     m_axis_cq_tuser_barhit,
+                                     1'b0,                    //rx_err_fwd -> no equivalent
+                                     m_axis_cq_tuser_a[41]      //ECRC mapped to discontinue
+                                     };
 
 endmodule

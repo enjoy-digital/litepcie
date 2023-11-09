@@ -314,6 +314,13 @@ module pcie_support # (
 
    //----------------------------------------------------- RQ AXIS -------------------------------------------------//
 
+  wire                     s_axis_rq_tvalid_a;
+  wire                     s_axis_rq_tready_a;
+  wire [KEEP_WIDTH-1   :0] s_axis_rq_tkeep_a;
+  wire [C_DATA_WIDTH-1 :0] s_axis_rq_tdata_a;
+  wire [255            :0] s_axis_rq_tuser_a;
+  wire                     s_axis_rq_tlast_a;
+
    s_axis_rq_adapt #(
     .DATA_WIDTH(C_DATA_WIDTH),
     .KEEP_WIDTH(KEEP_WIDTH)
@@ -342,7 +349,7 @@ module pcie_support # (
   wire                     m_axis_rc_tready_a;
   wire [KEEP_WIDTH-1   :0] m_axis_rc_tkeep_a;
   wire [C_DATA_WIDTH-1 :0] m_axis_rc_tdata_a;
-  wire [74             :0] m_axis_rc_tuser_a;
+  wire [255            :0] m_axis_rc_tuser_a;
   wire                     m_axis_rc_tlast_a;
 
    m_axis_rc_adapt #(
@@ -373,7 +380,7 @@ module pcie_support # (
   wire                     m_axis_cq_tready_a;
   wire [KEEP_WIDTH-1   :0] m_axis_cq_tkeep_a;
   wire [C_DATA_WIDTH-1 :0] m_axis_cq_tdata_a;
-  wire [74             :0] m_axis_cq_tuser_a;
+  wire [255            :0] m_axis_cq_tuser_a;
   wire                     m_axis_cq_tlast_a;
 
    m_axis_cq_adapt #(
@@ -390,15 +397,22 @@ module pcie_support # (
     .m_axis_cq_tuser( m_axis_cq_tuser),
     .m_axis_cq_tvalid(m_axis_cq_tvalid),
 
-    .m_axis_cq_tdata_a( s_axis_cq_tdata_a),
-    .m_axis_cq_tkeep_a( s_axis_cq_tkeep_a),
-    .m_axis_cq_tlast_a( s_axis_cq_tlast_a),
-    .m_axis_cq_tready_a(s_axis_cq_tready_a),
-    .m_axis_cq_tuser_a( s_axis_cq_tuser_a),
-    .m_axis_cq_tvalid_a(s_axis_cq_tvalid_a)
+    .m_axis_cq_tdata_a( m_axis_cq_tdata_a),
+    .m_axis_cq_tkeep_a( m_axis_cq_tkeep_a),
+    .m_axis_cq_tlast_a( m_axis_cq_tlast_a),
+    .m_axis_cq_tready_a(m_axis_cq_tready_a),
+    .m_axis_cq_tuser_a( m_axis_cq_tuser_a),
+    .m_axis_cq_tvalid_a(m_axis_cq_tvalid_a)
    );
 
   //----------------------------------------------------- CC AXIS --------------------------------------------------//
+
+  wire                     s_axis_cc_tvalid_a;
+  wire                     s_axis_cc_tready_a;
+  wire [KEEP_WIDTH-1   :0] s_axis_cc_tkeep_a;
+  wire [C_DATA_WIDTH-1 :0] s_axis_cc_tdata_a;
+  wire [255            :0] s_axis_cc_tuser_a;
+  wire                     s_axis_cc_tlast_a;
 
   s_axis_cc_adapt #(
     .DATA_WIDTH(C_DATA_WIDTH),
@@ -436,7 +450,7 @@ module pcie_support # (
           3'd1 : cfg_interrupt_msi_int_enc <= 32'h0000_0002;
           3'd2 : cfg_interrupt_msi_int_enc <= 32'h0000_0010;
           3'd3 : cfg_interrupt_msi_int_enc <= 32'h0000_0100;
-          3'd4: cfg_interrupt_msi_int_enc <= 32'h0001_0000;
+          3'd4 : cfg_interrupt_msi_int_enc <= 32'h0001_0000;
           default: cfg_interrupt_msi_int_enc <= 32'h8000_0000;
        endcase
 
