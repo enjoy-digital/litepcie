@@ -377,9 +377,60 @@ class USPCIEPHY(LiteXModule):
         self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
     # Hard IP sources ------------------------------------------------------------------------------
-    def add_sources(self, platform, phy_path, phy_filename):
-        platform.add_ip(os.path.join(phy_path, phy_filename))
-        platform.add_source(os.path.join(phy_path, "pcie_us_support.v"))
+    def add_sources(self, platform, phy_path=None, phy_filename=None):
+        if phy_filename is not None:
+            platform.add_ip(os.path.join(phy_path, phy_filename))
+        else:
+            # FIXME: Add missing parameters?
+            config = {
+                # Generic Config.
+                # ---------------
+                "Component_Name"               : "pcie_us",
+                "PL_LINK_CAP_MAX_LINK_WIDTH"   : f"X{self.nlanes}",
+                "PL_LINK_CAP_MAX_LINK_SPEED"   : "8.0_GT/s", # CHECKME.
+                "axisten_if_width"             : f"{self.pcie_data_width}_bit",
+                "AXISTEN_IF_RC_STRADDLE"       : True,
+                "PF0_DEVICE_ID"                : 8030 + self.nlanes,
+                "axisten_freq"                 : 250, # CHECKME.
+                "axisten_if_enable_client_tag" : True,
+                "aspm_support"                 : "No_ASPM",
+                "coreclk_freq"                 : 500, # CHECKME.
+                "plltype"                      : "QPLL1",
+
+                # BAR0 Config.
+                # ------------
+                "pf0_bar0_scale"               : "Megabytes",               # FIXME.
+                "pf0_bar0_size"                : max(self.bar0_size/MB, 1), # FIXME.
+
+                # Interrupt Config.
+                # -----------------
+                "PF0_INTERRUPT_PIN"            : "NONE",
+            }
+            ip_tcl = []
+            ip_tcl.append("create_ip -vendor xilinx.com -name pcie3_ultrascale -module_name pcie_us")
+            ip_tcl.append("set obj [get_ips pcie_us]")
+            ip_tcl.append("set_property -dict [list \\")
+            for config, value in config.items():
+                ip_tcl.append("CONFIG.{} {} \\".format(config, '{{' + str(value) + '}}'))
+            ip_tcl.append(f"] $obj")
+            ip_tcl.append("synth_ip $obj")
+            platform.toolchain.pre_synthesis_commands += ip_tcl
+
+        verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx_us")
+        platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
+        if self.nlanes == 4:
+            platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt_x4.v"))
+            platform.add_source(os.path.join(verilog_path, "m_axis_rc_adapt_x4.v"))
+            platform.add_source(os.path.join(verilog_path, "m_axis_cq_adapt_x4.v"))
+            platform.add_source(os.path.join(verilog_path, "s_axis_cc_adapt_x4.v"))
+
+        if self.nlanes == 8:
+            platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt_x8.v"))
+            platform.add_source(os.path.join(verilog_path, "m_axis_rc_adapt_x8.v"))
+            platform.add_source(os.path.join(verilog_path, "m_axis_cq_adapt_x8.v"))
+            platform.add_source(os.path.join(verilog_path, "s_axis_cc_adapt_x8.v"))
+
+        platform.add_source(os.path.join(verilog_path, "pcie_us_support.v"))
 
     # External Hard IP -----------------------------------------------------------------------------
     def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
@@ -389,9 +440,5 @@ class USPCIEPHY(LiteXModule):
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_hard_ip:
-            phy_path     = "xilinx_us_{}_x{}".format(self.speed, self.nlanes)
-            self.add_sources(self.platform,
-                phy_path     = os.path.join(os.path.abspath(os.path.dirname(__file__)), phy_path),
-                phy_filename = "pcie_us.xci"
-            )
+            self.add_sources(self.platform)
         self.specials += Instance("pcie_support", **self.pcie_phy_params)

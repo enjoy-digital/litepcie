@@ -57,116 +57,7 @@
 
 `timescale 1ns / 1ps
 
-//----------------------------------------------------------------------------------------------------------------//
-// AXIS FIFO                                                                                                      //
-//----------------------------------------------------------------------------------------------------------------//
-
-module axis_iff
-   #(
-        parameter           DAT_B  = 32
-    )
-    (
-        input               clk,
-        input               rst,
-
-        input               i_vld,
-        output              o_rdy,
-        input               i_sop,
-        input               i_eop,
-        input  [DAT_B-1:0]  i_dat,
-
-
-        output              o_vld,
-        input               i_rdy,
-        output              o_sop,
-        output              o_eop,
-        output  [DAT_B-1:0] o_dat
-    );
-
-    ///////////////////////////////////////////////////////////////////////////
-    //FIFO instance
-    localparam     FF_B = 8;
-    localparam     FF_L = 256;
-
-    wire           ff_empt, ff_full;
-    reg [FF_B:0]   ff_len;
-
-    wire           ff_wr, ff_rd;
-
-    reg [FF_B-1:0] wrcnt;
-    always @(posedge clk)
-        if (rst) wrcnt <= {FF_B{1'b0}};
-        else if (ff_wr) wrcnt <= wrcnt + 1;
-
-    always @(posedge clk)
-        if (rst) ff_len <= {FF_B+1{1'b0}};
-        else
-            case ({ff_wr, ff_rd})
-                2'b10: ff_len <= ff_len + 1;
-                2'b01: ff_len <= ff_len - 1;
-                default: ff_len <= ff_len;
-            endcase
-
-    wire [FF_B-1:0] rdcnt;
-    assign          rdcnt = wrcnt - ff_len[FF_B-1:0];
-
-    wire [FF_B-1:0] rda, wra;
-    assign          rda = ff_rd ? (rdcnt + 1) : rdcnt;
-    assign          wra = wrcnt;
-
-    wire [DAT_B+1:0] ff_wdat;
-    wire [DAT_B+1:0] ff_rdat;
-    assign           ff_wdat = {i_sop, i_eop, i_dat};
-    assign           {o_sop, o_eop, o_dat} = ff_rdat;
-    assign           o_rdy = !(ff_len[FF_B] | pktcnt[3]);
-    assign           o_vld = (pktcnt > 0);
-
-    reg [3:0]        pktcnt;
-    assign           ff_wr = i_vld & (!(ff_len[FF_B] | pktcnt[3]));
-    assign           ff_rd = i_rdy & (pktcnt > 0);
-
-    ///////////////////////////////////////////////////////////////////////////
-    //Single dual port RAM 1-clock
-
-    (* ram_style="block" *)
-    reg [DAT_B+1:0] ram [FF_L-1:0];
-
-    always @(posedge clk)
-        if (ff_wr) ram[wra] <= ff_wdat;
-
-    reg [DAT_B+1:0]  ff_rdat_m;
-    always @(posedge clk)
-        ff_rdat_m <= ram[rda];
-
-    ///////////////////////////////////////////////////////////////////////////
-    //same read/write
-
-    wire              readsame = ff_wr & (wra == rda);
-    reg               readsame1;
-    always @(posedge clk)
-        if (rst) readsame1 <= 1'b0;
-        else readsame1 <= readsame;
-
-    reg [DAT_B+1:0] ff_wdat1;
-    always @(posedge clk)
-        ff_wdat1 <= ff_wdat;
-
-    assign            ff_rdat = readsame1 ? ff_wdat1 : ff_rdat_m;
-
-    ///////////////////////////////////////////////////////////////////////////
-    //Store max 8 packet
-
-    always @(posedge clk)
-        if (rst) pktcnt <= 4'd0;
-        else begin
-            case ({(ff_wr & i_eop), (ff_rd & o_eop)})
-                2'b10: pktcnt <= pktcnt + 1;
-                2'b01: pktcnt <= pktcnt - 1;
-                default: pktcnt <= pktcnt;
-            endcase
-            end
-
-endmodule
+// Adaptation from/to Xilinx format to/from standardized TLPs Copyright (c) 2020 Enjoy-Digital <enjoy-digital.fr>
 
 //----------------------------------------------------------------------------------------------------------------//
 // PCIe                                                                                                           //
@@ -175,7 +66,7 @@ endmodule
 (* DowngradeIPIdentifiedWarnings = "yes" *)
 module pcie_support # (
   parameter LINK_CAP_MAX_LINK_WIDTH = 4,                       // PCIe Lane Width
-  parameter C_DATA_WIDTH            = 256,                     // AXI interface data width
+  parameter C_DATA_WIDTH            = 128,                     // AXI interface data width
   parameter KEEP_WIDTH              = C_DATA_WIDTH / 8,        // TSTRB width
   parameter PCIE_GT_DEVICE          = "GTH",                   // PCIe GT device
   parameter PCIE_USE_MODE           = "2.0"                    // PCIe use mode
@@ -260,8 +151,8 @@ module pcie_support # (
 
   output                                     cfg_phy_link_down,
   output                            [1:0]    cfg_phy_link_status,
-  output                            [3:0]    cfg_negotiated_width,
-  output                            [2:0]    cfg_current_speed,
+  output                            [2:0]    cfg_negotiated_width,
+  output                            [1:0]    cfg_current_speed,
   output                            [2:0]    cfg_max_payload,
   output                            [2:0]    cfg_max_read_req,
   output                           [15:0]    cfg_function_status,
@@ -357,10 +248,7 @@ module pcie_support # (
   output                           [11:0]     cfg_interrupt_msi_mmenable,
   output                                      cfg_interrupt_msi_mask_update,
   output                           [31:0]     cfg_interrupt_msi_data,
-  output                            [7:0]     cfg_interrupt_msi_vf_enable,
-
-  //Debug
-  output [7:0]                                debug              //for cmp_source {error_code[3:], error_trigger}
+  output                            [7:0]     cfg_interrupt_msi_vf_enable
 );
 
   //----------------------------------------------------------------------------------------------------------------//
@@ -424,418 +312,133 @@ module pcie_support # (
   //   AXIS Adaption Logic                                                                                          //
   //----------------------------------------------------------------------------------------------------------------//
 
-  //----------------------------------------------------- RQ AXIS --------------------------------------------------//
-  wire          s_axis_rq_tready_ff,
-                s_axis_rq_tvalid_ff,
-                s_axis_rq_tlast_ff;
-  wire [7:0]    s_axis_rq_tkeep_or = {s_axis_rq_tkeep[28], s_axis_rq_tkeep[24], s_axis_rq_tkeep[20], s_axis_rq_tkeep[16],
-                                      s_axis_rq_tkeep[12], s_axis_rq_tkeep[8], s_axis_rq_tkeep[4], s_axis_rq_tkeep[0]};
+   //----------------------------------------------------- RQ AXIS -------------------------------------------------//
 
-  wire [3:0]    s_axis_rq_tuser_ff;
-  wire [7:0]    s_axis_rq_tkeep_ff;
-  wire [255:0]  s_axis_rq_tdata_ff;
+  wire                     s_axis_rq_tvalid_a;
+  wire                     s_axis_rq_tready_a;
+  wire [KEEP_WIDTH-1   :0] s_axis_rq_tkeep_a;
+  wire [C_DATA_WIDTH-1 :0] s_axis_rq_tdata_a;
+  wire [255            :0] s_axis_rq_tuser_a;
+  wire                     s_axis_rq_tlast_a;
 
-  axis_iff #(.DAT_B(256+8+4))  s_axis_rq_iff
-  (
-        .clk    (user_clk_out),
-        .rst    (user_reset_out),
+   s_axis_rq_adapt #(
+    .DATA_WIDTH(C_DATA_WIDTH),
+    .KEEP_WIDTH(KEEP_WIDTH)
+   ) s_axis_rq_adapt_i (
+    .user_clk(user_clk_out),
+    .user_reset(user_reset_out),
 
-        .i_vld  (s_axis_rq_tvalid),
-        .o_rdy  (s_axis_rq_tready),
-        .i_sop  (1'b0),
-        .i_eop  (s_axis_rq_tlast),
-        .i_dat  ({s_axis_rq_tuser, s_axis_rq_tkeep_or, s_axis_rq_tdata}),
+    .s_axis_rq_tdata(s_axis_rq_tdata),
+    .s_axis_rq_tkeep(s_axis_rq_tkeep),
+    .s_axis_rq_tlast(s_axis_rq_tlast),
+    .s_axis_rq_tready(s_axis_rq_tready),
+    .s_axis_rq_tuser(s_axis_rq_tuser),
+    .s_axis_rq_tvalid(s_axis_rq_tvalid),
 
-        .o_vld  (s_axis_rq_tvalid_ff),
-        .i_rdy  (s_axis_rq_tready_ff),
-        .o_sop  (),
-        .o_eop  (s_axis_rq_tlast_ff),
-        .o_dat  ({s_axis_rq_tuser_ff, s_axis_rq_tkeep_ff, s_axis_rq_tdata_ff})
-    );
-
-
-  reg [1:0]       s_axis_rq_cnt;  //0-2
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_cnt <= 2'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
-          begin
-              if (s_axis_rq_tlast_ff) s_axis_rq_cnt <= 2'd0;
-              else if (!s_axis_rq_cnt[1]) s_axis_rq_cnt <= s_axis_rq_cnt + 1;
-          end
-
-  wire            s_axis_rq_tfirst = (s_axis_rq_cnt == 0) && (!s_axis_rq_tlast_lat);
-  wire            s_axis_rq_tsecond = s_axis_rq_cnt == 1;
-
-  //processing for tlast: generate new last in case write & last num of dword = 5 + i*8
-  wire            s_axis_rq_read = (s_axis_rq_tdata_ff[31:30] == 2'b0);  //Read request
-  wire            s_axis_rq_write = !s_axis_rq_read;
-  reg             s_axis_rq_tlast_dly_en;
-  reg             s_axis_rq_tlast_lat;
-  wire [3:0]      s_axis_rq_tready_a;
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_tlast_dly_en <= 1'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst && s_axis_rq_write) s_axis_rq_tlast_dly_en <= (s_axis_rq_tdata_ff[2:0] == 3'b101);
-
-  wire [10:0]     s_axis_rq_dwlen;
-
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_rq_tlast_lat <= 1'd0;
-      else if (s_axis_rq_tlast_lat && s_axis_rq_tready_a[0]) s_axis_rq_tlast_lat <= 1'd0;
-      else if (s_axis_rq_tvalid_ff && s_axis_rq_tlast_ff && s_axis_rq_tready_a[0])
-          begin
-          if (s_axis_rq_tfirst) s_axis_rq_tlast_lat <= s_axis_rq_write ? (s_axis_rq_dwlen == 11'd5) : 1'b0; //write 5 dwords
-          else s_axis_rq_tlast_lat <= s_axis_rq_tlast_dly_en;
-          end
-
-  wire            s_axis_rq_tlast_a  = s_axis_rq_tfirst       ? (s_axis_rq_read | (s_axis_rq_dwlen < 11'd5)) :
-                                       s_axis_rq_tlast_dly_en ? s_axis_rq_tlast_lat : s_axis_rq_tlast_ff;
-
-  //Generae ready for TLP
-  assign          s_axis_rq_tready_ff = s_axis_rq_tready_a[0] && (!s_axis_rq_tlast_lat);
-  wire            s_axis_rq_tvalid_a = s_axis_rq_tvalid_ff | s_axis_rq_tlast_lat;
-
-  assign          s_axis_rq_dwlen = {1'b0, s_axis_rq_tdata_ff[9:0]};
-  wire [3:0]      s_axis_rq_reqtype = {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0000000 ? 4'b0000 :  //Mem read Request
-                                      {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0000001 ? 4'b0111 :  //Mem Read request-locked
-                                      {s_axis_rq_tdata_ff[31:30], s_axis_rq_tdata_ff[28:24]} == 7'b0100000 ? 4'b0001 :  //Mem write request
-                                       s_axis_rq_tdata_ff[31:24] == 8'b00000010                           ? 4'b0010 :  //I/O Read request
-                                       s_axis_rq_tdata_ff[31:24] == 8'b01000010                           ? 4'b0011 :  //I/O Write request
-                                       s_axis_rq_tdata_ff[31:24] == 8'b00000100                           ? 4'b1000 :  //Cfg Read Type 0
-                                       s_axis_rq_tdata_ff[31:24] == 8'b01000100                           ? 4'b1010 :  //Cfg Write Type 0
-                                       s_axis_rq_tdata_ff[31:24] == 8'b00000101                           ? 4'b1001 :  //Cfg Read Type 1
-                                       s_axis_rq_tdata_ff[31:24] == 8'b01000101                           ? 4'b1011 :  //Cfg Write Type 1
-                                                                                                          4'b1111;
-  wire            s_axis_rq_poisoning = s_axis_rq_tdata_ff[14] | s_axis_rq_tuser_ff[1];   //EP must be 0 for request
-  wire [15:0]     s_axis_rq_requesterid = s_axis_rq_tdata_ff[63:48];
-  wire [7:0]      s_axis_rq_tag = s_axis_rq_tdata_ff[47:40];
-  wire [15:0]     s_axis_rq_completerid = 16'b0;   //applicable only to Configuration requests and messages routed by ID
-  wire            s_axis_rq_requester_en = 1'b0;   //Must be 0 for Endpoint
-  wire [2:0]      s_axis_rq_tc = s_axis_rq_tdata_ff[22:20];
-  wire [2:0]      s_axis_rq_attr = {1'b0, s_axis_rq_tdata_ff[13:12]};
-  wire            s_axis_rq_ecrc = s_axis_rq_tdata_ff[15] | s_axis_rq_tuser_ff[0];     //TLP Digest
-
-  wire [63:0]     s_axis_rq_tdata_header  = {s_axis_rq_ecrc,
-                                             s_axis_rq_attr,
-                                             s_axis_rq_tc,
-                                             s_axis_rq_requester_en,
-                                             s_axis_rq_completerid,
-                                             s_axis_rq_tag,
-                                             s_axis_rq_requesterid,
-                                             s_axis_rq_poisoning, s_axis_rq_reqtype, s_axis_rq_dwlen};
-
-  wire [3:0]      s_axis_rq_firstbe = s_axis_rq_tdata_ff[35:32];
-  wire [3:0]      s_axis_rq_lastbe = s_axis_rq_tdata_ff[39:36];
-  reg  [3:0]      s_axis_rq_firstbe_l;
-  reg  [3:0]      s_axis_rq_lastbe_l;
-
-  always @(posedge user_clk_out)
-  begin
-      if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst)
-          begin
-          s_axis_rq_firstbe_l <= s_axis_rq_firstbe;
-          s_axis_rq_lastbe_l <= s_axis_rq_lastbe;
-          end
-      end
-
-  reg [31:0]       s_axis_rq_tdata_l;
-  always @(posedge user_clk_out)
-      if (s_axis_rq_tvalid_ff && s_axis_rq_tready_ff)
-          s_axis_rq_tdata_l <= s_axis_rq_tdata_ff[255:224];
-
-  wire [255:0]    s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_ff[223:96], s_axis_rq_tdata_header, 32'b0, s_axis_rq_tdata_ff[95:64]} :
-                                                          {s_axis_rq_tdata_ff[223:0], s_axis_rq_tdata_l[31:0]};
-  wire [7:0]      s_axis_rq_tkeep_a  = s_axis_rq_tlast_lat ? 8'h1 : {s_axis_rq_tkeep_ff[6:0], 1'b1};
-  wire [59:0]     s_axis_rq_tuser_a;
-  assign          s_axis_rq_tuser_a[59:8] = {32'b0, 4'b0, 1'b0, 8'b0, 2'b0, 1'b0, s_axis_rq_tuser_ff[3], 3'b0};
-  assign          s_axis_rq_tuser_a[7:0]  = {s_axis_rq_lastbe, s_axis_rq_firstbe};
+    .s_axis_rq_tdata_a(s_axis_rq_tdata_a),
+    .s_axis_rq_tkeep_a(s_axis_rq_tkeep_a),
+    .s_axis_rq_tlast_a(s_axis_rq_tlast_a),
+    .s_axis_rq_tready_a(s_axis_rq_tready_a),
+    .s_axis_rq_tuser_a(s_axis_rq_tuser_a),
+    .s_axis_rq_tvalid_a(s_axis_rq_tvalid_a)
+   );
 
   //----------------------------------------------------- RC AXIS --------------------------------------------------//
-  wire            m_axis_rc_tvalid_a;
-  wire            m_axis_rc_tready_a;
-  wire [7:0]      m_axis_rc_tkeep_a;
-  wire [255:0]    m_axis_rc_tdata_a;
-  wire [74:0]     m_axis_rc_tuser_a;
-  wire            m_axis_rc_tlast_a;
 
-  reg [1:0]       m_axis_rc_cnt;  //0-2
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_rc_cnt <= 2'd0;
-      else if (m_axis_rc_tvalid_a && m_axis_rc_tready_a)
-          begin
-              if (m_axis_rc_tlast_a) m_axis_rc_cnt <= 2'd0;
-              else if (!m_axis_rc_cnt[1]) m_axis_rc_cnt <= m_axis_rc_cnt + 1;
-          end
+  wire                     m_axis_rc_tvalid_a;
+  wire                     m_axis_rc_tready_a;
+  wire [KEEP_WIDTH-1   :0] m_axis_rc_tkeep_a;
+  wire [C_DATA_WIDTH-1 :0] m_axis_rc_tdata_a;
+  wire [255            :0] m_axis_rc_tuser_a;
+  wire                     m_axis_rc_tlast_a;
 
-  wire            m_axis_rc_sop = (m_axis_rc_cnt == 0); //m_axis_rc_tuser_a[40]
-  wire            m_axis_rc_second = m_axis_rc_cnt == 1;
+   m_axis_rc_adapt #(
+    .DATA_WIDTH(C_DATA_WIDTH),
+    .KEEP_WIDTH(KEEP_WIDTH)
+   ) m_axis_rc_adapt_i (
+    .user_clk(user_clk_out),
+    .user_reset(user_reset_out),
 
-  //header process
-  wire            m_axis_rc_poisoning = m_axis_rc_tdata_a[46];
-  reg             m_axis_rc_poisoning_l;
-  always @(posedge user_clk_out)
-     if (m_axis_rc_tvalid_a && m_axis_rc_sop)
-         begin
-             m_axis_rc_poisoning_l <= m_axis_rc_poisoning;
-         end
+    .m_axis_rc_tdata( m_axis_rc_tdata),
+    .m_axis_rc_tkeep( m_axis_rc_tkeep),
+    .m_axis_rc_tlast( m_axis_rc_tlast),
+    .m_axis_rc_tready(m_axis_rc_tready),
+    .m_axis_rc_tuser( m_axis_rc_tuser),
+    .m_axis_rc_tvalid(m_axis_rc_tvalid),
 
-  wire [9:0]      m_axis_rc_dwlen = m_axis_rc_tdata_a[41:32];
-  wire [1:0]      m_axis_rc_attr = m_axis_rc_tdata_a[93:92];
-  wire            m_axis_rc_ep = 1'b0;
-  wire            m_axis_rc_td = 1'b0;
-  wire [2:0]      m_axis_rc_tc = m_axis_rc_tdata_a[91:89];
-  wire [4:0]      m_axis_rc_type;
-  wire [2:0]      m_axis_rc_fmt;
-  wire [11:0]     m_axis_rc_bytecnt = m_axis_rc_tdata_a[27:16];
-  wire            m_axis_rc_bmc = 1'b0;
-  wire [2:0]      m_axis_rc_cmpstatus = m_axis_rc_tdata_a[45:43];
-  wire [15:0]     m_axis_rc_completerid = m_axis_rc_tdata_a[87:72];
-
-  wire [6:0]      m_axis_rc_lowaddr = m_axis_rc_tdata_a[6:0];
-  wire [7:0]      m_axis_rc_tag = m_axis_rc_tdata_a[71:64];
-  wire [15:0]     m_axis_rc_requesterid = m_axis_rc_tdata_a[63:48];
-
-  assign          {m_axis_rc_fmt,
-                   m_axis_rc_type} = m_axis_rc_tdata_a[29] ? ((m_axis_rc_bytecnt == 0) ? 8'b000_01011 :    //Read-Locked Completion w/o data
-                                                                                         8'b010_01011) :   //Read-Locked Completion w/ data
-                                                             ((m_axis_rc_bytecnt == 0) ? 8'b000_01010 :    //Completion w/o data
-                                                                                         8'b010_01010);    //Completion w/ data
-
-  wire [63:0]     m_axis_rc_header0 = {m_axis_rc_completerid,
-                                       m_axis_rc_cmpstatus,
-                                       m_axis_rc_bmc,
-                                       m_axis_rc_bytecnt,
-                                       m_axis_rc_fmt[2:0], m_axis_rc_type,
-                                       1'b0, m_axis_rc_tc, 4'b0,
-                                       m_axis_rc_td, m_axis_rc_ep, m_axis_rc_attr,
-                                       2'b0, m_axis_rc_dwlen};
-  wire [63:0]     m_axis_rc_header1 = {m_axis_rc_tdata_a[127:96],
-                                       m_axis_rc_requesterid,
-                                       m_axis_rc_tag,
-                                       1'b0, m_axis_rc_lowaddr};
-
-  assign          m_axis_rc_tvalid = m_axis_rc_tvalid_a;
-  assign          m_axis_rc_tready_a = m_axis_rc_tready;
-  assign          m_axis_rc_tlast = m_axis_rc_tlast_a;
-  assign          m_axis_rc_tdata = m_axis_rc_sop ? {m_axis_rc_tdata_a[255:128], m_axis_rc_header1, m_axis_rc_header0} : m_axis_rc_tdata_a;
-  assign          m_axis_rc_tkeep = m_axis_rc_sop ? {m_axis_rc_tuser_a[31:12], 12'hFFF} : m_axis_rc_tuser_a[31:0];
-  assign          m_axis_rc_tuser = {
-                                     5'b0,                         //rx_is_eof only for 128-bit I/F
-                                     2'b0,                         //reserved
-                                     5'b0,                         //m_axis_rc_tuser_a[32],4'b0,   //rx_is_sof, only for 128-bit I/F  ?????????????????????
-                                     8'b0,                         //BAR hit no equivalent for RC
-                                     m_axis_rc_sop ? m_axis_rc_poisoning : m_axis_rc_poisoning_l,  //rx_err_fwd mapped to Poisoned completion
-                                     m_axis_rc_tuser_a[42]         //ECRC mapped to discontinue
-                                     };
+    .m_axis_rc_tdata_a( m_axis_rc_tdata_a),
+    .m_axis_rc_tkeep_a( m_axis_rc_tkeep_a),
+    .m_axis_rc_tlast_a( m_axis_rc_tlast_a),
+    .m_axis_rc_tready_a(m_axis_rc_tready_a),
+    .m_axis_rc_tuser_a( m_axis_rc_tuser_a),
+    .m_axis_rc_tvalid_a(m_axis_rc_tvalid_a)
+   );
 
   //----------------------------------------------------- CQ AXIS --------------------------------------------------//
-  wire            m_axis_cq_tvalid_a;
-  wire            m_axis_cq_tready_a;
-  wire [7:0]      m_axis_cq_tkeep_a;
-  wire [255:0]    m_axis_cq_tdata_a;
-  wire [84:0]     m_axis_cq_tuser_a;
-  wire            m_axis_cq_tlast_a;
 
-  //dword counter: //0-2 & latch
-  reg [1:0]       m_axis_cq_cnt;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_cnt <= 2'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
-          begin
-              if (m_axis_cq_tlast_a) m_axis_cq_cnt <= 2'd0;
-              else if (!m_axis_cq_cnt[1]) m_axis_cq_cnt <= m_axis_cq_cnt + 1;
-          end
+  wire                     m_axis_cq_tvalid_a;
+  wire                     m_axis_cq_tready_a;
+  wire [KEEP_WIDTH-1   :0] m_axis_cq_tkeep_a;
+  wire [C_DATA_WIDTH-1 :0] m_axis_cq_tdata_a;
+  wire [255            :0] m_axis_cq_tuser_a;
+  wire                     m_axis_cq_tlast_a;
 
-  wire            m_axis_cq_sop    = (m_axis_cq_cnt == 0) && (!m_axis_cq_tlast_lat); //m_axis_cq_tuser_a[40]
-  wire            m_axis_cq_second = m_axis_cq_cnt == 1;
+   m_axis_cq_adapt #(
+    .DATA_WIDTH(C_DATA_WIDTH),
+    .KEEP_WIDTH(KEEP_WIDTH)
+   ) m_axis_cq_adapt_i (
+    .user_clk(user_clk_out),
+    .user_reset(user_reset_out),
 
-  reg             m_axis_cq_rdwr_l;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_rdwr_l <= 1'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_sop) m_axis_cq_rdwr_l <= m_axis_cq_tlast_a;
+    .m_axis_cq_tdata( m_axis_cq_tdata),
+    .m_axis_cq_tkeep( m_axis_cq_tkeep),
+    .m_axis_cq_tlast( m_axis_cq_tlast),
+    .m_axis_cq_tready(m_axis_cq_tready),
+    .m_axis_cq_tuser( m_axis_cq_tuser),
+    .m_axis_cq_tvalid(m_axis_cq_tvalid),
 
-  //processing for tlast: generate new last in case write & last num of dword != 5 + i*8
-  wire            m_axis_cq_read = (m_axis_cq_fmt[1:0] == 2'b0);  //Read request
-  wire            m_axis_cq_write = !m_axis_cq_read;
-  wire [9:0]      m_axis_cq_dwlen;
-  reg             m_axis_cq_tlast_dly_en;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_tlast_dly_en <= 1'd0;
-      else if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_dly_en <= 1'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_sop) m_axis_cq_tlast_dly_en <= m_axis_cq_tlast_a | (m_axis_cq_dwlen[2:0] != 3'd5);
-
-  reg             m_axis_cq_tlast_lat;
-  always @(posedge user_clk_out)
-      if (user_reset_out) m_axis_cq_tlast_lat <= 1'd0;
-      else if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_lat <= 1'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a && m_axis_cq_tlast_a)
-          begin
-          if (m_axis_cq_sop) m_axis_cq_tlast_lat <= 1'b1;
-          else if (m_axis_cq_tlast_dly_en) m_axis_cq_tlast_lat <= 1'b1;
-          end
-
-  //Generae ready for PCIe IP
-  assign          m_axis_cq_tready_a = ((m_axis_cq_cnt == 0) | m_axis_cq_tready) && (!m_axis_cq_tlast_lat);
-
-  //output for TLP
-  assign          m_axis_cq_tlast = m_axis_cq_tlast_dly_en ? m_axis_cq_tlast_lat : m_axis_cq_tlast_a;
-  assign          m_axis_cq_tvalid = (m_axis_cq_tvalid_a & (|m_axis_cq_cnt)) | m_axis_cq_tlast_lat;
-
-
-  ////keep address (low) or data (high), not header
-  reg [255:0]     m_axis_cq_tdata_a1;
-  reg [31:0]      m_axis_cq_tlast_be1;
-  always @(posedge user_clk_out)
-     if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
-          begin
-          m_axis_cq_tdata_a1 <= m_axis_cq_tdata_a;
-          m_axis_cq_tlast_be1 <= m_axis_cq_tuser_a[39:8];
-          end
-
-  //data processing
-  wire [63:0]     m_axis_cq_tdata_hdr = m_axis_cq_tdata_a[127:64];
-
-  assign          m_axis_cq_dwlen = m_axis_cq_tdata_hdr[9:0];
-  wire [1:0]      m_axis_cq_attr = m_axis_cq_tdata_hdr[61:60];
-  wire            m_axis_cq_ep = 1'b0;
-  wire            m_axis_cq_td = 1'b0;
-  wire [2:0]      m_axis_cq_tc = m_axis_cq_tdata_hdr[59:57];
-  wire [4:0]      m_axis_cq_type;
-  wire [2:0]      m_axis_cq_fmt;
-  wire [7:0]      m_axis_cq_be = m_axis_cq_tuser_a[7:0];
-  wire [7:0]      m_axis_cq_tag = m_axis_cq_tdata_hdr[39:32];
-  wire [15:0]     m_axis_cq_requesterid = m_axis_cq_tdata_hdr[31:16];
-
-  assign          {m_axis_cq_fmt, m_axis_cq_type} = m_axis_cq_tdata_hdr[14:11] == 4'b0000 ? 8'b000_00000 :  //Mem read Request
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b0111 ? 8'b000_00001 :  //Mem Read request-locked
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b0001 ? 8'b010_00000 :  //Mem write request
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b0010 ? 8'b000_00010 :  //I/O Read request
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b0011 ? 8'b010_00010 :  //I/O Write request
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b1000 ? 8'b000_00100 :  //Cfg Read Type 0
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b1010 ? 8'b010_00100 :  //Cfg Write Type 0
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b1001 ? 8'b000_00101 :  //Cfg Read Type 1
-                                                    m_axis_cq_tdata_hdr[14:11] == 4'b1011 ? 8'b010_00101 :  //Cfg Write Type 1
-                                                                                            8'b000_00000;   //Mem read Request
-
-  reg [7:0]        m_axis_cq_tuser_barhit;
-  always @(posedge user_clk_out)
-      if (m_axis_cq_tvalid_a && m_axis_cq_sop)
-          m_axis_cq_tuser_barhit <= {1'b0, m_axis_cq_tdata_hdr[50:48], m_axis_cq_tdata_hdr[14:11]};  //only valid @sop
-
-  reg [63:0]       m_axis_cq_header;
-  always @(posedge user_clk_out)
-      if (m_axis_cq_tvalid_a && m_axis_cq_sop)
-          m_axis_cq_header = {m_axis_cq_requesterid,
-                              m_axis_cq_tag,
-                              m_axis_cq_be,
-                              m_axis_cq_fmt, m_axis_cq_type,
-                              1'b0, m_axis_cq_tc, 4'b0,
-                              m_axis_cq_td, m_axis_cq_ep, m_axis_cq_attr,
-                              2'b0, m_axis_cq_dwlen};
-
-  assign          m_axis_cq_tdata = (m_axis_cq_rdwr_l | m_axis_cq_second) ? {m_axis_cq_tdata_a[31:0], m_axis_cq_tdata_a1[255:128], m_axis_cq_tdata_a1[31:0], m_axis_cq_header} :
-                                                                            {m_axis_cq_tdata_a[31:0], m_axis_cq_tdata_a1[255:32]};
-  assign          m_axis_cq_tkeep = m_axis_cq_rdwr_l    ? {4'b0, m_axis_cq_tlast_be1[31:16], 12'hFFF} :
-                                    m_axis_cq_tlast_lat ? {4'b0, m_axis_cq_tlast_be1[31:4]} : 32'hFFFF_FFFF;
-  assign          m_axis_cq_tuser = {
-                                     5'b0,                     //rx_is_eof only for 128-bit I/F
-                                     2'b0,                     //reserved
-                                     5'b0,                     //m_axis_cq_tuser_a[40],4'b0,     //rx_is_sof only for 128-bit I/F
-                                     m_axis_cq_tuser_barhit,
-                                     1'b0,                    //rx_err_fwd -> no equivalent
-                                     m_axis_cq_tuser_a[41]      //ECRC mapped to discontinue
-                                     };
+    .m_axis_cq_tdata_a( m_axis_cq_tdata_a),
+    .m_axis_cq_tkeep_a( m_axis_cq_tkeep_a),
+    .m_axis_cq_tlast_a( m_axis_cq_tlast_a),
+    .m_axis_cq_tready_a(m_axis_cq_tready_a),
+    .m_axis_cq_tuser_a( m_axis_cq_tuser_a),
+    .m_axis_cq_tvalid_a(m_axis_cq_tvalid_a)
+   );
 
   //----------------------------------------------------- CC AXIS --------------------------------------------------//
-  wire          s_axis_cc_tready_ff,
-                s_axis_cc_tvalid_ff,
-                s_axis_cc_tlast_ff;
-  wire [7:0]    s_axis_cc_tkeep_or = {|s_axis_cc_tkeep[31:28], |s_axis_cc_tkeep[27:24],
-                                      |s_axis_cc_tkeep[23:20], |s_axis_cc_tkeep[19:16],
-                                      |s_axis_cc_tkeep[15:12], |s_axis_cc_tkeep[11:8],
-                                      |s_axis_cc_tkeep[7:4], |s_axis_cc_tkeep[3:0]};
 
-  wire [3:0]    s_axis_cc_tuser_ff;
-  wire [7:0]    s_axis_cc_tkeep_ff;
-  wire [255:0]  s_axis_cc_tdata_ff;
+  wire                     s_axis_cc_tvalid_a;
+  wire                     s_axis_cc_tready_a;
+  wire [KEEP_WIDTH-1   :0] s_axis_cc_tkeep_a;
+  wire [C_DATA_WIDTH-1 :0] s_axis_cc_tdata_a;
+  wire [255            :0] s_axis_cc_tuser_a;
+  wire                     s_axis_cc_tlast_a;
 
-  axis_iff #(.DAT_B(256+8+4))  s_axis_cc_iff
-  (
-        .clk    (user_clk_out),
-        .rst    (user_reset_out),
+  s_axis_cc_adapt #(
+    .DATA_WIDTH(C_DATA_WIDTH),
+    .KEEP_WIDTH(KEEP_WIDTH)
+   ) s_axis_cc_adapt_i (
+    .user_clk(user_clk_out),
+    .user_reset(user_reset_out),
 
-        .i_vld  (s_axis_cc_tvalid),
-        .o_rdy  (s_axis_cc_tready),
-        .i_sop  (1'b0),
-        .i_eop  (s_axis_cc_tlast),
-        .i_dat  ({s_axis_cc_tuser, s_axis_cc_tkeep_or, s_axis_cc_tdata}),
+    .s_axis_cc_tdata(s_axis_cc_tdata),
+    .s_axis_cc_tkeep(s_axis_cc_tkeep),
+    .s_axis_cc_tlast(s_axis_cc_tlast),
+    .s_axis_cc_tready(s_axis_cc_tready),
+    .s_axis_cc_tuser(s_axis_cc_tuser),
+    .s_axis_cc_tvalid(s_axis_cc_tvalid),
 
-        .o_vld  (s_axis_cc_tvalid_ff),
-        .i_rdy  (s_axis_cc_tready_ff),
-        .o_sop  (),
-        .o_eop  (s_axis_cc_tlast_ff),
-        .o_dat  ({s_axis_cc_tuser_ff, s_axis_cc_tkeep_ff, s_axis_cc_tdata_ff})
-    );
+    .s_axis_cc_tdata_a(s_axis_cc_tdata_a),
+    .s_axis_cc_tkeep_a(s_axis_cc_tkeep_a),
+    .s_axis_cc_tlast_a(s_axis_cc_tlast_a),
+    .s_axis_cc_tready_a(s_axis_cc_tready_a),
+    .s_axis_cc_tuser_a(s_axis_cc_tuser_a),
+    .s_axis_cc_tvalid_a(s_axis_cc_tvalid_a)
+   );
 
-  reg [1:0]       s_axis_cc_cnt;  //0-2
-  always @(posedge user_clk_out)
-      if (user_reset_out) s_axis_cc_cnt <= 2'd0;
-      else if (s_axis_cc_tvalid_ff && s_axis_cc_tready_ff)
-          begin
-              if (s_axis_cc_tlast_ff) s_axis_cc_cnt <= 2'd0;
-              else if (!s_axis_cc_cnt[1]) s_axis_cc_cnt <= s_axis_cc_cnt + 1;
-          end
-
-  wire            s_axis_cc_tfirst = s_axis_cc_cnt == 0;
-  wire            s_axis_cc_tsecond = s_axis_cc_cnt == 1;
-
-  wire [3:0]      s_axis_cc_tready_a;
-
-  wire [6:0]      s_axis_cc_lowaddr = s_axis_cc_tdata_ff[70:64];
-  wire [1:0]      s_axis_cc_at = 2'b0; //address translation
-  wire [12:0]     s_axis_cc_bytecnt = {1'b0, s_axis_cc_tdata_ff[43:32]};
-  wire            s_axis_cc_lockedrdcmp = (s_axis_cc_tdata_ff[29:24] == 6'b0_01011);    //Read-Locked Completion
-  wire [9:0]      s_axis_cc_dwordcnt = s_axis_cc_tdata_ff[9:0];
-  wire [2:0]      s_axis_cc_cmpstatus = s_axis_cc_tdata_ff[47:45];
-  wire            s_axis_cc_poison = s_axis_cc_tdata_ff[14];
-  wire [15:0]     s_axis_cc_requesterid = s_axis_cc_tdata_ff[95:80];
-
-  wire [7:0]      s_axis_cc_tag = s_axis_cc_tdata_ff[79:72];
-  wire [15:0]     s_axis_cc_completerid = s_axis_cc_tdata_ff[63:48];
-  wire            s_axis_cc_completerid_en = 1'b0;     //must be 0 for End-point
-  wire [2:0]      s_axis_cc_tc = s_axis_cc_tdata_ff[22:20];
-  wire [2:0]      s_axis_cc_attr = {1'b0, s_axis_cc_tdata_ff[13:12]};
-  wire            s_axis_cc_td = s_axis_cc_tdata_ff[15] | s_axis_cc_tuser_ff[0];  //ECRC @sop
-
-
-  wire [63:0]     s_axis_cc_header0 = {s_axis_cc_requesterid,
-                                       2'b0, s_axis_cc_poison, s_axis_cc_cmpstatus, s_axis_cc_dwordcnt,
-                                       2'b0, s_axis_cc_lockedrdcmp, s_axis_cc_bytecnt,
-                                       6'b0, s_axis_cc_at,
-                                       1'b0, s_axis_cc_lowaddr};
-  wire [63:0]     s_axis_cc_header1 = {s_axis_cc_tdata_ff[127:96],
-                                       s_axis_cc_td, s_axis_cc_attr, s_axis_cc_tc, s_axis_cc_completerid_en,
-                                       s_axis_cc_completerid,
-                                       s_axis_cc_tag
-                                       };
-
-  wire            s_axis_cc_tvalid_a = s_axis_cc_tvalid_ff;
-
-  assign          s_axis_cc_tready_ff = s_axis_cc_tready_a[0];
-  wire [255:0]    s_axis_cc_tdata_a  = s_axis_cc_tfirst ? {s_axis_cc_tdata_ff[255:128], s_axis_cc_header1, s_axis_cc_header0} : s_axis_cc_tdata_ff;
-  wire            s_axis_cc_tlast_a = s_axis_cc_tlast_ff;
-  wire [7:0]      s_axis_cc_tkeep_a = s_axis_cc_tkeep_ff;
-  wire [32:0]     s_axis_cc_tuser_a  = {32'b0, s_axis_cc_tuser_ff[3]};    //{parity, discontinue}
-
-  //----------------------------------------------------------------------------------------------------------------//
-  //Debug only
-
-  //Condition trigger
-  wire            cmperr_trigger = (m_axis_rc_tdata_a[15:12] != 4'b0) & m_axis_rc_tvalid_a & m_axis_rc_tready_a & m_axis_rc_sop;
-  assign          debug  = {m_axis_rc_tdata_a[15:12], cmperr_trigger};
-
-  //----------------------------------------------------------------------------------------------------------------//
-  //   MSI Adaption Logic                                                                                          //
-  //----------------------------------------------------------------------------------------------------------------//
+  //---------------------------------------------------------------------------------------------------------------//
+  //   MSI Adaptation Logic                                                                                        //
+  //---------------------------------------------------------------------------------------------------------------//
 
   wire [3:0]      cfg_interrupt_msi_enable_x4;
   assign          cfg_interrupt_msi_enable = cfg_interrupt_msi_enable_x4[0];
@@ -847,7 +450,7 @@ module pcie_support # (
           3'd1 : cfg_interrupt_msi_int_enc <= 32'h0000_0002;
           3'd2 : cfg_interrupt_msi_int_enc <= 32'h0000_0010;
           3'd3 : cfg_interrupt_msi_int_enc <= 32'h0000_0100;
-          3'd4: cfg_interrupt_msi_int_enc <= 32'h0001_0000;
+          3'd4 : cfg_interrupt_msi_int_enc <= 32'h0001_0000;
           default: cfg_interrupt_msi_int_enc <= 32'h8000_0000;
        endcase
 
@@ -875,7 +478,7 @@ module pcie_support # (
   //   Core instance                                                                                                //
   //----------------------------------------------------------------------------------------------------------------//
 
-  pcie_us  pcie_us_i (
+  pcie_usp  pcie_usp_i (
 
     //---------------------------------------------------------------------------------------//
     //  PCI Express (pci_exp) Interface                                                      //
@@ -888,11 +491,6 @@ module pcie_support # (
     // Rx
     .pci_exp_rxn                                    ( pci_exp_rxn ),
     .pci_exp_rxp                                    ( pci_exp_rxp ),
-
-    //---------- Shared Logic Internal -------------------------
-    .int_qpll1lock_out                              (  ),
-    .int_qpll1outrefclk_out                         (  ),
-    .int_qpll1outclk_out                            (  ),
 
     //---------------------------------------------------------------------------------------//
     //  AXI Interface                                                                        //
@@ -934,10 +532,6 @@ module pcie_support # (
     //---------------------------------------------------------------------------------------//
     //  Configuration (CFG) Interface                                                        //
     //---------------------------------------------------------------------------------------//
-    .pcie_rq_seq_num                                ( pcie_rq_seq_num ),
-    .pcie_rq_seq_num_vld                            ( pcie_rq_seq_num_vld ),
-    .pcie_rq_tag                                    ( pcie_rq_tag ),
-    .pcie_rq_tag_vld                                ( pcie_rq_tag_vld ),
     .pcie_cq_np_req_count                           ( pcie_cq_np_req_count ),
     .pcie_cq_np_req                                 ( pcie_cq_np_req ),
     .pcie_rq_tag_av                                 ( pcie_rq_tag_av ),
@@ -960,10 +554,8 @@ module pcie_support # (
     .cfg_err_cor_out                                ( cfg_err_cor_out ),
     .cfg_err_nonfatal_out                           ( cfg_err_nonfatal_out ),
     .cfg_err_fatal_out                              ( cfg_err_fatal_out ),
-    .cfg_ltr_enable                                 ( cfg_ltr_enable ),
     .cfg_ltssm_state                                ( cfg_ltssm_state ),
     .cfg_rcb_status                                 ( cfg_rcb_status ),
-    .cfg_dpa_substate_change                        ( cfg_dpa_substate_change ),
     .cfg_obff_enable                                ( cfg_obff_enable ),
     .cfg_pl_status_change                           ( cfg_pl_status_change ),
 
@@ -982,7 +574,8 @@ module pcie_support # (
     .cfg_mgmt_read                                  ( cfg_mgmt_rd_en ),
     .cfg_mgmt_read_data                             ( cfg_mgmt_do ),
     .cfg_mgmt_read_write_done                       ( cfg_mgmt_rd_wr_done ),
-    .cfg_mgmt_type1_cfg_reg_access                  ( 1'b0 ),                    //This input has no effect when the core is in the Endpoint mode
+    .cfg_mgmt_function_number                       ( 8'b0 ),
+    .cfg_mgmt_debug_access                          ( 1'b0 ),
 
     //-------------------------------------------------------------------------------//
     // Flow control                                                                  //
@@ -1007,9 +600,6 @@ module pcie_support # (
     .cfg_fc_cpld                                    ( cfg_fc_cpld ),
     .cfg_fc_sel                                     ( cfg_fc_sel ),
 
-    .cfg_per_func_status_control                    ( cfg_per_func_status_control ), //Request only for PF#0
-    .cfg_per_func_status_data                       ( cfg_per_func_status_data ),
-
     //-----------------------------------------------------------------------------//
     // Configuration Control Interface                                             //
     // ----------------------------------------------------------------------------//
@@ -1017,10 +607,6 @@ module pcie_support # (
     // Hot reset enable
     .cfg_hot_reset_in                               ( pl_transmit_hot_rst ),
     .cfg_hot_reset_out                              ( pl_received_hot_rst ),
-
-    .cfg_per_function_number                        ( 4'b0 ),
-    .cfg_per_function_output_request                ( 1'b0 ),  // Do not request configuration status update
-    .cfg_per_function_update_done                   (  ),
 
     //Power state change interupt
     .cfg_power_state_change_ack                     ( cfg_power_state_change_ack ),
@@ -1033,9 +619,12 @@ module pcie_support # (
     .cfg_flr_done                                   ( {2'b0,cfg_flr_done} ),
     .cfg_vf_flr_in_process                          ( cfg_vf_flr_in_process ),
     .cfg_vf_flr_done                                ( {2'b0,cfg_vf_flr_done} ),
-    .cfg_local_error                                ( ),
+    .cfg_vf_flr_func_num                            ( 8'b0 ),
 
     .cfg_link_training_enable                       ( 1'b1 ),  // Always enable LTSSM to bring up the Link
+
+    .cfg_pm_aspm_l1_entry_reject                    ( 1'b0 ),
+    .cfg_pm_aspm_tx_l0s_entry_disable               ( 1'b0 ),
 
     // EP only
     .cfg_config_space_enable                        ( 1'b1 ),  //ref pcie_app_uscale
@@ -1048,9 +637,7 @@ module pcie_support # (
     .cfg_dsn                                        ( cfg_dsn ),
     .cfg_ds_bus_number                              ( cfg_ds_bus_number ),
     .cfg_ds_device_number                           ( cfg_ds_device_number ),
-    .cfg_ds_function_number                         ( cfg_ds_function_number ),
     .cfg_ds_port_number                             ( cfg_ds_port_number ),
-    .cfg_subsys_vend_id                             ( cfg_subsys_vend_id ),
 
     //-------------------------------------------------------------------------------//
     // Interrupt Interface Signals
@@ -1064,7 +651,6 @@ module pcie_support # (
     .cfg_interrupt_msi_sent                         ( cfg_interrupt_msi_sent ),
     .cfg_interrupt_msi_fail                         ( cfg_interrupt_msi_fail ),
 
-    .cfg_interrupt_msi_vf_enable                    ( cfg_interrupt_msi_vf_enable ),
     .cfg_interrupt_msi_mmenable                     ( cfg_interrupt_msi_mmenable ),
     .cfg_interrupt_msi_mask_update                  ( cfg_interrupt_msi_mask_update ),
     .cfg_interrupt_msi_data                         ( cfg_interrupt_msi_data ),
@@ -1077,14 +663,6 @@ module pcie_support # (
     .cfg_interrupt_msi_pending_status_function_num  ( 4'b0 ),
     .cfg_interrupt_msi_pending_status_data_enable   ( 1'b0 ),
     .cfg_interrupt_msi_function_number              ( 4'b0 ),
-
-    //--------------------------------------------------------------------------------------//
-    // Reset Pass Through Signals
-    //  - Only used for PCIe_X0Y0
-    //--------------------------------------------------------------------------------------//
-    .pcie_perstn0_out       (),
-    .pcie_perstn1_in        (1'b0),
-    .pcie_perstn1_out       (),
 
     //--------------------------------------------------------------------------------------//
     //  System(SYS) Interface                                                               //
