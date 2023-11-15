@@ -804,7 +804,7 @@ class LitePCIeTLPPacketizer(LiteXModule):
             ]
             if address_width == 64:
                 # On Ultrascale(+), force to 64-bit (for 4DWs format).
-                force_64b = (LiteXContext.platform.device[:4] in ["xcku", "xcvu"]) and (data_width in [256])
+                force_64b = (LiteXContext.platform.device[:4] in ["xcku", "xcvu"]) and (data_width in [128, 256])
                 self.comb += [
                     # Use WR64/RD64 only when 64-bit Address's MSB != 0, else use WR32/RD32.
                     If((req_sink.adr[32:] != 0) | force_64b,
