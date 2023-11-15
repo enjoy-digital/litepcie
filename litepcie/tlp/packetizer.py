@@ -803,9 +803,11 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 tlp_req.address.eq(req_sink.adr),
             ]
             if address_width == 64:
+                # On Ultrascale(+), force to 64-bit (for 4DWs format).
+                force_64b = (LiteXContext.platform.device[:4] in ["xcku", "xcvu"]) and (data_width in [256])
                 self.comb += [
                     # Use WR64/RD64 only when 64-bit Address's MSB != 0, else use WR32/RD32.
-                    If(req_sink.adr[32:] != 0,
+                    If((req_sink.adr[32:] != 0) | force_64b,
                         # Address's MSB on DW2, LSB on DW3 with 64-bit addressing: Requires swap due to
                         # Packetizer's behavior.
                         tlp_req.address[:32].eq(req_sink.adr[32:]),
