@@ -89,7 +89,7 @@ module s_axis_rq_adapt # (
           end
       end
 
-  assign s_axis_rq_tdata_a       = s_axis_rq_tfirst ? {s_axis_rq_tdata[255:127], s_axis_rq_tdata_header, s_axis_rq_tdata[95:64], s_axis_rq_tdata[127:96]} : s_axis_rq_tdata;
+  assign s_axis_rq_tdata_a       = s_axis_rq_tfirst ? {s_axis_rq_tdata[255:128], s_axis_rq_tdata_header, s_axis_rq_tdata[95:64], s_axis_rq_tdata[127:96]} : s_axis_rq_tdata;
   assign s_axis_rq_tkeep_a       = s_axis_rq_tfirst ? 8'b11111111 : s_axis_rq_tkeep;
   assign s_axis_rq_tuser_a[59:8] = {32'b0, 4'b0, 1'b0, 8'b0, 2'b0, 1'b0, s_axis_rq_tuser[3], 3'b0};
   assign s_axis_rq_tuser_a[7:0]  = s_axis_rq_tfirst ? {s_axis_rq_lastbe, s_axis_rq_firstbe} : {s_axis_rq_lastbe_l, s_axis_rq_firstbe_l};
