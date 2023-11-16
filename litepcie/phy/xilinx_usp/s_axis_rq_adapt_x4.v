@@ -26,7 +26,7 @@ module s_axis_rq_adapt # (
        output                    s_axis_rq_tvalid_a
     );
 
- reg s_axis_rq_tfirst;
+  reg s_axis_rq_tfirst;
   always @(posedge user_clk)
       if (user_reset) begin
         s_axis_rq_tfirst <= 1'd1;
@@ -44,17 +44,18 @@ module s_axis_rq_adapt # (
 
   wire [10:0] s_axis_rq_dwlen = {1'b0, s_axis_rq_tdata[9:0]};
   wire [3:0]  s_axis_rq_reqtype =
-    {s_axis_rq_tdata[31:30], s_axis_rq_tdata[28:24]} == 7'b0000000  ? 4'b0000 :  //Mem read Request
-    {s_axis_rq_tdata[31:30], s_axis_rq_tdata[28:24]} == 7'b0000001  ? 4'b0111 :  //Mem Read request-locked
-    {s_axis_rq_tdata[31:30], s_axis_rq_tdata[28:24]} == 7'b0100000  ? 4'b0001 :  //Mem write request
-                                 s_axis_rq_tdata[31:24] == 8'b00000010 ? 4'b0010 :  //I/O Read request
-                                 s_axis_rq_tdata[31:24] == 8'b01000010 ? 4'b0011 :  //I/O Write request
-                                 s_axis_rq_tdata[31:24] == 8'b00000100 ? 4'b1000 :  //Cfg Read Type 0
-                                 s_axis_rq_tdata[31:24] == 8'b01000100 ? 4'b1010 :  //Cfg Write Type 0
-                                 s_axis_rq_tdata[31:24] == 8'b00000101 ? 4'b1001 :  //Cfg Read Type 1
-                                 s_axis_rq_tdata[31:24] == 8'b01000101 ? 4'b1011 :  //Cfg Write Type 1
-                                 4'b1111;
-  wire            s_axis_rq_poisoning    = s_axis_rq_tdata[14] | s_axis_rq_tuser[1];   //EP must be 0 for request
+    {s_axis_rq_tdata[31:30], s_axis_rq_tdata[28:24]} == 7'b0000000 ? 4'b0000 :  // Mem Read request.
+    {s_axis_rq_tdata[31:30], s_axis_rq_tdata[28:24]} == 7'b0000001 ? 4'b0111 :  // Mem Read  request-locked
+    {s_axis_rq_tdata[31:30], s_axis_rq_tdata[28:24]} == 7'b0100000 ? 4'b0001 :  // Mem Write request.
+     s_axis_rq_tdata[31:24] == 8'b00000010                         ? 4'b0010 :  // I/O Read request.
+     s_axis_rq_tdata[31:24] == 8'b01000010                         ? 4'b0011 :  // I/O Write request.
+     s_axis_rq_tdata[31:24] == 8'b00000100                         ? 4'b1000 :  // Cfg Read Type 0.
+     s_axis_rq_tdata[31:24] == 8'b01000100                         ? 4'b1010 :  // Cfg Write Type 0.
+     s_axis_rq_tdata[31:24] == 8'b00000101                         ? 4'b1001 :  // Cfg Read Type 1.
+     s_axis_rq_tdata[31:24] == 8'b01000101                         ? 4'b1011 :  // Cfg Write Type 1.
+                                                                     4'b1111;
+
+  wire            s_axis_rq_poisoning    = s_axis_rq_tdata[14] | s_axis_rq_tuser[1]; // EP must be 0 for request.
   wire [15:0]     s_axis_rq_requesterid  = s_axis_rq_tdata[63:48];
   wire [7:0]      s_axis_rq_tag          = s_axis_rq_tdata[47:40];
   wire [15:0]     s_axis_rq_completerid  = 16'b0; // Applicable only to Configuration requests and messages routed by ID.
@@ -88,10 +89,9 @@ module s_axis_rq_adapt # (
           end
       end
 
-  assign s_axis_rq_tdata_a  = s_axis_rq_tfirst ? {s_axis_rq_tdata_header, s_axis_rq_tdata[95:64], s_axis_rq_tdata[127:96]} : s_axis_rq_tdata;
-  assign s_axis_rq_tkeep_a  = 4'b1111;
+  assign s_axis_rq_tdata_a       = s_axis_rq_tfirst ? {s_axis_rq_tdata_header, s_axis_rq_tdata[95:64], s_axis_rq_tdata[127:96]} : s_axis_rq_tdata;
+  assign s_axis_rq_tkeep_a       = 4'b1111;
   assign s_axis_rq_tuser_a[59:8] = {32'b0, 4'b0, 1'b0, 8'b0, 2'b0, 1'b0, s_axis_rq_tuser[3], 3'b0};
   assign s_axis_rq_tuser_a[7:0]  = s_axis_rq_tfirst ? {s_axis_rq_lastbe, s_axis_rq_firstbe} : {s_axis_rq_lastbe_l, s_axis_rq_firstbe_l};
-
 
 endmodule
