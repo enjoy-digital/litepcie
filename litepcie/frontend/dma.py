@@ -202,10 +202,10 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
         fsm.act("IDLE",
             # Set/Clear signals.
             NextValue(source.first, 1),
+            NextValue(source.last,  0),
             NextValue(source.address, sink.address),
             NextValue(length, sink.length),
             If(sink.length > max_size,
-                NextValue(source.last,  0),
                 NextValue(source.length, max_size)
             ).Else(
                 NextValue(source.last, 1),
@@ -232,7 +232,6 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
                 length_next.eq(length - max_size),
                 NextValue(length, length_next),
                 If(length_next > max_size,
-                    NextValue(source.last,  0),
                     NextValue(source.length, max_size)
                 ).Else(
                     NextValue(source.last, 1),
