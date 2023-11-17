@@ -1,18 +1,20 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
 
-from litepcie.common import *
-from litepcie.core.common import *
+from litex.gen import *
+
+from litepcie.common         import *
+from litepcie.core.common    import *
 from litepcie.tlp.controller import LitePCIeTLPController
 
 # LitePCIe Crossbar --------------------------------------------------------------------------------
 
-class LitePCIeCrossbar(Module):
+class LitePCIeCrossbar(LiteXModule):
     def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True):
         self.data_width           = data_width
         self.address_width        = address_width

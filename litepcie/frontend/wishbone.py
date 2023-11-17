@@ -1,10 +1,12 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2020 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
+
+from litex.gen import *
 
 from litex.soc.interconnect import wishbone
 
@@ -27,7 +29,7 @@ def map_wishbone_dat(address, data, wishbone_dat, qword_aligned=False):
 
 # LitePCIeWishboneMaster ---------------------------------------------------------------------------
 
-class LitePCIeWishboneMaster(Module):
+class LitePCIeWishboneMaster(LiteXModule):
     def __init__(self, endpoint,
         address_decoder = lambda a: 1,
         base_address    = 0x00000000,
@@ -36,9 +38,11 @@ class LitePCIeWishboneMaster(Module):
 
         # # #
 
+        # Get Slave port from Crossbar.
         port = endpoint.crossbar.get_slave_port(address_decoder)
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        # Wishbone Master FSM.
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             If(port.sink.valid & port.sink.first,
                 If(port.sink.we,
@@ -110,9 +114,11 @@ class LitePCIeWishboneSlave(Module):
 
         # # #
 
+        # Get Master port from Crossbar.
         port = endpoint.crossbar.get_master_port()
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        # Wishbone Slave FSM.
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             If(self.wishbone.stb & self.wishbone.cyc,
                 If(self.wishbone.we,

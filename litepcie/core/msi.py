@@ -1,19 +1,21 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
 
-from litex.soc.interconnect.csr import *
+from litex.gen import *
+
+from litex.soc.interconnect.csr     import *
 from litex.soc.interconnect.csr_bus import SRAM
 
 from litepcie.common import *
 
 # LitePCIeMSI --------------------------------------------------------------------------------------
 
-class LitePCIeMSI(Module, AutoCSR):
+class LitePCIeMSI(LiteXModule):
     def __init__(self, width=32):
         self.irqs   = Signal(width)
         self.source = stream.Endpoint(msi_layout())
@@ -49,7 +51,7 @@ class LitePCIeMSI(Module, AutoCSR):
 
 # LitePCIeMSIMultiVector ---------------------------------------------------------------------------
 
-class LitePCIeMSIMultiVector(Module, AutoCSR):
+class LitePCIeMSIMultiVector(LiteXModule):
   def __init__(self, width=32):
         self.irqs   = Signal(width)
         self.source = stream.Endpoint(msi_layout())
@@ -81,7 +83,7 @@ class LitePCIeMSIMultiVector(Module, AutoCSR):
 
 # LitePCIeMSIX -------------------------------------------------------------------------------------
 
-class LitePCIeMSIX(Module, AutoCSR):
+class LitePCIeMSIX(LiteXModule):
     def __init__(self, endpoint, width=32):
         assert width <= 64
         self.irqs           = Signal(width)
@@ -126,7 +128,7 @@ class LitePCIeMSIX(Module, AutoCSR):
         self.table_port = table_port = self.table.get_port(has_re=True)
         self.specials += table_port
 
-        self.submodules.fsm = fsm = FSM(reset_state="IDLE")
+        self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             table_port.adr.eq(msix_num),
             table_port.re.eq(1),

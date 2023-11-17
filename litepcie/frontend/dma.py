@@ -9,10 +9,10 @@ from migen import *
 
 from litex.gen import *
 
-from litex.soc.interconnect import stream
+from litex.soc.interconnect     import stream
 from litex.soc.interconnect.csr import *
 
-from litepcie.common import *
+from litepcie.common     import *
 from litepcie.tlp.common import *
 
 # Constants/Layouts --------------------------------------------------------------------------------

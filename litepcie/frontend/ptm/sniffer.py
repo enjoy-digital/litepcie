@@ -13,7 +13,7 @@ from litex.gen import *
 
 from litex.soc.interconnect import stream
 
-from litepcie.common import phy_layout
+from litepcie.common     import phy_layout
 from litepcie.tlp.common import fmt_type_dict
 
 from litepcie.tlp.depacketizer import LitePCIeTLPDepacketizer

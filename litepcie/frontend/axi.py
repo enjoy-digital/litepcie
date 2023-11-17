@@ -6,15 +6,16 @@
 
 from migen import *
 
+from litex.gen import *
+
 from litex.soc.interconnect import axi, stream
 
-from litepcie.common import *
-
+from litepcie.common       import *
 from litepcie.frontend.dma import descriptor_layout, LitePCIeDMAWriter, LitePCIeDMAReader
 
 # LitePCIeAXISlave ---------------------------------------------------------------------------------
 
-class LitePCIeAXISlave(Module):
+class LitePCIeAXISlave(LiteXModule):
     def __init__(self, endpoint, data_width=32, id_width=1):
         self.axi = axi.AXIInterface(data_width=data_width, id_width=id_width)
 
@@ -33,12 +34,12 @@ class LitePCIeAXISlave(Module):
         # AXI Write Path ---------------------------------------------------------------------------
 
         # DMA / FIFO / Converter
-        self.submodules.dma_wr = dma_wr = LitePCIeDMAWriter(
+        self.dma_wr = dma_wr = LitePCIeDMAWriter(
             endpoint = endpoint,
             port     = port_wr,
             with_table = False)
-        self.submodules.fifo_wr = fifo_wr = stream.SyncFIFO(descriptor_layout(), 16)
-        self.submodules.conv_wr = conv_wr = stream.Converter(nbits_from=data_width, nbits_to=endpoint.phy.data_width)
+        self.fifo_wr = fifo_wr = stream.SyncFIFO(descriptor_layout(), 16)
+        self.conv_wr = conv_wr = stream.Converter(nbits_from=data_width, nbits_to=endpoint.phy.data_width)
 
         # Flow
         self.comb += [
@@ -51,7 +52,7 @@ class LitePCIeAXISlave(Module):
         self.comb += desc_wr.address.eq(self.axi.aw.addr)                       # Start address (byte addressed)
         self.comb += desc_wr.length.eq((self.axi.aw.len + 1) * (data_width//8)) # Transfer length (in bytes)
 
-        self.submodules.fsm_wr = fsm_wr = FSM(reset_state="WRITE-IDLE")
+        self.fsm_wr = fsm_wr = FSM(reset_state="WRITE-IDLE")
         fsm_wr.act("WRITE-IDLE",
             self.axi.aw.ready.eq(desc_wr.ready),
             desc_wr.valid.eq(self.axi.aw.valid),
@@ -87,12 +88,12 @@ class LitePCIeAXISlave(Module):
         # AXI Read Path ----------------------------------------------------------------------------
 
         # DMA / FIFO / Converter
-        self.submodules.dma_rd = dma_rd = LitePCIeDMAReader(
+        self.dma_rd = dma_rd = LitePCIeDMAReader(
             endpoint = endpoint,
             port     = port_rd,
             with_table = False)
-        self.submodules.fifo_rd = fifo_rd = stream.SyncFIFO(descriptor_layout(), 16)
-        self.submodules.conv_rd = conv_rd = stream.Converter(nbits_from=endpoint.phy.data_width, nbits_to=data_width)
+        self.fifo_rd = fifo_rd = stream.SyncFIFO(descriptor_layout(), 16)
+        self.conv_rd = conv_rd = stream.Converter(nbits_from=endpoint.phy.data_width, nbits_to=data_width)
 
         # Flow
         self.comb += [
@@ -105,7 +106,7 @@ class LitePCIeAXISlave(Module):
         self.comb += desc_rd.address.eq(self.axi.ar.addr)                       # Starting address (byte addressed)
         self.comb += desc_rd.length.eq((self.axi.ar.len + 1) * (data_width//8)) # Transfer length (in bytes)
 
-        self.submodules.fsm_rd = fsm_rd = FSM(reset_state="READ-IDLE")
+        self.fsm_rd = fsm_rd = FSM(reset_state="READ-IDLE")
         fsm_rd.act("READ-IDLE",
             self.axi.ar.ready.eq(desc_rd.ready),
             desc_rd.valid.eq(self.axi.ar.valid),

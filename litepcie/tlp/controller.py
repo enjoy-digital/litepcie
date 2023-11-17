@@ -1,16 +1,16 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2021 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
 
 from litex.gen import *
 
-from litepcie.common import *
+from litepcie.common      import *
 from litepcie.core.common import *
-from litepcie.tlp.common import *
+from litepcie.tlp.common  import *
 
 # LitePCIe TLP Controller --------------------------------------------------------------------------
 

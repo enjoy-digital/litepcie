@@ -35,25 +35,27 @@ from migen.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.gen import *
 
-from litex.soc.cores.clock import *
-from litex.soc.interconnect.csr import *
-from litex.soc.interconnect import wishbone
-from litex.soc.interconnect.axi import *
-from litex.soc.integration.soc import SoCRegion
+from litex.soc.cores.clock          import *
+from litex.soc.interconnect.csr     import *
+from litex.soc.interconnect         import wishbone
+from litex.soc.interconnect.axi     import *
+from litex.soc.integration.soc      import SoCRegion
 from litex.soc.integration.soc_core import *
-from litex.soc.integration.builder import *
+from litex.soc.integration.builder  import *
 
-from litepcie.phy.c5pciephy import C5PCIEPHY
-from litepcie.phy.s7pciephy import S7PCIEPHY
-from litepcie.phy.uspciephy import USPCIEPHY
+from litepcie.phy.c5pciephy  import C5PCIEPHY
+from litepcie.phy.s7pciephy  import S7PCIEPHY
+from litepcie.phy.uspciephy  import USPCIEPHY
 from litepcie.phy.usppciephy import USPPCIEPHY
 
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI, LitePCIeMSIMultiVector, LitePCIeMSIX
-from litepcie.frontend.dma import LitePCIeDMA
+
+from litepcie.frontend.dma      import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneMaster, LitePCIeWishboneSlave
-from litepcie.frontend.axi import LitePCIeAXISlave
-from litepcie.frontend.ptm import PCIePTMSniffer
-from litepcie.frontend.ptm import PTMCapabilities, PTMRequester
+from litepcie.frontend.axi      import LitePCIeAXISlave
+from litepcie.frontend.ptm      import PCIePTMSniffer
+from litepcie.frontend.ptm      import PTMCapabilities, PTMRequester
+
 from litepcie.software import generate_litepcie_software_headers
 
 from litex.build.generic_platform import *

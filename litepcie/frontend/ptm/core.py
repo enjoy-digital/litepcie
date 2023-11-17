@@ -10,7 +10,7 @@ from migen import *
 from litex.gen import *
 from litex.gen.genlib.misc import WaitTimer
 
-from litex.soc.interconnect.csr import *
+from litex.soc.interconnect.csr    import *
 from litex.soc.interconnect import stream
 
 from litepcie.common import phy_layout

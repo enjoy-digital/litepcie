@@ -11,8 +11,8 @@ from litex.gen import *
 from litex.soc.interconnect.csr import *
 
 from litepcie.tlp.depacketizer import LitePCIeTLPDepacketizer
-from litepcie.tlp.packetizer import LitePCIeTLPPacketizer
-from litepcie.core.crossbar import LitePCIeCrossbar
+from litepcie.tlp.packetizer   import LitePCIeTLPPacketizer
+from litepcie.core.crossbar    import LitePCIeCrossbar
 
 # LitePCIe Endpoint --------------------------------------------------------------------------------
 

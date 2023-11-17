@@ -7,7 +7,6 @@
 from migen import *
 
 from litex.gen import *
-from litex.gen.genlib.misc import chooser
 
 from litepcie.tlp.common import *
 
@@ -933,12 +932,12 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 tlp_ptm.first.eq(ptm_sink.first),
                 tlp_ptm.last.eq(ptm_sink.last),
 
-                tlp_ptm.tc.eq(0),   # CHECKME.
-                tlp_ptm.ln.eq(0),   # CHECKME.
-                tlp_ptm.th.eq(0),   # CHECKME.
-                tlp_ptm.td.eq(0),   # CHECKME.
-                tlp_ptm.ep.eq(0),   # CHECKME.
-                tlp_ptm.attr.eq(0), # CHECKME.
+                tlp_ptm.tc.eq(0),
+                tlp_ptm.ln.eq(0),
+                tlp_ptm.th.eq(0),
+                tlp_ptm.td.eq(0),
+                tlp_ptm.ep.eq(0),
+                tlp_ptm.attr.eq(0),
                 tlp_ptm.length.eq(ptm_sink.length),
 
                 tlp_ptm.requester_id.eq(ptm_sink.requester_id),
