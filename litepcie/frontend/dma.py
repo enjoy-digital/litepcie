@@ -193,8 +193,8 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
 
         # Signals.
         # --------
-        split  = Signal()
-        length = Signal(24)
+        length      = Signal(24)
+        length_next = Signal(24)
 
         # FSM.
         # ----
@@ -204,6 +204,13 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
             NextValue(source.first, 1),
             NextValue(source.address, sink.address),
             NextValue(length, sink.length),
+            If(sink.length > max_size,
+                NextValue(source.last,  0),
+                NextValue(source.length, max_size)
+            ).Else(
+                NextValue(source.last, 1),
+                NextValue(source.length, sink.length)
+            ),
             # Wait for a descriptor and go to RUN.
             If(sink.valid,
                 NextState("RUN")
@@ -215,23 +222,22 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
         ]
         fsm.act("RUN",
             source.valid.eq(1),
-            # Split descriptor when remaining length > Maximum Payload/Request Size...
-            split.eq(length > max_size),
-            If(split,
-                source.length.eq(max_size)
-            # ...else generate with remaining length.
-            ).Else(
-                source.last.eq(1),
-                source.length.eq(length)
-            ),
             # When descriptor is accepted...
             If(source.ready,
                 # Clear first.
                 NextValue(source.first, 0),
-                # Increment address.
+                # Update address.
                 NextValue(source.address, source.address + max_size),
-                # Decrement length.
-                NextValue(length, length - max_size),
+                # Update length/last.
+                length_next.eq(length - max_size),
+                NextValue(length, length_next),
+                If(length_next > max_size,
+                    NextValue(source.last,  0),
+                    NextValue(source.length, max_size)
+                ).Else(
+                    NextValue(source.last, 1),
+                    NextValue(source.length, length_next),
+                ),
                 # On last or terminate...
                 If(source.last | self.terminate,
                     # Accept Descriptor.
