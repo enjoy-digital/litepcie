@@ -108,18 +108,17 @@ class LitePCIeMSIX(LiteXModule):
         self.comb += self.pba.status.eq(vector)
 
         # Generate MSI-X ---------------------------------------------------------------------------
-        msix_valid = Signal()
-        msix_ready = Signal()
-        msix_num   = Signal(max=width)
+        msix_valid          = Signal()
+        msix_num            = Signal(max=width)
+        msix_clear          = Signal(width)
+        msix_clear_on_ready = Signal(width)
 
         for i in reversed(range(width)): # Priority given to lower indexes.
             self.comb += [
                 If(vector[i],
                     msix_valid.eq(1),
                     msix_num.eq(i),
-                    If(msix_ready,
-                        clear.eq(1 << i)
-                    )
+                    msix_clear.eq(1 << i),
                 )
             ]
 
@@ -133,6 +132,7 @@ class LitePCIeMSIX(LiteXModule):
             table_port.adr.eq(msix_num),
             table_port.re.eq(1),
             If(msix_valid,
+                NextValue(msix_clear_on_ready, msix_clear),
                 NextState("ISSUE-WRITE")
             )
         )
@@ -150,7 +150,7 @@ class LitePCIeMSIX(LiteXModule):
             port.source.valid.eq(1),
             port.source.we.eq(1),
             If(port.source.ready,
-                msix_ready.eq(1),
+                clear.eq(msix_clear_on_ready),
                 NextState("IDLE")
             )
         )
