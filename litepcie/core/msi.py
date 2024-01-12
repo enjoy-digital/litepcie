@@ -84,11 +84,12 @@ class LitePCIeMSIMultiVector(LiteXModule):
 # LitePCIeMSIX -------------------------------------------------------------------------------------
 
 class LitePCIeMSIX(LiteXModule):
-    def __init__(self, endpoint, width=32):
+    def __init__(self, endpoint, width=32, default_enable=0):
         assert width <= 64
         self.irqs           = Signal(width)
         self.enable         = CSRStorage(width, description="""MSI-X Enable Control.\n
-           Write bit(s) to ``1`` to enable corresponding MSI-X IRQ(s).""")
+           Write bit(s) to ``1`` to enable corresponding MSI-X IRQ(s).""",
+           reset = default_enable*(2**width-1))
         if width <= 32:
             self.reserved0 = CSRStorage() # For 64-bit alignment.
         self.pba            = CSRStatus(width, description="""MSI-X PBA Table.""")
