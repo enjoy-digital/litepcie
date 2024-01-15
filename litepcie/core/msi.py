@@ -128,6 +128,12 @@ class LitePCIeMSIX(LiteXModule):
         self.table_port = table_port = self.table.get_port(has_re=True)
         self.specials += table_port
 
+        # Table decoding.
+        msix_adr  = table_port.dat_r[96:128] # Lower Address.
+        msix_dat  = table_port.dat_r[32:64]  # Message Data.
+        msix_mask = table_port.dat_r[0]      # Mask, when set to 1, MSI-X message is not generated.
+
+        # FSM.
         self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             table_port.adr.eq(msix_num),
@@ -141,16 +147,16 @@ class LitePCIeMSIX(LiteXModule):
             port.source.channel.eq(port.channel),
             port.source.first.eq(1),
             port.source.last.eq(1),
-            port.source.adr.eq(table_port.dat_r[96:128]), # Lower Address from table.
+            port.source.adr.eq(msix_adr),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(1),
-            port.source.dat.eq(table_port.dat_r[32:64]), # Message Data from table.
+            port.source.dat.eq(msix_dat),
         ]
         fsm.act("ISSUE-WRITE",
-            port.source.valid.eq(1),
+            port.source.valid.eq(~msix_mask),
             port.source.we.eq(1),
-            If(port.source.ready,
+            If(port.source.ready | msix_mask,
                 clear.eq(msix_clear_on_ready),
                 NextState("IDLE")
             )
