@@ -84,11 +84,12 @@ class LitePCIeMSIMultiVector(LiteXModule):
 # LitePCIeMSIX -------------------------------------------------------------------------------------
 
 class LitePCIeMSIX(LiteXModule):
-    def __init__(self, endpoint, width=32):
+    def __init__(self, endpoint, width=32, default_enable=0):
         assert width <= 64
         self.irqs           = Signal(width)
         self.enable         = CSRStorage(width, description="""MSI-X Enable Control.\n
-           Write bit(s) to ``1`` to enable corresponding MSI-X IRQ(s).""")
+           Write bit(s) to ``1`` to enable corresponding MSI-X IRQ(s).""",
+           reset = default_enable*(2**width-1))
         if width <= 32:
             self.reserved0 = CSRStorage() # For 64-bit alignment.
         self.pba            = CSRStatus(width, description="""MSI-X PBA Table.""")
@@ -108,18 +109,17 @@ class LitePCIeMSIX(LiteXModule):
         self.comb += self.pba.status.eq(vector)
 
         # Generate MSI-X ---------------------------------------------------------------------------
-        msix_valid = Signal()
-        msix_ready = Signal()
-        msix_num   = Signal(max=width)
+        msix_valid          = Signal()
+        msix_num            = Signal(max=width)
+        msix_clear          = Signal(width)
+        msix_clear_on_ready = Signal(width)
 
         for i in reversed(range(width)): # Priority given to lower indexes.
             self.comb += [
                 If(vector[i],
                     msix_valid.eq(1),
                     msix_num.eq(i),
-                    If(msix_ready,
-                        clear.eq(1 << i)
-                    )
+                    msix_clear.eq(1 << i),
                 )
             ]
 
@@ -128,11 +128,18 @@ class LitePCIeMSIX(LiteXModule):
         self.table_port = table_port = self.table.get_port(has_re=True)
         self.specials += table_port
 
+        # Table decoding.
+        msix_adr  = table_port.dat_r[96:128] # Lower Address.
+        msix_dat  = table_port.dat_r[32:64]  # Message Data.
+        msix_mask = table_port.dat_r[0]      # Mask, when set to 1, MSI-X message is not generated.
+
+        # FSM.
         self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             table_port.adr.eq(msix_num),
             table_port.re.eq(1),
             If(msix_valid,
+                NextValue(msix_clear_on_ready, msix_clear),
                 NextState("ISSUE-WRITE")
             )
         )
@@ -140,17 +147,17 @@ class LitePCIeMSIX(LiteXModule):
             port.source.channel.eq(port.channel),
             port.source.first.eq(1),
             port.source.last.eq(1),
-            port.source.adr.eq(table_port.dat_r[96:128]), # Lower Address from table.
+            port.source.adr.eq(msix_adr),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(1),
-            port.source.dat.eq(table_port.dat_r[32:64]), # Message Data from table.
+            port.source.dat.eq(msix_dat),
         ]
         fsm.act("ISSUE-WRITE",
-            port.source.valid.eq(1),
+            port.source.valid.eq(~msix_mask),
             port.source.we.eq(1),
-            If(port.source.ready,
-                msix_ready.eq(1),
+            If(port.source.ready | msix_mask,
+                clear.eq(msix_clear_on_ready),
                 NextState("IDLE")
             )
         )

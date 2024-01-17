@@ -323,7 +323,8 @@ class LitePCIeCore(SoCMini):
         # PCIe MSI ---------------------------------------------------------------------------------
         if core_config.get("msi_x", False):
             assert core_config["msi_irqs"] <= 32
-            self.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=64)
+            msi_x_default_enable = int(core_config.get("msi_x_default_enable", False))
+            self.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=64, default_enable=msi_x_default_enable)
             self.comb += self.pcie_msi.irqs[32:32+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
         else:
             assert core_config["msi_irqs"] <= 16

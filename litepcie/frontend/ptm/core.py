@@ -256,7 +256,7 @@ class PTMRequester(LiteXModule):
             )
         )
 
-    def add_csr(self, sys_clk_freq, default_enable=1, phy_tx_delay=40e-9, phy_rx_delay=100e-9):
+    def add_csr(self, sys_clk_freq, default_enable=0, phy_tx_delay=40e-9, phy_rx_delay=100e-9):
         self._control = CSRStorage(fields=[
             CSRField("enable", size=1, offset=0, values=[
                 ("``0b0``", "PTM Requester Disabled."),
