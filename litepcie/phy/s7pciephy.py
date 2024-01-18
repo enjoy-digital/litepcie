@@ -121,7 +121,7 @@ class S7PCIEPHY(LiteXModule):
                 layout          = msi_layout(),
                 cd_from         = cd,
                 cd_to           = "pcie",
-                with_common_rst = True
+                with_common_rst = True,
             )
             self.comb += self.msi.connect(msi_cdc.sink)
             cfg_msi = msi_cdc.source
@@ -141,15 +141,15 @@ class S7PCIEPHY(LiteXModule):
         function_number = Signal(3)
         command         = Signal(16)
         dcommand        = Signal(16)
-        self.sync.pcie += [
+        self.comb += [
             convert_size(dcommand[12:15], self.max_request_size, max_size=512),
             convert_size(dcommand[5:8],   self.max_payload_size, max_size=512),
-            self.id.eq(Cat(function_number, device_number, bus_number))
+            self.id.eq(Cat(function_number, device_number, bus_number)),
         ]
-        self.specials += [
-            MultiReg(command[2],            self._bus_master_enable.status),
-            MultiReg(self.max_request_size, self._max_request_size.status),
-            MultiReg(self.max_payload_size, self._max_payload_size.status)
+        self.comb += [
+            self._bus_master_enable.status.eq(command[2]),
+            self._max_request_size.status.eq(self.max_request_size),
+            self._max_payload_size.status.eq(self.max_payload_size),
         ]
 
         # Hard IP Clocking -------------------------------------------------------------------------
@@ -237,7 +237,7 @@ class S7PCIEPHY(LiteXModule):
             # Common
             o_user_clk_out                               = ClockSignal("pcie"),
             o_user_reset_out                             = ResetSignal("pcie"),
-            o_user_lnk_up                                = self._link_status.fields.status,
+            o_user_lnk_up                                = self.add_resync(self._link_status.fields.status, "sys"),
             o_user_app_rdy                               = Open(),
 
             # TX
@@ -329,25 +329,25 @@ class S7PCIEPHY(LiteXModule):
             i_cfg_interrupt_di                           = cfg_msi.dat,
             o_cfg_interrupt_do                           = Open(),
             o_cfg_interrupt_mmenable                     = Open(),
-            o_cfg_interrupt_msienable                    = self._msi_enable.status,
-            o_cfg_interrupt_msixenable                   = self._msix_enable.status,
+            o_cfg_interrupt_msienable                    = self.add_resync(self._msi_enable.status,  "sys"),
+            o_cfg_interrupt_msixenable                   = self.add_resync(self._msix_enable.status, "sys"),
             o_cfg_interrupt_msixfm                       = Open(),
             i_cfg_interrupt_stat                         = 0,
             i_cfg_pciecap_interrupt_msgnum               = 0,
 
             # Configuration Interface --------------------------------------------------------------
             o_cfg_status                                 = Open(),
-            o_cfg_command                                = command,
+            o_cfg_command                                = self.add_resync(command, "sys"),
             o_cfg_dstatus                                = Open(),
-            o_cfg_dcommand                               = dcommand,
+            o_cfg_dcommand                               = self.add_resync(dcommand, "sys"),
             o_cfg_lstatus                                = Open(),
             o_cfg_lcommand                               = Open(),
             o_cfg_dcommand2                              = Open(),
             o_cfg_pcie_link_state                        = Open(),
             o_cfg_to_turnoff                             = Open(),
-            o_cfg_bus_number                             = bus_number,
-            o_cfg_device_number                          = device_number,
-            o_cfg_function_number                        = function_number,
+            o_cfg_bus_number                             = self.add_resync(bus_number,      "sys"),
+            o_cfg_device_number                          = self.add_resync(device_number,   "sys"),
+            o_cfg_function_number                        = self.add_resync(function_number, "sys"),
 
             o_cfg_pmcsr_pme_en                           = Open(),
             o_cfg_pmcsr_powerstate                       = Open(),
@@ -394,9 +394,9 @@ class S7PCIEPHY(LiteXModule):
             i_pl_directed_link_speed                     = 0,
             i_pl_directed_link_auton                     = 0,
             i_pl_upstream_prefer_deemph                  = 1,
-            o_pl_sel_lnk_rate                            = self._link_status.fields.rate,
-            o_pl_sel_lnk_width                           = self._link_status.fields.width,
-            o_pl_ltssm_state                             = self._link_status.fields.ltssm,
+            o_pl_sel_lnk_rate                            = self.add_resync(self._link_status.fields.rate,  "sys"),
+            o_pl_sel_lnk_width                           = self.add_resync(self._link_status.fields.width, "sys"),
+            o_pl_ltssm_state                             = self.add_resync(self._link_status.fields.ltssm, "sys"),
             o_pl_lane_reversal_mode                      = Open(),
             o_pl_phy_lnk_up                              = Open(),
             o_pl_tx_pm_state                             = Open(),
@@ -432,6 +432,12 @@ class S7PCIEPHY(LiteXModule):
                 m_axis_rx.first.eq(0),
                 m_axis_rx.last.eq(m_axis_rx_tlast),
             ]
+
+    # Resync Helper --------------------------------------------------------------------------------
+    def add_resync(self, sig, clk="sys"):
+        _sig = Signal.like(sig)
+        self.specials += MultiReg(_sig, sig, clk)
+        return _sig
 
     # LTSSM Tracer ---------------------------------------------------------------------------------
     def add_ltssm_tracer(self):
