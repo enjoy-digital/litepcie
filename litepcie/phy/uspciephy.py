@@ -8,6 +8,7 @@
 import os
 
 from migen import *
+from migen.genlib.cdc import MultiReg
 
 from litex.gen import *
 
@@ -152,6 +153,7 @@ class USPCIEPHY(LiteXModule):
             cfg_msi = msi_cdc.source
 
         # Hard IP Configuration --------------------------------------------------------------------
+
         def convert_size(command, size, max_size):
             cases = {}
             value = 128
@@ -160,14 +162,6 @@ class USPCIEPHY(LiteXModule):
                 value = min(value*2, max_size)
             return Case(command, cases)
 
-        link_status     = Signal()
-        link_phy_down   = Signal()
-        link_phy_status = Signal(2)
-        link_rate       = Signal(3)
-        link_width      = Signal(4)
-        link_ltssm      = Signal(6)
-
-        msi_enable      = Signal()
         serial_number   = Signal(64)
         bus_number      = Signal(8)
         device_number   = Signal(5)
@@ -177,22 +171,15 @@ class USPCIEPHY(LiteXModule):
         cfg_max_payload_size = Signal(3)
         cfg_max_read_req     = Signal(3)
 
-        self.sync.pcie += [
+        self.comb += [
             convert_size(cfg_max_read_req,     self.max_request_size, max_size=512),
             convert_size(cfg_max_payload_size, self.max_payload_size, max_size=512),
             self.id.eq(Cat(function_number, device_number, bus_number))
         ]
-        self.specials += [
-            MultiReg(link_status,     self._link_status.fields.status),
-            MultiReg(link_phy_down,   self._link_status.fields.phy_down),
-            MultiReg(link_phy_status, self._link_status.fields.phy_status),
-            MultiReg(link_rate,       self._link_status.fields.rate),
-            MultiReg(link_width,      self._link_status.fields.width),
-            MultiReg(link_ltssm,      self._link_status.fields.ltssm),
-            MultiReg(cfg_function_status,   self._bus_master_enable.status),
-            MultiReg(msi_enable,            self._msi_enable.status),
-            MultiReg(self.max_request_size, self._max_request_size.status),
-            MultiReg(self.max_payload_size, self._max_payload_size.status)
+        self.comb += [
+            self._bus_master_enable.status.eq(cfg_function_status),
+            self._max_request_size.status.eq(self.max_request_size),
+            self._max_payload_size.status.eq(self.max_payload_size),
         ]
 
         self.m_axis_cq = m_axis_cq
@@ -231,7 +218,7 @@ class USPCIEPHY(LiteXModule):
             # Common
             o_user_clk_out                     = ClockSignal("pcie"),
             o_user_reset_out                   = ResetSignal("pcie"),
-            o_user_lnk_up                      = link_status,
+            o_user_lnk_up                      = self.add_resync(self._link_status.fields.status, "sys"),
             o_user_app_rdy                     = Open(),
 
             # (FPGA -> Host) Requester Request
@@ -326,7 +313,7 @@ class USPCIEPHY(LiteXModule):
             i_cfg_interrupt_pending            = 0,
             o_cfg_interrupt_sent               = Open(),
 
-            o_cfg_interrupt_msi_enable         = msi_enable,
+            o_cfg_interrupt_msi_enable         = self.add_resync(self._msi_enable.status, "sys"),
             i_cfg_interrupt_msi_int_valid      = cfg_msi.valid,
             i_cfg_interrupt_msi_int            = cfg_msi.dat,
             o_cfg_interrupt_msi_sent           = cfg_msi.ready,
@@ -338,13 +325,13 @@ class USPCIEPHY(LiteXModule):
             o_cfg_interrupt_msi_vf_enable      = Open(8),
 
             # Error Reporting Interface ------------------------------------------------------------
-            o_cfg_phy_link_down                = link_phy_down,
-            o_cfg_phy_link_status              = link_phy_status,
-            o_cfg_negotiated_width             = link_width,
-            o_cfg_current_speed                = link_rate,
-            o_cfg_max_payload                  = cfg_max_payload_size,
-            o_cfg_max_read_req                 = cfg_max_read_req,
-            o_cfg_function_status              = cfg_function_status,
+            o_cfg_phy_link_down                = self.add_resync(self._link_status.fields.phy_down,   "sys"),
+            o_cfg_phy_link_status              = self.add_resync(self._link_status.fields.phy_status, "sys"),
+            o_cfg_negotiated_width             = self.add_resync(self._link_status.fields.width,      "sys"),
+            o_cfg_current_speed                = self.add_resync(self._link_status.fields.rate,       "sys"),
+            o_cfg_max_payload                  = self.add_resync(cfg_max_payload_size, "sys"),
+            o_cfg_max_read_req                 = self.add_resync(cfg_max_read_req,     "sys"),
+            o_cfg_function_status              = self.add_resync(cfg_function_status,  "sys"),
             o_cfg_function_power_state         = Open(12),
             o_cfg_vf_status                    = Open(16),
             o_cfg_vf_power_state               = Open(24),
@@ -354,7 +341,7 @@ class USPCIEPHY(LiteXModule):
             o_cfg_err_nonfatal_out             = Open(),
             o_cfg_err_fatal_out                = Open(),
             o_cfg_ltr_enable                   = Open(),
-            o_cfg_ltssm_state                  = link_ltssm,
+            o_cfg_ltssm_state                  = self.add_resync(self._link_status.fields.ltssm, "sys"),
             o_cfg_rcb_status                   = Open(4),
             o_cfg_dpa_substate_change          = Open(4),
             o_cfg_obff_enable                  = Open(2),
@@ -371,6 +358,12 @@ class USPCIEPHY(LiteXModule):
             m_axis_rc.first.eq(m_axis_rc_tuser[14]),
             m_axis_rc.last.eq (m_axis_rc_tlast),
         ]
+
+    # Resync Helper --------------------------------------------------------------------------------
+    def add_resync(self, sig, clk="sys"):
+        _sig = Signal.like(sig)
+        self.specials += MultiReg(_sig, sig, clk)
+        return _sig
 
     # LTSSM Tracer ---------------------------------------------------------------------------------
     def add_ltssm_tracer(self):
