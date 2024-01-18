@@ -201,107 +201,107 @@ class USPCIEPHY(LiteXModule):
         self.m_axis_rc = m_axis_rc
 
         # Hard IP ----------------------------------------------------------------------------------
-        class Open(Signal): pass
+
         m_axis_rc_tuser = Signal(22)
         m_axis_cq_tuser = Signal(22)
         m_axis_rc_tlast = Signal()
         m_axis_cq_tlast = Signal()
         self.pcie_phy_params = dict(
             # Parameters ---------------------------------------------------------------------------
-            p_LINK_CAP_MAX_LINK_WIDTH = nlanes,
-            p_C_DATA_WIDTH            = pcie_data_width,
-            p_KEEP_WIDTH              = pcie_data_width//8,
-            p_PCIE_GT_DEVICE          = "GTH",
-            p_PCIE_USE_MODE           = "2.0",
+            p_LINK_CAP_MAX_LINK_WIDTH          = nlanes,
+            p_C_DATA_WIDTH                     = pcie_data_width,
+            p_KEEP_WIDTH                       = pcie_data_width//8,
+            p_PCIE_GT_DEVICE                   = "GTH",
+            p_PCIE_USE_MODE                    = "2.0",
 
             # PCI Express Interface ----------------------------------------------------------------
             # Clk / Rst
-            i_sys_clk     = pcie_refclk,
-            i_sys_clk_gt  = pcie_refclk_gt,
-            i_sys_rst_n   = pcie_rst_n,
+            i_sys_clk                          = pcie_refclk,
+            i_sys_clk_gt                       = pcie_refclk_gt,
+            i_sys_rst_n                        = pcie_rst_n,
 
             # TX
-            o_pci_exp_txp = pads.tx_p,
-            o_pci_exp_txn = pads.tx_n,
+            o_pci_exp_txp                      = pads.tx_p,
+            o_pci_exp_txn                      = pads.tx_n,
             # RX
-            i_pci_exp_rxp = pads.rx_p,
-            i_pci_exp_rxn = pads.rx_n,
+            i_pci_exp_rxp                      = pads.rx_p,
+            i_pci_exp_rxn                      = pads.rx_n,
 
             # AXI-S Interface ----------------------------------------------------------------------
             # Common
-            o_user_clk_out          = ClockSignal("pcie"),
-            o_user_reset_out        = ResetSignal("pcie"),
-            o_user_lnk_up           = link_status,
-            o_user_app_rdy          = Open(),
+            o_user_clk_out                     = ClockSignal("pcie"),
+            o_user_reset_out                   = ResetSignal("pcie"),
+            o_user_lnk_up                      = link_status,
+            o_user_app_rdy                     = Open(),
 
             # (FPGA -> Host) Requester Request
-            o_pcie_tfc_nph_av       = Open(2),
-            o_pcie_tfc_npd_av       = Open(2),
-            o_pcie_rq_tag_av        = Open(2),
-            o_pcie_rq_seq_num       = Open(4),
-            o_pcie_rq_seq_num_vld   = Open(),
-            o_pcie_rq_tag           = Open(6),
-            o_pcie_rq_tag_vld       = Open(),
-            i_s_axis_rq_tvalid      = s_axis_rq.valid,
-            i_s_axis_rq_tlast       = s_axis_rq.last,
-            o_s_axis_rq_tready      = s_axis_rq.ready,
-            i_s_axis_rq_tdata       = s_axis_rq.dat,
-            i_s_axis_rq_tkeep       = s_axis_rq.be,
-            i_s_axis_rq_tuser       = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
+            o_pcie_tfc_nph_av                  = Open(2),
+            o_pcie_tfc_npd_av                  = Open(2),
+            o_pcie_rq_tag_av                   = Open(2),
+            o_pcie_rq_seq_num                  = Open(4),
+            o_pcie_rq_seq_num_vld              = Open(),
+            o_pcie_rq_tag                      = Open(6),
+            o_pcie_rq_tag_vld                  = Open(),
+            i_s_axis_rq_tvalid                 = s_axis_rq.valid,
+            i_s_axis_rq_tlast                  = s_axis_rq.last,
+            o_s_axis_rq_tready                 = s_axis_rq.ready,
+            i_s_axis_rq_tdata                  = s_axis_rq.dat,
+            i_s_axis_rq_tkeep                  = s_axis_rq.be,
+            i_s_axis_rq_tuser                  = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
 
             # (Host -> FPGA) Completer Request
-            i_pcie_cq_np_req        = 1,
-            o_pcie_cq_np_req_count  = Open(6),
-            o_m_axis_cq_tvalid      = m_axis_cq.valid,
-            o_m_axis_cq_tlast       = m_axis_cq_tlast,
-            i_m_axis_cq_tready      = m_axis_cq.ready,
-            o_m_axis_cq_tdata       = m_axis_cq.dat,
-            o_m_axis_cq_tkeep       = m_axis_cq.be,
-            o_m_axis_cq_tuser       = m_axis_cq_tuser,
+            i_pcie_cq_np_req                   = 1,
+            o_pcie_cq_np_req_count             = Open(6),
+            o_m_axis_cq_tvalid                 = m_axis_cq.valid,
+            o_m_axis_cq_tlast                  = m_axis_cq_tlast,
+            i_m_axis_cq_tready                 = m_axis_cq.ready,
+            o_m_axis_cq_tdata                  = m_axis_cq.dat,
+            o_m_axis_cq_tkeep                  = m_axis_cq.be,
+            o_m_axis_cq_tuser                  = m_axis_cq_tuser,
 
             # (Host -> FPGA) Requester Completion
-            o_m_axis_rc_tvalid      = m_axis_rc.valid,
-            o_m_axis_rc_tlast       = m_axis_rc_tlast,
-            i_m_axis_rc_tready      = m_axis_rc.ready,
-            o_m_axis_rc_tdata       = m_axis_rc.dat,
-            o_m_axis_rc_tkeep       = m_axis_rc.be,
-            o_m_axis_rc_tuser       = m_axis_rc_tuser,
+            o_m_axis_rc_tvalid                 = m_axis_rc.valid,
+            o_m_axis_rc_tlast                  = m_axis_rc_tlast,
+            i_m_axis_rc_tready                 = m_axis_rc.ready,
+            o_m_axis_rc_tdata                  = m_axis_rc.dat,
+            o_m_axis_rc_tkeep                  = m_axis_rc.be,
+            o_m_axis_rc_tuser                  = m_axis_rc_tuser,
 
             # (FPGA -> Host) Completer Completion
-            i_s_axis_cc_tvalid      = s_axis_cc.valid,
-            i_s_axis_cc_tlast       = s_axis_cc.last,
-            o_s_axis_cc_tready      = s_axis_cc.ready,
-            i_s_axis_cc_tdata       = s_axis_cc.dat,
-            i_s_axis_cc_tkeep       = s_axis_cc.be,
-            i_s_axis_cc_tuser       = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
+            i_s_axis_cc_tvalid                 = s_axis_cc.valid,
+            i_s_axis_cc_tlast                  = s_axis_cc.last,
+            o_s_axis_cc_tready                 = s_axis_cc.ready,
+            i_s_axis_cc_tdata                  = s_axis_cc.dat,
+            i_s_axis_cc_tkeep                  = s_axis_cc.be,
+            i_s_axis_cc_tuser                  = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
 
             # Management Interface -----------------------------------------------------------------
-            o_cfg_mgmt_do           = Open(32),
-            o_cfg_mgmt_rd_wr_done   = Open(),
-            i_cfg_mgmt_di           = 0,
-            i_cfg_mgmt_byte_en      = 0,
-            i_cfg_mgmt_dwaddr       = 0,
-            i_cfg_mgmt_wr_en        = 0,
-            i_cfg_mgmt_rd_en        = 0,
+            o_cfg_mgmt_do                      = Open(32),
+            o_cfg_mgmt_rd_wr_done              = Open(),
+            i_cfg_mgmt_di                      = 0,
+            i_cfg_mgmt_byte_en                 = 0,
+            i_cfg_mgmt_dwaddr                  = 0,
+            i_cfg_mgmt_wr_en                   = 0,
+            i_cfg_mgmt_rd_en                   = 0,
 
             # Flow Control & Status ----------------------------------------------------------------
-            o_cfg_fc_cpld           = Open(12),
-            o_cfg_fc_cplh           = Open(8),
-            o_cfg_fc_npd            = Open(12),
-            o_cfg_fc_nph            = Open(8),
-            o_cfg_fc_pd             = Open(12),
-            o_cfg_fc_ph             = Open(8),
-            i_cfg_fc_sel            = 0, # Use PF0
+            o_cfg_fc_cpld                      = Open(12),
+            o_cfg_fc_cplh                      = Open(8),
+            o_cfg_fc_npd                       = Open(12),
+            o_cfg_fc_nph                       = Open(8),
+            o_cfg_fc_pd                        = Open(12),
+            o_cfg_fc_ph                        = Open(8),
+            i_cfg_fc_sel                       = 0, # Use PF0
 
             # Configuration Tx/Rx Message ----------------------------------------------------------
-            o_cfg_msg_received      = Open(),
-            o_cfg_msg_received_data = Open(8),
-            o_cfg_msg_received_type = Open(5),
+            o_cfg_msg_received                 = Open(),
+            o_cfg_msg_received_data            = Open(8),
+            o_cfg_msg_received_type            = Open(5),
 
-            i_cfg_msg_transmit      = 0,
-            i_cfg_msg_transmit_data = 0,
-            i_cfg_msg_transmit_type = 0,
-            o_cfg_msg_transmit_done = Open(),
+            i_cfg_msg_transmit                 = 0,
+            i_cfg_msg_transmit_data            = 0,
+            i_cfg_msg_transmit_type            = 0,
+            o_cfg_msg_transmit_done            = Open(),
 
             # Configuration Control Interface ------------------------------------------------------
             # Hot config
@@ -322,48 +322,48 @@ class USPCIEPHY(LiteXModule):
 
             # Interrupt Signals (Legacy & MSI) -----------------------------------------------------
 
-            i_cfg_interrupt_int             = 0,
-            i_cfg_interrupt_pending         = 0,
-            o_cfg_interrupt_sent            = Open(),
+            i_cfg_interrupt_int                = 0,
+            i_cfg_interrupt_pending            = 0,
+            o_cfg_interrupt_sent               = Open(),
 
-            o_cfg_interrupt_msi_enable      = msi_enable,
-            i_cfg_interrupt_msi_int_valid   = cfg_msi.valid,
-            i_cfg_interrupt_msi_int         = cfg_msi.dat,
-            o_cfg_interrupt_msi_sent        = cfg_msi.ready,
-            o_cfg_interrupt_msi_fail        = Open(),
+            o_cfg_interrupt_msi_enable         = msi_enable,
+            i_cfg_interrupt_msi_int_valid      = cfg_msi.valid,
+            i_cfg_interrupt_msi_int            = cfg_msi.dat,
+            o_cfg_interrupt_msi_sent           = cfg_msi.ready,
+            o_cfg_interrupt_msi_fail           = Open(),
 
-            o_cfg_interrupt_msi_mmenable    = Open(12),
-            o_cfg_interrupt_msi_mask_update = Open(),
-            o_cfg_interrupt_msi_data        = Open(32),
-            o_cfg_interrupt_msi_vf_enable   = Open(8),
+            o_cfg_interrupt_msi_mmenable       = Open(12),
+            o_cfg_interrupt_msi_mask_update    = Open(),
+            o_cfg_interrupt_msi_data           = Open(32),
+            o_cfg_interrupt_msi_vf_enable      = Open(8),
 
             # Error Reporting Interface ------------------------------------------------------------
-            o_cfg_phy_link_down           = link_phy_down,
-            o_cfg_phy_link_status         = link_phy_status,
-            o_cfg_negotiated_width        = link_width,
-            o_cfg_current_speed           = link_rate,
-            o_cfg_max_payload             = cfg_max_payload_size,
-            o_cfg_max_read_req            = cfg_max_read_req,
-            o_cfg_function_status         = cfg_function_status,
-            o_cfg_function_power_state    = Open(12),
-            o_cfg_vf_status               = Open(16),
-            o_cfg_vf_power_state          = Open(24),
-            o_cfg_link_power_state        = Open(2),
+            o_cfg_phy_link_down                = link_phy_down,
+            o_cfg_phy_link_status              = link_phy_status,
+            o_cfg_negotiated_width             = link_width,
+            o_cfg_current_speed                = link_rate,
+            o_cfg_max_payload                  = cfg_max_payload_size,
+            o_cfg_max_read_req                 = cfg_max_read_req,
+            o_cfg_function_status              = cfg_function_status,
+            o_cfg_function_power_state         = Open(12),
+            o_cfg_vf_status                    = Open(16),
+            o_cfg_vf_power_state               = Open(24),
+            o_cfg_link_power_state             = Open(2),
 
-            o_cfg_err_cor_out             = Open(),
-            o_cfg_err_nonfatal_out        = Open(),
-            o_cfg_err_fatal_out           = Open(),
-            o_cfg_ltr_enable              = Open(),
-            o_cfg_ltssm_state             = link_ltssm,
-            o_cfg_rcb_status              = Open(4),
-            o_cfg_dpa_substate_change     = Open(4),
-            o_cfg_obff_enable             = Open(2),
-            o_cfg_pl_status_change        = Open(),
+            o_cfg_err_cor_out                  = Open(),
+            o_cfg_err_nonfatal_out             = Open(),
+            o_cfg_err_fatal_out                = Open(),
+            o_cfg_ltr_enable                   = Open(),
+            o_cfg_ltssm_state                  = link_ltssm,
+            o_cfg_rcb_status                   = Open(4),
+            o_cfg_dpa_substate_change          = Open(4),
+            o_cfg_obff_enable                  = Open(2),
+            o_cfg_pl_status_change             = Open(),
 
-            o_cfg_tph_requester_enable    = Open(4),
-            o_cfg_tph_st_mode             = Open(12),
-            o_cfg_vf_tph_requester_enable = Open(8),
-            o_cfg_vf_tph_st_mode          = Open(24),
+            o_cfg_tph_requester_enable         = Open(4),
+            o_cfg_tph_st_mode                  = Open(12),
+            o_cfg_vf_tph_requester_enable      = Open(8),
+            o_cfg_vf_tph_st_mode               = Open(24),
         )
         self.comb += [
             m_axis_cq.first.eq(m_axis_cq_tuser[14]),

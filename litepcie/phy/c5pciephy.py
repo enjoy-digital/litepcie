@@ -191,60 +191,60 @@ class C5PCIEPHY(LiteXModule):
         # Hard IP ----------------------------------------------------------------------------------
         self.pcie_phy_params = dict(
             # Clocks
-            i_refclk_clk         = pcie_refclk,
-            i_pld_clk_clk        = ClockSignal("pcie"),
-            o_coreclkout_hip_clk = ClockSignal("pcie"),
+            i_refclk_clk                = pcie_refclk,
+            i_pld_clk_clk               = ClockSignal("pcie"),
+            o_coreclkout_hip_clk        = ClockSignal("pcie"),
 
             # Resets
-            i_npor_npor      = 1 if not hasattr(pads, "rst_n") else pads.rst_n,
-            i_npor_pin_perst = 1 if not hasattr(pads, "rst_n") else pads.rst_n,
+            i_npor_npor                 = 1 if not hasattr(pads, "rst_n") else pads.rst_n,
+            i_npor_pin_perst            = 1 if not hasattr(pads, "rst_n") else pads.rst_n,
 
             # Hard IP Reconfiguration
-            i_reconfig_clk_clk       = pcie_reconfig_clk,
-            i_reconfig_reset_reset_n = pcie_rst_n,
+            i_reconfig_clk_clk          = pcie_reconfig_clk,
+            i_reconfig_reset_reset_n    = pcie_rst_n,
 
             # Power Management
-            i_power_mngt_pme_to_cr = pcie_o_power_mngt_pme_to_sr,
-            o_power_mngt_pme_to_sr = pcie_o_power_mngt_pme_to_sr,
+            i_power_mngt_pme_to_cr      = pcie_o_power_mngt_pme_to_sr,
+            o_power_mngt_pme_to_sr      = pcie_o_power_mngt_pme_to_sr,
 
             # Config (Configuration space)
-            o_config_tl_tl_cfg_ctl = pcie_o_config_tl_tl_cfg_ctl,
-            o_config_tl_tl_cfg_add = pcie_config_tl_tl_cfg_add,
+            o_config_tl_tl_cfg_ctl      = pcie_o_config_tl_tl_cfg_ctl,
+            o_config_tl_tl_cfg_add      = pcie_config_tl_tl_cfg_add,
 
-             # Control
+            # Control
             o_hip_rst_serdes_pll_locked = pcie_hip_rst_serdes_pll_locked,
             i_hip_rst_pld_core_ready    = pcie_hip_rst_serdes_pll_locked,
 
             # RX Port
-            o_rx_st_valid         = rx_avst.valid,
-            o_rx_st_startofpacket = rx_avst.first,
-            o_rx_st_endofpacket   = rx_avst.last,
-            i_rx_st_ready         = rx_avst.ready,
-            o_rx_st_data          = rx_avst.dat,
+            o_rx_st_valid               = rx_avst.valid,
+            o_rx_st_startofpacket       = rx_avst.first,
+            o_rx_st_endofpacket         = rx_avst.last,
+            i_rx_st_ready               = rx_avst.ready,
+            o_rx_st_data                = rx_avst.dat,
 
             # TX Port
-            i_tx_st_valid         = tx_avst.valid,
-            i_tx_st_startofpacket = tx_avst.first,
-            i_tx_st_endofpacket   = tx_avst.last,
-            o_tx_st_ready         = tx_avst.ready,
-            i_tx_st_data          = tx_avst.dat,
+            i_tx_st_valid               = tx_avst.valid,
+            i_tx_st_startofpacket       = tx_avst.first,
+            i_tx_st_endofpacket         = tx_avst.last,
+            o_tx_st_ready               = tx_avst.ready,
+            i_tx_st_data                = tx_avst.dat,
 
             # Serial IF
-            i_hip_serial_rx_in0  = pads.rx_p[0],
-            i_hip_serial_rx_in1  = pads.rx_p[1],
-            i_hip_serial_rx_in2  = pads.rx_p[2],
-            i_hip_serial_rx_in3  = pads.rx_p[3],
-            o_hip_serial_tx_out0 = pads.tx_p[0],
-            o_hip_serial_tx_out1 = pads.tx_p[1],
-            o_hip_serial_tx_out2 = pads.tx_p[2],
-            o_hip_serial_tx_out3 = pads.tx_p[3],
+            i_hip_serial_rx_in0         = pads.rx_p[0],
+            i_hip_serial_rx_in1         = pads.rx_p[1],
+            i_hip_serial_rx_in2         = pads.rx_p[2],
+            i_hip_serial_rx_in3         = pads.rx_p[3],
+            o_hip_serial_tx_out0        = pads.tx_p[0],
+            o_hip_serial_tx_out1        = pads.tx_p[1],
+            o_hip_serial_tx_out2        = pads.tx_p[2],
+            o_hip_serial_tx_out3        = pads.tx_p[3],
 
             # MSI
-            i_int_msi_app_msi_num = 0,
-            i_int_msi_app_msi_req = cfg_msi.valid,
-            i_int_msi_app_msi_tc  = 0,
-            o_int_msi_app_msi_ack = cfg_msi.ready,
-            i_int_msi_app_int_sts = 0
+            i_int_msi_app_msi_num       = 0,
+            i_int_msi_app_msi_req       = cfg_msi.valid,
+            i_int_msi_app_msi_tc        = 0,
+            o_int_msi_app_msi_ack       = cfg_msi.ready,
+            i_int_msi_app_int_sts       = 0
         )
 
     # External Hard IP -----------------------------------------------------------------------------
