@@ -22,7 +22,7 @@ from litepcie.phy.common import *
 class USPCIEPHY(LiteXModule):
     endianness    = "little"
     qword_aligned = False
-    def __init__(self, platform, pads, speed="gen3", data_width=64,  cd="sys",
+    def __init__(self, platform, pads, speed="gen3", data_width=64, cd="sys",
         # PCIe hardblock parameters.
         pcie_data_width = None,
         bar0_size       = 0x100000,
