@@ -382,7 +382,7 @@ class USPCIEPHY(LiteXModule):
                 "PL_LINK_CAP_MAX_LINK_WIDTH"   : f"X{self.nlanes}",
                 "PL_LINK_CAP_MAX_LINK_SPEED"   : "8.0_GT/s", # CHECKME.
                 "axisten_if_width"             : f"{self.pcie_data_width}_bit",
-                "AXISTEN_IF_RC_STRADDLE"       : True,
+                "AXISTEN_IF_RC_STRADDLE"       : False,
                 "PF0_DEVICE_ID"                : 8030 + self.nlanes,
                 "axisten_freq"                 : 250, # CHECKME.
                 "axisten_if_enable_client_tag" : True,
