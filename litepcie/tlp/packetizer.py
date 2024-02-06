@@ -804,7 +804,7 @@ class LitePCIeTLPPacketizer(LiteXModule):
 
             # On Ultrascale(+) / 256-bit, force to 64-bit (for 4DWs format).
             try:
-                force_64b = (LiteXContext.platform.device[:4] in ["xcku", "xcvu"]) and (data_width in [256])
+                force_64b = (LiteXContext.platform.device[:4] in ["xcku", "xcvu", "xczu"]) and (data_width in [256])
             except:
                 force_64b = False
 
