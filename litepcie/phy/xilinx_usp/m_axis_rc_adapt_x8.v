@@ -19,7 +19,7 @@ module m_axis_rc_adapt # (
        output                  m_axis_rc_tvalid,
 
        input   [DATA_WIDTH-1:0] m_axis_rc_tdata_a,
-       input   [KEEP_WIDTH-1:0] m_axis_rc_tkeep_a,
+       input [KEEP_WIDTH/4-1:0] m_axis_rc_tkeep_a,
        input                    m_axis_rc_tlast_a,
        output             [3:0] m_axis_rc_tready_a,
        input             [84:0] m_axis_rc_tuser_a,

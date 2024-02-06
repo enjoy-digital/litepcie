@@ -19,7 +19,7 @@ module m_axis_cq_adapt # (
        output                  m_axis_cq_tvalid,
 
        input   [DATA_WIDTH-1:0] m_axis_cq_tdata_a,
-       input   [KEEP_WIDTH-1:0] m_axis_cq_tkeep_a,
+       input [KEEP_WIDTH/4-1:0] m_axis_cq_tkeep_a,
        input                    m_axis_cq_tlast_a,
        output             [3:0] m_axis_cq_tready_a,
        input             [84:0] m_axis_cq_tuser_a,

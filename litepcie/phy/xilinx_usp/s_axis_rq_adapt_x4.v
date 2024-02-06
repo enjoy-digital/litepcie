@@ -19,7 +19,7 @@ module s_axis_rq_adapt # (
        input                   s_axis_rq_tvalid,
 
        output   [DATA_WIDTH-1:0] s_axis_rq_tdata_a,
-       output   [KEEP_WIDTH-1:0] s_axis_rq_tkeep_a,
+       output [KEEP_WIDTH/4-1:0] s_axis_rq_tkeep_a,
        output                    s_axis_rq_tlast_a,
        input                     s_axis_rq_tready_a,
        output             [59:0] s_axis_rq_tuser_a,
