@@ -108,7 +108,7 @@ class LitePCIeWishboneBridge(LitePCIeWishboneMaster): pass # initial name
 
 # LitePCIeWishboneSlave ----------------------------------------------------------------------------
 
-class LitePCIeWishboneSlave(Module):
+class LitePCIeWishboneSlave(LiteXModule):
     def __init__(self, endpoint, qword_aligned=False):
         self.wishbone = wishbone.Interface()
 
