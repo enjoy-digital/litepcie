@@ -1,10 +1,12 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2024 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 import random
+
+from litex.gen import *
 
 from litepcie.common import *
 from litepcie.tlp.common import *
@@ -32,7 +34,7 @@ def find_first_cmp_msg(queue, msg_tag):
 
 # Chipset model ------------------------------------------------------------------------------------
 
-class Chipset(Module):
+class Chipset(LiteXModule):
     def __init__(self, phy, root_id, debug=False, with_reordering=False):
         self.phy     = phy
         self.root_id = root_id

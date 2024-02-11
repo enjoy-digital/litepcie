@@ -1,8 +1,10 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2024 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
+
+from litex.gen import *
 
 from litepcie.common import *
 from litepcie.tlp.common import *
@@ -19,7 +21,7 @@ def print_host(s):
 
 # Host model ---------------------------------------------------------------------------------------
 
-class Host(Module):
+class Host(LiteXModule):
     def __init__(self, data_width, root_id, endpoint_id,
         bar0_size          = 1*MB,
         phy_debug          = False,
@@ -32,8 +34,8 @@ class Host(Module):
 
         # # #
 
-        self.submodules.phy     = PHY(data_width, endpoint_id, bar0_size, phy_debug)
-        self.submodules.chipset = Chipset(self.phy, root_id, chipset_debug, chipset_reordering)
+        self.phy     = PHY(data_width, endpoint_id, bar0_size, phy_debug)
+        self.chipset = Chipset(self.phy, root_id, chipset_debug, chipset_reordering)
         self.chipset.set_host_callback(self.callback)
 
         self.rd_queue = []

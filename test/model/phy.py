@@ -1,10 +1,12 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2022 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2024 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 import math
+
+from litex.gen import *
 
 from litepcie.common import *
 from litepcie.tlp.common import *
@@ -25,7 +27,7 @@ class PHYPacket:
 
 # PHY Source model ---------------------------------------------------------------------------------
 
-class PHYSource(Module):
+class PHYSource(LiteXModule):
     def __init__(self, data_width):
         self.source = stream.Endpoint(phy_layout(data_width))
 
@@ -103,7 +105,7 @@ class PHYSink(Module):
 
 # PHY Layer model ----------------------------------------------------------------------------------
 
-class PHY(Module):
+class PHY(LiteXModule):
     def __init__(self, data_width, id, bar0_size, debug):
         self.data_width = data_width
 
@@ -115,8 +117,8 @@ class PHY(Module):
         self.max_request_size = Signal(10, reset=512)
         self.max_payload_size = Signal(8,  reset=128)
 
-        self.submodules.phy_source = PHYSource(data_width)
-        self.submodules.phy_sink   = PHYSink(data_width)
+        self.phy_source = PHYSource(data_width)
+        self.phy_sink   = PHYSink(data_width)
 
         self.source = self.phy_source.source
         self.sink   = self.phy_sink.sink
