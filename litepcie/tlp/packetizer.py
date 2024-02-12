@@ -801,12 +801,14 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 ),
                 tlp_req.address.eq(req_sink.adr),
             ]
+
+            # On Ultrascale(+) / 256-bit, force to 64-bit (for 4DWs format).
+            try:
+                force_64b = (LiteXContext.platform.device[:4] in ["xcku", "xcvu", "xczu"]) and (data_width in [256])
+            except:
+                force_64b = False
+
             if address_width == 64:
-                # On Ultrascale(+) / 256-bit, force to 64-bit (for 4DWs format).
-                try:
-                    force_64b = (LiteXContext.platform.device[:4] in ["xcku", "xcvu"]) and (data_width in [256])
-                except:
-                    force_64b = False
                 self.comb += [
                     # Use WR64/RD64 only when 64-bit Address's MSB != 0, else use WR32/RD32.
                     If((req_sink.adr[32:] != 0) | force_64b,
@@ -820,6 +822,17 @@ class LitePCIeTLPPacketizer(LiteXModule):
                             tlp_req.fmt.eq( fmt_dict[ f"mem_rd64"]),
                         ),
                     )
+                ]
+            elif force_64b:
+                # Address width is 32 bits but we force issuing 4DWs TLP
+                self.comb += [
+                    tlp_req.address[:32].eq(Constant(0, 32)),
+                    tlp_req.address[32:].eq(req_sink.adr[:32]),
+                    If(req_sink.we,
+                        tlp_req.fmt.eq( fmt_dict[ f"mem_wr64"]),
+                    ).Else(
+                        tlp_req.fmt.eq( fmt_dict[ f"mem_rd64"]),
+                    ),
                 ]
 
             self.comb += [
