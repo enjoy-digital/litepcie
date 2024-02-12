@@ -95,7 +95,7 @@ class LitePCIeMSIX(LiteXModule):
         self.pba            = CSRStatus(width, description="""MSI-X PBA Table.""")
         if width <= 32:
             self.reserved1 = CSRStorage() # For 64-bit alignment.
-        self.specials.table = Memory(4*32, width) # MSI-X Table.
+        self.specials.table = Memory(4*32, width, init=[0b1 for _ in range(width)]) # MSI-X Table / Masked by default.
 
         # # #
 
