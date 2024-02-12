@@ -1282,7 +1282,7 @@ static int __init litepcie_module_init(void)
 {
 	int ret;
 
-	#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
 		litepcie_class = class_create(THIS_MODULE, LITEPCIE_NAME);
 	#else
 		litepcie_class = class_create(LITEPCIE_NAME);
