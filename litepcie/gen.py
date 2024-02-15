@@ -266,53 +266,78 @@ class LitePCIeCore(SoCMini):
                 self.comb += wb.connect(pcie_wishbone_slave.wishbone)
 
         # PCIe DMA ---------------------------------------------------------------------------------
-        with_writer = core_config.get("dma_writer", True)
-        with_reader = core_config.get("dma_reader", True)
-
         pcie_dmas = []
+
+        # Parameters.
+        # -----------
         self.add_constant("DMA_CHANNELS",   core_config["dma_channels"])
         self.add_constant("DMA_ADDR_WIDTH", ep_address_width)
+
+        class DMAParams:
+            writer       = core_config.get("dma_writer", True)
+            reader       = core_config.get("dma_reader", True)
+            buffering    = core_config["dma_buffering"]
+            loopback     = core_config["dma_loopback"]
+            synchronizer = core_config["dma_synchronizer"]
+            monitor      = core_config["dma_monitor"]
+
+        dma_params = DMAParams()
+
+        # PCIe DMAs.
+        # ----------
         for i in range(core_config["dma_channels"]):
+            # DMA.
+            # ----
             pcie_dma = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
                 address_width     = ep_address_width,
-                with_writer       = with_writer,
-                with_reader       = with_reader,
-                with_buffering    = core_config["dma_buffering"] != 0,
-                buffering_depth   = core_config["dma_buffering"],
-                with_loopback     = core_config["dma_loopback"],
-                with_synchronizer = core_config["dma_synchronizer"],
-                with_monitor      = core_config["dma_monitor"],
+                with_writer       = dma_params.writer,
+                with_reader       = dma_params.reader,
+                with_buffering    = dma_params.buffering != 0,
+                buffering_depth   = dma_params.buffering,
+                with_loopback     = dma_params.loopback,
+                with_synchronizer = dma_params.synchronizer,
+                with_monitor      = dma_params.monitor,
             )
+            # DMA Endpoint Buffers (For timings).
+            # -------------------------------
             pcie_dma = stream.BufferizeEndpoints({"sink"   : stream.DIR_SINK})(pcie_dma)
             pcie_dma = stream.BufferizeEndpoints({"source" : stream.DIR_SOURCE})(pcie_dma)
-            setattr(self.submodules, "pcie_dma" + str(i), pcie_dma)
+            self.add_module(f"pcie_dma{i}", pcie_dma)
+
+            # DMA IOs.
+            # --------
             platform.add_extension(get_axi_dma_ios(i,
                 data_width  = core_config["phy_data_width"],
-                with_writer = with_writer,
-                with_reader = with_reader,
+                with_writer = dma_params.writer,
+                with_reader = dma_params.reader,
             ))
             dma_status_ios = platform.request(f"dma{i}_status")
 
-            if hasattr(pcie_dma, "writer"):
-                dma_writer_ios = platform.request("dma{}_writer_axi".format(i))
+            # DMA Writer <-> IOs Connection.
+            # ------------------------------
+            if dma_params.writer:
+                dma_writer_ios = platform.request(f"dma{i}_writer_axi")
                 self.comb += [
-                    # Status IOs
+                    # Status IOs.
                     dma_status_ios.writer_enable.eq(pcie_dma.writer.enable),
 
-                    # Writer IOs
+                    # Writer IOs.
                     pcie_dma.sink.valid.eq(dma_writer_ios.tvalid & pcie_dma.writer.enable),
                     dma_writer_ios.tready.eq(pcie_dma.sink.ready & pcie_dma.writer.enable),
                     pcie_dma.sink.last.eq(dma_writer_ios.tlast),
                     pcie_dma.sink.data.eq(dma_writer_ios.tdata),
                     pcie_dma.sink.first.eq(dma_writer_ios.tuser),
                 ]
-            if hasattr(pcie_dma, "reader"):
-                dma_reader_ios = platform.request("dma{}_reader_axi".format(i))
+
+            # DMA Reader <-> IOs Connection.
+            # ------------------------------
+            if dma_params.reader:
+                dma_reader_ios = platform.request(f"dma{i}_reader_axi")
                 self.comb += [
-                    # Status IOs
+                    # Status IOs.
                     dma_status_ios.reader_enable.eq(pcie_dma.reader.enable),
 
-                    # Reader IOs
+                    # Reader IOs.
                     dma_reader_ios.tvalid.eq(pcie_dma.source.valid & pcie_dma.reader.enable),
                     pcie_dma.source.ready.eq(dma_reader_ios.tready | ~pcie_dma.reader.enable),
                     dma_reader_ios.tlast.eq(pcie_dma.source.last),
