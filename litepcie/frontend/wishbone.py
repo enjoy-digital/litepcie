@@ -7,6 +7,7 @@
 from migen import *
 
 from litex.gen import *
+from litex.gen.genlib.misc import WaitTimer
 
 from litex.soc.interconnect import wishbone
 
@@ -114,6 +115,9 @@ class LitePCIeWishboneSlave(LiteXModule):
 
         # # #
 
+        # Timeout.
+        self.timeout = timeout = WaitTimer(2**16)
+
         # Get Master port from Crossbar.
         port = endpoint.crossbar.get_master_port()
 
@@ -139,23 +143,27 @@ class LitePCIeWishboneSlave(LiteXModule):
             port.source.dat.eq(self.wishbone.dat_w),
         ]
         fsm.act("ISSUE-WRITE",
+            timeout.wait.eq(1),
             port.source.valid.eq(1),
             port.source.we.eq(1),
-            If(port.source.ready,
+            If(port.source.ready | timeout.done,
                 self.wishbone.ack.eq(1),
+                self.wishbone.err.eq(timeout.done),
                 NextState("IDLE")
             )
         )
         fsm.act("ISSUE-READ",
+            timeout.wait.eq(1),
             port.source.valid.eq(1),
             port.source.we.eq(0),
-            If(port.source.ready,
+            If(port.source.ready | timeout.done,
                 NextState("RECEIVE-READ-COMPLETION")
             )
         )
         fsm.act("RECEIVE-READ-COMPLETION",
+            timeout.wait.eq(1),
             port.sink.ready.eq(1),
-            If(port.sink.valid & port.sink.first,
+            If((port.sink.valid & port.sink.first) | timeout.done,
                 map_wishbone_dat(
                     address       = port.sink.adr,
                     data          = port.sink.dat,
@@ -163,6 +171,7 @@ class LitePCIeWishboneSlave(LiteXModule):
                     qword_aligned = qword_aligned,
                 ),
                 self.wishbone.ack.eq(1),
+                self.wishbone.err.eq(timeout.done),
                 NextState("IDLE")
             )
         )
