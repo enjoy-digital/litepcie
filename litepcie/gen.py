@@ -270,22 +270,52 @@ class LitePCIeCore(SoCMini):
 
         # Parameters.
         # -----------
-        self.add_constant("DMA_CHANNELS",   core_config["dma_channels"])
-        self.add_constant("DMA_ADDR_WIDTH", ep_address_width)
+
+        dmas_params = []
 
         class DMAParams:
-            writer       = core_config.get("dma_writer", True)
-            reader       = core_config.get("dma_reader", True)
-            buffering    = core_config["dma_buffering"]
-            loopback     = core_config["dma_loopback"]
-            synchronizer = core_config["dma_synchronizer"]
-            monitor      = core_config["dma_monitor"]
+            def __init__(self, writer, reader, buffering, loopback, synchronizer, monitor):
+                self.writer       = writer
+                self.reader       = reader
+                self.buffering    = buffering
+                self.loopback     = loopback
+                self.synchronizer = synchronizer
+                self.monitor      = monitor
 
-        dma_params = DMAParams()
+        # DMA Channels configured separately.
+        if isinstance(core_config.get("dma_channels"), dict):
+            print(core_config.get("dma_channels"))
+            for name, params in core_config["dma_channels"].items():
+                dma_params = DMAParams(
+                    writer       = params.get("dma_writer",        True),
+                    reader       = params.get("dma_reader",        True),
+                    buffering    = params.get("dma_buffering",     1024),
+                    loopback     = params.get("dma_loopback",      True),
+                    synchronizer = params.get("dma_synchronizer", False),
+                    monitor      = params.get("dma_monitor",      False),
+                )
+                dmas_params.append(dma_params)
+
+        # DMA Channels configured identically.
+        else:
+            print("here1")
+            for n in range(core_config["dma_channels"]):
+                dma_params = DMAParams(
+                    writer       = core_config.get("dma_writer",        True),
+                    reader       = core_config.get("dma_reader",        True),
+                    buffering    = core_config.get("dma_buffering",     1024),
+                    loopback     = core_config.get("dma_loopback",      True),
+                    synchronizer = core_config.get("dma_synchronizer", False),
+                    monitor      = core_config.get("dma_monitor",      False),
+                )
+                dmas_params.append(dma_params)
+
+        self.add_constant("DMA_CHANNELS",   len(dmas_params))
+        self.add_constant("DMA_ADDR_WIDTH", ep_address_width)
 
         # PCIe DMAs.
         # ----------
-        for i in range(core_config["dma_channels"]):
+        for i, dma_params in enumerate(dmas_params):
             # DMA.
             # ----
             pcie_dma = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
@@ -360,7 +390,7 @@ class LitePCIeCore(SoCMini):
             self.comb += self.pcie_msi.source.connect(self.pcie_phy.msi)
             self.comb += self.pcie_msi.irqs[16:16+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
         self.interrupts = {}
-        for i in range(core_config["dma_channels"]):
+        for i in range(len(dmas_params)):
             pcie_dma = getattr(self, f"pcie_dma{i}")
             if hasattr(pcie_dma, "writer"):
                 self.interrupts[f"pcie_dma{i}_writer"] = pcie_dma.writer.irq
