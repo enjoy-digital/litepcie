@@ -33,13 +33,24 @@
     "mmap_slave"              : True,
 
     # DMA channels -------------------------------------------------------------
-    "dma_channels"            : 4,     # Number of DMA channels
-    "dma_writer"              : True,  # Enable DMA Writer.
-    "dma_reader"              : True,  # Disable DMA Reader.
-    "dma_buffering"           : 8192,  # Buffering for each channel (in bytes)
-    "dma_loopback"            : False, # Disable DMA loopback capability
-    "dma_synchronizer"        : False, # Disable DMA synchronizer capability
-    "dma_monitor"             : True,  # Enable DMA monitoring capability
+    "dma_channels": {
+        "dma0": {
+            "dma_writer"              : True,  # Enable DMA Writer.
+            "dma_reader"              : True,  # Disable DMA Reader.
+            "dma_buffering"           : 8192,  # Buffering for each channel (in bytes)
+            "dma_loopback"            : False, # Disable DMA loopback capability
+            "dma_synchronizer"        : False, # Disable DMA synchronizer capability
+            "dma_monitor"             : True,  # Enable DMA monitoring capability
+        },
+        "dma1": {
+            "dma_writer"              : True,  # Enable DMA Writer.
+            "dma_reader"              : True,  # Disable DMA Reader.
+            "dma_buffering"           : 8192,  # Buffering for each channel (in bytes)
+            "dma_loopback"            : False, # Disable DMA loopback capability
+            "dma_synchronizer"        : False, # Disable DMA synchronizer capability
+            "dma_monitor"             : True,  # Enable DMA monitoring capability
+        },
+    },
 
     # MSI IRQs -----------------------------------------------------------------
     "msi_irqs"                : 16, # Number or MSI IRQs
