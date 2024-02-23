@@ -192,22 +192,28 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
         # # #
 
         # Signals.
+        # --------
         length     = Signal(24)
         length_rst = Signal()
         length_inc = Signal()
 
+        # Buffer.
+        # -------
+        self.buffer = buffer = ResetInserter()(stream.Buffer(source.description, pipe_valid=True))
+        self.comb += self.buffer.reset.eq(buffer.sink.valid & buffer.sink.ready & self.terminate)
+
         # Comb Logic.
         # -----------
         self.comb += [
-            source.valid.eq(sink.valid),
-            source.first.eq(length == 0),
-            source.last.eq(sink.length <= (length + max_size)),
-            source.address.eq(sink.address + length),
-            source.irq_disable.eq(sink.irq_disable),
-            source.last_disable.eq(sink.last_disable),
-            If(source.valid & source.ready,
+            buffer.sink.valid.eq(sink.valid),
+            buffer.sink.first.eq(length == 0),
+            buffer.sink.last.eq(sink.length <= (length + max_size)),
+            buffer.sink.address.eq(sink.address + length),
+            buffer.sink.irq_disable.eq(sink.irq_disable),
+            buffer.sink.last_disable.eq(sink.last_disable),
+            If(buffer.sink.valid & buffer.sink.ready,
                 length_inc.eq(1),
-                If(source.last | self.terminate,
+                If(buffer.sink.last | self.terminate,
                     sink.ready.eq(1),
                     length_rst.eq(1),
                 )
@@ -220,6 +226,10 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
             If(length_inc, length.eq(length + max_size)),
             If(length_rst, length.eq(0)),
         ]
+
+        # Buffer -> Source.
+        # -----------------
+        self.comb += buffer.source.connect(source)
 
 # LitePCIeDMAReader --------------------------------------------------------------------------------
 
