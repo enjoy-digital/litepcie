@@ -196,30 +196,35 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
         length      = Signal(24)
         length_next = Signal(24)
 
+        # Length/Last Update.
+        # -------------------
+        update_length_last = Signal()
+        self.sync += If(update_length_last,
+            length.eq(length_next),
+            If(length_next > max_size,
+                source.length.eq(max_size),
+                source.last.eq(0),
+            ).Else(
+                source.length.eq(length_next),
+                source.last.eq(1),
+            )
+        )
+
         # FSM.
         # ----
         self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             # Set/Clear signals.
             NextValue(source.first, 1),
-            NextValue(source.last,  0),
             NextValue(source.address, sink.address),
-            NextValue(length, sink.length),
-            If(sink.length > max_size,
-                NextValue(source.length, max_size)
-            ).Else(
-                NextValue(source.last, 1),
-                NextValue(source.length, sink.length)
-            ),
+            # Update length/last.
+            length_next.eq(length),
+            update_length_last.eq(1),
             # Wait for a descriptor and go to RUN.
             If(sink.valid,
                 NextState("RUN")
             )
         )
-        self.comb += [
-            source.irq_disable.eq(sink.irq_disable),
-            source.last_disable.eq(sink.last_disable),
-        ]
         fsm.act("RUN",
             source.valid.eq(1),
             # When descriptor is accepted...
@@ -230,13 +235,7 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
                 NextValue(source.address, source.address + max_size),
                 # Update length/last.
                 length_next.eq(length - max_size),
-                NextValue(length, length_next),
-                If(length_next > max_size,
-                    NextValue(source.length, max_size)
-                ).Else(
-                    NextValue(source.last, 1),
-                    NextValue(source.length, length_next),
-                ),
+                update_length_last.eq(1),
                 # On last or terminate...
                 If(source.last | self.terminate,
                     # Accept Descriptor.
@@ -248,6 +247,10 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
                 )
             )
         )
+        self.comb += [
+            source.irq_disable.eq(sink.irq_disable),
+            source.last_disable.eq(sink.last_disable),
+        ]
 
 # LitePCIeDMAReader --------------------------------------------------------------------------------
 
