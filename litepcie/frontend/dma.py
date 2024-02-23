@@ -192,64 +192,33 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
         # # #
 
         # Signals.
-        # --------
-        length      = Signal(24)
-        length_next = Signal(24)
+        length     = Signal(24)
+        length_rst = Signal()
+        length_inc = Signal()
 
-        # Length/Last Update.
-        # -------------------
-        update_length_last = Signal()
-        self.sync += If(update_length_last,
-            length.eq(length_next),
-            If(length_next > max_size,
-                source.length.eq(max_size),
-                source.last.eq(0),
-            ).Else(
-                source.length.eq(length_next),
-                source.last.eq(1),
-            )
-        )
-
-        # FSM.
-        # ----
-        self.fsm = fsm = FSM(reset_state="IDLE")
-        fsm.act("IDLE",
-            # Set/Clear signals.
-            NextValue(source.first, 1),
-            NextValue(source.address, sink.address),
-            # Update length/last.
-            length_next.eq(length),
-            update_length_last.eq(1),
-            # Wait for a descriptor and go to RUN.
-            If(sink.valid,
-                NextState("RUN")
-            )
-        )
-        fsm.act("RUN",
-            source.valid.eq(1),
-            # When descriptor is accepted...
-            If(source.ready,
-                # Clear first.
-                NextValue(source.first, 0),
-                # Update address.
-                NextValue(source.address, source.address + max_size),
-                # Update length/last.
-                length_next.eq(length - max_size),
-                update_length_last.eq(1),
-                # On last or terminate...
-                If(source.last | self.terminate,
-                    # Accept Descriptor.
-                    sink.ready.eq(1),
-                    # Increment User-ID.
-                    NextValue(source.user_id, source.user_id + 1),
-                    # Return to IDLE..
-                    NextState("IDLE")
-                )
-            )
-        )
+        # Comb Logic.
+        # -----------
         self.comb += [
+            source.valid.eq(sink.valid),
+            source.first.eq(length == 0),
+            source.last.eq(sink.length <= (length + max_size)),
+            source.address.eq(sink.address + length),
             source.irq_disable.eq(sink.irq_disable),
             source.last_disable.eq(sink.last_disable),
+            If(source.valid & source.ready,
+                length_inc.eq(1),
+                If(source.last | self.terminate,
+                    sink.ready.eq(1),
+                    length_rst.eq(1),
+                )
+            )
+        ]
+
+        # Sync Logic.
+        # -----------
+        self.sync += [
+            If(length_inc, length.eq(length + max_size)),
+            If(length_rst, length.eq(0)),
         ]
 
 # LitePCIeDMAReader --------------------------------------------------------------------------------
