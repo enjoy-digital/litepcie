@@ -21,9 +21,7 @@ class LitePCIeTLPHeaderInserter3DWs4DWs(LiteXModule):
 
         # Header Inserters Modules.
         header_inserter_3dws = header_inserter_3dws_cls()
-        stream.BufferizeEndpoints({"sink"  : stream.DIR_SINK  })(header_inserter_3dws) # For Timings.
         header_inserter_4dws = header_inserter_4dws_cls()
-        stream.BufferizeEndpoints({"sink"  : stream.DIR_SINK  })(header_inserter_4dws) # For Timings.
         self.submodules += header_inserter_3dws, header_inserter_4dws
 
         # Header Inserters Sel.
