@@ -591,13 +591,16 @@ class LitePCIeDMASynchronizer(LiteXModule):
         self.synced = synced = Signal()
 
         self.sync += [
+            # Bypass.
+            If(self.bypass.storage,
+                synced.eq(1)
             # Synchro Disabled.
-            If(self.enable.fields.mode == 0b00,
+            ).Elif(self.enable.fields.mode == 0b00,
                 synced.eq(0)
             # Synchro Enabled.
             ).Else(
-                # On PPS or Bypass and with external ready signal:
-                If(self.ready & (self.pps | self.bypass.storage),
+                # On PPS and with external ready signal:
+                If(self.ready & self.pps,
                     # TX/RX Synchronization, make sure TX has data.
                     If((self.enable.fields.mode == 0b01) & self.sink.valid,
                         synced.eq(1)
