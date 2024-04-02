@@ -17,13 +17,14 @@ from litex.soc.interconnect.csr import *
 from litepcie.common import *
 from litepcie.phy.common import *
 
-# USPPCIEPHY ----------------------------------------------------------------------------------------
+# USPPCIEPHY ---------------------------------------------------------------------------------------
 
 class USPPCIEPHY(LiteXModule):
     endianness    = "little"
     qword_aligned = False
     def __init__(self, platform, pads, speed="gen3", data_width=64, cd="sys",
         # PCIe hardblock parameters.
+        ip_name         = "pcie4_uscale_plus",
         pcie_data_width = None,
         bar0_size       = 0x100000,
     ):
@@ -74,6 +75,8 @@ class USPPCIEPHY(LiteXModule):
         self.platform         = platform
         self.data_width       = data_width
         self.pcie_data_width  = pcie_data_width
+        assert ip_name  in ["pcie4_uscale_plus", "pcie4c_uscale_plus"]
+        self.ip_name          = ip_name
 
         self.id               = Signal(16)
         self.bar0_size        = bar0_size
@@ -371,7 +374,7 @@ class USPPCIEPHY(LiteXModule):
         self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
     # Hard IP sources ------------------------------------------------------------------------------
-    def add_sources(self, platform, phy_path=None, phy_filename=None, hbm=False):
+    def add_sources(self, platform, phy_path=None, phy_filename=None):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
@@ -400,9 +403,8 @@ class USPPCIEPHY(LiteXModule):
                 # -----------------
                 "PF0_INTERRUPT_PIN"            : "NONE",
             }
-            ip_tcl = []
-            ip_name = {False: "pcie4_uscale_plus", True: "pcie4c_uscale_plus"}[hbm]
-            ip_tcl.append(f"create_ip -vendor xilinx.com -name {ip_name} -module_name pcie_usp")
+            ip_tcl  = []
+            ip_tcl.append(f"create_ip -vendor xilinx.com -name {self.ip_name} -module_name pcie_usp")
             ip_tcl.append("set obj [get_ips pcie_usp]")
             ip_tcl.append("set_property -dict [list \\")
             for config, value in config.items():
@@ -427,9 +429,11 @@ class USPPCIEPHY(LiteXModule):
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_hard_ip:
-            self.add_sources(self.platform, hbm=isinstance(self, USPHBMPCIEPHY))
+            self.add_sources(self.platform)
         self.specials += Instance("pcie_support", **self.pcie_phy_params)
 
 # USPHBMPCIEPHY ------------------------------------------------------------------------------------
 
-class USPHBMPCIEPHY(USPPCIEPHY): pass
+class USPHBMPCIEPHY(USPPCIEPHY):
+    def __init__(self, *args, **kwargs):
+        USPPCIEPHY.__init__(self, *args, **kwargs, ip_name="pcie4c_uscale_plus")
