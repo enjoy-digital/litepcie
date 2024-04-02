@@ -411,18 +411,10 @@ class USPCIEPHY(LiteXModule):
 
         verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx_us")
         platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
-        if self.nlanes == 4:
-            platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt_x4.v"))
-            platform.add_source(os.path.join(verilog_path, "m_axis_rc_adapt_x4.v"))
-            platform.add_source(os.path.join(verilog_path, "m_axis_cq_adapt_x4.v"))
-            platform.add_source(os.path.join(verilog_path, "s_axis_cc_adapt_x4.v"))
-
-        if self.nlanes == 8:
-            platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt_x8.v"))
-            platform.add_source(os.path.join(verilog_path, "m_axis_rc_adapt_x8.v"))
-            platform.add_source(os.path.join(verilog_path, "m_axis_cq_adapt_x8.v"))
-            platform.add_source(os.path.join(verilog_path, "s_axis_cc_adapt_x8.v"))
-
+        platform.add_source(os.path.join(verilog_path, f"s_axis_rq_adapt_x{self.nlanes}.v"))
+        platform.add_source(os.path.join(verilog_path, f"m_axis_rc_adapt_x{self.nlanes}.v"))
+        platform.add_source(os.path.join(verilog_path, f"m_axis_cq_adapt_x{self.nlanes}.v"))
+        platform.add_source(os.path.join(verilog_path, f"s_axis_cc_adapt_x{self.nlanes}.v"))
         platform.add_source(os.path.join(verilog_path, "pcie_us_support.v"))
 
     # External Hard IP -----------------------------------------------------------------------------
