@@ -94,7 +94,7 @@ $ python3 -m unittest test.test_name
 [> License
 ----------
 LitePCIe is released under the very permissive two-clause BSD license. Under
-the terms of this license, you are authorized to use LiteEth for closed-source
+the terms of this license, you are authorized to use LitePCIe for closed-source
 proprietary designs.
 Even though we do not require you to do so, those things are awesome, so please
 do them if possible:
