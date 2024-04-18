@@ -875,7 +875,9 @@ class LitePCIeDMA(LiteXModule):
 
     Optional buffering, loopback, synchronization and monitoring.
     """
-    def __init__(self, phy, endpoint, table_depth=256, address_width=32, data_width=None, with_writer=True, with_reader=True,
+    def __init__(self, phy, endpoint, with_table=True, table_depth=256, address_width=32, data_width=None,
+        with_writer       = True,
+        with_reader       = True,
         # Loopback.
         with_loopback     = False,
         # Synchronizer.
@@ -899,6 +901,7 @@ class LitePCIeDMA(LiteXModule):
             self.writer = LitePCIeDMAWriter(
                 endpoint             = endpoint,
                 port                 = endpoint.crossbar.get_master_port(write_only=True),
+                with_table           = with_table,
                 table_depth          = table_depth,
                 address_width        = address_width,
                 data_width           = self.data_width,
@@ -909,6 +912,7 @@ class LitePCIeDMA(LiteXModule):
             self.reader = LitePCIeDMAReader(
                 endpoint             = endpoint,
                 port                 = endpoint.crossbar.get_master_port(read_only=True),
+                with_table           = with_table,
                 table_depth          = table_depth,
                 address_width        = address_width,
                 data_width           = self.data_width,
