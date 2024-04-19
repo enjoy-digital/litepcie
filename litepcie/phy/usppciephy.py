@@ -384,15 +384,15 @@ class USPPCIEPHY(LiteXModule):
                 # ---------------
                 "Component_Name"               : "pcie_usp",
                 "PL_LINK_CAP_MAX_LINK_WIDTH"   : f"X{self.nlanes}",
-                "PL_LINK_CAP_MAX_LINK_SPEED"   : "8.0_GT/s", # CHECKME.
+                "PL_LINK_CAP_MAX_LINK_SPEED"   : {"gen3": "8.0_GT/s", "gen4": "16.0_GT/s"}[self.speed],
                 "axisten_if_width"             : f"{self.pcie_data_width}_bit",
                 "AXISTEN_IF_RC_STRADDLE"       : False,
-                "PF0_DEVICE_ID"                : 9030 + self.nlanes,
+                "PF0_DEVICE_ID"                : {"gen3": 9030, "gen4": 9040}[self.speed] + self.nlanes,
                 "axisten_freq"                 : 250, # CHECKME.
                 "axisten_if_enable_client_tag" : True,
                 "aspm_support"                 : "No_ASPM",
                 "coreclk_freq"                 : 500, # CHECKME.
-                "plltype"                      : "QPLL1",
+                "plltype"                      : "QPLL0",
 
                 # BAR0 Config.
                 # ------------
