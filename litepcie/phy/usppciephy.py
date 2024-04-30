@@ -3,6 +3,7 @@
 #
 # Copyright (c) 2020-2023 Enjoy-Digital <enjoy-digital.fr>
 # Copyright (c) 2022 Sylvain Munaut <tnt@246tNt.com>
+# Copyright (c) 2024 John Simons <jammsimons@gmail.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 import os
@@ -415,10 +416,14 @@ class USPPCIEPHY(LiteXModule):
 
         verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx_usp")
         platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
-        platform.add_source(os.path.join(verilog_path, f"s_axis_rq_adapt_x{self.nlanes}.v"))
-        platform.add_source(os.path.join(verilog_path, f"m_axis_rc_adapt_x{self.nlanes}.v"))
-        platform.add_source(os.path.join(verilog_path, f"m_axis_cq_adapt_x{self.nlanes}.v"))
-        platform.add_source(os.path.join(verilog_path, f"s_axis_cc_adapt_x{self.nlanes}.v"))
+        
+        nvlanes = {"gen3": self.nlanes, "gen4": self.nlanes*2}[self.speed]
+                
+        platform.add_source(os.path.join(verilog_path, f"s_axis_rq_adapt_x{nvlanes}.v"))
+        platform.add_source(os.path.join(verilog_path, f"m_axis_rc_adapt_x{nvlanes}.v"))
+        platform.add_source(os.path.join(verilog_path, f"m_axis_cq_adapt_x{nvlanes}.v"))
+        platform.add_source(os.path.join(verilog_path, f"s_axis_cc_adapt_x{nvlanes}.v"))
+            
         platform.add_source(os.path.join(verilog_path, "pcie_usp_support.v"))
 
     # External Hard IP -----------------------------------------------------------------------------
