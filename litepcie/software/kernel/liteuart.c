@@ -3,7 +3,6 @@
  * LiteUART serial controller (LiteX) Driver
  *
  * Copyright (C) 2019-2020 Antmicro <www.antmicro.com>
- * Copyright (C) 2024 John Simons <jammsimons@gmail.com>
  */
 
 #include <linux/console.h>

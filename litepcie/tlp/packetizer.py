@@ -2,7 +2,6 @@
 # This file is part of LitePCIe.
 #
 # Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
-# Copyright (c) 2024 John Simons <jammsimons@gmail.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
