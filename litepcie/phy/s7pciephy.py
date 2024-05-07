@@ -72,6 +72,7 @@ class S7PCIEPHY(LiteXModule):
         self.max_request_size = Signal(16, reset_less=True)
         self.max_payload_size = Signal(16, reset_less=True)
 
+        self.config           = {}
         self.external_hard_ip = False
 
         # # #
@@ -444,7 +445,10 @@ class S7PCIEPHY(LiteXModule):
         self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
     # Hard IP sources ------------------------------------------------------------------------------
-    def add_sources(self, platform, phy_path, phy_filename=None):
+    def update_config(self, config):
+        self.config.update(config)
+
+    def add_sources(self, platform, phy_path, phy_filename=None, user_config=None):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
@@ -498,6 +502,9 @@ class S7PCIEPHY(LiteXModule):
                     "EXT_PCI_CFG_Space"      : True,
                     "EXT_PCI_CFG_Space_Addr" : "6B", # 0x1AC.
                 })
+
+            # User/Custom Config.
+            config.update(self.config)
 
             # Tcl generation.
             ip_tcl = []
