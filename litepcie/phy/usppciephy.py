@@ -85,6 +85,7 @@ class USPPCIEPHY(LiteXModule):
         self.max_request_size = Signal(16)
         self.max_payload_size = Signal(16)
 
+        self.config           = {}
         self.external_hard_ip = False
 
         # # #
@@ -375,6 +376,9 @@ class USPPCIEPHY(LiteXModule):
         self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
     # Hard IP sources ------------------------------------------------------------------------------
+    def update_config(self, config):
+        self.config.update(config)
+
     def add_sources(self, platform, phy_path=None, phy_filename=None):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
@@ -404,6 +408,11 @@ class USPPCIEPHY(LiteXModule):
                 # -----------------
                 "PF0_INTERRUPT_PIN"            : "NONE",
             }
+
+            # User/Custom Config.
+            config.update(self.config)
+
+            # Tcl generation.
             ip_tcl  = []
             ip_tcl.append(f"create_ip -vendor xilinx.com -name {self.ip_name} -module_name pcie_usp")
             ip_tcl.append("set obj [get_ips pcie_usp]")
