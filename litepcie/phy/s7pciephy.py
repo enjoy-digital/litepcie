@@ -444,6 +444,32 @@ class S7PCIEPHY(LiteXModule):
     def add_ltssm_tracer(self):
         self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)
 
+    # External QPLL (Sharing) ----------------------------------------------------------------------
+    def use_external_qpll(self, qpll_channel):
+        self.pcie_phy_params.update(
+            # QPLL DRP Interface (not used).
+            i_qpll_drp_crscode   = 0,
+            i_qpll_drp_fsm       = 0,
+            i_qpll_drp_done      = 1,
+            i_qpll_drp_reset     = 0,
+            o_qpll_drp_clk       = Open(),
+            o_qpll_drp_rst_n     = Open(),
+            o_qpll_drp_ovrd      = Open(),
+            o_qpll_drp_gen3      = Open(),
+            o_qpll_drp_start     = Open(),
+
+            # QPLL Clk Interface.
+            i_qpll_qplllock      = qpll_channel.lock,
+            i_qpll_qplloutclk    = qpll_channel.clk,
+            i_qpll_qplloutrefclk = qpll_channel.refclk,
+            o_qpll_qplld         = Open(),
+            o_qpll_qpllreset     = qpll_channel.reset,
+        )
+        self.config.update({
+            "mode_selection"   : "Advanced",
+            "en_ext_gt_common" : True,
+        })
+
     # Hard IP sources ------------------------------------------------------------------------------
     def update_config(self, config):
         self.config.update(config)
@@ -518,10 +544,11 @@ class S7PCIEPHY(LiteXModule):
             platform.toolchain.pre_synthesis_commands += ip_tcl
 
         # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (we only want to keep Timing constraints).
-        if platform.device.startswith("xc7a"):
-            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtp_common.gtpe2_common_i}}]")
-        else:
-            platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtx_common.gtxe2_common_i}}]")
+        if "en_ext_gt_common" not in self.config.keys():
+            if platform.device.startswith("xc7a"):
+                platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtp_common.gtpe2_common_i}}]")
+            else:
+                platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtx_common.gtxe2_common_i}}]")
         if self.nlanes != 8:
             platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*genblk*.bram36_tdp_bl.bram36_tdp_bl}}]")
 
