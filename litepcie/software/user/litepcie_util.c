@@ -305,7 +305,7 @@ static uint32_t get_data_mask(int data_width)
     mask = 0;
     for (i = 0; i < 32/get_next_pow2(data_width); i++) {
         mask <<= get_next_pow2(data_width);
-        mask |= (1 << data_width) - 1;
+        mask |= ((uint64_t) 1 << data_width) - 1;
     }
     return mask;
 }
