@@ -229,7 +229,6 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
                 # Update address.
                 NextValue(source.address, source.address + max_size),
                 # Update length/last.
-                length_next.eq(length - max_size),
                 NextValue(length, length_next),
                 If(length_next > max_size,
                     NextValue(source.length, max_size)
@@ -248,6 +247,7 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
                 )
             )
         )
+        self.comb += length_next.eq(length - max_size) # Outside of FSM for timings.
 
 # LitePCIeDMAReader --------------------------------------------------------------------------------
 
