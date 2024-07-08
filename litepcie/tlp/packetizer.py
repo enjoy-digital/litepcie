@@ -1000,6 +1000,16 @@ class LitePCIeTLPPacketizer(LiteXModule):
             slave   = tlp_raw
         )
 
+        # Buffer -----------------------------------------------------------------------------------
+
+        tlp_raw_d   = stream.Endpoint(tlp_raw_layout(data_width))
+        tlp_raw_buf = stream.Buffer(tlp_raw_layout(data_width))
+        self.submodules += tlp_raw_buf
+        self.comb += [
+            tlp_raw.connect(tlp_raw_buf.sink),
+            tlp_raw_buf.source.connect(tlp_raw_d),
+        ]
+
         # Insert header ----------------------------------------------------------------------------
         header_inserter_cls = {
             64 : LitePCIeTLPHeaderInserter64b,
@@ -1007,9 +1017,9 @@ class LitePCIeTLPPacketizer(LiteXModule):
            256 : LitePCIeTLPHeaderInserter256b,
            512 : LitePCIeTLPHeaderInserter512b,
         }
-        header_inserter = header_inserter_cls[data_width](fmt=tlp_raw.fmt)
+        header_inserter = header_inserter_cls[data_width](fmt=tlp_raw_d.fmt)
         self.submodules += header_inserter
-        self.comb += tlp_raw.connect(header_inserter.sink)
+        self.comb += tlp_raw_d.connect(header_inserter.sink)
         self.comb += header_inserter.source.connect(self.source, omit={"data", "be"})
         for name in ["dat", "be"]:
             self.comb += dword_endianness_swap(
