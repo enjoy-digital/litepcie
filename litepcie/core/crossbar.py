@@ -84,13 +84,13 @@ class LitePCIeCrossbar(LiteXModule):
                 if m.channel is not None:
                     self.comb += m_dispatcher.sel[i].eq(master.source.channel == m.channel)
         else:
-            # Connect to first master
+            # Connect to first master.
             self.comb += master.source.connect(masters[0].source)
 
     def do_finalize(self):
         # Slave path -------------------------------------------------------------------------------
-        # Dispatch request to user sources (according to address decoder)
-        # Arbitrate completion from user sinks
+        # - Dispatch request to user sources (according to address decoder).
+        # - Arbitrate completion from user sinks.
         if self.user_slaves != []:
             self.slave_dispatch_arbitrate(self.user_slaves, self.slave)
 
@@ -113,16 +113,15 @@ class LitePCIeCrossbar(LiteXModule):
         #  cmps<--- | PORTS |-----|Arb/Disp|-----------------+
         #           +-------+     +--------+
         #
-        # The controller blocks RD requests when the max number of pending
-        # requests have been sent (max_pending_requests parameters).
-        # To avoid blocking write_only ports when RD requests are blocked,
-        # a separate arbitration stage is used.
+        # The controller blocks RD requests when the max number of pending requests have been sent
+        # (max_pending_requests parameters).
+        # To avoid blocking write_only ports when RD requests are blocked, a separate arbitration
+        # stage is used.
 
         if self.user_masters != []:
             masters = []
 
-            # Arbitrate / dispatch read_only / read_write ports ------------------------------------
-            # and insert controller
+            # Arbitrate / dispatch read_only / read_write ports and insert controller --------------
             rd_rw_masters = self.filter_masters(False, True)
             rd_rw_masters += self.filter_masters(False, False)
             if rd_rw_masters != []:
