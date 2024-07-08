@@ -949,9 +949,9 @@ class LitePCIeDMA(LiteXModule):
         # Monitor ----------------------------------------------------------------------------------
         if with_monitor:
             if with_writer:
-                self.writer_monitor = stream.Monitor(self.sink,   count_width=16, with_overflows  = True)
+                self.writer_monitor = stream.Monitor(self.sink,   count_width=16, with_overflows=True)
             if with_reader:
-                self.reader_monitor = stream.Monitor(self.source, count_width=16, with_underflows = True)
+                self.reader_monitor = stream.Monitor(self.source, count_width=16, with_underflows=True)
 
         # Status -----------------------------------------------------------------------------------
         if with_status:
