@@ -371,7 +371,7 @@ class LitePCIeTLPDepacketizer(LiteXModule):
         )
 
         # Create fmt_type for destination decoding.
-        fmt_type = Cat(dispatch_sink.type, dispatch_sink.fmt)
+        self.fmt_type = fmt_type = Cat(dispatch_sink.type, dispatch_sink.fmt)
 
         # Set default Dispatcher select to DISCARD Sink.
         self.comb += self.dispatcher.sel.eq(dispatch_source_sel("DISCARD"))
