@@ -333,7 +333,7 @@ static int check_pn_data(const uint32_t *buf, int count, uint32_t *pseed, int da
     errors = 0;
     seed = *pseed;
     for (i = 0; i < count; i++) {
-        if (buf[i] != (seed_to_data(seed) & mask)) {
+        if ((buf[i] & mask) != (seed_to_data(seed) & mask)) {
             errors ++;
         }
         seed = add_mod_int(seed, 1, DMA_BUFFER_SIZE / sizeof(uint32_t));
