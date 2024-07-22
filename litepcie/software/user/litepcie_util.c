@@ -343,7 +343,7 @@ static int check_pn_data(const uint32_t *buf, int count, uint32_t *pseed, int da
 }
 #endif
 
-static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_width, int auto_rx_delay)
+static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_width, int auto_rx_delay, int duration)
 {
     static struct litepcie_dma_ctrl dma = {.use_reader = 1, .use_writer = 1};
     dma.loopback = external_loopback ? 0 : 1;
@@ -358,6 +358,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
     int64_t reader_sw_count_last = 0;
     int64_t last_time;
     uint32_t errors = 0;
+    int64_t end_time = (duration > 0) ? get_time_ms() + duration * 1000 : 0;
 
 #ifdef DMA_CHECK_DATA
     uint32_t seed_wr = 0;
@@ -381,8 +382,8 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
     /* Test loop. */
     last_time = get_time_ms();
     for (;;) {
-        /* Exit loop on CTRL+C. */
-        if (!keep_running)
+        /* Exit loop on CTRL+C or when the duration is over. */
+        if (!keep_running || (duration > 0 && get_time_ms() >= end_time))
             break;
 
         /* Update DMA status. */
@@ -446,18 +447,18 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
 #endif
 
         /* Statistics every 200ms. */
-        int64_t duration = get_time_ms() - last_time;
-        if (run & (duration > 200)) {
+        int64_t duration_ms = get_time_ms() - last_time;
+        if (run & (duration_ms > 200)) {
             /* Print banner every 10 lines. */
             if (i % 10 == 0)
                 printf("\e[1mDMA_SPEED(Gbps)\tTX_BUFFERS\tRX_BUFFERS\tDIFF\tERRORS\e[0m\n");
             i++;
             /* Print statistics. */
             printf("%14.2f\t%10" PRIu64 "\t%10" PRIu64 "\t%4" PRIu64 "\t%6u\n",
-                   (double)(dma.reader_sw_count - reader_sw_count_last) * DMA_BUFFER_SIZE * 8 * data_width / (get_next_pow2(data_width) * (double)duration * 1e6),
+                   (double)(dma.reader_sw_count - reader_sw_count_last) * DMA_BUFFER_SIZE * 8 * data_width / (get_next_pow2(data_width) * (double)duration_ms * 1e6),
                    dma.reader_sw_count,
                    dma.writer_sw_count,
-                   dma.reader_sw_count - dma.writer_sw_count,
+                   (uint64_t) abs(dma.reader_sw_count - dma.writer_sw_count),
                    errors);
             /* Update errors/time/count. */
             errors = 0;
@@ -465,7 +466,6 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
             reader_sw_count_last = dma.reader_sw_count;
         }
     }
-
 
     /* Cleanup DMA. */
 #ifdef DMA_CHECK_DATA
@@ -489,6 +489,7 @@ static void help(void)
            "-e                                Use external loopback (default = internal).\n"
            "-w data_width                     Width of data bus (default = 16).\n"
            "-a                                Automatic DMA RX-Delay calibration.\n"
+           "-t duration                       Duration of the test in seconds (default = 0, infinite).\n"
            "\n"
            "available commands:\n"
            "info                              Get Board information.\n"
@@ -516,6 +517,7 @@ int main(int argc, char **argv)
     static uint8_t litepcie_device_external_loopback;
     static int litepcie_data_width;
     static int litepcie_auto_rx_delay;
+    static int test_duration = 0; /* Default to 0 for infinite duration.*/
 
     litepcie_device_num = 0;
     litepcie_data_width = 16;
@@ -525,7 +527,7 @@ int main(int argc, char **argv)
 
     /* Parameters. */
     for (;;) {
-        c = getopt(argc, argv, "hc:w:zea");
+        c = getopt(argc, argv, "hc:w:zeat:");
         if (c == -1)
             break;
         switch(c) {
@@ -546,6 +548,9 @@ int main(int argc, char **argv)
             break;
         case 'a':
             litepcie_auto_rx_delay = 1;
+            break;
+        case 't':
+            test_duration = atoi(optarg);
             break;
         default:
             exit(1);
@@ -594,13 +599,15 @@ int main(int argc, char **argv)
     else if (!strcmp(cmd, "flash_reload"))
         flash_reload();
 #endif
+
     /* DMA cmds. */
     else if (!strcmp(cmd, "dma_test"))
         dma_test(
             litepcie_device_zero_copy,
             litepcie_device_external_loopback,
             litepcie_data_width,
-            litepcie_auto_rx_delay);
+            litepcie_auto_rx_delay,
+            test_duration);
 
     /* Show help otherwise. */
     else
