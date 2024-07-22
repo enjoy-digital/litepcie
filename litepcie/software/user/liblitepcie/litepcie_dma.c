@@ -158,9 +158,9 @@ void litepcie_dma_process(struct litepcie_dma_ctrl *dma)
 
     /* set / get dma */
     if (dma->use_writer)
-        litepcie_dma_writer(dma->fds.fd, 1, &dma->writer_hw_count, &dma->writer_sw_count);
+        litepcie_dma_writer(dma->fds.fd, dma->writer_enable, &dma->writer_hw_count, &dma->writer_sw_count);
     if (dma->use_reader)
-        litepcie_dma_reader(dma->fds.fd, 1, &dma->reader_hw_count, &dma->reader_sw_count);
+        litepcie_dma_reader(dma->fds.fd, dma->reader_enable, &dma->reader_hw_count, &dma->reader_sw_count);
 
     /* polling */
     ret = poll(&dma->fds, 1, 100);

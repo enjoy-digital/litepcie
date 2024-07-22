@@ -19,6 +19,8 @@ struct litepcie_dma_ctrl {
     uint8_t use_reader, use_writer, loopback, zero_copy;
     struct pollfd fds;
     char *buf_rd, *buf_wr;
+    uint8_t reader_enable;
+    uint8_t writer_enable;
     int64_t reader_hw_count, reader_sw_count;
     int64_t writer_hw_count, writer_sw_count;
     unsigned buffers_available_read, buffers_available_write;

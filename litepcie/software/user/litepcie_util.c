@@ -375,6 +375,9 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
     if (litepcie_dma_init(&dma, litepcie_device, zero_copy))
         exit(1);
 
+    dma.reader_enable = 1;
+    dma.writer_enable = 1;
+
     /* Test loop. */
     last_time = get_time_ms();
     for (;;) {
