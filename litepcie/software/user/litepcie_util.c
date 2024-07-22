@@ -52,26 +52,26 @@ static void info(void)
     }
 
 
-    printf("\e[1m[> FPGA/SoC Information:\e[0m\n");
-    printf("------------------------\n");
+    printf("\e[1m[> FPGA/SoC Info:\e[0m\n");
+    printf("-----------------\n");
 
     for (i = 0; i < 256; i ++)
         fpga_identifier[i] = litepcie_readl(fd, CSR_IDENTIFIER_MEM_BASE + 4 * i);
-    printf("FPGA Identifier:  %s.\n", fpga_identifier);
+    printf("SoC Identifier   : %s.\n", fpga_identifier);
 #ifdef CSR_DNA_BASE
-    printf("FPGA DNA:         0x%08x%08x\n",
+    printf("FPGA DNA         : 0x%08x%08x\n",
         litepcie_readl(fd, CSR_DNA_ID_ADDR + 4 * 0),
         litepcie_readl(fd, CSR_DNA_ID_ADDR + 4 * 1)
     );
 #endif
 #ifdef CSR_XADC_BASE
-    printf("FPGA Temperature: %0.1f °C\n",
+    printf("FPGA Temperature : %0.1f °C\n",
            (double)litepcie_readl(fd, CSR_XADC_TEMPERATURE_ADDR) * 503.975/4096 - 273.15);
-    printf("FPGA VCC-INT:     %0.2f V\n",
+    printf("FPGA VCC-INT     : %0.2f V\n",
            (double)litepcie_readl(fd, CSR_XADC_VCCINT_ADDR) / 4096 * 3);
-    printf("FPGA VCC-AUX:     %0.2f V\n",
+    printf("FPGA VCC-AUX     : %0.2f V\n",
            (double)litepcie_readl(fd, CSR_XADC_VCCAUX_ADDR) / 4096 * 3);
-    printf("FPGA VCC-BRAM:    %0.2f V\n",
+    printf("FPGA VCC-BRAM    : %0.2f V\n",
            (double)litepcie_readl(fd, CSR_XADC_VCCBRAM_ADDR) / 4096 * 3);
 #endif
     close(fd);
@@ -256,10 +256,10 @@ static void flash_reload(void)
     /* Reload FPGA through ICAP.*/
     litepcie_reload(fd);
 
-    /* Notice user to reboot the hardware.*/
-    printf("================================================================\n");
-    printf("= PLEASE REBOOT YOUR HARDWARE TO START WITH NEW FPGA GATEWARE  =\n");
-    printf("================================================================\n");
+    /* Notice user to reboot/rescan the hardware.*/
+    printf("===========================================================================\n");
+    printf("= PLEASE REBOOT YOUR HARDWARE OR RESCAN PCIe BUS TO USE NEW FPGA GATEWARE =\n");
+    printf("===========================================================================\n");
 
     /* Close LitePCIe device. */
     close(fd);
