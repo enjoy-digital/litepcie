@@ -34,6 +34,10 @@
 #include <linux/platform_device.h>
 #include <linux/version.h>
 
+#if defined(__arm__) || defined(__aarch64__)
+#include <linux/dma-direct.h>
+#endif
+
 #include "litepcie.h"
 #include "csr.h"
 #include "config.h"
@@ -265,12 +269,12 @@ static void litepcie_dma_reader_start(struct litepcie_device *s, int chan_num)
 	}
 	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_LOOP_PROG_N_OFFSET, 1);
 
-	/* clear counters */
+	/* Clear counters */
 	dmachan->reader_hw_count = 0;
 	dmachan->reader_hw_count_last = 0;
 	dmachan->reader_sw_count = 0;
 
-	/* start dma reader */
+	/* Start dma reader */
 	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 1);
 }
 
@@ -300,8 +304,8 @@ void litepcie_stop_dma(struct litepcie_device *s)
 
 	for (i = 0; i < s->channels; i++) {
 		dmachan = &s->chan[i].dma;
-		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 0);
-		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 0);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_ENABLE_OFFSET, 0b0);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_ENABLE_OFFSET, 0b0);
 	}
 }
 
@@ -560,10 +564,19 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
 		return -EINVAL;
 
 	for (i = 0; i < DMA_BUFFER_COUNT; i++) {
+#if defined(__arm__) || defined(__aarch64__)
+		void *va;
+		if (is_tx)
+			va = phys_to_virt(dma_to_phys(&s->dev->dev, chan->dma.reader_handle[i]));
+		else
+			va = phys_to_virt(dma_to_phys(&s->dev->dev, chan->dma.writer_handle[i]));
+		pfn = page_to_pfn(virt_to_page(va));
+#else
 		if (is_tx)
 			pfn = __pa(chan->dma.reader_addr[i]) >> PAGE_SHIFT;
 		else
 			pfn = __pa(chan->dma.writer_addr[i]) >> PAGE_SHIFT;
+#endif
 		/*
 		 * Note: the memory is cached, so the user must explicitly
 		 * flush the CPU caches on architectures which require it.
