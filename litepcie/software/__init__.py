@@ -1,5 +1,5 @@
 import os
-from distutils.dir_util import copy_tree
+from shutil import copytree
 
 from litex.build import tools
 
@@ -8,7 +8,7 @@ from litex.soc.integration.export import get_csr_header, get_soc_header, get_mem
 
 def copy_litepcie_software(dst):
     src = os.path.abspath(os.path.dirname(__file__))
-    copy_tree(src, dst)
+    copytree(src, dst, dirs_exist_ok=True)
 
 def generate_litepcie_software_headers(soc, dst):
     csr_header = get_csr_header(soc.csr_regions, soc.constants, with_access_functions=False)
