@@ -25,6 +25,7 @@ class S7PCIEPHY(LiteXModule):
     def __init__(self, platform, pads, data_width=64,  cd="sys",
         # PCIe hardblock parameters.
         pcie_data_width = None,
+        refclk_freq     = 100e6,
         bar0_size       = 0x100000,
         msi_type        = "msi",
         with_ptm        = False,
@@ -63,6 +64,7 @@ class S7PCIEPHY(LiteXModule):
         self.platform         = platform
         self.data_width       = data_width
         self.pcie_data_width  = pcie_data_width
+        self.refclk_freq      = refclk_freq
         self.msi_type         = msi_type
         self.with_ptm         = with_ptm
 
@@ -82,6 +84,7 @@ class S7PCIEPHY(LiteXModule):
         assert nlanes          in [1, 2, 4, 8]
         assert data_width      in [64, 128]
         assert pcie_data_width in [64, 128]
+        assert refclk_freq     in [100e6, 125e6, 250e6]
 
         # Clocking / Reset -------------------------------------------------------------------------
         self.pcie_refclk = pcie_refclk = Signal()
@@ -94,7 +97,7 @@ class S7PCIEPHY(LiteXModule):
             i_IB  = pads.clk_n,
             o_O   = pcie_refclk
         )
-        platform.add_period_constraint(pads.clk_p, 1e9/100e6)
+        platform.add_period_constraint(pads.clk_p, 1e9/refclk_freq)
         self.cd_pcie = ClockDomain()
 
         # TX (FPGA --> HOST) CDC / Data Width Conversion -------------------------------------------
@@ -175,7 +178,7 @@ class S7PCIEPHY(LiteXModule):
             i_I = pipe_txoutclk,
             o_O = pipe_txoutclk_bufg,
         )
-        mmcm.register_clkin(pipe_txoutclk_bufg, 100e6)
+        mmcm.register_clkin(pipe_txoutclk_bufg, refclk_freq)
         mmcm.create_clkout(self.cd_clk125,           125e6, margin=0)
         mmcm.create_clkout(self.cd_clk250,           250e6, margin=0)
         mmcm.create_clkout(self.cd_userclk1, userclk1_freq, margin=0)
@@ -490,7 +493,7 @@ class S7PCIEPHY(LiteXModule):
                 "Max_Payload_Size"   : "512_bytes" if self.nlanes != 8 else "256_bytes",
                 "Maximum_Link_Width" : f"X{self.nlanes}",
                 "PCIe_Blk_Locn"      : "X0Y0",
-                "Ref_Clk_Freq"       : "100_MHz",
+                "Ref_Clk_Freq"       : f"{int(self.refclk_freq/1e6)}_MHz",
                 "Trans_Buf_Pipeline" : None,
                 "Trgt_Link_Speed"    : "4'h2",
                 "User_Clk_Freq"      : 125 if self.nlanes != 8 else 250,
