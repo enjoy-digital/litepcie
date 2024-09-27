@@ -758,8 +758,10 @@ class LitePCIeDMAStatus(LiteXModule):
     the internal DMA status and the last 8 words for optional external status. The mapping as follows:
 
     0:    Sync Word (0x5aa55aa5).
-    1:    DMA Writer Loop Status.
-    2:    DMA Reader Loop Status.
+    1:    DMA Writer Loop Status 32-bit LSB.
+    2:    DMA Reader Loop Status 32-bit LSB.
+    3:    DMA Writer Loop Status 32-bit MSB (Optional).
+    4:    DMA Reader Loop Status 32-bit MSB (Optional).
     3-7:  Reserved
     8-15: External (Optional, from user logic/design).
 
@@ -769,7 +771,8 @@ class LitePCIeDMAStatus(LiteXModule):
     - DMA Reader IRQ.
     Allowing a Synchronous or Asynchrounous update with the DMAs.
     """
-    def __init__(self, endpoint, writer, reader, address_width=32):
+    def __init__(self, endpoint, writer, reader, address_width=32, status_width=32):
+        assert status_width in [32, 64]
         self.control = CSRStorage(fields=[
             CSRField("enable", offset=0, size=1, description="Status Enable"),
             CSRField("update", offset=4, size=2, description="Status Update Event", values=[
@@ -798,6 +801,38 @@ class LitePCIeDMAStatus(LiteXModule):
             status[1].eq(writer.table.loop_status.status),
             status[2].eq(reader.table.loop_status.status),
         ]
+        if status_width == 64:
+            class DMAStatusMSB(LiteXModule):
+                def __init__(self, enable, lsb):
+                    self.value = value = Signal(32)
+
+                    # # #
+
+                    lsb_new  = lsb[-16:]
+                    lsb_last = Signal(16)
+
+                    self.sync += [
+                        lsb_last.eq(lsb_new),
+                        If((lsb_new == 0x0000) & (lsb_last == 0xffff),
+                            value.eq(value + 1)
+                        ),
+                        If(enable == 0,
+                            value.eq(0)
+                        ),
+                    ]
+
+            self.writer_status_msb = DMAStatusMSB(
+                enable = writer.enable,
+                lsb    = writer.table.loop_status.status,
+            )
+            self.reader_status_msb = DMAStatusMSB(
+                enable = reader.enable,
+                lsb    = reader.table.loop_status.status,
+            )
+            self.comb += [
+                status[3].eq(self.writer_status_msb.value),
+                status[4].eq(self.reader_status_msb.value),
+            ]
 
         # 7-15: External.
         for i in range(8):
@@ -887,7 +922,7 @@ class LitePCIeDMA(LiteXModule):
         # Monitor.
         with_monitor      = False,
         # Status.
-        with_status       = False,
+        with_status       = False, status_width=32,
     ):
         # Parameters -------------------------------------------------------------------------------
         self.data_width = data_width or phy.data_width
@@ -962,6 +997,8 @@ class LitePCIeDMA(LiteXModule):
                 writer        = self.writer,
                 reader        = self.reader,
                 address_width = address_width,
+                status_width  = status_width,
+
             )
 
     def add_plugin_module(self, m):
