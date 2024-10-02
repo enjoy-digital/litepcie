@@ -90,17 +90,18 @@ struct litepcie_chan {
 	int minor;
 };
 
+/* Structure to hold the LitePCIe device information */
 struct litepcie_device {
-	struct pci_dev *dev;
-	struct platform_device *uart;
-	resource_size_t bar0_size;
-	phys_addr_t bar0_phys_addr;
-	uint8_t *bar0_addr; /* virtual address of BAR0 */
-	struct litepcie_chan chan[DMA_CHANNEL_COUNT];
-	spinlock_t lock;
-	int minor_base;
-	int irqs;
-	int channels;
+	struct pci_dev *dev;                          /* PCI device */
+	struct platform_device *uart;                 /* UART platform device */
+	resource_size_t bar0_size;                    /* Size of BAR0 */
+	phys_addr_t bar0_phys_addr;                   /* Physical address of BAR0 */
+	uint8_t *bar0_addr;                           /* Virtual address of BAR0 */
+	struct litepcie_chan chan[DMA_CHANNEL_COUNT]; /* DMA channel information */
+	spinlock_t lock;                              /* Spinlock for synchronization */
+	int minor_base;                               /* Base minor number for the device */
+	int irqs;                                     /* Number of IRQs */
+	int channels;                                 /* Number of DMA channels */
 };
 
 struct litepcie_chan_priv {
@@ -114,6 +115,7 @@ static int litepcie_minor_idx;
 static struct class *litepcie_class;
 static dev_t litepcie_dev_t;
 
+/* Function to read a 32-bit value from a LitePCIe device register */
 static inline uint32_t litepcie_readl(struct litepcie_device *s, uint32_t addr)
 {
 	uint32_t val;
@@ -125,6 +127,7 @@ static inline uint32_t litepcie_readl(struct litepcie_device *s, uint32_t addr)
 	return val;
 }
 
+/* Function to write a 32-bit value to a LitePCIe device register */
 static inline void litepcie_writel(struct litepcie_device *s, uint32_t addr, uint32_t val)
 {
 #ifdef DEBUG_CSR
@@ -133,21 +136,33 @@ static inline void litepcie_writel(struct litepcie_device *s, uint32_t addr, uin
 	return writel(val, s->bar0_addr + addr - CSR_BASE);
 }
 
+/* Function to enable a specific interrupt on a LitePCIe device */
 static void litepcie_enable_interrupt(struct litepcie_device *s, int irq_num)
 {
 	uint32_t v;
 
+	/* Read the current interrupt enable register value */
 	v = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
+
+	/* Set the bit corresponding to the given interrupt number */
 	v |= (1 << irq_num);
+
+	/* Write the updated value back to the register */
 	litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
 }
 
+/* Function to disable a specific interrupt on a LitePCIe device */
 static void litepcie_disable_interrupt(struct litepcie_device *s, int irq_num)
 {
 	uint32_t v;
 
+	/* Read the current interrupt enable register value */
 	v = litepcie_readl(s, CSR_PCIE_MSI_ENABLE_ADDR);
+
+	/* Clear the bit corresponding to the given interrupt number */
 	v &= ~(1 << irq_num);
+
+	/* Write the updated value back to the register */
 	litepcie_writel(s, CSR_PCIE_MSI_ENABLE_ADDR, v);
 }
 
@@ -986,6 +1001,7 @@ int compare_revisions(struct revision d1, struct revision d2)
 }
 /* from stackoverflow */
 
+/* Function to probe the LitePCIe PCI device */
 static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
 	int ret = 0;
@@ -1000,6 +1016,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
 	dev_info(&dev->dev, "\e[1m[Probing device]\e[0m\n");
 
+	/* Allocate memory for the LitePCIe device structure */
 	litepcie_dev = devm_kzalloc(&dev->dev, sizeof(struct litepcie_device), GFP_KERNEL);
 	if (!litepcie_dev) {
 		ret = -ENOMEM;
@@ -1010,6 +1027,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	litepcie_dev->dev = dev;
 	spin_lock_init(&litepcie_dev->lock);
 
+	/* Enable the PCI device */
 	ret = pcim_enable_device(dev);
 	if (ret != 0) {
 		dev_err(&dev->dev, "Cannot enable device\n");
@@ -1018,19 +1036,20 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
 	ret = -EIO;
 
-	/* Check device version */
+	/* Check the device version */
 	pci_read_config_byte(dev, PCI_REVISION_ID, &rev_id);
 	if (rev_id != 0) {
 		dev_err(&dev->dev, "Unsupported device version %d\n", rev_id);
 		goto fail1;
 	}
 
-	/* Check bar0 config */
+	/* Check the BAR0 configuration */
 	if (!(pci_resource_flags(dev, 0) & IORESOURCE_MEM)) {
 		dev_err(&dev->dev, "Invalid BAR0 configuration\n");
 		goto fail1;
 	}
 
+	/* Request and map BAR0 */
 	if (pcim_iomap_regions(dev, BIT(0), LITEPCIE_NAME) < 0) {
 		dev_err(&dev->dev, "Could not request regions\n");
 		goto fail1;
@@ -1048,9 +1067,9 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	msleep(10);
 #endif
 
-	/* Show identifier */
+	/* Read and display the FPGA identifier */
 	for (i = 0; i < 256; i++)
-		fpga_identifier[i] = litepcie_readl(litepcie_dev, CSR_IDENTIFIER_MEM_BASE + i*4);
+		fpga_identifier[i] = litepcie_readl(litepcie_dev, CSR_IDENTIFIER_MEM_BASE + i * 4);
 	dev_info(&dev->dev, "Version %s\n", fpga_identifier);
 
 	pci_set_master(dev);
@@ -1062,7 +1081,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	if (ret) {
 		dev_err(&dev->dev, "Failed to set DMA mask\n");
 		goto fail1;
-	};
+	}
 
 
 /* MSI-X */
@@ -1089,6 +1108,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	for (i = 0; i < irqs; i++) {
 		int irq = pci_irq_vector(dev, i);
 
+		/* Request IRQ */
 		ret = request_irq(irq, litepcie_interrupt, 0, LITEPCIE_NAME, litepcie_dev);
 		if (ret < 0) {
 			dev_err(&dev->dev, " Failed to allocate IRQ %d\n", dev->irq);
@@ -1218,6 +1238,7 @@ fail1:
 	return ret;
 }
 
+/* Function to remove the LitePCIe PCI device */
 static void litepcie_pci_remove(struct pci_dev *dev)
 {
 	int i, irq;
@@ -1233,7 +1254,7 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 	/* Disable all interrupts */
 	litepcie_writel(litepcie_dev, CSR_PCIE_MSI_ENABLE_ADDR, 0);
 
-	/* Free all interrupts */
+	/* Free all IRQs */
 	for (i = 0; i < litepcie_dev->irqs; i++) {
 		irq = pci_irq_vector(dev, i);
 		free_irq(irq, litepcie_dev);
@@ -1246,6 +1267,7 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 	pci_free_irq_vectors(dev);
 }
 
+/* PCI device ID table */
 static const struct pci_device_id litepcie_pci_ids[] = {
 	/* Xilinx */
 	{ PCI_DEVICE(PCIE_XILINX_VENDOR_ID, PCIE_XILINX_DEVICE_ID_S7_GEN2_X1), },
@@ -1290,6 +1312,7 @@ static const struct pci_device_id litepcie_pci_ids[] = {
 };
 MODULE_DEVICE_TABLE(pci, litepcie_pci_ids);
 
+/* PCI driver structure */
 static struct pci_driver litepcie_pci_driver = {
 	.name = LITEPCIE_NAME,
 	.id_table = litepcie_pci_ids,
@@ -1297,7 +1320,7 @@ static struct pci_driver litepcie_pci_driver = {
 	.remove = litepcie_pci_remove,
 };
 
-
+/* Module initialization function */
 static int __init litepcie_module_init(void)
 {
 	int ret;
@@ -1337,13 +1360,13 @@ fail_create_class:
 	return ret;
 }
 
+/* Module exit function */
 static void __exit litepcie_module_exit(void)
 {
 	pci_unregister_driver(&litepcie_pci_driver);
 	unregister_chrdev_region(litepcie_dev_t, LITEPCIE_MINOR_COUNT);
 	class_destroy(litepcie_class);
 }
-
 
 module_init(litepcie_module_init);
 module_exit(litepcie_module_exit);
