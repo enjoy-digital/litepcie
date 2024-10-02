@@ -4,7 +4,7 @@
  *
  * This file is part of LitePCIe.
  *
- * Copyright (C) 2018-2023 / EnjoyDigital  / florent@enjoy-digital.fr
+ * Copyright (C) 2018-2024 / EnjoyDigital  / florent@enjoy-digital.fr
  *
  */
 

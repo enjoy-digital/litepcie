@@ -4,7 +4,7 @@
  *
  * This file is part of LitePCIe.
  *
- * Copyright (C) 2018-2023 / EnjoyDigital  / florent@enjoy-digital.fr
+ * Copyright (C) 2018-2024 / EnjoyDigital  / florent@enjoy-digital.fr
  *
  */
 
@@ -312,7 +312,7 @@ static void litepcie_dma_reader_stop(struct litepcie_device *s, int chan_num)
 	dmachan->reader_sw_count = 0;
 }
 
-void litepcie_stop_dma(struct litepcie_device *s)
+static void litepcie_stop_dma(struct litepcie_device *s)
 {
 	struct litepcie_dma_chan *dmachan;
 	int i;
@@ -964,42 +964,6 @@ static void litepcie_free_chdev(struct litepcie_device *s)
 		cdev_del(&s->chan[i].cdev);
 	}
 }
-
-/* from stackoverflow */
-void sfind(char *string, char *format, ...)
-{
-	va_list arglist;
-
-	va_start(arglist, format);
-	vsscanf(string, format, arglist);
-	va_end(arglist);
-}
-
-struct revision {
-	int yy;
-	int mm;
-	int dd;
-};
-
-int compare_revisions(struct revision d1, struct revision d2)
-{
-	if (d1.yy < d2.yy)
-		return -1;
-	else if (d1.yy > d2.yy)
-		return 1;
-
-	if (d1.mm < d2.mm)
-		return -1;
-	else if (d1.mm > d2.mm)
-		return 1;
-	else if (d1.dd < d2.dd)
-		return -1;
-	else if (d1.dd > d2.dd)
-		return 1;
-
-	return 0;
-}
-/* from stackoverflow */
 
 /* Function to probe the LitePCIe PCI device */
 static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
