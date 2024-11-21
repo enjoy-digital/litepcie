@@ -54,6 +54,8 @@ static void litepcie_record(const char *device_name, const char *filename, uint3
     if (litepcie_dma_init(&dma, device_name, zero_copy))
         exit(1);
 
+    dma.writer_enable = 1;
+
     /* Test Loop. */
     last_time = get_time_ms();
     for (;;) {
@@ -132,6 +134,8 @@ static void litepcie_play(const char *device_name, const char *filename, uint32_
     /* Initialize DMA. */
     if (litepcie_dma_init(&dma, device_name, zero_copy))
         exit(1);
+
+    dma.reader_enable = 1;
 
     /* Test Loop. */
     last_time = get_time_ms();
