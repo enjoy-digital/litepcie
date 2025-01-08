@@ -35,7 +35,7 @@ class LitePCIeWishboneMaster(LiteXModule):
         address_decoder = lambda a: 1,
         base_address    = 0x00000000,
         qword_aligned   = False):
-        self.wishbone = wishbone.Interface()
+        self.bus = self.wishbone = wishbone.Interface()
 
         # # #
 
@@ -56,30 +56,30 @@ class LitePCIeWishboneMaster(LiteXModule):
             )
         )
         self.sync += [
-            self.wishbone.sel.eq(0xf),
-            self.wishbone.adr.eq(port.sink.adr[2:] + (base_address >> 2)),
+            self.bus.sel.eq(0xf),
+            self.bus.adr.eq(port.sink.adr[2:] + (base_address >> 2)),
             map_wishbone_dat(
                 address       = port.sink.adr,
                 data          = port.sink.dat,
-                wishbone_dat  = self.wishbone.dat_w,
+                wishbone_dat  = self.bus.dat_w,
                 qword_aligned = qword_aligned,
             ),
         ]
         fsm.act("DO-WRITE",
-            self.wishbone.stb.eq(1),
-            self.wishbone.we.eq(1),
-            self.wishbone.cyc.eq(1),
-            If(self.wishbone.ack,
+            self.bus.stb.eq(1),
+            self.bus.we.eq(1),
+            self.bus.cyc.eq(1),
+            If(self.bus.ack,
                 port.sink.ready.eq(1),
                 NextState("IDLE")
             )
         )
         update_dat = Signal()
         fsm.act("DO-READ",
-            self.wishbone.stb.eq(1),
-            self.wishbone.we.eq(0),
-            self.wishbone.cyc.eq(1),
-            If(self.wishbone.ack,
+            self.bus.stb.eq(1),
+            self.bus.we.eq(0),
+            self.bus.cyc.eq(1),
+            If(self.bus.ack,
                 update_dat.eq(1),
                 NextState("ISSUE-READ-COMPLETION")
             )
@@ -94,7 +94,7 @@ class LitePCIeWishboneMaster(LiteXModule):
             port.source.cmp_id.eq(endpoint.phy.id),
             port.source.req_id.eq(port.sink.req_id),
             If(update_dat,
-                port.source.dat.eq(self.wishbone.dat_r)
+                port.source.dat.eq(self.bus.dat_r)
             )
         ]
         fsm.act("ISSUE-READ-COMPLETION",
@@ -111,7 +111,7 @@ class LitePCIeWishboneBridge(LitePCIeWishboneMaster): pass # initial name
 
 class LitePCIeWishboneSlave(LiteXModule):
     def __init__(self, endpoint, qword_aligned=False):
-        self.wishbone = wishbone.Interface()
+        self.bus = self.wishbone = wishbone.Interface()
 
         # # #
 
@@ -124,8 +124,8 @@ class LitePCIeWishboneSlave(LiteXModule):
         # Wishbone Slave FSM.
         self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            If(self.wishbone.stb & self.wishbone.cyc,
-                If(self.wishbone.we,
+            If(self.bus.stb & self.bus.cyc,
+                If(self.bus.we,
                     NextState("ISSUE-WRITE")
                 ).Else(
                     NextState("ISSUE-READ")
@@ -136,19 +136,19 @@ class LitePCIeWishboneSlave(LiteXModule):
             port.source.channel.eq(port.channel),
             port.source.first.eq(1),
             port.source.last.eq(1),
-            port.source.adr[2:].eq(self.wishbone.adr),
+            port.source.adr[2:].eq(self.bus.adr),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(1),
-            port.source.dat.eq(self.wishbone.dat_w),
+            port.source.dat.eq(self.bus.dat_w),
         ]
         fsm.act("ISSUE-WRITE",
             timeout.wait.eq(1),
             port.source.valid.eq(1),
             port.source.we.eq(1),
             If(port.source.ready | timeout.done,
-                self.wishbone.ack.eq(1),
-                self.wishbone.err.eq(timeout.done),
+                self.bus.ack.eq(1),
+                self.bus.err.eq(timeout.done),
                 NextState("IDLE")
             )
         )
@@ -167,11 +167,11 @@ class LitePCIeWishboneSlave(LiteXModule):
                 map_wishbone_dat(
                     address       = port.sink.adr,
                     data          = port.sink.dat,
-                    wishbone_dat  = self.wishbone.dat_r,
+                    wishbone_dat  = self.bus.dat_r,
                     qword_aligned = qword_aligned,
                 ),
-                self.wishbone.ack.eq(1),
-                self.wishbone.err.eq(timeout.done),
+                self.bus.ack.eq(1),
+                self.bus.err.eq(timeout.done),
                 NextState("IDLE")
             )
         )
