@@ -127,10 +127,11 @@ class LitePCIeTLPController(LiteXModule):
         self.submodules += cmp_bufs
 
         # Connect Cmp Input to Buffers (based on incoming Tag).
-        self.comb += Case(cmp_reorder.tag,
-            {i: cmp_reorder.connect(cmp_bufs[i].sink) for i in range(len(cmp_bufs))})
+        cases = {i: [cmp_reorder.connect(cmp_bufs[i].sink)] for i in range(len(cmp_bufs))}
+        cases["default"] = [cmp_reorder.ready.eq(1)]
+        self.comb += Case(cmp_reorder.tag, cases)
 
-        # Connect Buffers to Cmp Output (based on Tag from req_ueue).
+        # Connect Buffers to Cmp Output (based on Tag from req_queue).
         self.comb += Case(req_queue.source.tag,
             {i: cmp_bufs[i].source.connect(cmp_source) for i in range(len(cmp_bufs))})
         self.comb += [
