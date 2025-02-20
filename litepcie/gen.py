@@ -24,6 +24,7 @@ Current version of the generator is limited to:
 - Xilinx 7-Series.
 - Xilinx Ultrascale.
 - Altera Cyclone V.
+- Gowin GW5AT.
 """
 
 import yaml
@@ -43,10 +44,11 @@ from litex.soc.integration.soc      import SoCRegion
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder  import *
 
-from litepcie.phy.c5pciephy  import C5PCIEPHY
-from litepcie.phy.s7pciephy  import S7PCIEPHY
-from litepcie.phy.uspciephy  import USPCIEPHY
-from litepcie.phy.usppciephy import USPPCIEPHY
+from litepcie.phy.c5pciephy   import C5PCIEPHY
+from litepcie.phy.gw5apciephy import GW5APCIEPHY
+from litepcie.phy.s7pciephy   import S7PCIEPHY
+from litepcie.phy.uspciephy   import USPCIEPHY
+from litepcie.phy.usppciephy  import USPPCIEPHY
 
 from litepcie.core import LitePCIeEndpoint, LitePCIeMSI, LitePCIeMSIMultiVector, LitePCIeMSIX
 
@@ -512,6 +514,10 @@ def main():
         from litex.build.altera import AlteraPlatform
         platform = AlteraPlatform("", io=[])
         core_config["phy"] = C5PCIEPHY
+    elif core_config["phy"] == "GW5APCIEPHY":
+        from litex.build.gowin import GowinPlatform
+        platform = GowinPlatform(core_config["phy_device"], io=[], toolchain="gowin")
+        core_config["phy"] = GW5APCIEPHY
     elif core_config["phy"] == "S7PCIEPHY":
         from litex.build.xilinx import XilinxPlatform
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
