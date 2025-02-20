@@ -147,23 +147,38 @@ static void liteuart_stop_tx(struct uart_port *port)
 
 static void liteuart_start_tx(struct uart_port *port)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
 	struct circ_buf *xmit = &port->state->xmit;
+#else
+	struct tty_port *tport = &port->state->port;
+#endif
 	unsigned char ch;
 
 	if (unlikely(port->x_char)) {
 		litex_write8(port->membase + OFF_RXTX, port->x_char);
 		port->icount.tx++;
 		port->x_char = 0;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
 	} else if (!uart_circ_empty(xmit)) {
 		while (xmit->head != xmit->tail) {
 			ch = xmit->buf[xmit->tail];
 			xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
 			port->icount.tx++;
+#else
+	} else if (!kfifo_is_empty(&tport->xmit_fifo)) {
+		while(1) {
+			if (!uart_fifo_get(port, &ch))
+				break;
+#endif
 			liteuart_putchar(port, ch);
 		}
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
 	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
+#else
+	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
+#endif
 		uart_write_wakeup(port);
 }
 
