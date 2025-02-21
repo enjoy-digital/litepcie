@@ -20,7 +20,7 @@ setup(
     download_url                  = "https://github.com/enjoy-digital/litepcie",
     test_suite                    = "test",
     license                       = "BSD",
-    python_requires               = "~=3.7",
+    python_requires               = "~=3.8",
     install_requires              = ["pyyaml", "litex"],
     extras_require                = {
         "develop": [
