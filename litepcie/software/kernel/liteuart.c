@@ -352,7 +352,11 @@ err_erase_id:
 	return ret;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
 static int liteuart_remove(struct platform_device *pdev)
+#else
+static void liteuart_remove(struct platform_device *pdev)
+#endif
 {
 	struct uart_port *port = platform_get_drvdata(pdev);
 	struct liteuart_port *uart = to_liteuart_port(port);
@@ -360,7 +364,9 @@ static int liteuart_remove(struct platform_device *pdev)
 	uart_remove_one_port(&liteuart_driver, port);
 	xa_erase(&liteuart_array, uart->id);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
 	return 0;
+#endif
 }
 
 static const struct of_device_id liteuart_of_match[] = {
