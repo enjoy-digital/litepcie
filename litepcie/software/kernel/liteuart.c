@@ -65,6 +65,8 @@ struct liteuart_port {
 	struct uart_port port;
 	struct timer_list timer;
 	u32 id;
+	struct workqueue_struct *workqueue;
+	struct work_struct work;
 };
 
 #define to_liteuart_port(port)	container_of(port, struct liteuart_port, port)
@@ -91,6 +93,27 @@ static struct uart_driver liteuart_driver = {
 #endif
 };
 
+static void liteuart_work(struct work_struct *w)
+{
+	struct liteuart_port *uart = container_of(w, struct liteuart_port, work);
+	struct uart_port *port = &uart->port;
+	unsigned char __iomem *membase = port->membase;
+	unsigned int flg = TTY_NORMAL;
+	int ch;
+	unsigned long status;
+
+	while ((status = !litex_read8(membase + OFF_RXEMPTY)) == 1) {
+		ch = litex_read8(membase + OFF_RXTX);
+		port->icount.rx++;
+
+		/* no overflow bits in status */
+		if (!(uart_handle_sysrq_char(port, ch)))
+			uart_insert_char(port, status, 0, ch, flg);
+
+		tty_flip_buffer_push(&port->state->port);
+	}
+}
+
 static void liteuart_timer(struct timer_list *t)
 {
 	struct liteuart_port *uart = from_timer(uart, t, timer);
@@ -99,8 +122,15 @@ static void liteuart_timer(struct timer_list *t)
 	unsigned int flg = TTY_NORMAL;
 	int ch;
 	unsigned long status;
+	uint16_t length = 0;
 
 	while ((status = !litex_read8(membase + OFF_RXEMPTY)) == 1) {
+		/* stop blocking this callback: delegate to a workqueue */
+		if (length > 256) {
+			queue_work(uart->workqueue, &uart->work);
+			break;
+		}
+		length++;
 		ch = litex_read8(membase + OFF_RXTX);
 		port->icount.rx++;
 
@@ -198,9 +228,18 @@ static void liteuart_break_ctl(struct uart_port *port, int break_state)
 static int liteuart_startup(struct uart_port *port)
 {
 	struct liteuart_port *uart = to_liteuart_port(port);
+	char b[12];
 
 	/* disable events */
 	litex_write8(port->membase + OFF_EV_ENABLE, 0);
+
+	sprintf(b, "liteuart%d", uart->id);
+	uart->workqueue = create_freezable_workqueue(b);
+	if (!uart->workqueue) {
+		printk("cannot create workqueue\n");
+		return -EBUSY;
+	}
+	INIT_WORK(&uart->work, liteuart_work);
 
 	/* prepare timer for polling */
 	timer_setup(&uart->timer, liteuart_timer, 0);
@@ -211,6 +250,11 @@ static int liteuart_startup(struct uart_port *port)
 
 static void liteuart_shutdown(struct uart_port *port)
 {
+	struct liteuart_port *uart = to_liteuart_port(port);
+	if (uart->workqueue) {
+		destroy_workqueue(uart->workqueue);
+		uart->workqueue = NULL;
+	}
 }
 
 static void liteuart_set_termios(struct uart_port *port, struct ktermios *new,
