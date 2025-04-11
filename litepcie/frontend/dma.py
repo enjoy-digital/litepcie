@@ -647,6 +647,9 @@ class LitePCIeDMABuffering(LiteXModule):
         self.next_source = stream.Endpoint(dma_layout(data_width))
         self.next_sink   = stream.Endpoint(dma_layout(data_width))
 
+        self.writer_enable = Signal()
+        self.reader_enable = Signal()
+
         # Reader FIFO Control/Status.
         if with_reader:
             assert bits_for(reader_depth) < 24
@@ -687,9 +690,10 @@ class LitePCIeDMABuffering(LiteXModule):
 
         # Reader FIFO.
         if with_reader:
-            reader_fifo = SyncFIFO(dma_layout(data_width), reader_depth//(data_width//8), buffered=True)
+            reader_fifo = ResetInserter()(SyncFIFO(dma_layout(data_width), reader_depth//(data_width//8), buffered=True))
             self.submodules += reader_fifo
             self.comb += [
+                reader_fifo.reset.eq(~self.reader_enable),
                 # Connect Reader Sink to Reader FIFO when Level < Configured Depth.
                 self.sink.connect(reader_fifo.sink, omit={"valid", "ready"}),
                 If((reader_fifo.level < self.reader_fifo_control.fields.depth[depth_shift:]) | (not dynamic_depth),
@@ -718,9 +722,10 @@ class LitePCIeDMABuffering(LiteXModule):
 
         # Writer FIFO.
         if with_writer:
-            writer_fifo = SyncFIFO(dma_layout(data_width), writer_depth//(data_width//8), buffered=True)
+            writer_fifo = ResetInserter()(SyncFIFO(dma_layout(data_width), writer_depth//(data_width//8), buffered=True))
             self.submodules += writer_fifo
             self.comb += [
+                writer_fifo.reset.eq(~self.writer_enable),
                 # Connect Writer Sink to Writer FIFO when Level < Configured Depth.
                 self.next_sink.connect(writer_fifo.sink, omit={"valid", "ready"}),
                 If((writer_fifo.level < self.writer_fifo_control.fields.depth[depth_shift:]) | (not dynamic_depth),
@@ -979,6 +984,11 @@ class LitePCIeDMA(LiteXModule):
                 reader_depth = reader_depth,
                 writer_depth = writer_depth,
             )
+            if with_writer:
+                self.comb += self.buffering.writer_enable.eq(self.writer.enable)
+            if with_reader:
+                self.comb += self.buffering.reader_enable.eq(self.reader.enable)
+
             self.add_plugin_module(self.buffering)
 
         # Monitor ----------------------------------------------------------------------------------
