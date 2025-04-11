@@ -110,8 +110,13 @@ class LitePCIeWishboneBridge(LitePCIeWishboneMaster): pass # initial name
 # LitePCIeWishboneSlave ----------------------------------------------------------------------------
 
 class LitePCIeWishboneSlave(LiteXModule):
-    def __init__(self, endpoint, qword_aligned=False):
-        self.bus = self.wishbone = wishbone.Interface()
+    def __init__(self, endpoint, address_width=32, data_width=32, addressing="word", qword_aligned=False):
+        assert data_width == 32
+        self.bus = self.wishbone = wishbone.Interface(
+            address_width = address_width,
+            data_width    = data_width,
+            addressing    = addressing,
+        )
 
         # # #
 
@@ -132,11 +137,12 @@ class LitePCIeWishboneSlave(LiteXModule):
                 )
             )
         )
+        ashift = {"byte" : 0, "word" : 2}[addressing]
         self.comb += [
             port.source.channel.eq(port.channel),
             port.source.first.eq(1),
             port.source.last.eq(1),
-            port.source.adr[2:].eq(self.bus.adr),
+            port.source.adr[ashift:].eq(self.bus.adr),
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(1),
