@@ -29,6 +29,9 @@ class S7PCIEPHY(LiteXModule):
         bar0_size       = 0x100000,
         msi_type        = "msi",
         with_ptm        = False,
+        # MMCM parameters.
+        mmcm_clk125_buf = "bufg",
+        mmcm_clk250_buf = "bufg",
     ):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
@@ -179,8 +182,8 @@ class S7PCIEPHY(LiteXModule):
             o_O = pipe_txoutclk_bufg,
         )
         mmcm.register_clkin(pipe_txoutclk_bufg, refclk_freq)
-        mmcm.create_clkout(self.cd_clk125,           125e6, margin=0)
-        mmcm.create_clkout(self.cd_clk250,           250e6, margin=0)
+        mmcm.create_clkout(self.cd_clk125,           125e6, margin=0, buf=mmcm_clk125_buf)
+        mmcm.create_clkout(self.cd_clk250,           250e6, margin=0, buf=mmcm_clk250_buf)
         mmcm.create_clkout(self.cd_userclk1, userclk1_freq, margin=0)
         mmcm.create_clkout(self.cd_userclk2, userclk2_freq, margin=0)
 
