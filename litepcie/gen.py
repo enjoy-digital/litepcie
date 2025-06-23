@@ -302,7 +302,6 @@ class LitePCIeCore(SoCMini):
 
         # DMA Channels configured identically.
         else:
-            print("here1")
             for n in range(core_config["dma_channels"]):
                 dma_params = DMAParams(
                     writer       = core_config.get("dma_writer",        True),
