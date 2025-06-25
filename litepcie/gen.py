@@ -278,19 +278,21 @@ class LitePCIeCore(SoCMini):
         dmas_params = []
 
         class DMAParams:
-            def __init__(self, writer, reader, buffering, loopback, synchronizer, monitor):
+            def __init__(self, writer, reader, buffering, loopback, synchronizer, monitor, data_width):
                 self.writer       = writer
                 self.reader       = reader
                 self.buffering    = buffering
                 self.loopback     = loopback
                 self.synchronizer = synchronizer
                 self.monitor      = monitor
+                self.data_width   = data_width
 
         # DMA Channels configured separately.
         if isinstance(core_config.get("dma_channels"), dict):
             print(core_config.get("dma_channels"))
             for name, params in core_config["dma_channels"].items():
                 dma_params = DMAParams(
+                    data_width   = params.get("dma_data_width",    core_config["phy_data_width"]),
                     writer       = params.get("dma_writer",        True),
                     reader       = params.get("dma_reader",        True),
                     buffering    = params.get("dma_buffering",     1024),
@@ -304,6 +306,7 @@ class LitePCIeCore(SoCMini):
         else:
             for n in range(core_config["dma_channels"]):
                 dma_params = DMAParams(
+                    data_width   = core_config.get("dma_data_width",    core_config["phy_data_width"]),
                     writer       = core_config.get("dma_writer",        True),
                     reader       = core_config.get("dma_reader",        True),
                     buffering    = core_config.get("dma_buffering",     1024),
@@ -323,6 +326,7 @@ class LitePCIeCore(SoCMini):
             # ----
             pcie_dma = LitePCIeDMA(self.pcie_phy, self.pcie_endpoint,
                 address_width     = ep_address_width,
+                data_width        = dma_params.data_width,
                 with_writer       = dma_params.writer,
                 with_reader       = dma_params.reader,
                 with_buffering    = dma_params.buffering != 0,
@@ -340,7 +344,7 @@ class LitePCIeCore(SoCMini):
             # DMA IOs.
             # --------
             platform.add_extension(get_axi_dma_ios(i,
-                data_width  = core_config["phy_data_width"],
+                data_width  = dma_params.data_width,
                 with_writer = dma_params.writer,
                 with_reader = dma_params.reader,
             ))
