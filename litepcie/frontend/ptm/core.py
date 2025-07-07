@@ -165,13 +165,13 @@ class PTMRequester(LiteXModule):
         # # #
 
         # Time Clock Domain Crossing.
-        self.cd_time = ClockDomain()
+        self.cd_time = ClockDomain(name="ptm_requester_time")
         self.comb += [
             self.cd_time.clk.eq(self.time_clk),
             self.cd_time.rst.eq(self.time_rst),
         ]
         time_cdc = stream.ClockDomainCrossing([("time", 64)],
-            cd_from  = "time",
+            cd_from  = "ptm_requester_time",
             cd_to    = "sys",
         )
         self.submodules += time_cdc
