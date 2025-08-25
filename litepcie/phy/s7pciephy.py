@@ -206,6 +206,8 @@ class S7PCIEPHY(LiteXModule):
                 o_O   = ClockSignal("pclk"),
             )
         ]
+        pclk_sel.attr.add("keep")
+        platform.add_platform_command("set_false_path -through [get_nets {{*pclk_sel}}]")
 
         # Hard IP ----------------------------------------------------------------------------------
         m_axis_rx_tlast = Signal()
