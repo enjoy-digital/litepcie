@@ -802,9 +802,9 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 tlp_req.address.eq(req_sink.adr),
             ]
 
-            # On Ultrascale(+) / 256-bit, force to 64-bit (for 4DWs format).
+            # On Ultrascale(+) / 256/512-bit, force to 64-bit (for 4DWs format).
             try:
-                force_64b = (LiteXContext.platform.device[:4] in ["xcku", "xcvu", "xczu", 'xcau']) and (data_width in [256])
+                force_64b = (LiteXContext.platform.device[:4] in ["xcku", "xcvu", "xczu", 'xcau']) and (data_width in [256, 512])
             except:
                 force_64b = False
 
