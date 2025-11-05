@@ -93,7 +93,7 @@ class S7PCIEPHY(LiteXModule):
         self.pcie_refclk = pcie_refclk = Signal()
         self.pcie_rst_n  = pcie_rst_n  = Signal(reset=1)
         if hasattr(pads, "rst_n"):
-            self.comb += pcie_rst_n.eq(pads.rst_n)
+            self.comb += If(pads.rst_n == 0, pcie_rst_n.eq(0))
         self.specials += Instance("IBUFDS_GTE2",
             i_CEB = 0,
             i_I   = pads.clk_p,
