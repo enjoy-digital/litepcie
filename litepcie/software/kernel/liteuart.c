@@ -116,7 +116,11 @@ static void liteuart_work(struct work_struct *w)
 
 static void liteuart_timer(struct timer_list *t)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 16, 0)
 	struct liteuart_port *uart = from_timer(uart, t, timer);
+#else
+	struct liteuart_port *uart = timer_container_of(uart, t, timer);
+#endif
 	struct uart_port *port = &uart->port;
 	unsigned char __iomem *membase = port->membase;
 	unsigned int flg = TTY_NORMAL;
@@ -217,7 +221,11 @@ static void liteuart_stop_rx(struct uart_port *port)
 	struct liteuart_port *uart = to_liteuart_port(port);
 
 	/* just delete timer */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 16, 0)
 	del_timer(&uart->timer);
+#else
+	timer_shutdown(&uart->timer);
+#endif
 }
 
 static void liteuart_break_ctl(struct uart_port *port, int break_state)
