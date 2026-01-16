@@ -114,6 +114,10 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
         # Header beat counter.
         hb_cnt = Signal(max=max(header_beats, 2))
 
+        # When header ends on a beat boundary (spill_dws == 0), the first payload beat cannot be emitted
+        # during HEADER and must be replayed from dat_r/be_r in DATA.
+        replay_first = Signal(reset=0)
+
         # Helpers ----------------------------------------------------------------------------------
 
         def _dw(sig, i):
@@ -212,6 +216,9 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
 
                 If(source.valid & source.ready,
                     NextValue(hb_cnt, 0),
+                    If(~source.last & (spill_dws == 0),
+                        NextValue(replay_first, 1)
+                    ),
                     If(~source.last,
                         NextState("DATA")
                     )
@@ -224,7 +231,7 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
                     sink.ready.eq(0),
                 ),
 
-                source.valid.eq(sink.valid),
+                source.valid.eq(sink.valid | (hb_cnt == 1)),
                 source.first.eq((hb_cnt == 0) & sink.first),
 
                 If(hb_cnt == 0,
@@ -250,6 +257,9 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
                         NextValue(hb_cnt, 1)
                     ).Else(
                         NextValue(hb_cnt, 0),
+                        If(~source.last & (spill_dws == 0),
+                            NextValue(replay_first, 1)
+                        ),
                         If(~source.last,
                             NextState("DATA")
                         )
@@ -261,16 +271,33 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
         # DATA: either passthrough (spill_dws==0) or shift/flush (spill_dws!=0).
         if spill_dws == 0:
             fsm.act("DATA",
-                source.valid.eq(sink.valid),
-                source.first.eq(0),
-                source.last.eq(sink.last),
-                source.dat.eq(sink.dat),
-                source.be.eq(sink.be),
+                If(replay_first,
+                    source.valid.eq(1),
+                    source.first.eq(0),
+                    source.last.eq(last_r),
+                    source.dat.eq(dat_r),
+                    source.be.eq(be_r),
 
-                sink.ready.eq(source.ready),
+                    sink.ready.eq(0),
 
-                If(source.valid & source.ready & source.last,
-                    NextState("HEADER")
+                    If(source.ready,
+                        NextValue(replay_first, 0),
+                        If(last_r,
+                            NextState("HEADER")
+                        )
+                    )
+                ).Else(
+                    source.valid.eq(sink.valid),
+                    source.first.eq(0),
+                    source.last.eq(sink.last),
+                    source.dat.eq(sink.dat),
+                    source.be.eq(sink.be),
+
+                    sink.ready.eq(source.ready),
+
+                    If(source.valid & source.ready & source.last,
+                        NextState("HEADER")
+                    )
                 )
             )
         else:
