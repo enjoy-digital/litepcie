@@ -168,33 +168,6 @@ def _model_extracter_output_beats(data_width, phy_beats):
                 "be"   : out_be,
             })
 
-    # 128b BE quirk: the RTL currently has:
-    #   source.be[0] = prev.be[3]
-    #   source.be[1] = sink.be[2]   (due to the duplicate assignment to [4*1:4*2])
-    #   source.be[2] = sink.be[1]
-    #   source.be[3] = 0/un-driven in sim
-    #
-    # So for 128b, override the generic "out_be = prev[3:] + curr[:3]" model.
-    if data_width == 128:
-        if len(phy_beats) == 1:
-            # Flush: curr is effectively the held prev in the testbench.
-            prev = phy_beats[0]
-            curr = phy_beats[0]
-            b0 = prev["be"][3]
-            b1 = curr["be"][2]
-            b2 = curr["be"][1]
-            b3 = 0
-            out_beats[0]["be"] = [b0, b1, b2, b3]
-        else:
-            for i in range(1, len(phy_beats)):
-                prev = phy_beats[i-1]
-                curr = phy_beats[i]
-                b0 = prev["be"][3]
-                b1 = curr["be"][2]
-                b2 = curr["be"][1]
-                b3 = 0
-                out_beats[i-1]["be"] = [b0, b1, b2, b3]
-
     # Sanity.
     for b in out_beats:
         assert len(b["dws"]) == n
