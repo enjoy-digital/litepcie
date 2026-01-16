@@ -93,16 +93,26 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
         be_r   = Signal(data_width//8, reset_less=True)
         last_r = Signal(               reset_less=True)
 
+        # Hold first payload beat (needed for 64b 2-beat header, for the spill in beat1).
+        first_dat_r  = Signal(data_width,    reset_less=True)
+        first_be_r   = Signal(data_width//8, reset_less=True)
+        first_last_r = Signal(               reset_less=True)
+
         self.sync += [
             If(sink.valid & sink.ready,
                 dat_r.eq(sink.dat),
                 be_r.eq(sink.be),
                 last_r.eq(sink.last),
+                If(sink.first,
+                    first_dat_r.eq(sink.dat),
+                    first_be_r.eq(sink.be),
+                    first_last_r.eq(sink.last),
+                )
             )
         ]
 
-        # Header beat counter (only meaningful when header_beats > 1).
-        hb_cnt = Signal(max=header_beats)
+        # Header beat counter.
+        hb_cnt = Signal(max=max(header_beats, 2))
 
         # Helpers ----------------------------------------------------------------------------------
 
@@ -115,34 +125,30 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
         def _header_dw(i):
             return sink.header[32*i:32*(i+1)]
 
+        def _payload0_dw(i):
+            return _dw(first_dat_r, i)
+
+        def _payload0_be(i):
+            return _be(first_be_r, i)
+
         def _payload_dw(i):
             return _dw(sink.dat, i)
 
         def _payload_be(i):
             return _be(sink.be, i)
 
-        def _emit_header_lane(lane, global_dw_index):
-            """Emit either a header DW (BE=0xF) or a payload DW (BE from sink) in a given output lane."""
-            return If(global_dw_index < header_dws,
-                _dw(source.dat, lane).eq(_header_dw(global_dw_index)),
-                _be(source.be,  lane).eq(0xF),
-            ).Else(
-                _dw(source.dat, lane).eq(_payload_dw(global_dw_index - header_dws)),
-                _be(source.be,  lane).eq(_payload_be(global_dw_index - header_dws)),
-            )
-
-        def _header_last_condition():
+        def _header_last_condition(be_sig, last_sig):
             """
             Detect "header-only" termination in last header beat.
             Matches legacy logic:
-              - spill_dws == 0: sink.be == 0 means no payload.
-              - spill_dws != 0: sink.be[spill_dws:] == 0 means nothing beyond spilled payload DWs.
+              - spill_dws == 0: be == 0 means no payload.
+              - spill_dws != 0: be[spill_dws:] == 0 means nothing beyond spilled payload DWs.
             """
             if spill_dws == 0:
-                be_empty = (sink.be == 0)
+                be_empty = (be_sig == 0)
             else:
-                be_empty = (sink.be[4*spill_dws:] == 0)
-            return sink.last & be_empty
+                be_empty = (be_sig[4*spill_dws:] == 0)
+            return last_sig & be_empty
 
         def _emit_shifted_data():
             """
@@ -180,37 +186,73 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
 
         self.fsm = fsm = FSM(reset_state="HEADER")
 
-        # HEADER: emit header beats, holding the first sink beat stable (needed for 64-bit).
+        # HEADER: emit header beats.
         fsm.act("HEADER",
-            sink.ready.eq(1),
+            # Default.
+            sink.ready.eq(0),
 
-            If(sink.valid & sink.first,
-                # Hold this sink beat stable while we output the header beats.
-                sink.ready.eq(0),
+            If(header_beats == 1,
+                # 1-beat header: consume the beat normally.
+                sink.ready.eq(source.ready),
+                source.valid.eq(sink.valid),
+                source.first.eq(sink.first),
 
-                source.valid.eq(1),
-                source.first.eq((hb_cnt == 0) & sink.first),
-
-                # Emit current header beat lanes.
                 *[
-                    _emit_header_lane(lane, hb_cnt*dws_per_beat + lane)
+                    If(lane < header_dws,
+                        _dw(source.dat, lane).eq(_header_dw(lane)),
+                        _be(source.be,  lane).eq(0xF),
+                    ).Else(
+                        _dw(source.dat, lane).eq(_payload_dw(lane - header_dws)),
+                        _be(source.be,  lane).eq(_payload_be(lane - header_dws)),
+                    )
                     for lane in range(dws_per_beat)
                 ],
 
-                # last can only happen on the last header beat.
-                source.last.eq((hb_cnt == (header_beats - 1)) & _header_last_condition()),
+                source.last.eq(_header_last_condition(sink.be, sink.last)),
 
                 If(source.valid & source.ready,
-                    If(hb_cnt == (header_beats - 1),
-                        # Header emission done: now consume the held sink beat.
-                        sink.ready.eq(1),
-                        NextValue(hb_cnt, 0),
+                    NextValue(hb_cnt, 0),
+                    If(~source.last,
+                        NextState("DATA")
+                    )
+                )
+            ).Else(
+                # 2-beat header (64b): accept the first beat on hb_cnt==0, then stall for hb_cnt==1.
+                If(hb_cnt == 0,
+                    sink.ready.eq(source.ready),
+                ).Else(
+                    sink.ready.eq(0),
+                ),
 
+                source.valid.eq(sink.valid),
+                source.first.eq((hb_cnt == 0) & sink.first),
+
+                If(hb_cnt == 0,
+                    # Header beat 0.
+                    _dw(source.dat, 0).eq(_header_dw(0)), _be(source.be, 0).eq(0xF),
+                    _dw(source.dat, 1).eq(_header_dw(1)), _be(source.be, 1).eq(0xF),
+                ).Else(
+                    # Header beat 1 (+ possible spill for 3DW).
+                    _dw(source.dat, 0).eq(_header_dw(2)), _be(source.be, 0).eq(0xF),
+                    If(header_dws == 3,
+                        _dw(source.dat, 1).eq(_payload0_dw(0)),
+                        _be(source.be,  1).eq(_payload0_be(0)),
+                    ).Else(
+                        _dw(source.dat, 1).eq(_header_dw(3)),
+                        _be(source.be,  1).eq(0xF),
+                    )
+                ),
+
+                source.last.eq((hb_cnt == 1) & _header_last_condition(first_be_r, first_last_r)),
+
+                If(source.valid & source.ready,
+                    If(hb_cnt == 0,
+                        NextValue(hb_cnt, 1)
+                    ).Else(
+                        NextValue(hb_cnt, 0),
                         If(~source.last,
                             NextState("DATA")
                         )
-                    ).Else(
-                        NextValue(hb_cnt, hb_cnt + 1)
                     )
                 )
             )
@@ -315,6 +357,7 @@ class LitePCIeTLPHeaderInserter512b(LitePCIeTLPHeaderInserter3DWs4DWs):
             header_inserter_4dws_cls = lambda: LitePCIeTLPHeaderInserter4DWs(512),
             fmt                      = fmt,
         )
+
 
 # LitePCIeTLPPacketizer ----------------------------------------------------------------------------
 
