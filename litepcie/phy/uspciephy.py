@@ -88,7 +88,7 @@ class USPCIEPHY(LiteXModule):
         self.speed  = speed
         self.nlanes = nlanes = len(pads.tx_p)
 
-        assert speed           in ["gen3"]
+        assert speed           in ["gen2", "gen3"]
         assert nlanes          in [1, 2, 4, 8]
         assert data_width      in [64, 128, 256]
         assert pcie_data_width in [64, 128, 256]
@@ -378,20 +378,26 @@ class USPCIEPHY(LiteXModule):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
+            # Precompute speed-dependent IP config params.
+            link_speed     = {"gen2": "5.0_GT/s", "gen3": "8.0_GT/s"}[self.speed]
+            device_id_base = {"gen2": 8020,       "gen3": 8030      }[self.speed]
+            axisten_freq   = {"gen2": 125,        "gen3": 250       }[self.speed]
+            coreclk_freq   = {"gen2": 250,        "gen3": 500       }[self.speed]
+
             # FIXME: Add missing parameters?
             config = {
                 # Generic Config.
                 # ---------------
                 "Component_Name"               : "pcie_us",
                 "PL_LINK_CAP_MAX_LINK_WIDTH"   : f"X{self.nlanes}",
-                "PL_LINK_CAP_MAX_LINK_SPEED"   : "8.0_GT/s", # CHECKME.
+                "PL_LINK_CAP_MAX_LINK_SPEED"   : link_speed,
                 "axisten_if_width"             : f"{self.pcie_data_width}_bit",
                 "AXISTEN_IF_RC_STRADDLE"       : False,
-                "PF0_DEVICE_ID"                : 8030 + self.nlanes,
-                "axisten_freq"                 : 250, # CHECKME.
+                "PF0_DEVICE_ID"                : device_id_base + self.nlanes,
+                "axisten_freq"                 : axisten_freq,
                 "axisten_if_enable_client_tag" : True,
                 "aspm_support"                 : "No_ASPM",
-                "coreclk_freq"                 : 500, # CHECKME.
+                "coreclk_freq"                 : coreclk_freq,
                 "plltype"                      : "QPLL1",
 
                 # BAR0 Config.
