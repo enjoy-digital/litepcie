@@ -33,6 +33,8 @@ class LitePCIeTLPHeaderInserter3DWs4DWs(LiteXModule):
             fmt_dict["mem_rd64"] : header_sel.eq(_4DWS_SEL),
             fmt_dict["mem_wr32"] : header_sel.eq(_3DWS_SEL),
             fmt_dict["mem_wr64"] : header_sel.eq(_4DWS_SEL),
+            fmt_dict[ "cfg_rd0"] : header_sel.eq(_3DWS_SEL),
+            fmt_dict[ "cfg_wr0"] : header_sel.eq(_3DWS_SEL),
             fmt_dict[    "cpld"] : header_sel.eq(_3DWS_SEL),
             fmt_dict[     "cpl"] : header_sel.eq(_3DWS_SEL),
             fmt_dict[ "ptm_req"] : header_sel.eq(_4DWS_SEL),
@@ -770,12 +772,14 @@ class LitePCIeTLPPacketizer(LiteXModule):
         if address_width == 64:
             assert data_width in [64, 128, 256, 512]
         for c in capabilities:
-            assert c in ["REQUEST", "COMPLETION", "PTM"]
+            assert c in ["REQUEST", "COMPLETION", "CONFIGURATION", "PTM"]
         # Sink Endpoints.
         if "REQUEST" in capabilities:
             self.req_sink = req_sink = stream.Endpoint(request_layout(data_width, address_width))
         if "COMPLETION" in capabilities:
             self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
+        if "CONFIGURATION" in capabilities:
+            self.cfg_sink = cfg_sink = stream.Endpoint(configuration_layout(data_width))
         if "PTM" in capabilities:
             self.ptm_sink = ptm_sink = stream.Endpoint(ptm_layout(data_width))
         # Source Endpoints.
@@ -985,6 +989,73 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 ndwords    = 4
             )
 
+
+        # Format and Encode TLP Configuration ------------------------------------------------------
+
+        if "CONFIGURATION" in capabilities:
+            self.tlp_cfg = tlp_cfg = stream.Endpoint(tlp_configuration_layout(data_width))
+            self.comb += [
+                tlp_cfg.valid.eq(cfg_sink.valid),
+                cfg_sink.ready.eq(tlp_cfg.ready),
+                tlp_cfg.first.eq(cfg_sink.first),
+                tlp_cfg.last.eq(cfg_sink.last),
+
+                # Common fields.
+                tlp_cfg.tc.eq(0),
+                tlp_cfg.td.eq(0),
+                tlp_cfg.ep.eq(0),
+                tlp_cfg.attr.eq(0),
+                tlp_cfg.length.eq(1),   # CFG accesses are 1 DW.
+
+                # Routing/identity.
+                tlp_cfg.requester_id.eq(cfg_sink.req_id),
+                tlp_cfg.tag.eq(cfg_sink.tag),
+
+                # Byte enables.
+                tlp_cfg.first_be.eq(0xf),
+                tlp_cfg.last_be.eq(0x0),
+
+                # Target BDF + register.
+                tlp_cfg.bus_number.eq(cfg_sink.bus_number),
+                tlp_cfg.device_no.eq(cfg_sink.device_no),
+                tlp_cfg.func.eq(cfg_sink.func),
+                tlp_cfg.ext_reg.eq(cfg_sink.ext_reg),
+                tlp_cfg.register_no.eq(cfg_sink.register_no),
+
+                # Data + BE policy.
+                tlp_cfg.dat.eq(cfg_sink.dat),
+                If(cfg_sink.we,
+                    tlp_cfg.be.eq(0xf)
+                ).Else(
+                    tlp_cfg.be.eq(0x00)
+                ),
+
+                # CFG0.
+                If(cfg_sink.we,
+                    tlp_cfg.type.eq(type_dict["cfg_wr0"]),
+                    tlp_cfg.fmt.eq( fmt_dict["cfg_wr0"]),
+                ).Else(
+                    tlp_cfg.type.eq(type_dict["cfg_rd0"]),
+                    tlp_cfg.fmt.eq( fmt_dict["cfg_rd0"]),
+                ),
+            ]
+
+            tlp_raw_conf        = stream.Endpoint(tlp_raw_layout(data_width))
+            tlp_raw_conf_header = Signal(len(tlp_raw_conf.header))
+            self.comb += [
+                tlp_cfg.connect(tlp_raw_conf, omit={*tlp_configuration_header_fields.keys()}),
+                tlp_raw_conf.fmt.eq(tlp_cfg.fmt),
+                tlp_configuration_header.encode(tlp_cfg, tlp_raw_conf_header),
+            ]
+            self.comb += dword_endianness_swap(
+                src        = tlp_raw_conf_header,
+                dst        = tlp_raw_conf.header,
+                data_width = data_width,
+                endianness = endianness,
+                mode       = "dat",
+                ndwords    = 4
+            )
+
         # Arbitrate --------------------------------------------------------------------------------
 
         tlp_raws = []
@@ -992,6 +1063,8 @@ class LitePCIeTLPPacketizer(LiteXModule):
             tlp_raws.append(tlp_raw_req)
         if "COMPLETION" in capabilities:
             tlp_raws.append(tlp_raw_cmp)
+        if "CONFIGURATION" in capabilities:
+            tlp_raws.append(tlp_raw_conf)
         if "PTM" in capabilities:
             tlp_raws.append(tlp_raw_ptm)
         tlp_raw = stream.Endpoint(tlp_raw_layout(data_width))

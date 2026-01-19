@@ -82,15 +82,19 @@ tlp_common_header = Header(
 
 # Length of the TLP configuration header (in bytes).
 tlp_configuration_header_length = 16
-# Define TLP request header fields.
+# Define TLP configuration header fields.
 tlp_configuration_header_fields = {
     "fmt"          : HeaderField(byte=0*4, offset=29, width= 2), # Format.
     "type"         : HeaderField(byte=0*4, offset=24, width= 5), # Type.
+    "tc"           : HeaderField(byte=0*4, offset=20, width= 3), # Traffic Class.
     "td"           : HeaderField(byte=0*4, offset=15, width= 1), # TLP Digest.
     "ep"           : HeaderField(byte=0*4, offset=14, width= 1), # Poisoned TLP.
+    "attr"         : HeaderField(byte=0*4, offset=12, width= 2), # Attributes.
+    "length"       : HeaderField(byte=0*4, offset= 0, width=10), # Length.
 
     "requester_id" : HeaderField(byte=1*4, offset=16, width=16), # Requester ID.
     "tag"          : HeaderField(byte=1*4, offset= 8, width= 8), # Tag.
+    "last_be"      : HeaderField(byte=1*4, offset= 4, width= 4), # Last Byte Enable.
     "first_be"     : HeaderField(byte=1*4, offset= 0, width= 4), # First Byte Enable.
 
     "bus_number"   : HeaderField(byte=2*4, offset=24, width= 8), # Bus number.
@@ -230,12 +234,6 @@ def dword_endianness_swap(src, dst, data_width, endianness, mode="dat", ndwords=
 def tlp_raw_layout(data_width):
     """
     Generate a raw TLP endpoint description.
-
-    Parameters:
-        data_width (int): Width of the data (in bits).
-
-    Returns:
-        EndpointDescription: Raw TLP endpoint description.
     """
     layout = [
         ("fmt",    2),            # Format field.
@@ -249,12 +247,6 @@ def tlp_raw_layout(data_width):
 def tlp_common_layout(data_width):
     """
     Generate a common TLP endpoint description.
-
-    Parameters:
-        data_width (int): Width of the data (in bits).
-
-    Returns:
-        EndpointDescription: Common TLP endpoint description.
     """
     layout = tlp_common_header.get_layout() + [
         ("dat", data_width),   # Data field.
@@ -266,12 +258,6 @@ def tlp_common_layout(data_width):
 def tlp_configuration_layout(data_width):
     """
     Generate a configuration TLP endpoint description.
-
-    Parameters:
-        data_width (int): Width of the data (in bits).
-
-    Returns:
-        EndpointDescription: Configuration TLP endpoint description.
     """
     layout = tlp_configuration_header.get_layout() + [
         ("dat", data_width),   # Data field.
@@ -283,12 +269,6 @@ def tlp_configuration_layout(data_width):
 def tlp_request_layout(data_width):
     """
     Generate a request TLP endpoint description.
-
-    Parameters:
-        data_width (int): Width of the data (in bits).
-
-    Returns:
-        EndpointDescription: Request TLP endpoint description.
     """
     layout = tlp_request_header.get_layout() + [
         ("dat", data_width),   # Data field.
@@ -300,12 +280,6 @@ def tlp_request_layout(data_width):
 def tlp_completion_layout(data_width):
     """
     Generate a completion TLP endpoint description.
-
-    Parameters:
-        data_width (int): Width of the data (in bits).
-
-    Returns:
-        EndpointDescription: Completion TLP endpoint description.
     """
     layout = tlp_completion_header.get_layout() + [
         ("dat", data_width),   # Data field.
