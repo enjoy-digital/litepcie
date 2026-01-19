@@ -186,6 +186,32 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
 
             return stmts
 
+        def _emit_header_plus_payload_1beat():
+            """
+            Safe 1-beat header emission.
+
+            Avoids constructing invalid slices like lane-header_dws for lanes that are part of the header.
+            This prevents creation of _Slice(start>stop) in some lowering paths.
+            """
+            stmts = []
+
+            # Header always starts at lane 0.
+            for lane in range(header_dws):
+                stmts += [
+                    _dw(source.dat, lane).eq(_header_dw(lane)),
+                    _be(source.be,  lane).eq(0xF),
+                ]
+
+            # Payload begins right after the header.
+            for out_lane in range(header_dws, dws_per_beat):
+                in_lane = out_lane - header_dws
+                stmts += [
+                    _dw(source.dat, out_lane).eq(_payload_dw(in_lane)),
+                    _be(source.be,  out_lane).eq(_payload_be(in_lane)),
+                ]
+
+            return stmts
+
         # FSM --------------------------------------------------------------------------------------
 
         self.fsm = fsm = FSM(reset_state="HEADER")
@@ -201,16 +227,7 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
                 source.valid.eq(sink.valid),
                 source.first.eq(sink.first),
 
-                *[
-                    If(lane < header_dws,
-                        _dw(source.dat, lane).eq(_header_dw(lane)),
-                        _be(source.be,  lane).eq(0xF),
-                    ).Else(
-                        _dw(source.dat, lane).eq(_payload_dw(lane - header_dws)),
-                        _be(source.be,  lane).eq(_payload_be(lane - header_dws)),
-                    )
-                    for lane in range(dws_per_beat)
-                ],
+                *_emit_header_plus_payload_1beat(),
 
                 source.last.eq(_header_last_condition(sink.be, sink.last)),
 
