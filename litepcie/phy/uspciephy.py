@@ -26,6 +26,7 @@ class USPCIEPHY(LiteXModule):
         # PCIe hardblock parameters.
         pcie_data_width = None,
         bar0_size       = 0x100000,
+        mode            = "Endpoint",
     ):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
@@ -69,6 +70,9 @@ class USPCIEPHY(LiteXModule):
         self._max_payload_size  = CSRStatus(16, description="Negiotiated Max Payload Size (in bytes).")
 
         # Parameters/Locals ------------------------------------------------------------------------
+        assert mode in ["Endpoint", "RootPort"]
+        self.mode = mode
+
         if pcie_data_width is None: pcie_data_width = data_width
         self.platform         = platform
         self.data_width       = data_width
@@ -140,18 +144,21 @@ class USPCIEPHY(LiteXModule):
         m_axis_rc = self.rc_datapath.sink
         self.comb += self.rc_datapath.source.connect(self.cmp_source)
 
-        # MSI CDC (FPGA --> HOST) ------------------------------------------------------------------
-        if cd == "pcie":
-            cfg_msi = self.msi
+        # MSI CDC ----------------------------------------------------------------------------------
+        if self.mode == "Endpoint":
+            if cd == "pcie":
+                cfg_msi = self.msi
+            else:
+                self.msi_cdc = msi_cdc = stream.ClockDomainCrossing(
+                    layout          = msi_layout(),
+                    cd_from         = cd,
+                    cd_to           = "pcie",
+                    with_common_rst = True,
+                )
+                self.comb += self.msi.connect(msi_cdc.sink)
+                cfg_msi = msi_cdc.source
         else:
-            self.msi_cdc = msi_cdc = stream.ClockDomainCrossing(
-                layout          = msi_layout(),
-                cd_from         = cd,
-                cd_to           = "pcie",
-                with_common_rst = True,
-            )
-            self.comb += self.msi.connect(msi_cdc.sink)
-            cfg_msi = msi_cdc.source
+            cfg_msi = None
 
         # Hard IP Configuration --------------------------------------------------------------------
 
@@ -194,6 +201,40 @@ class USPCIEPHY(LiteXModule):
         m_axis_cq_tuser = Signal(22)
         m_axis_rc_tlast = Signal()
         m_axis_cq_tlast = Signal()
+
+        if self.mode == "Endpoint":
+            msi_ports = dict(
+                o_cfg_interrupt_msi_enable      = self.add_resync(self._msi_enable.status, "sys"),
+                i_cfg_interrupt_msi_int_valid   = cfg_msi.valid,
+                i_cfg_interrupt_msi_int         = cfg_msi.dat,
+                o_cfg_interrupt_msi_sent        = cfg_msi.ready,
+                o_cfg_interrupt_msi_fail        = Open(),
+            )
+        else:
+            msi_ports = dict(
+                o_cfg_interrupt_msi_enable      = Open(),
+                i_cfg_interrupt_msi_int_valid   = 0,
+                i_cfg_interrupt_msi_int         = 0,
+                o_cfg_interrupt_msi_sent        = Open(),
+                o_cfg_interrupt_msi_fail        = Open(),
+            )
+
+        if self.mode == "RootPort":
+            cfg_msg_received      = Signal()
+            cfg_msg_received_type = Signal(5)
+            cfg_msg_received_data = Signal(8)
+            cfg_msg_ports = dict(
+                o_cfg_msg_received      = cfg_msg_received,
+                o_cfg_msg_received_data = cfg_msg_received_data,
+                o_cfg_msg_received_type = cfg_msg_received_type,
+            )
+        else:
+            cfg_msg_ports = dict(
+                o_cfg_msg_received      = Open(),
+                o_cfg_msg_received_data = Open(8),
+                o_cfg_msg_received_type = Open(5),
+            )
+
         self.pcie_phy_params = dict(
             # Parameters ---------------------------------------------------------------------------
             p_LINK_CAP_MAX_LINK_WIDTH          = nlanes,
@@ -282,10 +323,6 @@ class USPCIEPHY(LiteXModule):
             i_cfg_fc_sel                       = 0, # Use PF0
 
             # Configuration Tx/Rx Message ----------------------------------------------------------
-            o_cfg_msg_received                 = Open(),
-            o_cfg_msg_received_data            = Open(8),
-            o_cfg_msg_received_type            = Open(5),
-
             i_cfg_msg_transmit                 = 0,
             i_cfg_msg_transmit_data            = 0,
             i_cfg_msg_transmit_type            = 0,
@@ -296,7 +333,7 @@ class USPCIEPHY(LiteXModule):
             o_pl_received_hot_rst              = Open(),
             i_pl_transmit_hot_rst              = 0,
 
-            # Indentication & Routing
+            # Identification & Routing -------------------------------------------------------------
             i_cfg_dsn                          = serial_number,
             i_cfg_ds_bus_number                = bus_number,
             i_cfg_ds_device_number             = device_number,
@@ -304,21 +341,14 @@ class USPCIEPHY(LiteXModule):
             i_cfg_ds_port_number               = 0,
             i_cfg_subsys_vend_id               = 0x10ee,
 
-            #  power-down request TLP
+            # Power-Down Request TLP ---------------------------------------------------------------
             i_cfg_power_state_change_ack       = 0,
             o_cfg_power_state_change_interrupt = Open(),
 
-            # Interrupt Signals (Legacy & MSI) -----------------------------------------------------
-
+            # Interrupt Signals --------------------------------------------------------------------
             i_cfg_interrupt_int                = 0,
             i_cfg_interrupt_pending            = 0,
             o_cfg_interrupt_sent               = Open(),
-
-            o_cfg_interrupt_msi_enable         = self.add_resync(self._msi_enable.status, "sys"),
-            i_cfg_interrupt_msi_int_valid      = cfg_msi.valid,
-            i_cfg_interrupt_msi_int            = cfg_msi.dat,
-            o_cfg_interrupt_msi_sent           = cfg_msi.ready,
-            o_cfg_interrupt_msi_fail           = Open(),
 
             o_cfg_interrupt_msi_mmenable       = Open(12),
             o_cfg_interrupt_msi_mask_update    = Open(),
@@ -353,6 +383,10 @@ class USPCIEPHY(LiteXModule):
             o_cfg_vf_tph_requester_enable      = Open(8),
             o_cfg_vf_tph_st_mode               = Open(24),
         )
+
+        self.pcie_phy_params.update(msi_ports)
+        self.pcie_phy_params.update(cfg_msg_ports)
+
         self.comb += [
             m_axis_cq.first.eq(m_axis_cq_tuser[14]),
             m_axis_cq.last.eq (m_axis_cq_tlast),
@@ -378,17 +412,17 @@ class USPCIEPHY(LiteXModule):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
-            # Precompute speed-dependent IP config params.
+            # Speed-dependent IP configuration.
             link_speed     = {"gen2": "5.0_GT/s", "gen3": "8.0_GT/s"}[self.speed]
             device_id_base = {"gen2": 8020,       "gen3": 8030      }[self.speed]
             axisten_freq   = {"gen2": 125,        "gen3": 250       }[self.speed]
             coreclk_freq   = {"gen2": 250,        "gen3": 500       }[self.speed]
 
-            # FIXME: Add missing parameters?
             config = {
                 # Generic Config.
                 # ---------------
                 "Component_Name"               : "pcie_us",
+                "DEVICE_PORT_TYPE"             : "PCI_Express_Endpoint_device",
                 "PL_LINK_CAP_MAX_LINK_WIDTH"   : f"X{self.nlanes}",
                 "PL_LINK_CAP_MAX_LINK_SPEED"   : link_speed,
                 "axisten_if_width"             : f"{self.pcie_data_width}_bit",
@@ -402,13 +436,18 @@ class USPCIEPHY(LiteXModule):
 
                 # BAR0 Config.
                 # ------------
-                "pf0_bar0_scale"               : "Megabytes",               # FIXME.
-                "pf0_bar0_size"                : max(self.bar0_size/MB, 1), # FIXME.
+                "pf0_bar0_scale"               : "Megabytes",
+                "pf0_bar0_size"                : max(self.bar0_size/MB, 1),
 
                 # Interrupt Config.
                 # -----------------
                 "PF0_INTERRUPT_PIN"            : "NONE",
             }
+            if self.mode == "RootPort":
+                config.update({
+                    "DEVICE_PORT_TYPE" : "Root_Port_of_PCI_Express_Root_Complex",
+                    "PF0_CLASS_CODE"   : 0x060400,
+                })
 
             # User/Custom Config.
             config.update(self.config)
@@ -426,6 +465,7 @@ class USPCIEPHY(LiteXModule):
 
         verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx_us")
         platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
+
         platform.add_source(os.path.join(verilog_path, f"s_axis_rq_adapt_{self.pcie_data_width}b.v"))
         platform.add_source(os.path.join(verilog_path, f"m_axis_rc_adapt_{self.pcie_data_width}b.v"))
         platform.add_source(os.path.join(verilog_path, f"m_axis_cq_adapt_{self.pcie_data_width}b.v"))
