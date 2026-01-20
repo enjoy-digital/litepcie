@@ -222,32 +222,32 @@ class S7PCIEPHY(LiteXModule):
 
         if self.mode == "Endpoint":
             irq_ports = dict(
-                i_cfg_interrupt                              = cfg_msi.valid,
-                o_cfg_interrupt_rdy                          = cfg_msi.ready,
-                i_cfg_interrupt_di                           = cfg_msi.dat,
-                o_cfg_interrupt_msienable                    = self.add_resync(self._msi_enable.status,  "sys"),
-                o_cfg_interrupt_msixenable                   = self.add_resync(self._msix_enable.status, "sys"),
+                i_cfg_interrupt            = cfg_msi.valid,
+                o_cfg_interrupt_rdy        = cfg_msi.ready,
+                i_cfg_interrupt_di         = cfg_msi.dat,
+                o_cfg_interrupt_msienable  = self.add_resync(self._msi_enable.status,  "sys"),
+                o_cfg_interrupt_msixenable = self.add_resync(self._msix_enable.status, "sys"),
             )
         else:
             irq_ports = dict(
-                i_cfg_interrupt                              = 0,
-                o_cfg_interrupt_rdy                          = Open(),
-                i_cfg_interrupt_di                           = 0,
-                o_cfg_interrupt_msienable                    = Open(),
-                o_cfg_interrupt_msixenable                   = Open(),
+                i_cfg_interrupt            = 0,
+                o_cfg_interrupt_rdy        = Open(),
+                i_cfg_interrupt_di         = 0,
+                o_cfg_interrupt_msienable  = Open(),
+                o_cfg_interrupt_msixenable = Open(),
             )
 
         if self.mode == "RootPort":
             cfg_msg_received = Signal()
             cfg_msg_data     = Signal(8)
             cfg_msg_ports = dict(
-                o_cfg_msg_received                           = cfg_msg_received,
-                o_cfg_msg_data                               = cfg_msg_data,
+                o_cfg_msg_received = cfg_msg_received,
+                o_cfg_msg_data     = cfg_msg_data,
             )
         else:
             cfg_msg_ports = dict(
-                o_cfg_msg_received                           = Open(),
-                o_cfg_msg_data                               = Open(),
+                o_cfg_msg_received = Open(),
+                o_cfg_msg_data     = Open(),
             )
 
         self.pcie_phy_params = dict(
@@ -460,6 +460,7 @@ class S7PCIEPHY(LiteXModule):
 
         self.pcie_phy_params.update(irq_ports)
         self.pcie_phy_params.update(cfg_msg_ports)
+
         if pcie_data_width == 128:
             rx_is_sof = m_axis_rx_tuser[10:15] # Start of a new packet header in m_axis_rx_tdata.
             rx_is_eof = m_axis_rx_tuser[17:22] # End of a packet in m_axis_rx_tdata.
