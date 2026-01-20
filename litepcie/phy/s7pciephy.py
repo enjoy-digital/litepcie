@@ -519,39 +519,64 @@ class S7PCIEPHY(LiteXModule):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
-            # Global parameters.
+            # Device identification.
+            device_id = 7020 + self.nlanes
+
+            # Link / clocks.
+            link_speed         = "5.0_GT/s"
+            maximum_link_width = f"X{self.nlanes}"
+            ref_clk_freq       = f"{int(self.refclk_freq/1e6)}_MHz"
+            user_clk_freq      = 125 if self.nlanes != 8 else 250
+
+            # Interface.
+            interface_width = f"{self.pcie_data_width}_bit"
+            max_payload     = "512_bytes" if self.nlanes != 8 else "256_bytes"
+
+            # BAR0.
+            bar0_scale = "Megabytes"
+            bar0_size  = max(self.bar0_size/MB, 1)
+
+            # Target link speed.
+            trgt_link_speed = "4'h2"
+
             config = {
-                "Bar0_Scale"         : "Megabytes",
-                "Bar0_Size"          : 1,
-                "Buf_Opt_BMA"        : True,
+                # Core.
                 "Component_Name"     : "pcie",
-                "Device_ID"          : 7020 + self.nlanes,
-                "Interface_Width"    : f"{self.pcie_data_width}_bit",
-                "Link_Speed"         : "5.0_GT/s",
-                "Max_Payload_Size"   : "512_bytes" if self.nlanes != 8 else "256_bytes",
-                "Maximum_Link_Width" : f"X{self.nlanes}",
+                "Device_ID"          : device_id,
                 "PCIe_Blk_Locn"      : "X0Y0",
-                "Ref_Clk_Freq"       : f"{int(self.refclk_freq/1e6)}_MHz",
+
+                # Link.
+                "Link_Speed"         : link_speed,
+                "Maximum_Link_Width" : maximum_link_width,
+                "Trgt_Link_Speed"    : trgt_link_speed,
+
+                # Clocks.
+                "Ref_Clk_Freq"       : ref_clk_freq,
+                "User_Clk_Freq"      : user_clk_freq,
+
+                # Interface.
+                "Interface_Width"    : interface_width,
+                "Max_Payload_Size"   : max_payload,
+
+                # Buffers.
+                "Buf_Opt_BMA"        : True,
                 "Trans_Buf_Pipeline" : None,
-                "Trgt_Link_Speed"    : "4'h2",
-                "User_Clk_Freq"      : 125 if self.nlanes != 8 else 250,
+
+                # BAR0.
+                "Bar0_Scale"         : bar0_scale,
+                "Bar0_Size"          : bar0_size,
             }
 
             # Interrupts parameters.
             assert self.msi_type in ["msi", "msi-multi-vector", "msi-x"]
             config.update({
-                    "Legacy_Interrupt" : None,
-                    "IntX_Generation"  : False,
+                "Legacy_Interrupt" : None,
+                "IntX_Generation"  : False,
             })
-            if self.msi_type == "msi":
+            if self.msi_type in ["msi", "msi-multi-vector"]:
                 config.update({
                     "MSI_64b"                  : False,
-                    "Multiple_Message_Capable" : "1_vector",
-                })
-            if self.msi_type == "msi-multi-vector":
-                config.update({
-                    "MSI_64b"                  : False,
-                    "Multiple_Message_Capable" : "1_vector",
+                    "Multiple_Message_Capable" : "1_vector",  # FIXME for multi-vector.
                 })
             if self.msi_type == "msi-x":
                 config.update({
@@ -572,7 +597,7 @@ class S7PCIEPHY(LiteXModule):
 
             # RootPort mode.
             if self.mode == "RootPort":
-                config.setdefault("Port_Type", "Root Port")
+                config.setdefault("Port_Type",  "Root Port")
                 config.setdefault("Class_Code", "060400")
 
             # User/Custom Config.
@@ -589,7 +614,7 @@ class S7PCIEPHY(LiteXModule):
             ip_tcl.append("synth_ip $obj")
             platform.toolchain.pre_synthesis_commands += ip_tcl
 
-        # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (we only want to keep Timing constraints).
+        # Reset LOC constraints on GTPE2_COMMON and BRAM36 from .xci (keep timing constraints only).
         if "en_ext_gt_common" not in self.config.keys():
             if platform.device.startswith("xc7a"):
                 platform.toolchain.pre_placement_commands.append("reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*gtp_common.gtpe2_common_i}}]")

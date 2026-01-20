@@ -412,44 +412,70 @@ class USPCIEPHY(LiteXModule):
         if phy_filename is not None:
             platform.add_ip(os.path.join(phy_path, phy_filename))
         else:
-            # Speed-dependent IP configuration.
-            link_speed     = {"gen2": "5.0_GT/s", "gen3": "8.0_GT/s"}[self.speed]
-            device_id_base = {"gen2": 8020,       "gen3": 8030      }[self.speed]
-            axisten_freq   = {"gen2": 125,        "gen3": 250       }[self.speed]
-            coreclk_freq   = {"gen2": 250,        "gen3": 500       }[self.speed]
+            # Link / clocks (speed-dependent).
+            link_speed   = {"gen2": "5.0_GT/s", "gen3": "8.0_GT/s"}[self.speed]
+            axisten_freq = {"gen2": 125,        "gen3": 250       }[self.speed]
+            coreclk_freq = {"gen2": 250,        "gen3": 500       }[self.speed]
+
+            # Device identification.
+            device_id_base = {"gen2": 8020, "gen3": 8030}[self.speed]
+            device_id      = device_id_base + self.nlanes
+
+            # Port type / class code (mode-dependent).
+            port_type  = "PCI_Express_Endpoint_device"
+            class_code = None
+            if self.mode == "RootPort":
+                port_type  = "Root_Port_of_PCI_Express_Root_Complex"
+                class_code = 0x060400
+
+            # BAR0.
+            bar0_scale = "Megabytes"
+            bar0_size  = max(self.bar0_size/MB, 1)
+
+            # AXI-S / interface.
+            axisten_if_width       = f"{self.pcie_data_width}_bit"
+            axisten_rc_straddle    = False
+            enable_client_tag      = True
+
+            # Power management.
+            aspm_support = "No_ASPM"
+
+            # PLL selection.
+            plltype = "QPLL1"
 
             config = {
-                # Generic Config.
-                # ---------------
+                # Core.
                 "Component_Name"               : "pcie_us",
-                "DEVICE_PORT_TYPE"             : "PCI_Express_Endpoint_device",
+                "DEVICE_PORT_TYPE"             : port_type,
+                "PF0_DEVICE_ID"                : device_id,
+
+                # Link.
                 "PL_LINK_CAP_MAX_LINK_WIDTH"   : f"X{self.nlanes}",
                 "PL_LINK_CAP_MAX_LINK_SPEED"   : link_speed,
-                "axisten_if_width"             : f"{self.pcie_data_width}_bit",
-                "AXISTEN_IF_RC_STRADDLE"       : False,
-                "PF0_DEVICE_ID"                : device_id_base + self.nlanes,
+
+                # AXI-S.
+                "axisten_if_width"             : axisten_if_width,
+                "AXISTEN_IF_RC_STRADDLE"       : axisten_rc_straddle,
                 "axisten_freq"                 : axisten_freq,
-                "axisten_if_enable_client_tag" : True,
-                "aspm_support"                 : "No_ASPM",
                 "coreclk_freq"                 : coreclk_freq,
-                "plltype"                      : "QPLL1",
+                "axisten_if_enable_client_tag" : enable_client_tag,
 
-                # BAR0 Config.
-                # ------------
-                "pf0_bar0_scale"               : "Megabytes",
-                "pf0_bar0_size"                : max(self.bar0_size/MB, 1),
+                # Power / features.
+                "aspm_support"                 : aspm_support,
+                "plltype"                      : plltype,
 
-                # Interrupt Config.
-                # -----------------
+                # BAR0.
+                "pf0_bar0_scale"               : bar0_scale,
+                "pf0_bar0_size"                : bar0_size,
+
+                # Interrupts.
                 "PF0_INTERRUPT_PIN"            : "NONE",
             }
-            if self.mode == "RootPort":
-                config.update({
-                    "DEVICE_PORT_TYPE" : "Root_Port_of_PCI_Express_Root_Complex",
-                    "PF0_CLASS_CODE"   : 0x060400,
-                })
 
-            # User/Custom Config.
+            if class_code is not None:
+                config["PF0_CLASS_CODE"] = class_code
+
+            # User/Custom config.
             config.update(self.config)
 
             # Tcl generation.
@@ -471,6 +497,7 @@ class USPCIEPHY(LiteXModule):
         platform.add_source(os.path.join(verilog_path, f"m_axis_cq_adapt_{self.pcie_data_width}b.v"))
         platform.add_source(os.path.join(verilog_path, f"s_axis_cc_adapt_{self.pcie_data_width}b.v"))
         platform.add_source(os.path.join(verilog_path, "pcie_us_support.v"))
+
 
     # External Hard IP -----------------------------------------------------------------------------
     def use_external_hard_ip(self, hard_ip_path, hard_ip_filename):
