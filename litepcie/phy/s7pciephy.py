@@ -29,6 +29,7 @@ class S7PCIEPHY(LiteXModule):
         bar0_size       = 0x100000,
         msi_type        = "msi",
         with_ptm        = False,
+        mode            = "Endpoint",
         # MMCM parameters.
         mmcm_clk125_buf = "bufg",
         mmcm_clk250_buf = "bufg",
@@ -63,6 +64,9 @@ class S7PCIEPHY(LiteXModule):
         self._max_payload_size  = CSRStatus(16, description="Negiotiated Max Payload Size (in bytes).")
 
         # Parameters/Locals ------------------------------------------------------------------------
+        assert mode in ["Endpoint", "RootPort"]
+        self.mode = mode
+
         if pcie_data_width is None: pcie_data_width = data_width
         self.platform         = platform
         self.data_width       = data_width
@@ -120,18 +124,21 @@ class S7PCIEPHY(LiteXModule):
         m_axis_rx = self.rx_datapath.sink
         self.comb += self.rx_datapath.source.connect(self.source)
 
-        # MSI CDC (FPGA --> HOST) ------------------------------------------------------------------
-        if cd == "pcie":
-            cfg_msi = self.msi
+        # MSI CDC ----------------------------------------------------------------------------------
+        if self.mode == "Endpoint":
+            if cd == "pcie":
+                cfg_msi = self.msi
+            else:
+                self.msi_cdc = msi_cdc = stream.ClockDomainCrossing(
+                    layout          = msi_layout(),
+                    cd_from         = cd,
+                    cd_to           = "pcie",
+                    with_common_rst = True,
+                )
+                self.comb += self.msi.connect(msi_cdc.sink)
+                cfg_msi = msi_cdc.source
         else:
-            self.msi_cdc = msi_cdc = stream.ClockDomainCrossing(
-                layout          = msi_layout(),
-                cd_from         = cd,
-                cd_to           = "pcie",
-                with_common_rst = True,
-            )
-            self.comb += self.msi.connect(msi_cdc.sink)
-            cfg_msi = msi_cdc.source
+            cfg_msi = None
 
         # Hard IP Configuration --------------------------------------------------------------------
 
@@ -212,6 +219,36 @@ class S7PCIEPHY(LiteXModule):
         # Hard IP ----------------------------------------------------------------------------------
         m_axis_rx_tlast = Signal()
         m_axis_rx_tuser = Signal(32)
+
+        if self.mode == "Endpoint":
+            irq_ports = dict(
+                i_cfg_interrupt                              = cfg_msi.valid,
+                o_cfg_interrupt_rdy                          = cfg_msi.ready,
+                i_cfg_interrupt_di                           = cfg_msi.dat,
+                o_cfg_interrupt_msienable                    = self.add_resync(self._msi_enable.status,  "sys"),
+                o_cfg_interrupt_msixenable                   = self.add_resync(self._msix_enable.status, "sys"),
+            )
+        else:
+            irq_ports = dict(
+                i_cfg_interrupt                              = 0,
+                o_cfg_interrupt_rdy                          = Open(),
+                i_cfg_interrupt_di                           = 0,
+                o_cfg_interrupt_msienable                    = Open(),
+                o_cfg_interrupt_msixenable                   = Open(),
+            )
+
+        if self.mode == "RootPort":
+            cfg_msg_received = Signal()
+            cfg_msg_data     = Signal(8)
+            cfg_msg_ports = dict(
+                o_cfg_msg_received                           = cfg_msg_received,
+                o_cfg_msg_data                               = cfg_msg_data,
+            )
+        else:
+            cfg_msg_ports = dict(
+                o_cfg_msg_received                           = Open(),
+                o_cfg_msg_data                               = Open(),
+            )
 
         self.pcie_phy_params = dict(
             # PCI Express Interface ----------------------------------------------------------------
@@ -332,14 +369,9 @@ class S7PCIEPHY(LiteXModule):
             i_cfg_pm_wake                                = 0,
 
             # Interrupt Interface ------------------------------------------------------------------
-            i_cfg_interrupt                              = cfg_msi.valid,
-            o_cfg_interrupt_rdy                          = cfg_msi.ready,
             i_cfg_interrupt_assert                       = 0,
-            i_cfg_interrupt_di                           = cfg_msi.dat,
             o_cfg_interrupt_do                           = Open(),
             o_cfg_interrupt_mmenable                     = Open(),
-            o_cfg_interrupt_msienable                    = self.add_resync(self._msi_enable.status,  "sys"),
-            o_cfg_interrupt_msixenable                   = self.add_resync(self._msix_enable.status, "sys"),
             o_cfg_interrupt_msixfm                       = Open(),
             i_cfg_interrupt_stat                         = 0,
             i_cfg_pciecap_interrupt_msgnum               = 0,
@@ -378,8 +410,6 @@ class S7PCIEPHY(LiteXModule):
             # VC Interface -------------------------------------------------------------------------
             o_cfg_vc_tcvc_map                            = Open(),
 
-            o_cfg_msg_received                           = Open(),
-            o_cfg_msg_data                               = Open(),
             o_cfg_msg_received_pm_as_nak                 = Open(),
             o_cfg_msg_received_setslotpowerlimit         = Open(),
             o_cfg_msg_received_err_cor                   = Open(),
@@ -395,7 +425,6 @@ class S7PCIEPHY(LiteXModule):
             o_cfg_msg_received_deassert_int_b            = Open(),
             o_cfg_msg_received_deassert_int_c            = Open(),
             o_cfg_msg_received_deassert_int_d            = Open(),
-
 
             # Physical Layer Interface -------------------------------------------------------------
             i_pl_directed_link_change                    = 0,
@@ -428,6 +457,9 @@ class S7PCIEPHY(LiteXModule):
             o_pcie_drp_rdy                               = Open(),
             o_pcie_drp_do                                = Open(),
         )
+
+        self.pcie_phy_params.update(irq_ports)
+        self.pcie_phy_params.update(cfg_msg_ports)
         if pcie_data_width == 128:
             rx_is_sof = m_axis_rx_tuser[10:15] # Start of a new packet header in m_axis_rx_tdata.
             rx_is_eof = m_axis_rx_tuser[17:22] # End of a packet in m_axis_rx_tdata.
@@ -518,7 +550,7 @@ class S7PCIEPHY(LiteXModule):
             if self.msi_type == "msi-multi-vector":
                 config.update({
                     "MSI_64b"                  : False,
-                    "Multiple_Message_Capable" : "1_vector", # FIXME.
+                    "Multiple_Message_Capable" : "1_vector",
                 })
             if self.msi_type == "msi-x":
                 config.update({
@@ -536,6 +568,11 @@ class S7PCIEPHY(LiteXModule):
                     "EXT_PCI_CFG_Space"      : True,
                     "EXT_PCI_CFG_Space_Addr" : "6B", # 0x1AC.
                 })
+
+            # RootPort mode.
+            if self.mode == "RootPort":
+                config.setdefault("Port_Type", "Root Port")
+                config.setdefault("Class_Code", "060400")
 
             # User/Custom Config.
             config.update(self.config)
