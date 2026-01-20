@@ -541,7 +541,6 @@ class S7PCIEPHY(LiteXModule):
 
             config = {
                 # Core.
-                "Component_Name"     : "pcie",
                 "Device_ID"          : device_id,
                 "PCIe_Blk_Locn"      : "X0Y0",
 
@@ -597,8 +596,14 @@ class S7PCIEPHY(LiteXModule):
 
             # RootPort mode.
             if self.mode == "RootPort":
-                config.setdefault("Port_Type",  "Root Port")
-                config.setdefault("Class_Code", "060400")
+                config.update({
+                    "Device_Port_Type"         : "Root_Port_of_PCI_Express_Root_Complex",
+                    "Base_Class_Menu"          : "Bridge_device",
+                    "Sub_Class_Interface_Menu" : "Host_bridge",
+                    "Class_Code_Base"          : "06",
+                    "Class_Code_Sub"           : "00",
+                })
+                config.setdefault("Bar0_Type", "Memory")
 
             # User/Custom Config.
             config.update(self.config)
