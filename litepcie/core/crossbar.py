@@ -15,13 +15,14 @@ from litepcie.tlp.controller import LitePCIeTLPController
 # LitePCIe Crossbar --------------------------------------------------------------------------------
 
 class LitePCIeCrossbar(LiteXModule):
-    def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True):
+    def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True, with_configuration=False):
         self.data_width           = data_width
         self.address_width        = address_width
         self.max_pending_requests = max_pending_requests
         self.cmp_bufs_buffered    = cmp_bufs_buffered
+        self.with_configuration   = with_configuration
 
-        self.master     = LitePCIeMasterInternalPort(data_width, address_width)
+        self.master     = LitePCIeMasterInternalPort(data_width, address_width, with_configuration=with_configuration)
         self.slave      = LitePCIeSlaveInternalPort(data_width)
         self.phy_master = LitePCIeMasterPort(self.master)
         self.phy_slave  = LitePCIeSlavePort(self.slave)
@@ -39,11 +40,12 @@ class LitePCIeCrossbar(LiteXModule):
 
     def get_master_port(self, write_only=False, read_only=False):
         m = LitePCIeMasterInternalPort(
-            data_width    = self.data_width,
-            address_width = self.address_width,
-            channel       = self.user_masters_channel,
-            write_only    = write_only,
-            read_only     = read_only
+            data_width         = self.data_width,
+            address_width      = self.address_width,
+            channel            = self.user_masters_channel,
+            write_only         = write_only,
+            read_only          = read_only,
+            with_configuration = self.with_configuration,
         )
         self.user_masters_channel += 1
         self.user_masters.append(m)
@@ -130,7 +132,9 @@ class LitePCIeCrossbar(LiteXModule):
                     data_width           = self.data_width,
                     address_width        = self.address_width,
                     max_pending_requests = self.max_pending_requests,
-                    cmp_bufs_buffered    = self.cmp_bufs_buffered)
+                    cmp_bufs_buffered    = self.cmp_bufs_buffered,
+                    with_configuration   = self.with_configuration,
+                )
                 self.submodules.controller = controller
                 self.master_arbitrate_dispatch(rd_rw_masters, controller.master_in)
                 masters.append(controller.master_out)
@@ -138,7 +142,7 @@ class LitePCIeCrossbar(LiteXModule):
             # Arbitrate / dispatch write_only ports ------------------------------------------------
             wr_masters = self.filter_masters(True, False)
             if wr_masters != []:
-                wr_master = LitePCIeMasterInternalPort(self.data_width, self.address_width)
+                wr_master = LitePCIeMasterInternalPort(self.data_width, self.address_width, with_configuration=self.with_configuration)
                 self.master_arbitrate_dispatch(wr_masters, wr_master)
                 masters.append(wr_master)
 

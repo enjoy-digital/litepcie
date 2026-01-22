@@ -20,11 +20,11 @@ class LitePCIeSlaveInternalPort:
 
 
 class LitePCIeMasterInternalPort:
-    def __init__(self, data_width, address_width=32, channel=None, write_only=False, read_only=False):
+    def __init__(self, data_width, address_width=32, channel=None, write_only=False, read_only=False, with_configuration=False):
         self.channel    = channel
         self.write_only = write_only
         self.read_only  = read_only
-        self.sink   = stream.Endpoint(request_layout(data_width, address_width))
+        self.sink   = stream.Endpoint(request_layout(data_width, address_width, with_configuration))
         self.source = stream.Endpoint(completion_layout(data_width))
 
 # LitePCIe User Ports ------------------------------------------------------------------------------

@@ -18,8 +18,9 @@ from litepcie.core.crossbar    import LitePCIeCrossbar
 
 class LitePCIeEndpoint(LiteXModule):
     def __init__(self, phy, max_pending_requests=4, address_width=32, endianness="big",
-        cmp_bufs_buffered = True,
-        with_ptm          = False,
+        cmp_bufs_buffered  = True,
+        with_ptm           = False,
+        with_configuration = False,
     ):
         self.phy                  = phy
         self.max_pending_requests = max_pending_requests
@@ -65,7 +66,7 @@ class LitePCIeEndpoint(LiteXModule):
                 data_width   = phy.data_width,
                 endianness   = endianness,
                 address_mask = phy.bar0_mask,
-                capabilities = ["COMPLETION"],
+                capabilities = ["COMPLETION"] + ["CONFIGURATION"] if with_configuration else [],
             )
             self.req_depacketizer = req_depacketizer = LitePCIeTLPDepacketizer(
                 data_width   = phy.data_width,
@@ -83,7 +84,7 @@ class LitePCIeEndpoint(LiteXModule):
                 data_width    = phy.data_width,
                 endianness    = endianness,
                 address_width = address_width,
-                capabilities  = ["REQUEST"],
+                capabilities  = ["REQUEST"] + ["CONFIGURATION"] if with_configuration else [],
             )
             self.comb += [
                 phy.cmp_source.connect(cmp_depacketizer.sink),
@@ -103,6 +104,7 @@ class LitePCIeEndpoint(LiteXModule):
             address_width        = address_width,
             max_pending_requests = max_pending_requests,
             cmp_bufs_buffered    = cmp_bufs_buffered,
+            with_configuration   = with_configuration,
         )
 
         # Slave: HOST initiates the transactions ---------------------------------------------------

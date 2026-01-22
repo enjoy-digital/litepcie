@@ -58,7 +58,7 @@ def configuration_layout(data_width, address_width=32):
     ]
     return EndpointDescription(layout)
 
-def request_layout(data_width, address_width=32):
+def request_layout(data_width, address_width=32, with_configuration=False):
     layout = [
         # Request Parameters.
         ("req_id",          16), # Requester ID.
@@ -74,6 +74,19 @@ def request_layout(data_width, address_width=32):
         ("channel", 8), # Crossbar's channel (Used for internal routing).
         ("user_id", 8), # Packet identification (Used for packet delimitation).
     ]
+
+    if with_configuration:
+        layout += [
+            ("is_cfg",       1), # 0: Memory / 1: Configuration (Type 0).
+
+            # CFG addressing.
+            ("bus_number",   8),
+            ("device_no",    5),
+            ("func",         3),
+            ("ext_reg",      3),
+            ("register_no",  6),
+        ]
+
     return EndpointDescription(layout)
 
 def completion_layout(data_width, address_width=32):

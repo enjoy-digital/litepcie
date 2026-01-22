@@ -774,34 +774,40 @@ class LitePCIeTLPPacketizer(LiteXModule):
         for c in capabilities:
             assert c in ["REQUEST", "COMPLETION", "CONFIGURATION", "PTM"]
         # Sink Endpoints.
+        with_configuration = ("CONFIGURATION" in capabilities)
         if "REQUEST" in capabilities:
-            self.req_sink = req_sink = stream.Endpoint(request_layout(data_width, address_width))
+            self.req_sink = req_sink = stream.Endpoint(request_layout(data_width, address_width, with_configuration=with_configuration))
         if "COMPLETION" in capabilities:
             self.cmp_sink = cmp_sink = stream.Endpoint(completion_layout(data_width))
-        if "CONFIGURATION" in capabilities:
-            self.cfg_sink = cfg_sink = stream.Endpoint(configuration_layout(data_width))
         if "PTM" in capabilities:
             self.ptm_sink = ptm_sink = stream.Endpoint(ptm_layout(data_width))
+
         # Source Endpoints.
         self.source   = stream.Endpoint(phy_layout(data_width))
 
         # # #
+
+        req_is_cfg = Signal()
+        if with_configuration:
+            self.comb += req_is_cfg.eq(req_sink.is_cfg)
 
         # Format and Encode TLP Requests -----------------------------------------------------------
 
         if "REQUEST" in capabilities:
             self.tlp_req = tlp_req = stream.Endpoint(tlp_request_layout(data_width))
             self.comb += [
-                tlp_req.valid.eq(req_sink.valid),
-                req_sink.ready.eq(tlp_req.ready),
+                If(~req_is_cfg,
+                    tlp_req.valid.eq(req_sink.valid),
+                    req_sink.ready.eq(tlp_req.ready)
+                ),
                 tlp_req.first.eq(req_sink.first),
                 tlp_req.last.eq(req_sink.last),
 
                 tlp_req.type.eq(0b00000),
                 If(req_sink.we,
-                    tlp_req.fmt.eq( fmt_dict[ f"mem_wr32"]),
+                    tlp_req.fmt.eq(fmt_dict["mem_wr32"]),
                 ).Else(
-                    tlp_req.fmt.eq( fmt_dict[ f"mem_rd32"]),
+                    tlp_req.fmt.eq(fmt_dict["mem_rd32"]),
                 ),
                 tlp_req.address.eq(req_sink.adr),
             ]
@@ -821,9 +827,9 @@ class LitePCIeTLPPacketizer(LiteXModule):
                         tlp_req.address[:32].eq(req_sink.adr[32:]),
                         tlp_req.address[32:].eq(req_sink.adr[:32]),
                         If(req_sink.we,
-                            tlp_req.fmt.eq( fmt_dict[ f"mem_wr64"]),
+                            tlp_req.fmt.eq(fmt_dict["mem_wr64"]),
                         ).Else(
-                            tlp_req.fmt.eq( fmt_dict[ f"mem_rd64"]),
+                            tlp_req.fmt.eq(fmt_dict["mem_rd64"]),
                         ),
                     )
                 ]
@@ -833,9 +839,9 @@ class LitePCIeTLPPacketizer(LiteXModule):
                     tlp_req.address[:32].eq(Constant(0, 32)),
                     tlp_req.address[32:].eq(req_sink.adr[:32]),
                     If(req_sink.we,
-                        tlp_req.fmt.eq( fmt_dict[ f"mem_wr64"]),
+                        tlp_req.fmt.eq(fmt_dict["mem_wr64"]),
                     ).Else(
-                        tlp_req.fmt.eq( fmt_dict[ f"mem_rd64"]),
+                        tlp_req.fmt.eq(fmt_dict["mem_rd64"]),
                     ),
                 ]
 
@@ -939,7 +945,7 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 ndwords    = 4
             )
 
-        # Format and Encode TLP Completions --------------------------------------------------------
+        # Format and Encode TLP PTM ----------------------------------------------------------------
 
         if "PTM" in capabilities:
             self.tlp_ptm = tlp_ptm = stream.Endpoint(tlp_ptm_layout(data_width))
@@ -995,10 +1001,14 @@ class LitePCIeTLPPacketizer(LiteXModule):
         if "CONFIGURATION" in capabilities:
             self.tlp_cfg = tlp_cfg = stream.Endpoint(tlp_configuration_layout(data_width))
             self.comb += [
-                tlp_cfg.valid.eq(cfg_sink.valid),
-                cfg_sink.ready.eq(tlp_cfg.ready),
-                tlp_cfg.first.eq(cfg_sink.first),
-                tlp_cfg.last.eq(cfg_sink.last),
+                If(req_is_cfg,
+                    tlp_cfg.valid.eq(req_sink.valid),
+                    req_sink.ready.eq(tlp_cfg.ready)
+                ),
+
+                # first/last.
+                tlp_cfg.first.eq(req_sink.first),
+                tlp_cfg.last.eq(req_sink.last),
 
                 # Common fields.
                 tlp_cfg.tc.eq(0),
@@ -1008,35 +1018,35 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 tlp_cfg.length.eq(1),   # CFG accesses are 1 DW.
 
                 # Routing/identity.
-                tlp_cfg.requester_id.eq(cfg_sink.req_id),
-                tlp_cfg.tag.eq(cfg_sink.tag),
+                tlp_cfg.requester_id.eq(req_sink.req_id),
+                tlp_cfg.tag.eq(req_sink.tag),
 
                 # Byte enables.
                 tlp_cfg.first_be.eq(0xf),
                 tlp_cfg.last_be.eq(0x0),
 
                 # Target BDF + register.
-                tlp_cfg.bus_number.eq(cfg_sink.bus_number),
-                tlp_cfg.device_no.eq(cfg_sink.device_no),
-                tlp_cfg.func.eq(cfg_sink.func),
-                tlp_cfg.ext_reg.eq(cfg_sink.ext_reg),
-                tlp_cfg.register_no.eq(cfg_sink.register_no),
+                tlp_cfg.bus_number.eq(req_sink.bus_number),
+                tlp_cfg.device_no.eq(req_sink.device_no),
+                tlp_cfg.func.eq(req_sink.func),
+                tlp_cfg.ext_reg.eq(req_sink.ext_reg),
+                tlp_cfg.register_no.eq(req_sink.register_no),
 
                 # Data + BE policy.
-                tlp_cfg.dat.eq(cfg_sink.dat),
-                If(cfg_sink.we,
+                tlp_cfg.dat.eq(req_sink.dat),
+                If(req_sink.we,
                     tlp_cfg.be.eq(0xf)
                 ).Else(
                     tlp_cfg.be.eq(0x00)
                 ),
 
                 # CFG0.
-                If(cfg_sink.we,
+                If(req_sink.we,
                     tlp_cfg.type.eq(type_dict["cfg_wr0"]),
-                    tlp_cfg.fmt.eq( fmt_dict["cfg_wr0"]),
+                    tlp_cfg.fmt.eq(fmt_dict["cfg_wr0"]),
                 ).Else(
                     tlp_cfg.type.eq(type_dict["cfg_rd0"]),
-                    tlp_cfg.fmt.eq( fmt_dict["cfg_rd0"]),
+                    tlp_cfg.fmt.eq(fmt_dict["cfg_rd0"]),
                 ),
             ]
 
