@@ -21,6 +21,7 @@ class LitePCIeEndpoint(LiteXModule):
         cmp_bufs_buffered  = True,
         with_ptm           = False,
         with_configuration = False,
+        address_mask       = None,
     ):
         self.phy                  = phy
         self.max_pending_requests = max_pending_requests
@@ -33,6 +34,9 @@ class LitePCIeEndpoint(LiteXModule):
         if with_ptm:
             optional_packetizer_capabilities   = ["PTM"]
             optional_depacketizer_capabilities = ["PTM", "CONFIGURATION"]
+        # Default to PHY BAR0 aperture mask for memory requests.
+        if address_mask is None:
+            address_mask = getattr(phy, "bar0_mask", 0)
 
         # TLP Packetizer / Depacketizer ------------------------------------------------------------
 
@@ -41,7 +45,7 @@ class LitePCIeEndpoint(LiteXModule):
             self.depacketizer = depacketizer = LitePCIeTLPDepacketizer(
                 data_width   = phy.data_width,
                 endianness   = endianness,
-                address_mask = phy.bar0_mask,
+                address_mask = address_mask,
                 capabilities = ["REQUEST", "COMPLETION"] + optional_depacketizer_capabilities,
             )
             self.packetizer = packetizer = LitePCIeTLPPacketizer(
@@ -65,13 +69,13 @@ class LitePCIeEndpoint(LiteXModule):
             self.cmp_depacketizer = cmp_depacketizer = LitePCIeTLPDepacketizer(
                 data_width   = phy.data_width,
                 endianness   = endianness,
-                address_mask = phy.bar0_mask,
+                address_mask = address_mask,
                 capabilities = ["COMPLETION"] + (["CONFIGURATION"] if with_configuration else []),
             )
             self.req_depacketizer = req_depacketizer = LitePCIeTLPDepacketizer(
                 data_width   = phy.data_width,
                 endianness   = endianness,
-                address_mask = phy.bar0_mask,
+                address_mask = address_mask,
                 capabilities = ["REQUEST"],
             )
             self.cmp_packetizer = cmp_packetizer = LitePCIeTLPPacketizer(
