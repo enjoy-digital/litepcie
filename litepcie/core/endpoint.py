@@ -66,7 +66,7 @@ class LitePCIeEndpoint(LiteXModule):
                 data_width   = phy.data_width,
                 endianness   = endianness,
                 address_mask = phy.bar0_mask,
-                capabilities = ["COMPLETION"] + ["CONFIGURATION"] if with_configuration else [],
+                capabilities = ["COMPLETION"] + (["CONFIGURATION"] if with_configuration else []),
             )
             self.req_depacketizer = req_depacketizer = LitePCIeTLPDepacketizer(
                 data_width   = phy.data_width,
@@ -84,7 +84,7 @@ class LitePCIeEndpoint(LiteXModule):
                 data_width    = phy.data_width,
                 endianness    = endianness,
                 address_width = address_width,
-                capabilities  = ["REQUEST"] + ["CONFIGURATION"] if with_configuration else [],
+                capabilities  = ["REQUEST"] + (["CONFIGURATION"] if with_configuration else []),
             )
             self.comb += [
                 phy.cmp_source.connect(cmp_depacketizer.sink),
