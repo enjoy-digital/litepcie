@@ -110,6 +110,7 @@ class LitePCIeEndpoint(LiteXModule):
             cmp_bufs_buffered    = cmp_bufs_buffered,
             with_configuration   = with_configuration,
         )
+        self.tlp_ctrl_rst = crossbar.tlp_ctrl_rst
 
         # Slave: HOST initiates the transactions ---------------------------------------------------
 

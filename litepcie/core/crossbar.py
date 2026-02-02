@@ -27,6 +27,8 @@ class LitePCIeCrossbar(LiteXModule):
         self.phy_master = LitePCIeMasterPort(self.master)
         self.phy_slave  = LitePCIeSlavePort(self.slave)
 
+        self.tlp_ctrl_rst = Signal()
+
         self.user_masters         = []
         self.user_masters_channel = 0
         self.user_slaves          = []
@@ -136,6 +138,7 @@ class LitePCIeCrossbar(LiteXModule):
                     with_configuration   = self.with_configuration,
                 )
                 self.submodules.controller = controller
+                self.comb += controller.ctrl_rst.eq(self.tlp_ctrl_rst)
                 self.master_arbitrate_dispatch(rd_rw_masters, controller.master_in)
                 masters.append(controller.master_out)
 

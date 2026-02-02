@@ -20,6 +20,7 @@ class LitePCIeTLPController(LiteXModule):
     Arbitrate/throttle TLP requests and reorder/assemble/redirect completions.
     """
     def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True, with_configuration=False):
+        self.ctrl_rst  = Signal()
         self.master_in  = LitePCIeMasterInternalPort(data_width, address_width, with_configuration=with_configuration)
         self.master_out = LitePCIeMasterInternalPort(data_width, address_width, with_configuration=with_configuration)
 
@@ -35,19 +36,19 @@ class LitePCIeTLPController(LiteXModule):
         # The tag queue is filled initially with the tags that will be used to issue read requests
         # to the host. A tag is dequeued when a read requests is issued to the host and queued when
         # a readcomplementation is received from the host.
-        self.tag_queue = tag_queue = SyncFIFO(
+        self.tag_queue = tag_queue = ResetInserter()(SyncFIFO(
             layout   = [("tag", tag_bits)],
             depth    = max_pending_requests,
             buffered = True,
-        )
+        ))
 
         # Requests queue ---------------------------------------------------------------------------
         # Store the read requests tags as emitted to the host, datas will be dequeued in this order
-        self.req_queue = req_queue = SyncFIFO(
+        self.req_queue = req_queue = ResetInserter()(SyncFIFO(
             layout   =  [("tag", tag_bits), ("channel", 8), ("user_id", 8)],
             depth    = max_pending_requests,
             buffered = True,
-        )
+        ))
 
         # Requests Management ----------------------------------------------------------------------
 
@@ -55,7 +56,12 @@ class LitePCIeTLPController(LiteXModule):
         self.comb += req_sink.connect(req_source, omit={"valid", "ready", "tag"})
 
         # FSM.
-        self.req_fsm = req_fsm = FSM(reset_state="WAIT-REQ")
+        self.req_fsm = req_fsm = ResetInserter()(FSM(reset_state="WAIT-REQ"))
+        self.comb += [
+            tag_queue.reset.eq(self.ctrl_rst),
+            req_queue.reset.eq(self.ctrl_rst),
+            req_fsm.reset.eq(self.ctrl_rst),
+        ]
         req_fsm.act("WAIT-REQ",
             # Wait for a TLP Request...
             If(req_sink.valid & req_sink.first,
@@ -122,9 +128,10 @@ class LitePCIeTLPController(LiteXModule):
         # Create Buffers.
         for i in range(max_pending_requests):
             cmp_buf_depth = 4*max_request_size//(data_width//8)
-            cmp_buf       = SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered)
+            cmp_buf       = ResetInserter()(SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered))
             cmp_bufs.append(cmp_buf)
         self.submodules += cmp_bufs
+        self.comb += [cmp_buf.reset.eq(self.ctrl_rst) for cmp_buf in cmp_bufs]
 
         # Connect Cmp Input to Buffers (based on incoming Tag).
         cases = {i: [cmp_reorder.connect(cmp_bufs[i].sink)] for i in range(len(cmp_bufs))}
@@ -145,12 +152,14 @@ class LitePCIeTLPController(LiteXModule):
         # Completions Management -------------------------------------------------------------------
 
         fill_tag = Signal(tag_bits)
+        self.sync += If(self.ctrl_rst, fill_tag.eq(0))
 
         # Connect Data-Path.
         self.comb += cmp_sink.connect(cmp_reorder, omit={"valid", "ready"})
 
         # FSM
-        self.cmp_fsm = cmp_fsm = FSM(reset_state="FILL-TAG-QUEUE")
+        self.cmp_fsm = cmp_fsm = ResetInserter()(FSM(reset_state="FILL-TAG-QUEUE"))
+        self.comb += cmp_fsm.reset.eq(self.ctrl_rst)
         cmp_fsm.act("FILL-TAG-QUEUE",
             # Pre-fill Tags.
             tag_queue.sink.valid.eq(1),
