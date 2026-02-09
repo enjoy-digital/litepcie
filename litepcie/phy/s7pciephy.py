@@ -24,15 +24,16 @@ class S7PCIEPHY(LiteXModule):
     qword_aligned = False
     def __init__(self, platform, pads, data_width=64,  cd="sys",
         # PCIe hardblock parameters.
-        pcie_data_width = None,
-        refclk_freq     = 100e6,
-        bar0_size       = 0x100000,
-        msi_type        = "msi",
-        with_ptm        = False,
-        mode            = "Endpoint",
+        pcie_data_width               = None,
+        refclk_freq                   = 100e6,
+        bar0_size                     = 0x100000,
+        msi_type                      = "msi",
+        with_ptm                      = False,
+        mode                          = "Endpoint",
+        with_perst_refclk_gating      = False,
         # MMCM parameters.
-        mmcm_clk125_buf = "bufg",
-        mmcm_clk250_buf = "bufg",
+        mmcm_clk125_buf               = "bufg",
+        mmcm_clk250_buf               = "bufg",
     ):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
@@ -99,7 +100,7 @@ class S7PCIEPHY(LiteXModule):
         if hasattr(pads, "rst_n"):
             self.comb += If(pads.rst_n == 0, pcie_rst_n.eq(0))
         self.specials += Instance("IBUFDS_GTE2",
-            i_CEB = 0,
+            i_CEB = (~pcie_rst_n) if with_perst_refclk_gating else 0,
             i_I   = pads.clk_p,
             i_IB  = pads.clk_n,
             o_O   = pcie_refclk
