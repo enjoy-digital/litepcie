@@ -177,3 +177,356 @@ class MAxisRCAdapter(LiteXModule):
                     C(0, 63)
                 ))
             ]
+
+
+class MAxisCQAdapter(LiteXModule):
+    def __init__(self, data_width):
+        assert data_width in [128, 256, 512]
+        keep_width = data_width // 8
+
+        # Raw CQ AXIS from Xilinx hard IP/support wrapper.
+        self.s_axis_tdata  = Signal(data_width)
+        self.s_axis_tkeep  = Signal(keep_width // 4)
+        self.s_axis_tlast  = Signal()
+        self.s_axis_tready = Signal(4)
+        self.s_axis_tuser  = Signal(256)
+        self.s_axis_tvalid = Signal()
+
+        # Adapted CQ AXIS to LitePCIe PHY datapath.
+        self.m_axis_tdata  = Signal(data_width)
+        self.m_axis_tkeep  = Signal(keep_width)
+        self.m_axis_tlast  = Signal()
+        self.m_axis_tready = Signal()
+        self.m_axis_tuser  = Signal(85)
+        self.m_axis_tvalid = Signal()
+        self.m_axis_sop    = Signal()
+
+        # # #
+
+        tdata_hdr = Signal(64)
+        self.comb += tdata_hdr.eq(self.s_axis_tdata[64:128])
+
+        dwlen       = Signal(10)
+        attr        = Signal(2)
+        tc          = Signal(3)
+        tag         = Signal(8)
+        requesterid = Signal(16)
+        reqtype     = Signal(4)
+        fmt         = Signal(3)
+        typ         = Signal(5)
+        read_req    = Signal()
+
+        self.comb += [
+            dwlen.eq(tdata_hdr[0:10]),
+            attr.eq(tdata_hdr[60:62]),
+            tc.eq(tdata_hdr[57:60]),
+            tag.eq(tdata_hdr[32:40]),
+            requesterid.eq(tdata_hdr[16:32]),
+            reqtype.eq(tdata_hdr[11:15]),
+            Case(reqtype, {
+                0b0000: [fmt.eq(0b000), typ.eq(0b00000)],
+                0b0111: [fmt.eq(0b000), typ.eq(0b00001)],
+                0b0001: [fmt.eq(0b010), typ.eq(0b00000)],
+                0b0010: [fmt.eq(0b000), typ.eq(0b00010)],
+                0b0011: [fmt.eq(0b010), typ.eq(0b00010)],
+                0b1000: [fmt.eq(0b000), typ.eq(0b00100)],
+                0b1010: [fmt.eq(0b010), typ.eq(0b00100)],
+                0b1001: [fmt.eq(0b000), typ.eq(0b00101)],
+                0b1011: [fmt.eq(0b010), typ.eq(0b00101)],
+                "default": [fmt.eq(0), typ.eq(0)],
+            }),
+            read_req.eq(fmt[:2] == 0),
+        ]
+
+        cnt       = Signal(2)
+        tlast_lat = Signal()
+        self.sync += [
+            If(self.s_axis_tvalid & self.s_axis_tready[0],
+                If(self.s_axis_tlast,
+                    cnt.eq(0)
+                ).Elif(~cnt[1],
+                    cnt.eq(cnt + 1)
+                )
+            )
+        ]
+
+        sop    = Signal()
+        second = Signal()
+        self.comb += [
+            sop.eq((cnt == 0) & ~tlast_lat),
+            second.eq(cnt == 1),
+            self.m_axis_sop.eq(sop),
+        ]
+
+        tuser_barhit = Signal(8)
+        self.sync += [
+            If(self.s_axis_tvalid & sop,
+                tuser_barhit.eq(Cat(tdata_hdr[11:15], tdata_hdr[48:51], C(0, 1)))
+            )
+        ]
+
+        header = Signal(64)
+        self.sync += [
+            If(self.s_axis_tvalid & sop,
+                header.eq(Cat(
+                    dwlen,
+                    C(0, 2),
+                    attr,
+                    C(0, 1),  # ep
+                    C(0, 1),  # td
+                    C(0, 4),
+                    tc,
+                    C(0, 1),
+                    typ,
+                    fmt,
+                    self.s_axis_tuser[0:8],  # be (128/256), overwritten in 512 branch.
+                    tag,
+                    requesterid
+                ))
+            )
+        ]
+
+        ready_a = Signal()
+        self.comb += ready_a.eq(((cnt == 0) | self.m_axis_tready) & ~tlast_lat)
+        self.comb += self.s_axis_tready.eq(Replicate(ready_a, 4))
+
+        if data_width == 128:
+            read_l        = Signal()
+            tlast_dly_en  = Signal()
+            tdata_a1      = Signal(128)
+            tlast_be1     = Signal(16)
+            ecrc          = Signal()
+            hiaddr_mask   = Signal(32)
+
+            self.comb += hiaddr_mask.eq(Mux(read_l, 0, self.s_axis_tdata[0:32]))
+
+            self.sync += [
+                If(self.s_axis_tvalid & sop,
+                    read_l.eq(read_req)
+                ),
+                If(self.s_axis_tvalid & self.s_axis_tready[0],
+                    tdata_a1.eq(self.s_axis_tdata),
+                    tlast_be1.eq(self.s_axis_tuser[8:24])
+                ),
+                ecrc.eq(self.s_axis_tuser[41]),
+                If(self.s_axis_tvalid & sop,
+                    header.eq(Cat(
+                        dwlen,
+                        C(0, 2),
+                        attr,
+                        C(0, 1),
+                        C(0, 1),
+                        C(0, 4),
+                        tc,
+                        C(0, 1),
+                        typ,
+                        fmt,
+                        self.s_axis_tuser[0:8],
+                        tag,
+                        requesterid
+                    ))
+                )
+            ]
+
+            self.sync += [
+                If(tlast_lat & self.m_axis_tready,
+                    tlast_dly_en.eq(0)
+                ).Elif(self.s_axis_tvalid & sop,
+                    If(read_req,
+                        tlast_dly_en.eq(1)
+                    ).Else(
+                        tlast_dly_en.eq(dwlen[:2] != 1)
+                    )
+                )
+            ]
+
+            self.sync += [
+                If(tlast_lat & self.m_axis_tready,
+                    tlast_lat.eq(0)
+                ).Elif(self.s_axis_tvalid & self.s_axis_tready[0] & self.s_axis_tlast,
+                    If(sop | tlast_dly_en,
+                        tlast_lat.eq(1)
+                    )
+                )
+            ]
+
+            self.comb += [
+                self.m_axis_tlast.eq(Mux(tlast_dly_en, tlast_lat, self.s_axis_tlast)),
+                self.m_axis_tvalid.eq((self.s_axis_tvalid & (cnt != 0)) | tlast_lat),
+                If(read_l | second,
+                    self.m_axis_tdata.eq(Cat(header, tdata_a1[0:32], hiaddr_mask))
+                ).Else(
+                    self.m_axis_tdata.eq(Cat(tdata_a1[32:128], self.s_axis_tdata[0:32]))
+                ),
+                If(read_l,
+                    self.m_axis_tkeep.eq(C(0x0FFF, keep_width))
+                ).Elif(tlast_lat,
+                    self.m_axis_tkeep.eq(Cat(tlast_be1[4:16], C(0, 4)))
+                ).Else(
+                    self.m_axis_tkeep.eq(C((1 << keep_width) - 1, keep_width))
+                ),
+                self.m_axis_tuser.eq(Cat(
+                    ecrc,
+                    C(0, 1),
+                    tuser_barhit,
+                    C(0, 5),
+                    C(0, 2),
+                    C(0, 5),
+                    C(0, 63)
+                ))
+            ]
+        elif data_width == 256:
+            rdwr_l       = Signal()
+            tlast_dly_en = Signal()
+            tdata_a1     = Signal(256)
+            tlast_be1    = Signal(32)
+
+            self.sync += [
+                If(self.s_axis_tvalid & sop,
+                    rdwr_l.eq(self.s_axis_tlast)
+                ),
+                If(self.s_axis_tvalid & self.s_axis_tready[0],
+                    tdata_a1.eq(self.s_axis_tdata),
+                    tlast_be1.eq(self.s_axis_tuser[8:40])
+                ),
+                If(self.s_axis_tvalid & sop,
+                    header.eq(Cat(
+                        dwlen,
+                        C(0, 2),
+                        attr,
+                        C(0, 1),
+                        C(0, 1),
+                        C(0, 4),
+                        tc,
+                        C(0, 1),
+                        typ,
+                        fmt,
+                        self.s_axis_tuser[0:8],
+                        tag,
+                        requesterid
+                    ))
+                )
+            ]
+
+            self.sync += [
+                If(tlast_lat & self.m_axis_tready,
+                    tlast_dly_en.eq(0)
+                ).Elif(self.s_axis_tvalid & sop,
+                    tlast_dly_en.eq(self.s_axis_tlast | (dwlen[:3] != 5))
+                )
+            ]
+
+            self.sync += [
+                If(tlast_lat & self.m_axis_tready,
+                    tlast_lat.eq(0)
+                ).Elif(self.s_axis_tvalid & self.s_axis_tready[0] & self.s_axis_tlast,
+                    If(sop | tlast_dly_en,
+                        tlast_lat.eq(1)
+                    )
+                )
+            ]
+
+            self.comb += [
+                self.m_axis_tlast.eq(Mux(tlast_dly_en, tlast_lat, self.s_axis_tlast)),
+                self.m_axis_tvalid.eq((self.s_axis_tvalid & (cnt != 0)) | tlast_lat),
+                If(rdwr_l | second,
+                    self.m_axis_tdata.eq(Cat(header, tdata_a1[0:32], tdata_a1[128:256], self.s_axis_tdata[0:32]))
+                ).Else(
+                    self.m_axis_tdata.eq(Cat(tdata_a1[32:256], self.s_axis_tdata[0:32]))
+                ),
+                If(rdwr_l,
+                    self.m_axis_tkeep.eq(Cat(C(0xFFF, 12), tlast_be1[16:32], C(0, 4)))
+                ).Elif(tlast_lat,
+                    self.m_axis_tkeep.eq(Cat(tlast_be1[4:32], C(0, 4)))
+                ).Else(
+                    self.m_axis_tkeep.eq(C((1 << keep_width) - 1, keep_width))
+                ),
+                self.m_axis_tuser.eq(Cat(
+                    self.s_axis_tuser[41],
+                    C(0, 1),
+                    tuser_barhit,
+                    C(0, 5),
+                    C(0, 2),
+                    C(0, 5),
+                    C(0, 63)
+                ))
+            ]
+        else:
+            rdwr_l       = Signal()
+            tlast_dly_en = Signal()
+            tdata_a1     = Signal(512)
+            tlast_be1    = Signal(64)
+            be_512       = Signal(8)
+
+            self.comb += be_512.eq(Cat(self.s_axis_tuser[0:4], self.s_axis_tuser[8:12]))
+
+            self.sync += [
+                If(self.s_axis_tvalid & sop,
+                    rdwr_l.eq(self.s_axis_tlast)
+                ),
+                If(self.s_axis_tvalid & self.s_axis_tready[0],
+                    tdata_a1.eq(self.s_axis_tdata),
+                    tlast_be1.eq(self.s_axis_tuser[16:80])
+                ),
+                If(self.s_axis_tvalid & sop,
+                    header.eq(Cat(
+                        dwlen,
+                        C(0, 2),
+                        attr,
+                        C(0, 1),
+                        C(0, 1),
+                        C(0, 4),
+                        tc,
+                        C(0, 1),
+                        typ,
+                        fmt,
+                        be_512,
+                        tag,
+                        requesterid
+                    ))
+                )
+            ]
+
+            self.sync += [
+                If(tlast_lat & self.m_axis_tready,
+                    tlast_dly_en.eq(0)
+                ).Elif(self.s_axis_tvalid & sop,
+                    tlast_dly_en.eq(self.s_axis_tlast | (dwlen[:4] != 13))
+                )
+            ]
+
+            self.sync += [
+                If(tlast_lat & self.m_axis_tready,
+                    tlast_lat.eq(0)
+                ).Elif(self.s_axis_tvalid & self.s_axis_tready[0] & self.s_axis_tlast,
+                    If(sop | tlast_dly_en,
+                        tlast_lat.eq(1)
+                    )
+                )
+            ]
+
+            self.comb += [
+                self.m_axis_tlast.eq(Mux(tlast_dly_en, tlast_lat, self.s_axis_tlast)),
+                self.m_axis_tvalid.eq((self.s_axis_tvalid & (cnt != 0)) | tlast_lat),
+                If(rdwr_l | second,
+                    self.m_axis_tdata.eq(Cat(header, tdata_a1[0:32], tdata_a1[128:512], self.s_axis_tdata[0:32]))
+                ).Else(
+                    self.m_axis_tdata.eq(Cat(tdata_a1[32:512], self.s_axis_tdata[0:32]))
+                ),
+                If(rdwr_l,
+                    self.m_axis_tkeep.eq(Cat(C(0xFFF, 12), tlast_be1[16:64], C(0, 4)))
+                ).Elif(tlast_lat,
+                    self.m_axis_tkeep.eq(Cat(tlast_be1[4:64], C(0, 4)))
+                ).Else(
+                    self.m_axis_tkeep.eq(C((1 << keep_width) - 1, keep_width))
+                ),
+                self.m_axis_tuser.eq(Cat(
+                    self.s_axis_tuser[96],
+                    C(0, 1),
+                    tuser_barhit,
+                    C(0, 5),
+                    C(0, 2),
+                    C(0, 5),
+                    C(0, 63)
+                ))
+            ]

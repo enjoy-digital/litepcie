@@ -17,7 +17,7 @@ from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 from litepcie.phy.common import *
-from litepcie.phy.xilinx.axis_adapters import MAxisRCAdapter
+from litepcie.phy.xilinx.axis_adapters import MAxisCQAdapter, MAxisRCAdapter
 
 # USPPCIEPHY ---------------------------------------------------------------------------------------
 
@@ -204,7 +204,7 @@ class USPPCIEPHY(LiteXModule):
         # Hard IP ----------------------------------------------------------------------------------
 
         m_axis_rc_tuser = Signal(85)
-        m_axis_cq_tuser = Signal(22)
+        m_axis_cq_tuser = Signal(85)
         m_axis_rc_tlast = Signal()
         m_axis_cq_tlast = Signal()
         m_axis_rc_tdata_raw  = Signal(pcie_data_width)
@@ -213,6 +213,12 @@ class USPPCIEPHY(LiteXModule):
         m_axis_rc_tlast_raw  = Signal()
         m_axis_rc_tvalid_raw = Signal()
         m_axis_rc_tready_raw = Signal(4)
+        m_axis_cq_tdata_raw  = Signal(pcie_data_width)
+        m_axis_cq_tkeep_raw  = Signal(pcie_data_width//32)
+        m_axis_cq_tuser_raw  = Signal(85)
+        m_axis_cq_tlast_raw  = Signal()
+        m_axis_cq_tvalid_raw = Signal()
+        m_axis_cq_tready_raw = Signal(4)
 
         if self.mode == "Endpoint":
             msi_ports = dict(
@@ -293,12 +299,12 @@ class USPPCIEPHY(LiteXModule):
             # (Host -> FPGA) Completer Request
             i_pcie_cq_np_req                   = 1,
             o_pcie_cq_np_req_count             = Open(6),
-            o_m_axis_cq_tvalid                 = m_axis_cq.valid,
-            o_m_axis_cq_tlast                  = m_axis_cq_tlast,
-            i_m_axis_cq_tready                 = m_axis_cq.ready,
-            o_m_axis_cq_tdata                  = m_axis_cq.dat,
-            o_m_axis_cq_tkeep                  = m_axis_cq.be,
-            o_m_axis_cq_tuser                  = m_axis_cq_tuser,
+            o_m_axis_cq_tvalid                 = m_axis_cq_tvalid_raw,
+            o_m_axis_cq_tlast                  = m_axis_cq_tlast_raw,
+            i_m_axis_cq_tready                 = m_axis_cq_tready_raw,
+            o_m_axis_cq_tdata                  = m_axis_cq_tdata_raw,
+            o_m_axis_cq_tkeep                  = m_axis_cq_tkeep_raw,
+            o_m_axis_cq_tuser                  = m_axis_cq_tuser_raw,
 
             # (Host -> FPGA) Requester Completion
             o_m_axis_rc_tvalid                 = m_axis_rc_tvalid_raw,
@@ -394,9 +400,23 @@ class USPPCIEPHY(LiteXModule):
         self.pcie_phy_params.update(msi_ports)
         self.pcie_phy_params.update(cfg_msg_ports)
 
+        self.m_axis_cq_adapt = m_axis_cq_adapt = ClockDomainsRenamer("pcie")(MAxisCQAdapter(pcie_data_width))
         self.comb += [
+            m_axis_cq_adapt.s_axis_tdata.eq(m_axis_cq_tdata_raw),
+            m_axis_cq_adapt.s_axis_tkeep.eq(m_axis_cq_tkeep_raw),
+            m_axis_cq_adapt.s_axis_tuser.eq(m_axis_cq_tuser_raw),
+            m_axis_cq_adapt.s_axis_tlast.eq(m_axis_cq_tlast_raw),
+            m_axis_cq_adapt.s_axis_tvalid.eq(m_axis_cq_tvalid_raw),
+            m_axis_cq_tready_raw.eq(m_axis_cq_adapt.s_axis_tready),
+
+            m_axis_cq.dat.eq(m_axis_cq_adapt.m_axis_tdata),
+            m_axis_cq.be.eq(m_axis_cq_adapt.m_axis_tkeep),
+            m_axis_cq_tuser.eq(m_axis_cq_adapt.m_axis_tuser),
+            m_axis_cq_tlast.eq(m_axis_cq_adapt.m_axis_tlast),
+            m_axis_cq.valid.eq(m_axis_cq_adapt.m_axis_tvalid),
+            m_axis_cq_adapt.m_axis_tready.eq(m_axis_cq.ready),
             m_axis_cq.first.eq(m_axis_cq_tuser[14]),
-            m_axis_cq.last.eq (m_axis_cq_tlast),
+            m_axis_cq.last.eq(m_axis_cq_tlast),
         ]
 
         self.m_axis_rc_adapt = m_axis_rc_adapt = ClockDomainsRenamer("pcie")(MAxisRCAdapter(pcie_data_width))
@@ -517,7 +537,6 @@ class USPPCIEPHY(LiteXModule):
 
         platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
         platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt.v"))
-        platform.add_source(os.path.join(verilog_path, "m_axis_cq_adapt.v"))
         platform.add_source(os.path.join(verilog_path, "s_axis_cc_adapt.v"))
         platform.add_source(os.path.join(verilog_path, "pcie_usp_support.v"))
 

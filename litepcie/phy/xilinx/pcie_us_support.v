@@ -123,11 +123,11 @@ module pcie_support # (
 
   //Completer Request
   output               [C_DATA_WIDTH-1:0]    m_axis_cq_tdata,
-  output                           [21:0]    m_axis_cq_tuser,
+  output                           [84:0]    m_axis_cq_tuser,
   output                                     m_axis_cq_tlast,
-  output                 [KEEP_WIDTH-1:0]    m_axis_cq_tkeep,
+  output               [KEEP_WIDTH/4-1:0]    m_axis_cq_tkeep,
   output                                     m_axis_cq_tvalid,
-  input                                      m_axis_cq_tready,
+  input                             [3:0]    m_axis_cq_tready,
 
   //Completer Completion
   input                [C_DATA_WIDTH-1:0]    s_axis_cc_tdata,
@@ -362,33 +362,18 @@ module pcie_support # (
   //----------------------------------------------------- CQ AXIS --------------------------------------------------//
 
   wire                     m_axis_cq_tvalid_a;
-  wire                     m_axis_cq_tready_a;
+  wire [3:0]               m_axis_cq_tready_a;
   wire [KEEP_WIDTH/4-1 :0] m_axis_cq_tkeep_a;
   wire [C_DATA_WIDTH-1 :0] m_axis_cq_tdata_a;
   wire [255            :0] m_axis_cq_tuser_a;
   wire                     m_axis_cq_tlast_a;
 
-  m_axis_cq_adapt #(
-    .DATA_WIDTH(C_DATA_WIDTH),
-    .KEEP_WIDTH(KEEP_WIDTH)
-  ) m_axis_cq_adapt_i (
-    .user_clk(user_clk_out),
-    .user_reset(user_reset_out),
-
-    .m_axis_cq_tdata(m_axis_cq_tdata),
-    .m_axis_cq_tkeep(m_axis_cq_tkeep),
-    .m_axis_cq_tlast(m_axis_cq_tlast),
-    .m_axis_cq_tready(m_axis_cq_tready),
-    .m_axis_cq_tuser(m_axis_cq_tuser),
-    .m_axis_cq_tvalid(m_axis_cq_tvalid),
-
-    .m_axis_cq_tdata_a(m_axis_cq_tdata_a),
-    .m_axis_cq_tkeep_a(m_axis_cq_tkeep_a),
-    .m_axis_cq_tlast_a(m_axis_cq_tlast_a),
-    .m_axis_cq_tready_a(m_axis_cq_tready_a),
-    .m_axis_cq_tuser_a(m_axis_cq_tuser_a),
-    .m_axis_cq_tvalid_a(m_axis_cq_tvalid_a)
-  );
+  assign m_axis_cq_tdata    = m_axis_cq_tdata_a;
+  assign m_axis_cq_tkeep    = m_axis_cq_tkeep_a;
+  assign m_axis_cq_tlast    = m_axis_cq_tlast_a;
+  assign m_axis_cq_tuser    = m_axis_cq_tuser_a[84:0];
+  assign m_axis_cq_tvalid   = m_axis_cq_tvalid_a;
+  assign m_axis_cq_tready_a = m_axis_cq_tready;
 
   //----------------------------------------------------- CC AXIS --------------------------------------------------//
 
