@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import unittest
+import random
 
 from litex.gen import *
 
@@ -463,3 +464,64 @@ class TestSAxisRQAdapter(unittest.TestCase):
                             expected_ecrc = ecrc_data | ecrc_user
                             self.assertEqual((out_data >> (header_lsb + 15)) & 0x1, expected_poison)
                             self.assertEqual((out_data >> (header_lsb + 63)) & 0x1, expected_ecrc)
+
+    def test_keep_be_fuzz_all_widths(self):
+        rng = random.Random(0x5A1700)
+
+        def expected_keep(width, keep):
+            if width == 128:
+                return 0xF
+            if width == 256:
+                return sum((((keep >> (4*i)) & 0x1) << i) for i in range(8))
+            return 1 | sum((((keep >> (4*i)) & 0x1) << (i + 1)) for i in range(15))
+
+        for data_width in [128, 256, 512]:
+            keep_width = data_width // 8
+            for _ in range(40):
+                dut = SAxisRQAdapter(data_width)
+                beats = []
+
+                firstbe = rng.getrandbits(4)
+                lastbe = rng.getrandbits(4)
+
+                data = rng.getrandbits(data_width)
+                data &= ~(0xFF << 32)
+                data |= (firstbe << 32) | (lastbe << 36)
+                data &= ~(0x3 << 30)  # read request to force single output beat
+                data &= ~0x3FF
+                data |= 1
+                keep = rng.getrandbits(keep_width)
+                tuser = rng.getrandbits(4)
+
+                @passive
+                def monitor():
+                    for _ in range(8):
+                        if (yield dut.m_axis_tvalid):
+                            beats.append({
+                                "keep": (yield dut.m_axis_tkeep),
+                                "user": (yield dut.m_axis_tuser),
+                                "last": (yield dut.m_axis_tlast),
+                            })
+                        yield
+
+                def stim():
+                    yield dut.m_axis_tready.eq(1)
+                    yield
+                    yield dut.s_axis_tvalid.eq(1)
+                    yield dut.s_axis_tlast.eq(1)
+                    yield dut.s_axis_tdata.eq(data)
+                    yield dut.s_axis_tkeep.eq(keep)
+                    yield dut.s_axis_tuser.eq(tuser)
+                    yield
+                    yield dut.s_axis_tvalid.eq(0)
+                    yield
+
+                run_simulation(dut, [stim(), monitor()], vcd_name=None)
+                self.assertEqual(len(beats), 1)
+                self.assertEqual(beats[0]["last"], 1)
+                self.assertEqual(beats[0]["keep"], expected_keep(data_width, keep))
+                if data_width in [128, 256]:
+                    self.assertEqual(beats[0]["user"] & 0xFF, (lastbe << 4) | firstbe)
+                else:
+                    self.assertEqual(beats[0]["user"] & 0xF, firstbe)
+                    self.assertEqual((beats[0]["user"] >> 8) & 0xF, lastbe)

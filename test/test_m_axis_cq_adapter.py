@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import unittest
+import random
 
 from litex.gen import *
 
@@ -424,3 +425,108 @@ class TestMAxisCQAdapter(unittest.TestCase):
             for ecrc in [0, 1]:
                 out_user = self._run_ecrc_matrix_case(data_width=data_width, ecrc=ecrc)
                 self.assertEqual(out_user & 0x1, ecrc)
+
+    def test_be_unpack_fuzz_all_widths(self):
+        rng = random.Random(0x5A17C0)
+        for data_width in [128, 256, 512]:
+            for _ in range(40):
+                dut = MAxisCQAdapter(data_width)
+                beats = []
+
+                data0 = rng.getrandbits(data_width)
+                data1 = rng.getrandbits(data_width)
+                hdr = 0
+                hdr |= {128: 1, 256: 5, 512: 13}[data_width]
+                hdr |= 0b0001 << 11  # write
+                data0 &= ~(((1 << 64) - 1) << 64)
+                data0 |= hdr << 64
+
+                if data_width == 512:
+                    lo = rng.getrandbits(4)
+                    hi = rng.getrandbits(4)
+                    user0 = lo | (hi << 8)
+                    expected_be = (hi << 4) | lo
+                else:
+                    expected_be = rng.getrandbits(8)
+                    user0 = expected_be
+                user1 = 0
+
+                @passive
+                def monitor():
+                    for _ in range(10):
+                        if (yield dut.m_axis_tvalid):
+                            beats.append((yield dut.m_axis_tdata))
+                        yield
+
+                def stim():
+                    yield dut.m_axis_tready.eq(1)
+                    yield
+                    yield dut.s_axis_tvalid.eq(1)
+                    yield dut.s_axis_tlast.eq(0)
+                    yield dut.s_axis_tdata.eq(data0)
+                    yield dut.s_axis_tuser.eq(user0)
+                    yield dut.s_axis_tkeep.eq(0)
+                    yield
+                    yield dut.s_axis_tvalid.eq(1)
+                    yield dut.s_axis_tlast.eq(1)
+                    yield dut.s_axis_tdata.eq(data1)
+                    yield dut.s_axis_tuser.eq(user1)
+                    yield
+                    yield dut.s_axis_tvalid.eq(0)
+                    yield
+
+                run_simulation(dut, [stim(), monitor()], vcd_name=None)
+                self.assertGreaterEqual(len(beats), 1)
+                self.assertEqual((beats[0] >> 32) & 0xFF, expected_be)
+
+    def test_last_keep_fuzz_256_512(self):
+        rng = random.Random(0x5A17C1)
+        for data_width in [256, 512]:
+            keep_width = data_width // 8
+            for _ in range(40):
+                dut = MAxisCQAdapter(data_width)
+                beats = []
+
+                data0 = rng.getrandbits(data_width)
+                hdr = 0
+                hdr |= rng.randrange(0, 1024)  # dwlen
+                hdr |= 0b0001 << 11            # write
+                data0 &= ~(((1 << 64) - 1) << 64)
+                data0 |= hdr << 64
+
+                if data_width == 256:
+                    tail = rng.getrandbits(16)
+                    user0 = tail << 24
+                    expected_keep = (tail << 12) | 0xFFF
+                else:
+                    tail = rng.getrandbits(48)
+                    user0 = tail << 32
+                    expected_keep = (tail << 12) | 0xFFF
+                    expected_keep &= (1 << keep_width) - 1
+
+                @passive
+                def monitor():
+                    for _ in range(8):
+                        if (yield dut.m_axis_tvalid):
+                            beats.append({
+                                "keep": (yield dut.m_axis_tkeep),
+                                "last": (yield dut.m_axis_tlast),
+                            })
+                        yield
+
+                def stim():
+                    yield dut.m_axis_tready.eq(1)
+                    yield
+                    yield dut.s_axis_tvalid.eq(1)
+                    yield dut.s_axis_tlast.eq(1)
+                    yield dut.s_axis_tdata.eq(data0)
+                    yield dut.s_axis_tuser.eq(user0)
+                    yield dut.s_axis_tkeep.eq(0)
+                    yield
+                    yield dut.s_axis_tvalid.eq(0)
+                    yield
+
+                run_simulation(dut, [stim(), monitor()], vcd_name=None)
+                self.assertGreaterEqual(len(beats), 1)
+                self.assertEqual(beats[0]["last"], 1)
+                self.assertEqual(beats[0]["keep"], expected_keep)

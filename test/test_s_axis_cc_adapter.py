@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import unittest
+import random
 
 from litex.gen import *
 
@@ -240,3 +241,38 @@ class TestSAxisCCAdapter(unittest.TestCase):
                         expected_td = td_data | td_user
                         self.assertEqual((out_data >> 45) & 0x1, expected_poison)
                         self.assertEqual((out_data >> 95) & 0x1, expected_td)
+
+    def test_keep_fuzz_all_widths(self):
+        rng = random.Random(0x5A17CC)
+        for data_width in [128, 256, 512]:
+            keep_width = data_width // 8
+            for _ in range(40):
+                dut = SAxisCCAdapter(data_width)
+                beats = []
+
+                data = rng.getrandbits(data_width)
+                keep = rng.getrandbits(keep_width)
+                tuser = rng.getrandbits(4)
+
+                @passive
+                def monitor():
+                    for _ in range(6):
+                        if (yield dut.m_axis_tvalid):
+                            beats.append((yield dut.m_axis_tkeep))
+                        yield
+
+                def stim():
+                    yield dut.m_axis_tready.eq(1)
+                    yield
+                    yield dut.s_axis_tvalid.eq(1)
+                    yield dut.s_axis_tlast.eq(1)
+                    yield dut.s_axis_tdata.eq(data)
+                    yield dut.s_axis_tkeep.eq(keep)
+                    yield dut.s_axis_tuser.eq(tuser)
+                    yield
+                    yield dut.s_axis_tvalid.eq(0)
+                    yield
+
+                run_simulation(dut, [stim(), monitor()], vcd_name=None)
+                self.assertEqual(len(beats), 1)
+                self.assertEqual(beats[0], self._expected_keep(data_width, keep))
