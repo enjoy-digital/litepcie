@@ -30,6 +30,7 @@ class USPPCIEPHY(LiteXModule):
         pcie_data_width = None,
         bar0_size       = 0x100000,
         mode            = "Endpoint",
+        use_support_wrapper = False,
     ):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
@@ -92,6 +93,7 @@ class USPPCIEPHY(LiteXModule):
 
         self.config           = {}
         self.external_hard_ip = False
+        self.use_support_wrapper = use_support_wrapper
 
         # # #
 
@@ -184,6 +186,16 @@ class USPPCIEPHY(LiteXModule):
         cfg_function_status  = Signal(16)
         cfg_max_payload_size = Signal(3)
         cfg_max_read_req     = Signal(3)
+        link_status_sys      = self.add_resync(self._link_status.fields.status, "sys")
+        link_phy_down_sys    = self.add_resync(self._link_status.fields.phy_down, "sys")
+        link_phy_status_sys  = self.add_resync(self._link_status.fields.phy_status, "sys")
+        link_width_sys       = self.add_resync(self._link_status.fields.width, "sys")
+        link_rate_sys        = self.add_resync(self._link_status.fields.rate, "sys")
+        link_ltssm_sys       = self.add_resync(self._link_status.fields.ltssm, "sys")
+        cfg_max_payload_sys  = self.add_resync(cfg_max_payload_size, "sys")
+        cfg_max_read_req_sys = self.add_resync(cfg_max_read_req, "sys")
+        cfg_function_status_sys = self.add_resync(cfg_function_status, "sys")
+        msi_enable_sys       = self.add_resync(self._msi_enable.status, "sys")
 
         self.comb += [
             convert_size(cfg_max_read_req,     self.max_request_size, max_size=512),
@@ -218,12 +230,14 @@ class USPPCIEPHY(LiteXModule):
         m_axis_rc_tdata_raw  = Signal(pcie_data_width)
         m_axis_rc_tkeep_raw  = Signal(pcie_data_width//32)
         m_axis_rc_tuser_raw  = Signal(85)
+        m_axis_rc_tuser_full = Signal(256)
         m_axis_rc_tlast_raw  = Signal()
         m_axis_rc_tvalid_raw = Signal()
         m_axis_rc_tready_raw = Signal(4)
         m_axis_cq_tdata_raw  = Signal(pcie_data_width)
         m_axis_cq_tkeep_raw  = Signal(pcie_data_width//32)
         m_axis_cq_tuser_raw  = Signal(85)
+        m_axis_cq_tuser_full = Signal(256)
         m_axis_cq_tlast_raw  = Signal()
         m_axis_cq_tvalid_raw = Signal()
         m_axis_cq_tready_raw = Signal(4)
@@ -236,7 +250,7 @@ class USPPCIEPHY(LiteXModule):
 
         if self.mode == "Endpoint":
             msi_ports = dict(
-                o_cfg_interrupt_msi_enable    = self.add_resync(self._msi_enable.status, "sys"),
+                o_cfg_interrupt_msi_enable    = msi_enable_sys,
                 i_cfg_interrupt_msi_int_valid = cfg_msi.valid,
                 i_cfg_interrupt_msi_int       = cfg_msi.dat,
                 o_cfg_interrupt_msi_sent      = cfg_msi.ready,
@@ -267,6 +281,55 @@ class USPPCIEPHY(LiteXModule):
                 o_cfg_msg_received_type = Open(5),
             )
 
+        # Direct pcie_usp MSI adaptation (equivalent to legacy support wrapper).
+        cfg_interrupt_msi_enable_x4 = Signal(4)
+        cfg_interrupt_msi_sent      = Signal()
+        cfg_interrupt_msi_fail      = Signal()
+        cfg_interrupt_msi_mmenable  = Signal(12)
+        cfg_interrupt_msi_int_enc   = Signal(32)
+        cfg_interrupt_msi_int_valid = Signal()
+        cfg_interrupt_msi_int_valid_sh = Signal(2)
+        cfg_interrupt_msi_int_valid_edge = Signal()
+        cfg_interrupt_msi_int_valid_edge1 = Signal()
+        cfg_interrupt_msi_int_enc_lat = Signal(32)
+        cfg_interrupt_msi_int_enc_mux = Signal(32)
+        self.comb += cfg_interrupt_msi_int_valid.eq(
+            cfg_msi.valid & ~(cfg_interrupt_msi_sent | cfg_interrupt_msi_fail)
+            if self.mode == "Endpoint" else 0
+        )
+        self.sync.pcie += [
+            cfg_interrupt_msi_int_valid_sh.eq(Cat(cfg_interrupt_msi_int_valid, cfg_interrupt_msi_int_valid_sh[0])),
+        ]
+        self.comb += cfg_interrupt_msi_int_valid_edge.eq(cfg_interrupt_msi_int_valid_sh == 0b01)
+        self.comb += Case(cfg_interrupt_msi_mmenable[0:3], {
+            0b000: cfg_interrupt_msi_int_enc.eq(0x00000001),
+            0b001: cfg_interrupt_msi_int_enc.eq(0x00000002),
+            0b010: cfg_interrupt_msi_int_enc.eq(0x00000010),
+            0b011: cfg_interrupt_msi_int_enc.eq(0x00000100),
+            0b100: cfg_interrupt_msi_int_enc.eq(0x00010000),
+            "default": cfg_interrupt_msi_int_enc.eq(0x80000000),
+        })
+        self.sync.pcie += [
+            If(cfg_interrupt_msi_int_valid_edge,
+                cfg_interrupt_msi_int_enc_lat.eq(cfg_interrupt_msi_int_enc)
+            ).Elif(cfg_interrupt_msi_sent,
+                cfg_interrupt_msi_int_enc_lat.eq(0)
+            ),
+            If(ResetSignal("pcie"),
+                cfg_interrupt_msi_int_valid_edge1.eq(0)
+            ).Else(
+                cfg_interrupt_msi_int_valid_edge1.eq(cfg_interrupt_msi_int_valid_edge)
+            )
+        ]
+        self.comb += cfg_interrupt_msi_int_enc_mux.eq(Mux(cfg_interrupt_msi_int_valid_edge1, cfg_interrupt_msi_int_enc_lat, 0))
+        self.comb += [
+            msi_enable_sys.eq(cfg_interrupt_msi_enable_x4[0]),
+            m_axis_rc_tuser_raw.eq(m_axis_rc_tuser_full[:85]),
+            m_axis_cq_tuser_raw.eq(m_axis_cq_tuser_full[:85]),
+        ]
+        if self.mode == "Endpoint":
+            self.comb += cfg_msi.ready.eq(cfg_interrupt_msi_sent)
+
         self.pcie_phy_params = dict(
             # Parameters ---------------------------------------------------------------------------
             p_LINK_CAP_MAX_LINK_WIDTH          = nlanes,
@@ -292,7 +355,7 @@ class USPPCIEPHY(LiteXModule):
             # Common
             o_user_clk_out                     = ClockSignal("pcie"),
             o_user_reset_out                   = ResetSignal("pcie"),
-            o_user_lnk_up                      = self.add_resync(self._link_status.fields.status, "sys"),
+            o_user_lnk_up                      = link_status_sys,
             o_user_app_rdy                     = Open(),
 
             # (FPGA -> Host) Requester Request
@@ -383,13 +446,13 @@ class USPPCIEPHY(LiteXModule):
             o_cfg_interrupt_sent               = Open(),
 
             # Error Reporting Interface ------------------------------------------------------------
-            o_cfg_phy_link_down                = self.add_resync(self._link_status.fields.phy_down,   "sys"),
-            o_cfg_phy_link_status              = self.add_resync(self._link_status.fields.phy_status, "sys"),
-            o_cfg_negotiated_width             = self.add_resync(self._link_status.fields.width,      "sys"),
-            o_cfg_current_speed                = self.add_resync(self._link_status.fields.rate,       "sys"),
-            o_cfg_max_payload                  = self.add_resync(cfg_max_payload_size, "sys"),
-            o_cfg_max_read_req                 = self.add_resync(cfg_max_read_req,     "sys"),
-            o_cfg_function_status              = self.add_resync(cfg_function_status,  "sys"),
+            o_cfg_phy_link_down                = link_phy_down_sys,
+            o_cfg_phy_link_status              = link_phy_status_sys,
+            o_cfg_negotiated_width             = link_width_sys,
+            o_cfg_current_speed                = link_rate_sys,
+            o_cfg_max_payload                  = cfg_max_payload_sys,
+            o_cfg_max_read_req                 = cfg_max_read_req_sys,
+            o_cfg_function_status              = cfg_function_status_sys,
             o_cfg_function_power_state         = Open(12),
             o_cfg_vf_status                    = Open(16),
             o_cfg_vf_power_state               = Open(24),
@@ -399,7 +462,7 @@ class USPPCIEPHY(LiteXModule):
             o_cfg_err_nonfatal_out             = Open(),
             o_cfg_err_fatal_out                = Open(),
             o_cfg_ltr_enable                   = Open(),
-            o_cfg_ltssm_state                  = self.add_resync(self._link_status.fields.ltssm, "sys"),
+            o_cfg_ltssm_state                  = link_ltssm_sys,
             o_cfg_rcb_status                   = Open(4),
             o_cfg_dpa_substate_change          = Open(4),
             o_cfg_obff_enable                  = Open(2),
@@ -413,6 +476,150 @@ class USPPCIEPHY(LiteXModule):
 
         self.pcie_phy_params.update(msi_ports)
         self.pcie_phy_params.update(cfg_msg_ports)
+
+        # Direct pcie_usp instantiation (wrapper-less path).
+        self.pcie_usp_phy_params = dict(
+            i_sys_clk                           = pcie_refclk,
+            i_sys_clk_gt                        = pcie_refclk_gt,
+            i_sys_reset                         = pcie_rst_n,
+
+            o_pci_exp_txp                       = pads.tx_p,
+            o_pci_exp_txn                       = pads.tx_n,
+            i_pci_exp_rxp                       = pads.rx_p,
+            i_pci_exp_rxn                       = pads.rx_n,
+
+            o_user_clk                          = ClockSignal("pcie"),
+            o_user_reset                        = ResetSignal("pcie"),
+            o_user_lnk_up                       = link_status_sys,
+            o_phy_rdy_out                       = Open(),
+
+            i_s_axis_rq_tvalid                  = s_axis_rq_tvalid_raw,
+            i_s_axis_rq_tlast                   = s_axis_rq_tlast_raw,
+            o_s_axis_rq_tready                  = s_axis_rq_tready_raw,
+            i_s_axis_rq_tdata                   = s_axis_rq_tdata_raw,
+            i_s_axis_rq_tkeep                   = s_axis_rq_tkeep_raw,
+            i_s_axis_rq_tuser                   = s_axis_rq_tuser_raw,
+
+            o_m_axis_rc_tdata                   = m_axis_rc_tdata_raw,
+            o_m_axis_rc_tuser                   = m_axis_rc_tuser_full,
+            o_m_axis_rc_tlast                   = m_axis_rc_tlast_raw,
+            o_m_axis_rc_tkeep                   = m_axis_rc_tkeep_raw,
+            o_m_axis_rc_tvalid                  = m_axis_rc_tvalid_raw,
+            i_m_axis_rc_tready                  = m_axis_rc_tready_raw,
+
+            o_m_axis_cq_tdata                   = m_axis_cq_tdata_raw,
+            o_m_axis_cq_tuser                   = m_axis_cq_tuser_full,
+            o_m_axis_cq_tlast                   = m_axis_cq_tlast_raw,
+            o_m_axis_cq_tkeep                   = m_axis_cq_tkeep_raw,
+            o_m_axis_cq_tvalid                  = m_axis_cq_tvalid_raw,
+            i_m_axis_cq_tready                  = m_axis_cq_tready_raw,
+
+            i_s_axis_cc_tdata                   = s_axis_cc_tdata_raw,
+            i_s_axis_cc_tuser                   = s_axis_cc_tuser_raw,
+            i_s_axis_cc_tlast                   = s_axis_cc_tlast_raw,
+            i_s_axis_cc_tkeep                   = s_axis_cc_tkeep_raw,
+            i_s_axis_cc_tvalid                  = s_axis_cc_tvalid_raw,
+            o_s_axis_cc_tready                  = s_axis_cc_tready_raw,
+
+            o_pcie_tfc_nph_av                   = Open(2),
+            o_pcie_tfc_npd_av                   = Open(2),
+            o_pcie_rq_seq_num                   = Open(4),
+            o_pcie_rq_seq_num_vld               = Open(),
+            o_pcie_rq_tag_av                    = Open(2),
+            i_pcie_cq_np_req                    = 1,
+            o_pcie_cq_np_req_count              = Open(6),
+
+            o_cfg_phy_link_down                 = link_phy_down_sys,
+            o_cfg_phy_link_status               = link_phy_status_sys,
+            o_cfg_negotiated_width              = link_width_sys,
+            o_cfg_current_speed                 = link_rate_sys,
+            o_cfg_max_payload                   = cfg_max_payload_sys,
+            o_cfg_max_read_req                  = cfg_max_read_req_sys,
+            o_cfg_function_status               = cfg_function_status_sys,
+            o_cfg_function_power_state          = Open(12),
+            o_cfg_vf_status                     = Open(16),
+            o_cfg_vf_power_state                = Open(24),
+            o_cfg_link_power_state              = Open(2),
+            o_cfg_err_cor_out                   = Open(),
+            o_cfg_err_nonfatal_out              = Open(),
+            o_cfg_err_fatal_out                 = Open(),
+            o_cfg_ltssm_state                   = link_ltssm_sys,
+            o_cfg_rcb_status                    = Open(4),
+            o_cfg_obff_enable                   = Open(2),
+            o_cfg_pl_status_change              = Open(),
+            o_cfg_tph_requester_enable          = Open(4),
+            o_cfg_tph_st_mode                   = Open(12),
+            o_cfg_vf_tph_requester_enable       = Open(8),
+            o_cfg_vf_tph_st_mode                = Open(24),
+
+            i_cfg_mgmt_addr                     = 0,
+            i_cfg_mgmt_write                    = 0,
+            i_cfg_mgmt_write_data               = 0,
+            i_cfg_mgmt_byte_enable              = 0,
+            i_cfg_mgmt_read                     = 0,
+            o_cfg_mgmt_read_data                = Open(32),
+            o_cfg_mgmt_read_write_done          = Open(),
+            i_cfg_mgmt_function_number          = 0,
+            i_cfg_mgmt_debug_access             = 0,
+
+            o_cfg_msg_received                  = cfg_msg_ports["o_cfg_msg_received"],
+            o_cfg_msg_received_data             = cfg_msg_ports["o_cfg_msg_received_data"],
+            o_cfg_msg_received_type             = cfg_msg_ports["o_cfg_msg_received_type"],
+            i_cfg_msg_transmit                  = 0,
+            i_cfg_msg_transmit_type             = 0,
+            i_cfg_msg_transmit_data             = 0,
+            o_cfg_msg_transmit_done             = Open(),
+
+            o_cfg_fc_ph                         = Open(8),
+            o_cfg_fc_pd                         = Open(12),
+            o_cfg_fc_nph                        = Open(8),
+            o_cfg_fc_npd                        = Open(12),
+            o_cfg_fc_cplh                       = Open(8),
+            o_cfg_fc_cpld                       = Open(12),
+            i_cfg_fc_sel                        = 0,
+
+            i_cfg_hot_reset_in                  = 0,
+            o_cfg_hot_reset_out                 = Open(),
+            i_cfg_power_state_change_ack        = 0,
+            o_cfg_power_state_change_interrupt  = Open(),
+            i_cfg_err_cor_in                    = 0,
+            i_cfg_err_uncor_in                  = 0,
+            o_cfg_flr_in_process                = Open(4),
+            i_cfg_flr_done                      = 0,
+            o_cfg_vf_flr_in_process             = Open(8),
+            i_cfg_vf_flr_done                   = 0,
+            i_cfg_vf_flr_func_num               = 0,
+            i_cfg_link_training_enable          = 1,
+            i_cfg_pm_aspm_l1_entry_reject       = 0,
+            i_cfg_pm_aspm_tx_l0s_entry_disable  = 0,
+            i_cfg_config_space_enable           = 1,
+            i_cfg_req_pm_transition_l23_ready   = 0,
+
+            i_cfg_dsn                           = serial_number,
+            i_cfg_ds_bus_number                 = bus_number,
+            i_cfg_ds_device_number              = device_number,
+            i_cfg_ds_port_number                = 0,
+
+            i_cfg_interrupt_int                               = 0,
+            i_cfg_interrupt_pending                           = 0,
+            o_cfg_interrupt_sent                              = Open(),
+            o_cfg_interrupt_msi_enable                        = cfg_interrupt_msi_enable_x4,
+            i_cfg_interrupt_msi_int                           = cfg_interrupt_msi_int_enc_mux,
+            o_cfg_interrupt_msi_sent                          = cfg_interrupt_msi_sent,
+            o_cfg_interrupt_msi_fail                          = cfg_interrupt_msi_fail,
+            o_cfg_interrupt_msi_mmenable                      = cfg_interrupt_msi_mmenable,
+            o_cfg_interrupt_msi_mask_update                   = Open(),
+            o_cfg_interrupt_msi_data                          = Open(32),
+            i_cfg_interrupt_msi_select                        = 0,
+            i_cfg_interrupt_msi_pending_status                = cfg_interrupt_msi_int_enc_lat,
+            i_cfg_interrupt_msi_attr                          = 0,
+            i_cfg_interrupt_msi_tph_present                   = 0,
+            i_cfg_interrupt_msi_tph_type                      = 0,
+            i_cfg_interrupt_msi_tph_st_tag                    = 0,
+            i_cfg_interrupt_msi_pending_status_function_num   = 0,
+            i_cfg_interrupt_msi_pending_status_data_enable    = 0,
+            i_cfg_interrupt_msi_function_number               = 0,
+        )
 
         self.m_axis_cq_adapt = m_axis_cq_adapt = ClockDomainsRenamer("pcie")(MAxisCQAdapter(pcie_data_width))
         self.comb += [
@@ -583,7 +790,8 @@ class USPPCIEPHY(LiteXModule):
 
         verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx")
 
-        platform.add_source(os.path.join(verilog_path, "pcie_usp_support.v"))
+        if self.use_support_wrapper:
+            platform.add_source(os.path.join(verilog_path, "pcie_usp_support.v"))
 
 
     # External Hard IP -----------------------------------------------------------------------------
@@ -595,7 +803,10 @@ class USPPCIEPHY(LiteXModule):
     def do_finalize(self):
         if not self.external_hard_ip:
             self.add_sources(self.platform)
-        self.specials += Instance("pcie_support", **self.pcie_phy_params)
+        if self.use_support_wrapper:
+            self.specials += Instance("pcie_support", **self.pcie_phy_params)
+        else:
+            self.specials += Instance("pcie_usp", **self.pcie_usp_phy_params)
 
 # USPHBMPCIEPHY ------------------------------------------------------------------------------------
 
