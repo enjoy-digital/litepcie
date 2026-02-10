@@ -8,16 +8,50 @@ from migen import *
 
 from litex.gen import *
 
-# Note: Xilinx AXIS adaptation is now implemented on the LiteX side.
-# Legacy Verilog adapters (m_axis_rc/cq, s_axis_cc/rq) were removed.
+# Xilinx AXIS adaptation is implemented in LiteX/Migen (Python) to avoid
+# duplicated legacy Verilog per-family/per-width variants.
+
+
+def _pack_keep_cc(tkeep, data_width):
+    # CC keep packing follows the legacy wrapper behavior:
+    # - 128/256b: one output bit per 4-bit nibble, set when nibble is non-zero.
+    # - 512b: one output bit per nibble, copied from nibble bit0.
+    if data_width == 128:
+        return Cat(*[(tkeep[4*i:4*(i + 1)] != 0) for i in range(4)])
+    if data_width == 256:
+        return Cat(*[(tkeep[4*i:4*(i + 1)] != 0) for i in range(8)])
+    return Cat(*[tkeep[4*i] for i in range(16)])
+
+
+def _pack_keep_rq(tkeep, data_width):
+    # RQ keep packing follows the legacy wrapper behavior:
+    # - 128b: one output bit per 4-bit nibble, set when nibble is non-zero.
+    # - 256/512b: one output bit per nibble, copied from nibble bit0.
+    if data_width == 128:
+        return Cat(*[(tkeep[4*i:4*(i + 1)] != 0) for i in range(4)])
+    return Cat(*[tkeep[4*i] for i in range(data_width // 32)])
+
+
+def _rq_upper_user(discontinue):
+    return Cat(
+        C(0, 3),
+        discontinue,
+        C(0, 1),
+        C(0, 2),
+        C(0, 8),
+        C(0, 1),
+        C(0, 4),
+        C(0, 32),
+    )
 
 
 class MAxisRCAdapter(LiteXModule):
+    """Adapt Xilinx RC AXIS (hard IP format) to LitePCIe RC stream format."""
     def __init__(self, data_width):
         assert data_width in [128, 256, 512]
         keep_width = data_width // 8
 
-        # Raw RC AXIS from Xilinx hard IP/support wrapper.
+        # Raw RC AXIS from Xilinx hard IP.
         self.s_axis_tdata  = Signal(data_width)
         self.s_axis_tkeep  = Signal(keep_width // 4)
         self.s_axis_tlast  = Signal()
@@ -34,7 +68,7 @@ class MAxisRCAdapter(LiteXModule):
         self.m_axis_tvalid = Signal()
         self.m_axis_sop    = Signal()
 
-        # # #
+        # -----------------------------------------------------------------------------------------
 
         rc_cnt = Signal(2)
         self.sync += [
@@ -183,11 +217,12 @@ class MAxisRCAdapter(LiteXModule):
 
 
 class MAxisCQAdapter(LiteXModule):
+    """Adapt Xilinx CQ AXIS (hard IP format) to LitePCIe CQ stream format."""
     def __init__(self, data_width):
         assert data_width in [128, 256, 512]
         keep_width = data_width // 8
 
-        # Raw CQ AXIS from Xilinx hard IP/support wrapper.
+        # Raw CQ AXIS from Xilinx hard IP.
         self.s_axis_tdata  = Signal(data_width)
         self.s_axis_tkeep  = Signal(keep_width // 4)
         self.s_axis_tlast  = Signal()
@@ -204,7 +239,7 @@ class MAxisCQAdapter(LiteXModule):
         self.m_axis_tvalid = Signal()
         self.m_axis_sop    = Signal()
 
-        # # #
+        # -----------------------------------------------------------------------------------------
 
         tdata_hdr = Signal(64)
         self.comb += tdata_hdr.eq(self.s_axis_tdata[64:128])
@@ -536,6 +571,7 @@ class MAxisCQAdapter(LiteXModule):
 
 
 class SAxisCCAdapter(LiteXModule):
+    """Adapt LitePCIe CC stream format to Xilinx CC AXIS (hard IP format)."""
     def __init__(self, data_width):
         assert data_width in [128, 256, 512]
         keep_width = data_width // 8
@@ -548,7 +584,7 @@ class SAxisCCAdapter(LiteXModule):
         self.s_axis_tuser  = Signal(4)
         self.s_axis_tvalid = Signal()
 
-        # Raw CC AXIS to Xilinx hard IP/support wrapper (output).
+        # Raw CC AXIS to Xilinx hard IP (output).
         self.m_axis_tdata  = Signal(data_width)
         self.m_axis_tkeep  = Signal(keep_width // 4)
         self.m_axis_tlast  = Signal()
@@ -556,7 +592,7 @@ class SAxisCCAdapter(LiteXModule):
         self.m_axis_tuser  = Signal(33)
         self.m_axis_tvalid = Signal()
 
-        # # #
+        # -----------------------------------------------------------------------------------------
 
         cnt = Signal(2)
         self.sync += [
@@ -572,43 +608,7 @@ class SAxisCCAdapter(LiteXModule):
         self.comb += tfirst.eq(cnt == 0)
 
         tkeep_or = Signal(keep_width // 4)
-        if data_width == 128:
-            self.comb += tkeep_or.eq(Cat(
-                self.s_axis_tkeep[0:4] != 0,
-                self.s_axis_tkeep[4:8] != 0,
-                self.s_axis_tkeep[8:12] != 0,
-                self.s_axis_tkeep[12:16] != 0
-            ))
-        elif data_width == 256:
-            self.comb += tkeep_or.eq(Cat(
-                self.s_axis_tkeep[0:4] != 0,
-                self.s_axis_tkeep[4:8] != 0,
-                self.s_axis_tkeep[8:12] != 0,
-                self.s_axis_tkeep[12:16] != 0,
-                self.s_axis_tkeep[16:20] != 0,
-                self.s_axis_tkeep[20:24] != 0,
-                self.s_axis_tkeep[24:28] != 0,
-                self.s_axis_tkeep[28:32] != 0
-            ))
-        else:
-            self.comb += tkeep_or.eq(Cat(
-                self.s_axis_tkeep[0],
-                self.s_axis_tkeep[4],
-                self.s_axis_tkeep[8],
-                self.s_axis_tkeep[12],
-                self.s_axis_tkeep[16],
-                self.s_axis_tkeep[20],
-                self.s_axis_tkeep[24],
-                self.s_axis_tkeep[28],
-                self.s_axis_tkeep[32],
-                self.s_axis_tkeep[36],
-                self.s_axis_tkeep[40],
-                self.s_axis_tkeep[44],
-                self.s_axis_tkeep[48],
-                self.s_axis_tkeep[52],
-                self.s_axis_tkeep[56],
-                self.s_axis_tkeep[60]
-            ))
+        self.comb += tkeep_or.eq(_pack_keep_cc(self.s_axis_tkeep, data_width))
 
         lowaddr     = Signal(7)
         bytecnt     = Signal(13)
@@ -691,6 +691,7 @@ class SAxisCCAdapter(LiteXModule):
 
 
 class SAxisRQAdapter(LiteXModule):
+    """Adapt LitePCIe RQ stream format to Xilinx RQ AXIS (hard IP format)."""
     def __init__(self, data_width):
         assert data_width in [128, 256, 512]
         keep_width = data_width // 8
@@ -704,7 +705,7 @@ class SAxisRQAdapter(LiteXModule):
         self.s_axis_tuser  = Signal(4)
         self.s_axis_tvalid = Signal()
 
-        # Raw RQ AXIS to Xilinx hard IP/support wrapper (output).
+        # Raw RQ AXIS to Xilinx hard IP (output).
         self.m_axis_tdata  = Signal(data_width)
         self.m_axis_tkeep  = Signal(keep_width // 4)
         self.m_axis_tlast  = Signal()
@@ -712,18 +713,10 @@ class SAxisRQAdapter(LiteXModule):
         self.m_axis_tuser  = Signal(tuser_width)
         self.m_axis_tvalid = Signal()
 
-        # # #
+        # -----------------------------------------------------------------------------------------
 
         tkeep_or = Signal(keep_width // 4)
-        if data_width == 128:
-            self.comb += tkeep_or.eq(Cat(
-                self.s_axis_tkeep[0:4] != 0,
-                self.s_axis_tkeep[4:8] != 0,
-                self.s_axis_tkeep[8:12] != 0,
-                self.s_axis_tkeep[12:16] != 0
-            ))
-        else:
-            self.comb += tkeep_or.eq(Cat(*[self.s_axis_tkeep[4*i] for i in range(keep_width // 4)]))
+        self.comb += tkeep_or.eq(_pack_keep_rq(self.s_axis_tkeep, data_width))
 
         dwlen = Signal(11)
         reqtype = Signal(4)
@@ -840,7 +833,7 @@ class SAxisRQAdapter(LiteXModule):
             ]
 
             upper_user = Signal(52)
-            self.comb += upper_user.eq(Cat(C(0, 3), self.s_axis_tuser[3], C(0, 1), C(0, 2), C(0, 8), C(0, 1), C(0, 4), C(0, 32)))
+            self.comb += upper_user.eq(_rq_upper_user(self.s_axis_tuser[3]))
             self.comb += [
                 self.m_axis_tlast.eq(Mux(tfirst, read, Mux(tlast_dly_en, tlast_lat, self.s_axis_tlast))),
                 self.m_axis_tvalid.eq(self.s_axis_tvalid | tlast_lat),
@@ -873,7 +866,7 @@ class SAxisRQAdapter(LiteXModule):
             ]
 
             upper_user = Signal(52)
-            self.comb += upper_user.eq(Cat(C(0, 3), self.s_axis_tuser[3], C(0, 1), C(0, 2), C(0, 8), C(0, 1), C(0, 4), C(0, 32)))
+            self.comb += upper_user.eq(_rq_upper_user(self.s_axis_tuser[3]))
             self.comb += [
                 self.m_axis_tlast.eq(self.s_axis_tlast),
                 self.m_axis_tvalid.eq(self.s_axis_tvalid),
