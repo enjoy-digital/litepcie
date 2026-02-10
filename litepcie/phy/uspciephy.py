@@ -489,9 +489,9 @@ class USPCIEPHY(LiteXModule):
             ip_tcl.append("synth_ip $obj")
             platform.toolchain.pre_synthesis_commands += ip_tcl
 
-        verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx_us")
-        platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
+        verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx")
 
+        platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
         platform.add_source(os.path.join(verilog_path, f"s_axis_rq_adapt_{self.pcie_data_width}b.v"))
         platform.add_source(os.path.join(verilog_path, f"m_axis_rc_adapt_{self.pcie_data_width}b.v"))
         platform.add_source(os.path.join(verilog_path, f"m_axis_cq_adapt_{self.pcie_data_width}b.v"))
