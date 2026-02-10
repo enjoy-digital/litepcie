@@ -17,6 +17,7 @@ from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 from litepcie.phy.common import *
+from litepcie.phy.xilinx.axis_adapters import MAxisRCAdapter
 
 # USPPCIEPHY ---------------------------------------------------------------------------------------
 
@@ -202,10 +203,16 @@ class USPPCIEPHY(LiteXModule):
 
         # Hard IP ----------------------------------------------------------------------------------
 
-        m_axis_rc_tuser = Signal(22)
+        m_axis_rc_tuser = Signal(85)
         m_axis_cq_tuser = Signal(22)
         m_axis_rc_tlast = Signal()
         m_axis_cq_tlast = Signal()
+        m_axis_rc_tdata_raw  = Signal(pcie_data_width)
+        m_axis_rc_tkeep_raw  = Signal(pcie_data_width//32)
+        m_axis_rc_tuser_raw  = Signal(85)
+        m_axis_rc_tlast_raw  = Signal()
+        m_axis_rc_tvalid_raw = Signal()
+        m_axis_rc_tready_raw = Signal(4)
 
         if self.mode == "Endpoint":
             msi_ports = dict(
@@ -294,12 +301,12 @@ class USPPCIEPHY(LiteXModule):
             o_m_axis_cq_tuser                  = m_axis_cq_tuser,
 
             # (Host -> FPGA) Requester Completion
-            o_m_axis_rc_tvalid                 = m_axis_rc.valid,
-            o_m_axis_rc_tlast                  = m_axis_rc_tlast,
-            i_m_axis_rc_tready                 = m_axis_rc.ready,
-            o_m_axis_rc_tdata                  = m_axis_rc.dat,
-            o_m_axis_rc_tkeep                  = m_axis_rc.be,
-            o_m_axis_rc_tuser                  = m_axis_rc_tuser,
+            o_m_axis_rc_tvalid                 = m_axis_rc_tvalid_raw,
+            o_m_axis_rc_tlast                  = m_axis_rc_tlast_raw,
+            i_m_axis_rc_tready                 = m_axis_rc_tready_raw,
+            o_m_axis_rc_tdata                  = m_axis_rc_tdata_raw,
+            o_m_axis_rc_tkeep                  = m_axis_rc_tkeep_raw,
+            o_m_axis_rc_tuser                  = m_axis_rc_tuser_raw,
 
             # (FPGA -> Host) Completer Completion
             i_s_axis_cc_tvalid                 = s_axis_cc.valid,
@@ -390,8 +397,25 @@ class USPPCIEPHY(LiteXModule):
         self.comb += [
             m_axis_cq.first.eq(m_axis_cq_tuser[14]),
             m_axis_cq.last.eq (m_axis_cq_tlast),
-            m_axis_rc.first.eq(m_axis_rc_tuser[14]),
-            m_axis_rc.last.eq (m_axis_rc_tlast),
+        ]
+
+        self.m_axis_rc_adapt = m_axis_rc_adapt = ClockDomainsRenamer("pcie")(MAxisRCAdapter(pcie_data_width))
+        self.comb += [
+            m_axis_rc_adapt.s_axis_tdata.eq(m_axis_rc_tdata_raw),
+            m_axis_rc_adapt.s_axis_tkeep.eq(m_axis_rc_tkeep_raw),
+            m_axis_rc_adapt.s_axis_tuser.eq(m_axis_rc_tuser_raw),
+            m_axis_rc_adapt.s_axis_tlast.eq(m_axis_rc_tlast_raw),
+            m_axis_rc_adapt.s_axis_tvalid.eq(m_axis_rc_tvalid_raw),
+            m_axis_rc_tready_raw.eq(m_axis_rc_adapt.s_axis_tready),
+
+            m_axis_rc.dat.eq(m_axis_rc_adapt.m_axis_tdata),
+            m_axis_rc.be.eq(m_axis_rc_adapt.m_axis_tkeep),
+            m_axis_rc_tuser.eq(m_axis_rc_adapt.m_axis_tuser),
+            m_axis_rc_tlast.eq(m_axis_rc_adapt.m_axis_tlast),
+            m_axis_rc.valid.eq(m_axis_rc_adapt.m_axis_tvalid),
+            m_axis_rc_adapt.m_axis_tready.eq(m_axis_rc.ready),
+            m_axis_rc.first.eq(m_axis_rc_adapt.m_axis_sop),
+            m_axis_rc.last.eq(m_axis_rc_tlast),
         ]
 
     # Resync Helper --------------------------------------------------------------------------------
@@ -493,7 +517,6 @@ class USPPCIEPHY(LiteXModule):
 
         platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
         platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt.v"))
-        platform.add_source(os.path.join(verilog_path, "m_axis_rc_adapt.v"))
         platform.add_source(os.path.join(verilog_path, "m_axis_cq_adapt.v"))
         platform.add_source(os.path.join(verilog_path, "s_axis_cc_adapt.v"))
         platform.add_source(os.path.join(verilog_path, "pcie_usp_support.v"))
