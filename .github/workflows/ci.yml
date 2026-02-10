@@ -3,13 +3,6 @@ name: ci
 on: [push, pull_request]
 
 jobs:
-  verilog-lint:
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Skip Legacy Wrapper Lint
-        run: |
-          echo "pcie_us_support.v / pcie_usp_support.v removed; no legacy wrapper Verilog lint to run."
-
   build:
     runs-on: ubuntu-22.04
     steps:
