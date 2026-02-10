@@ -6,28 +6,9 @@ jobs:
   verilog-lint:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Install Verilator
+      - name: Skip Legacy Wrapper Lint
         run: |
-          sudo apt-get update
-          sudo apt-get install -y verilator
-
-      - name: Lint Xilinx PHY Verilog
-        run: |
-          # Lint US support wrapper with lint-only pcie_us stub.
-          verilator --lint-only -Wall -Wno-fatal --top-module pcie_support \
-            -Wno-DECLFILENAME -Wno-PINMISSING -Wno-PINCONNECTEMPTY -Wno-TIMESCALEMOD \
-            -Wno-WIDTH -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN -Wno-UNUSEDPARAM \
-            litepcie/phy/xilinx/lint_stubs/pcie_us_stub.v \
-            litepcie/phy/xilinx/pcie_us_support.v
-          # Lint USP support wrapper with lint-only pcie_usp stub.
-          verilator --lint-only -Wall -Wno-fatal --top-module pcie_support \
-            -Wno-DECLFILENAME -Wno-PINMISSING -Wno-PINCONNECTEMPTY -Wno-TIMESCALEMOD \
-            -Wno-WIDTH -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN -Wno-UNUSEDPARAM \
-            litepcie/phy/xilinx/lint_stubs/pcie_usp_stub.v \
-            litepcie/phy/xilinx/pcie_usp_support.v
+          echo "pcie_us_support.v / pcie_usp_support.v removed; no legacy wrapper Verilog lint to run."
 
   build:
     runs-on: ubuntu-22.04

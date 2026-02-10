@@ -30,7 +30,6 @@ class USPPCIEPHY(LiteXModule):
         pcie_data_width = None,
         bar0_size       = 0x100000,
         mode            = "Endpoint",
-        use_support_wrapper = False,
     ):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
@@ -93,7 +92,6 @@ class USPPCIEPHY(LiteXModule):
 
         self.config           = {}
         self.external_hard_ip = False
-        self.use_support_wrapper = use_support_wrapper
 
         # # #
 
@@ -790,8 +788,7 @@ class USPPCIEPHY(LiteXModule):
 
         verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx")
 
-        if self.use_support_wrapper:
-            platform.add_source(os.path.join(verilog_path, "pcie_usp_support.v"))
+        # No support-wrapper Verilog source required in direct mode.
 
 
     # External Hard IP -----------------------------------------------------------------------------
@@ -803,10 +800,7 @@ class USPPCIEPHY(LiteXModule):
     def do_finalize(self):
         if not self.external_hard_ip:
             self.add_sources(self.platform)
-        if self.use_support_wrapper:
-            self.specials += Instance("pcie_support", **self.pcie_phy_params)
-        else:
-            self.specials += Instance("pcie_usp", **self.pcie_usp_phy_params)
+        self.specials += Instance("pcie_usp", **self.pcie_usp_phy_params)
 
 # USPHBMPCIEPHY ------------------------------------------------------------------------------------
 
