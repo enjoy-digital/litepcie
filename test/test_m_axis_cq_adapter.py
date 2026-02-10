@@ -306,3 +306,64 @@ class TestMAxisCQAdapter(unittest.TestCase):
         ready_all_ones = [1] * 128
         ready_bursty = [1 if ((i * 13 + 1) % 9) not in [0, 1, 2] else 0 for i in range(128)]
         self.assertEqual(run(ready_bursty), run(ready_all_ones))
+
+    def test_m_axis_cq_adapter_256_multi_packet_continuity_dwlen(self):
+        dut = MAxisCQAdapter(256)
+
+        def make_sop(dwlen):
+            d = int("112233445566778899aabbccddeeff00" * 2, 16)
+            hdr = 0
+            hdr |= dwlen & 0x3FF
+            hdr |= 0b0001 << 11  # write reqtype
+            d &= ~(((1 << 64) - 1) << 64)
+            d |= hdr << 64
+            return d
+
+        stream = [
+            # Packet 1: dwlen=5 (threshold), 2-beat packet.
+            dict(data=make_sop(5),  user=(1 << 41), last=0),
+            dict(data=int("00112233445566778899aabbccddeeff" * 2, 16), user=(1 << 41), last=1),
+            # Packet 2: dwlen=4, back-to-back no idle (this one creates delayed-last behavior).
+            dict(data=make_sop(4),  user=(1 << 41), last=0),
+            dict(data=int("ffeeddccbbaa99887766554433221100" * 2, 16), user=(1 << 41), last=1),
+        ]
+
+        out_beats = []
+
+        @passive
+        def monitor():
+            for _ in range(32):
+                if (yield dut.m_axis_tvalid) and (yield dut.m_axis_tready):
+                    out_beats.append({
+                        "data": (yield dut.m_axis_tdata),
+                        "last": (yield dut.m_axis_tlast),
+                    })
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            i = 0
+            while i < len(stream):
+                beat = stream[i]
+                yield dut.s_axis_tvalid.eq(1)
+                yield dut.s_axis_tdata.eq(beat["data"])
+                yield dut.s_axis_tuser.eq(beat["user"])
+                yield dut.s_axis_tlast.eq(beat["last"])
+                yield dut.s_axis_tkeep.eq(0)
+                if (yield dut.s_axis_tready[0]):
+                    i += 1
+                yield
+            yield dut.s_axis_tvalid.eq(0)
+            for _ in range(16):
+                yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+
+        # No boundary loss across back-to-back packets:
+        # pkt1 -> 1 beat, pkt2 -> 2 beats (delayed last), total 3.
+        self.assertEqual(len(out_beats), 3)
+        self.assertEqual([b["last"] for b in out_beats], [1, 0, 1])
+        # Header is in low 64b of first output beat for each packet.
+        self.assertEqual((out_beats[0]["data"] >> 0) & 0x3FF, 5)
+        self.assertEqual((out_beats[1]["data"] >> 0) & 0x3FF, 4)

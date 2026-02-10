@@ -333,3 +333,75 @@ class TestSAxisRQAdapter(unittest.TestCase):
         ready_all_ones = [1] * 128
         ready_bursty = [1 if ((i * 19 + 7) % 10) not in [0, 1, 2, 3] else 0 for i in range(128)]
         self.assertEqual(run(ready_bursty), run(ready_all_ones))
+
+    def test_512_multi_packet_continuity_dwlen_thresholds(self):
+        dut = SAxisRQAdapter(512)
+
+        def make_first_beat(dwlen, is_write, be_code):
+            d = int("0123456789abcdeffedcba9876543210" * 4, 16)
+            # Req type class bits.
+            d &= ~(0x3 << 30)
+            if is_write:
+                d |= (0x1 << 30)
+            # DLen.
+            d &= ~0x3FF
+            d |= dwlen & 0x3FF
+            # Distinct BE nibble pair.
+            d &= ~((0xFF) << 32)
+            d |= ((be_code & 0xF) << 36) | (((be_code + 1) & 0xF) << 32)
+            return d
+
+        beat_stream = [
+            # Packet A: write dwlen=1 (single output beat, last=1).
+            dict(data=make_first_beat(1,  True, 0x1), last=1),
+            # Packet B: write dwlen=13 (delayed-last: two output beats).
+            dict(data=make_first_beat(13, True, 0x2), last=1),
+            # Packet C: read dwlen=14 (single output beat, last=1).
+            dict(data=make_first_beat(14, False, 0x3), last=1),
+            # Packet D: read dwlen=0 (single output beat, last=1).
+            dict(data=make_first_beat(0,  False, 0x4), last=1),
+        ]
+
+        out_beats = []
+
+        @passive
+        def monitor():
+            for _ in range(64):
+                if (yield dut.m_axis_tvalid) and (yield dut.m_axis_tready):
+                    out_beats.append({
+                        "data": (yield dut.m_axis_tdata),
+                        "last": (yield dut.m_axis_tlast),
+                        "user": (yield dut.m_axis_tuser),
+                    })
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            i = 0
+            # Keep valid asserted while feeding consecutive packets.
+            while i < len(beat_stream):
+                beat = beat_stream[i]
+                yield dut.s_axis_tvalid.eq(1)
+                yield dut.s_axis_tdata.eq(beat["data"])
+                yield dut.s_axis_tkeep.eq((1 << 64) - 1)
+                yield dut.s_axis_tuser.eq(0)
+                yield dut.s_axis_tlast.eq(beat["last"])
+                if (yield dut.s_axis_tready):
+                    i += 1
+                yield
+            yield dut.s_axis_tvalid.eq(0)
+            for _ in range(24):
+                yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+
+        # Expected output beat boundaries across A/B/C/D with no-idle packet transition.
+        # A: 1 beat, B: 2 beats (delayed last), C: 1 beat, D: 1 beat.
+        self.assertEqual(len(out_beats), 5)
+        self.assertEqual([b["last"] for b in out_beats], [1, 0, 1, 1, 1])
+
+        # Check SOP boundaries on threshold packets via header dwlen.
+        first_indices = [0, 1, 3, 4]
+        dlen_seen = [((out_beats[i]["data"] >> 64) & 0x3FF) for i in first_indices[:2]]
+        self.assertEqual(dlen_seen, [1, 13])
