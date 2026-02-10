@@ -3,6 +3,26 @@ name: ci
 on: [push, pull_request]
 
 jobs:
+  verilog-lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+
+      - name: Lint Xilinx PHY Verilog
+        run: |
+          verilator --lint-only -Wall -Wno-fatal \
+            litepcie/phy/xilinx/axis_iff.v \
+            litepcie/phy/xilinx/m_axis_rc_adapt.v \
+            litepcie/phy/xilinx/m_axis_cq_adapt.v \
+            litepcie/phy/xilinx/s_axis_cc_adapt.v \
+            litepcie/phy/xilinx/s_axis_rq_adapt.v
+
   build:
     runs-on: ubuntu-22.04
     steps:
