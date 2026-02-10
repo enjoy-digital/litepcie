@@ -8,7 +8,7 @@ import unittest
 
 from litex.gen import *
 
-from litepcie.phy.xilinx.axis_adapters import MAxisRCAdapter
+from litepcie.phy.axis_adapters import MAxisRCAdapter
 
 
 def _field(value, msb, lsb):

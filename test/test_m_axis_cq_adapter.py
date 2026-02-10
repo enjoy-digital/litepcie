@@ -9,7 +9,7 @@ import random
 
 from litex.gen import *
 
-from litepcie.phy.xilinx.axis_adapters import MAxisCQAdapter
+from litepcie.phy.axis_adapters import MAxisCQAdapter
 
 
 def _field(value, msb, lsb):

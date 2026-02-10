@@ -8,7 +8,7 @@ import unittest
 
 from litex.gen import *
 
-from litepcie.phy.xilinx.axis_adapters import MAxisCQAdapter, MAxisRCAdapter, SAxisRQAdapter
+from litepcie.phy.axis_adapters import MAxisCQAdapter, MAxisRCAdapter, SAxisRQAdapter
 
 
 def _rq_run_single(width, data, tkeep, tuser):

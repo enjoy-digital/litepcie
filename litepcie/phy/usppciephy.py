@@ -17,7 +17,7 @@ from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 from litepcie.phy.common import *
-from litepcie.phy.xilinx.axis_adapters import MAxisCQAdapter, MAxisRCAdapter, SAxisCCAdapter, SAxisRQAdapter
+from litepcie.phy.axis_adapters import MAxisCQAdapter, MAxisRCAdapter, SAxisCCAdapter, SAxisRQAdapter
 
 # USPPCIEPHY ---------------------------------------------------------------------------------------
 
