@@ -55,6 +55,45 @@ def _rq_header(data, tuser):
 
 
 class TestSAxisRQAdapter(unittest.TestCase):
+    def _run_poison_ecrc_matrix_case(self, data_width, poison_data, poison_user, ecrc_data, ecrc_user):
+        dut = SAxisRQAdapter(data_width)
+        beats = []
+
+        data = int("0123456789abcdeffedcba9876543210" * (data_width // 128), 16)
+        data &= ~(0x3 << 30)  # read request class to keep single-beat behavior
+        data &= ~(1 << 14)
+        data &= ~(1 << 15)
+        data |= (poison_data & 0x1) << 14
+        data |= (ecrc_data & 0x1) << 15
+        data &= ~0x3FF
+        data |= 1
+
+        tuser = ((poison_user & 0x1) << 1) | (ecrc_user & 0x1)
+        tkeep = (1 << (data_width // 8)) - 1
+
+        @passive
+        def monitor():
+            for _ in range(8):
+                if (yield dut.m_axis_tvalid):
+                    beats.append((yield dut.m_axis_tdata))
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(1)
+            yield dut.s_axis_tdata.eq(data)
+            yield dut.s_axis_tkeep.eq(tkeep)
+            yield dut.s_axis_tuser.eq(tuser)
+            yield
+            yield dut.s_axis_tvalid.eq(0)
+            yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+        self.assertGreaterEqual(len(beats), 1)
+        return beats[0]
+
     def test_128_read_single_beat(self):
         dut = SAxisRQAdapter(128)
         data = 0x0123456789ABCDEFFEDCBA9876543210
@@ -405,3 +444,22 @@ class TestSAxisRQAdapter(unittest.TestCase):
         first_indices = [0, 1, 3, 4]
         dlen_seen = [((out_beats[i]["data"] >> 64) & 0x3FF) for i in first_indices[:2]]
         self.assertEqual(dlen_seen, [1, 13])
+
+    def test_poison_ecrc_matrix_all_widths(self):
+        for data_width in [128, 256, 512]:
+            header_lsb = 64
+            for poison_data in [0, 1]:
+                for poison_user in [0, 1]:
+                    for ecrc_data in [0, 1]:
+                        for ecrc_user in [0, 1]:
+                            out_data = self._run_poison_ecrc_matrix_case(
+                                data_width=data_width,
+                                poison_data=poison_data,
+                                poison_user=poison_user,
+                                ecrc_data=ecrc_data,
+                                ecrc_user=ecrc_user,
+                            )
+                            expected_poison = poison_data | poison_user
+                            expected_ecrc = ecrc_data | ecrc_user
+                            self.assertEqual((out_data >> (header_lsb + 15)) & 0x1, expected_poison)
+                            self.assertEqual((out_data >> (header_lsb + 63)) & 0x1, expected_ecrc)

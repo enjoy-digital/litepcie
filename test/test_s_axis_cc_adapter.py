@@ -189,3 +189,54 @@ class TestSAxisCCAdapter(unittest.TestCase):
         ready_all_ones = [1] * 64
         ready_bursty = [1 if ((i * 11 + 5) % 8) not in [0, 1] else 0 for i in range(64)]
         self.assertEqual(run(ready_bursty), run(ready_all_ones))
+
+    def _run_poison_ecrc_matrix_case(self, data_width, poison_data, td_data, td_user):
+        dut = SAxisCCAdapter(data_width)
+        beats = []
+
+        data = int("ffeeddccbbaa99887766554433221100" * (data_width // 128), 16)
+        data &= ~(1 << 14)
+        data &= ~(1 << 15)
+        data |= (poison_data & 0x1) << 14
+        data |= (td_data & 0x1) << 15
+        keep = (1 << (data_width // 8)) - 1
+        tuser = td_user & 0x1
+
+        @passive
+        def monitor():
+            for _ in range(8):
+                if (yield dut.m_axis_tvalid):
+                    beats.append((yield dut.m_axis_tdata))
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(1)
+            yield dut.s_axis_tdata.eq(data)
+            yield dut.s_axis_tkeep.eq(keep)
+            yield dut.s_axis_tuser.eq(tuser)
+            yield
+            yield dut.s_axis_tvalid.eq(0)
+            yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+        self.assertGreaterEqual(len(beats), 1)
+        return beats[0]
+
+    def test_poison_ecrc_matrix_all_widths(self):
+        for data_width in [128, 256, 512]:
+            for poison_data in [0, 1]:
+                for td_data in [0, 1]:
+                    for td_user in [0, 1]:
+                        out_data = self._run_poison_ecrc_matrix_case(
+                            data_width=data_width,
+                            poison_data=poison_data,
+                            td_data=td_data,
+                            td_user=td_user,
+                        )
+                        expected_poison = poison_data
+                        expected_td = td_data | td_user
+                        self.assertEqual((out_data >> 45) & 0x1, expected_poison)
+                        self.assertEqual((out_data >> 95) & 0x1, expected_td)

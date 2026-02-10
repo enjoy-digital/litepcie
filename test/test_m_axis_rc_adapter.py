@@ -201,3 +201,47 @@ class TestMAxisRCAdapter(unittest.TestCase):
         ref = run(ready_all_ones)
         got = run(ready_bursty)
         self.assertEqual(got, ref)
+
+    def _run_poison_ecrc_matrix_case(self, data_width, poison_data, ecrc_user):
+        dut = MAxisRCAdapter(data_width)
+        beats = []
+
+        data = int("123456789abcdef0fedcba9876543210" * (data_width // 128), 16)
+        data &= ~(1 << 46)
+        data |= (poison_data & 0x1) << 46
+        user = (ecrc_user & 0x1) << 42
+
+        @passive
+        def monitor():
+            for _ in range(8):
+                if (yield dut.m_axis_tvalid):
+                    beats.append((yield dut.m_axis_tuser))
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(1)
+            yield dut.s_axis_tdata.eq(data)
+            yield dut.s_axis_tuser.eq(user)
+            yield dut.s_axis_tkeep.eq(0)
+            yield
+            yield dut.s_axis_tvalid.eq(0)
+            yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+        self.assertGreaterEqual(len(beats), 1)
+        return beats[0]
+
+    def test_poison_ecrc_matrix_all_widths(self):
+        for data_width in [128, 256, 512]:
+            for poison_data in [0, 1]:
+                for ecrc_user in [0, 1]:
+                    out_user = self._run_poison_ecrc_matrix_case(
+                        data_width=data_width,
+                        poison_data=poison_data,
+                        ecrc_user=ecrc_user,
+                    )
+                    self.assertEqual(out_user & 0x1, ecrc_user)
+                    self.assertEqual((out_user >> 1) & 0x1, poison_data)

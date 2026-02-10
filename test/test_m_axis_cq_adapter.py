@@ -367,3 +367,60 @@ class TestMAxisCQAdapter(unittest.TestCase):
         # Header is in low 64b of first output beat for each packet.
         self.assertEqual((out_beats[0]["data"] >> 0) & 0x3FF, 5)
         self.assertEqual((out_beats[1]["data"] >> 0) & 0x3FF, 4)
+
+    def _run_ecrc_matrix_case(self, data_width, ecrc):
+        dut = MAxisCQAdapter(data_width)
+        beats = []
+
+        data0 = int("1122334455667788aabbccddeeff0011" * (data_width // 128), 16)
+        data1 = int("0102030405060708f0e0d0c0b0a09080" * (data_width // 128), 16)
+
+        hdr = 0
+        hdr |= {128: 1, 256: 5, 512: 13}[data_width]
+        hdr |= 0b0001 << 11
+        hdr |= 0b101 << 48
+        data0 &= ~(((1 << 64) - 1) << 64)
+        data0 |= hdr << 64
+
+        user0 = 0
+        user1 = 0
+        if data_width == 512:
+            user0 |= (ecrc & 0x1) << 96
+            user1 |= (ecrc & 0x1) << 96
+        else:
+            user0 |= (ecrc & 0x1) << 41
+            user1 |= (ecrc & 0x1) << 41
+
+        @passive
+        def monitor():
+            for _ in range(12):
+                if (yield dut.m_axis_tvalid):
+                    beats.append((yield dut.m_axis_tuser))
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(0)
+            yield dut.s_axis_tdata.eq(data0)
+            yield dut.s_axis_tuser.eq(user0)
+            yield dut.s_axis_tkeep.eq(0)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(1)
+            yield dut.s_axis_tdata.eq(data1)
+            yield dut.s_axis_tuser.eq(user1)
+            yield
+            yield dut.s_axis_tvalid.eq(0)
+            yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+        self.assertGreaterEqual(len(beats), 1)
+        return beats[0]
+
+    def test_ecrc_matrix_all_widths(self):
+        for data_width in [128, 256, 512]:
+            for ecrc in [0, 1]:
+                out_user = self._run_ecrc_matrix_case(data_width=data_width, ecrc=ecrc)
+                self.assertEqual(out_user & 0x1, ecrc)
