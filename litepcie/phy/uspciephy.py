@@ -219,18 +219,18 @@ class USPCIEPHY(LiteXModule):
         s_axis_rq_tuser_raw  = Signal(rq_tuser_width)
         s_axis_rq_tlast_raw  = Signal()
         s_axis_rq_tvalid_raw = Signal()
-        s_axis_rq_tready_raw = Signal()
+        s_axis_rq_tready_raw = Signal(4)
         m_axis_rc_tdata_raw  = Signal(pcie_data_width)
         m_axis_rc_tkeep_raw  = Signal(pcie_data_width//32)
         m_axis_rc_tuser_raw  = Signal(85)
-        m_axis_rc_tuser_full = Signal(256)
+        m_axis_rc_tuser_full = Signal(75)
         m_axis_rc_tlast_raw  = Signal()
         m_axis_rc_tvalid_raw = Signal()
         m_axis_rc_tready_raw = Signal(4)
         m_axis_cq_tdata_raw  = Signal(pcie_data_width)
         m_axis_cq_tkeep_raw  = Signal(pcie_data_width//32)
         m_axis_cq_tuser_raw  = Signal(85)
-        m_axis_cq_tuser_full = Signal(256)
+        m_axis_cq_tuser_full = Signal(88)
         m_axis_cq_tlast_raw  = Signal()
         m_axis_cq_tvalid_raw = Signal()
         m_axis_cq_tready_raw = Signal(4)
@@ -239,7 +239,7 @@ class USPCIEPHY(LiteXModule):
         s_axis_cc_tuser_raw  = Signal(33)
         s_axis_cc_tlast_raw  = Signal()
         s_axis_cc_tvalid_raw = Signal()
-        s_axis_cc_tready_raw = Signal()
+        s_axis_cc_tready_raw = Signal(4)
 
         if self.mode == "Endpoint":
             msi_ports = dict(
@@ -319,7 +319,7 @@ class USPCIEPHY(LiteXModule):
         self.comb += cfg_interrupt_msi_int_enc_mux.eq(Mux(cfg_interrupt_msi_int_valid_edge1, cfg_interrupt_msi_int_enc_lat, 0))
         self.comb += [
             msi_enable_sys.eq(cfg_interrupt_msi_enable_x4[0]),
-            m_axis_rc_tuser_raw.eq(m_axis_rc_tuser_full[:85]),
+            m_axis_rc_tuser_raw.eq(Cat(m_axis_rc_tuser_full, C(0, 10))),
             m_axis_cq_tuser_raw.eq(m_axis_cq_tuser_full[:85]),
         ]
         if self.mode == "Endpoint":
@@ -526,13 +526,8 @@ class USPCIEPHY(LiteXModule):
             o_s_axis_cc_tready                 = s_axis_cc_tready_raw,
 
             # Sequence & Tag ---------------------------------------------------------------------
-            o_pcie_rq_seq_num                  = Open(4),
-            o_pcie_rq_seq_num_vld              = Open(),
-            o_pcie_rq_tag                      = Open(6),
-            o_pcie_rq_tag_vld                  = Open(),
-            o_pcie_cq_np_req_count             = Open(6),
             i_pcie_cq_np_req                   = 1,
-            o_pcie_rq_tag_av                   = Open(2),
+            o_pcie_rq_tag_av                   = Open(4),
 
             # Error reporting / status -----------------------------------------------------------
             o_cfg_phy_link_down                = link_phy_down_sys,
@@ -543,8 +538,6 @@ class USPCIEPHY(LiteXModule):
             o_cfg_max_read_req                 = cfg_max_read_req_sys,
             o_cfg_function_status              = cfg_function_status_sys,
             o_cfg_function_power_state         = Open(12),
-            o_cfg_vf_status                    = Open(16),
-            o_cfg_vf_power_state               = Open(24),
             o_cfg_link_power_state             = Open(2),
             o_cfg_err_cor_out                  = Open(),
             o_cfg_err_nonfatal_out             = Open(),
@@ -557,8 +550,6 @@ class USPCIEPHY(LiteXModule):
             o_cfg_pl_status_change             = Open(),
             o_cfg_tph_requester_enable         = Open(4),
             o_cfg_tph_st_mode                  = Open(12),
-            o_cfg_vf_tph_requester_enable      = Open(8),
-            o_cfg_vf_tph_st_mode               = Open(24),
 
             # Management -------------------------------------------------------------------------
             i_cfg_mgmt_addr                    = 0,
@@ -571,8 +562,8 @@ class USPCIEPHY(LiteXModule):
             i_cfg_mgmt_type1_cfg_reg_access    = 0,
 
             # Flow / messages -------------------------------------------------------------------
-            o_pcie_tfc_nph_av                  = Open(2),
-            o_pcie_tfc_npd_av                  = Open(2),
+            o_pcie_tfc_nph_av                  = Open(4),
+            o_pcie_tfc_npd_av                  = Open(4),
             o_cfg_msg_received                 = cfg_msg_ports["o_cfg_msg_received"],
             o_cfg_msg_received_data            = cfg_msg_ports["o_cfg_msg_received_data"],
             o_cfg_msg_received_type            = cfg_msg_ports["o_cfg_msg_received_type"],
@@ -625,7 +616,6 @@ class USPCIEPHY(LiteXModule):
             i_cfg_interrupt_msi_int                          = cfg_interrupt_msi_int_enc_mux,
             o_cfg_interrupt_msi_sent                         = cfg_interrupt_msi_sent,
             o_cfg_interrupt_msi_fail                         = cfg_interrupt_msi_fail,
-            o_cfg_interrupt_msi_vf_enable                    = Open(8),
             o_cfg_interrupt_msi_mmenable                     = cfg_interrupt_msi_mmenable,
             o_cfg_interrupt_msi_mask_update                  = Open(),
             o_cfg_interrupt_msi_data                         = Open(32),
@@ -697,7 +687,7 @@ class USPCIEPHY(LiteXModule):
             s_axis_cc_tlast_raw.eq(s_axis_cc_adapt.m_axis_tlast),
             s_axis_cc_tuser_raw.eq(s_axis_cc_adapt.m_axis_tuser),
             s_axis_cc_tvalid_raw.eq(s_axis_cc_adapt.m_axis_tvalid),
-            s_axis_cc_adapt.m_axis_tready.eq(s_axis_cc_tready_raw),
+            s_axis_cc_adapt.m_axis_tready.eq(s_axis_cc_tready_raw[0]),
         ]
 
         self.s_axis_rq_adapt = s_axis_rq_adapt = ClockDomainsRenamer("pcie")(SAxisRQAdapter(pcie_data_width))
@@ -714,7 +704,7 @@ class USPCIEPHY(LiteXModule):
             s_axis_rq_tlast_raw.eq(s_axis_rq_adapt.m_axis_tlast),
             s_axis_rq_tuser_raw.eq(s_axis_rq_adapt.m_axis_tuser),
             s_axis_rq_tvalid_raw.eq(s_axis_rq_adapt.m_axis_tvalid),
-            s_axis_rq_adapt.m_axis_tready.eq(s_axis_rq_tready_raw),
+            s_axis_rq_adapt.m_axis_tready.eq(s_axis_rq_tready_raw[0]),
         ]
 
     # Resync Helper --------------------------------------------------------------------------------
