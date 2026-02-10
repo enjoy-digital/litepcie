@@ -204,3 +204,75 @@ class TestSAxisRQAdapter(unittest.TestCase):
         self.assertEqual(out_last, 1)
         self.assertEqual(out_keep, 0xFFFF)
         self.assertEqual((out_user >> 36) & 0x1, 1)
+
+    def test_256_be_latched_on_second_beat(self):
+        dut = SAxisRQAdapter(256)
+        data0 = int("00112233445566778899aabbccddeeff" * 2, 16)
+        data1 = int("ffeeddccbbaa99887766554433221100" * 2, 16)
+
+        # First beat BE values that must be reused on second beat.
+        data0 &= ~((0xFF) << 32)
+        data0 |= (0xA << 36) | (0x5 << 32)
+
+        beats = []
+
+        @passive
+        def monitor():
+            for _ in range(8):
+                if (yield dut.m_axis_tvalid):
+                    beats.append((yield dut.m_axis_tuser) & 0xFF)
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(0)
+            yield dut.s_axis_tdata.eq(data0)
+            yield dut.s_axis_tkeep.eq((1 << 32) - 1)
+            yield dut.s_axis_tuser.eq(0)
+            yield
+            yield dut.s_axis_tlast.eq(1)
+            yield dut.s_axis_tdata.eq(data1)
+            yield
+            yield dut.s_axis_tvalid.eq(0)
+            yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+        self.assertEqual(len(beats), 2)
+        self.assertEqual(beats[0], 0xA5)
+        self.assertEqual(beats[1], 0xA5)
+
+    def test_512_write_dwlen_13_delayed_last(self):
+        dut = SAxisRQAdapter(512)
+        data = int("89abcdef01234567fedcba9876543210" * 4, 16)
+        data |= (0x1 << 30)      # write
+        data &= ~0x3FF
+        data |= 13               # dwlen == 13 triggers delayed-last path
+
+        beats = []
+
+        @passive
+        def monitor():
+            for _ in range(10):
+                if (yield dut.m_axis_tvalid):
+                    beats.append(((yield dut.m_axis_tkeep), (yield dut.m_axis_tlast)))
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(1)
+            yield dut.s_axis_tdata.eq(data)
+            yield dut.s_axis_tkeep.eq((1 << 64) - 1)
+            yield dut.s_axis_tuser.eq(0)
+            yield
+            yield dut.s_axis_tvalid.eq(0)
+            yield
+            yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+        self.assertEqual(len(beats), 2)
+        self.assertEqual(beats[0], (0xFFFF, 0))
+        self.assertEqual(beats[1], (0x0001, 1))

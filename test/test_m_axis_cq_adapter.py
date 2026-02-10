@@ -159,3 +159,89 @@ class TestMAxisCQAdapter(unittest.TestCase):
 
     def test_m_axis_cq_adapter_512(self):
         self._run_case(data_width=512)
+
+    def test_m_axis_cq_adapter_256_delayed_last(self):
+        dut = MAxisCQAdapter(256)
+
+        # Force SOP with tlast_a=1 so the adapter must emit a delayed extra beat.
+        data0 = int("00112233445566778899aabbccddeeff" * 2, 16)
+        hdr = 0
+        hdr |= 1            # dwlen != 5
+        hdr |= 0b0001 << 11 # write reqtype
+        data0 &= ~(((1 << 64) - 1) << 64)
+        data0 |= hdr << 64
+        user0 = 0
+        user0 |= 1 << 41
+        user0 |= 0xA5A5_5A5A << 8  # last-be source
+
+        beats = []
+
+        @passive
+        def monitor():
+            for _ in range(8):
+                if (yield dut.m_axis_tvalid):
+                    beats.append({
+                        "last": (yield dut.m_axis_tlast),
+                        "keep": (yield dut.m_axis_tkeep),
+                    })
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(1)
+            yield dut.s_axis_tdata.eq(data0)
+            yield dut.s_axis_tuser.eq(user0)
+            yield
+            yield dut.s_axis_tvalid.eq(0)
+            yield
+            yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+        self.assertEqual(len(beats), 1)
+        self.assertEqual(beats[0]["last"], 1)
+        expected_keep = ((user0 >> 24) & 0xFFFF) << 12 | 0xFFF
+        self.assertEqual(beats[0]["keep"], expected_keep)
+
+    def test_m_axis_cq_adapter_128_read_keep(self):
+        dut = MAxisCQAdapter(128)
+
+        data0 = int("89abcdef012345670011223344556677", 16)
+        hdr = 0
+        hdr |= 1              # dwlen
+        hdr |= 0b0000 << 11   # read reqtype
+        data0 &= ~(((1 << 64) - 1) << 64)
+        data0 |= hdr << 64
+
+        beats = []
+
+        @passive
+        def monitor():
+            for _ in range(6):
+                if (yield dut.m_axis_tvalid):
+                    beats.append({
+                        "keep": (yield dut.m_axis_tkeep),
+                        "last": (yield dut.m_axis_tlast),
+                    })
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(0)
+            yield dut.s_axis_tdata.eq(data0)
+            yield dut.s_axis_tuser.eq(0)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(1)
+            yield dut.s_axis_tdata.eq(0)
+            yield dut.s_axis_tuser.eq(0)
+            yield
+            yield dut.s_axis_tvalid.eq(0)
+            yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+        self.assertGreaterEqual(len(beats), 1)
+        self.assertEqual(beats[0]["keep"], 0x0FFF)

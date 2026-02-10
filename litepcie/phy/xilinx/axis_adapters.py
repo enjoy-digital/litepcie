@@ -861,7 +861,10 @@ class SAxisRQAdapter(LiteXModule):
             self.comb += self.s_axis_tready.eq(self.m_axis_tready)
             self.sync += [
                 If(self.s_axis_tvalid & self.m_axis_tready,
-                    tfirst_ff.eq(~self.s_axis_tlast)
+                    tfirst_ff.eq(0),
+                    If(self.s_axis_tlast,
+                        tfirst_ff.eq(1)
+                    )
                 ),
                 If(self.s_axis_tvalid & tfirst_ff,
                     firstbe_l.eq(firstbe),
