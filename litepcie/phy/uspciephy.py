@@ -493,7 +493,7 @@ class USPCIEPHY(LiteXModule):
 
         platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
         platform.add_source(os.path.join(verilog_path, f"s_axis_rq_adapt_{self.pcie_data_width}b.v"))
-        platform.add_source(os.path.join(verilog_path, f"m_axis_rc_adapt_{self.pcie_data_width}b.v"))
+        platform.add_source(os.path.join(verilog_path, "m_axis_rc_adapt.v"))
         platform.add_source(os.path.join(verilog_path, f"m_axis_cq_adapt_{self.pcie_data_width}b.v"))
         platform.add_source(os.path.join(verilog_path, f"s_axis_cc_adapt_{self.pcie_data_width}b.v"))
         platform.add_source(os.path.join(verilog_path, "pcie_us_support.v"))

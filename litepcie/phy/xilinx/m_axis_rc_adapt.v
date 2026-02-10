@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 module m_axis_rc_adapt # (
-      parameter DATA_WIDTH  = 512,
+      parameter DATA_WIDTH  = 128,
       parameter KEEP_WIDTH  = DATA_WIDTH/8
     )(
 
@@ -35,17 +35,14 @@ module m_axis_rc_adapt # (
               else if (!m_axis_rc_cnt[1]) m_axis_rc_cnt <= m_axis_rc_cnt + 1;
           end
 
-  wire            m_axis_rc_sop = (m_axis_rc_cnt == 0); //m_axis_rc_tuser_a[40]
-  wire            m_axis_rc_second = m_axis_rc_cnt == 1;
+  wire            m_axis_rc_sop = (m_axis_rc_cnt == 0);
 
-  //header process
+  // Header process.
   wire            m_axis_rc_poisoning = m_axis_rc_tdata_a[46];
   reg             m_axis_rc_poisoning_l;
   always @(posedge user_clk)
      if (m_axis_rc_tvalid_a && m_axis_rc_sop)
-         begin
-             m_axis_rc_poisoning_l <= m_axis_rc_poisoning;
-         end
+         m_axis_rc_poisoning_l <= m_axis_rc_poisoning;
 
   wire [9:0]      m_axis_rc_dwlen = m_axis_rc_tdata_a[41:32];
   wire [1:0]      m_axis_rc_attr = m_axis_rc_tdata_a[93:92];
@@ -82,18 +79,34 @@ module m_axis_rc_adapt # (
                                        m_axis_rc_tag,
                                        1'b0, m_axis_rc_lowaddr};
 
-  assign          m_axis_rc_tvalid = m_axis_rc_tvalid_a;
+  assign          m_axis_rc_tvalid   = m_axis_rc_tvalid_a;
   assign          m_axis_rc_tready_a = m_axis_rc_tready;
-  assign          m_axis_rc_tlast = m_axis_rc_tlast_a;
-  assign          m_axis_rc_tdata = m_axis_rc_sop ? {m_axis_rc_tdata_a[511:128], m_axis_rc_header1, m_axis_rc_header0} : m_axis_rc_tdata_a;
-  assign          m_axis_rc_tkeep = m_axis_rc_sop ? {m_axis_rc_tuser_a[63:12], 12'hFFF} : m_axis_rc_tuser_a[63:0];
-  assign          m_axis_rc_tuser = {
-                                     5'b0,                         //rx_is_eof only for 128-bit I/F
-                                     2'b0,                         //reserved
-                                     5'b0,                         //m_axis_rc_tuser_a[32],4'b0,   //rx_is_sof, only for 128-bit I/F  ?????????????????????
-                                     8'b0,                         //BAR hit no equivalent for RC
-                                     m_axis_rc_sop ? m_axis_rc_poisoning : m_axis_rc_poisoning_l,  //rx_err_fwd mapped to Poisoned completion
-                                     m_axis_rc_tuser_a[42]         //ECRC mapped to discontinue
-                                     };
+  assign          m_axis_rc_tlast    = m_axis_rc_tlast_a;
+
+  generate
+    if (DATA_WIDTH == 128) begin : gen_128
+      assign m_axis_rc_tdata = m_axis_rc_sop ? {m_axis_rc_header1, m_axis_rc_header0} : m_axis_rc_tdata_a;
+      assign m_axis_rc_tkeep = m_axis_rc_sop ? {KEEP_WIDTH{1'b1}} : m_axis_rc_tuser_a[KEEP_WIDTH-1:0];
+      assign m_axis_rc_tuser = {
+                                5'd0,
+                                2'b0,
+                                m_axis_rc_sop, 4'b0,
+                                8'b0,
+                                m_axis_rc_sop ? m_axis_rc_poisoning : m_axis_rc_poisoning_l,
+                                m_axis_rc_tuser_a[42]
+                                };
+    end else begin : gen_256_512
+      assign m_axis_rc_tdata = m_axis_rc_sop ? {m_axis_rc_tdata_a[DATA_WIDTH-1:128], m_axis_rc_header1, m_axis_rc_header0} : m_axis_rc_tdata_a;
+      assign m_axis_rc_tkeep = m_axis_rc_sop ? {m_axis_rc_tuser_a[KEEP_WIDTH-1:12], 12'hFFF} : m_axis_rc_tuser_a[KEEP_WIDTH-1:0];
+      assign m_axis_rc_tuser = {
+                                5'b0,
+                                2'b0,
+                                5'b0,
+                                8'b0,
+                                m_axis_rc_sop ? m_axis_rc_poisoning : m_axis_rc_poisoning_l,
+                                m_axis_rc_tuser_a[42]
+                                };
+    end
+  endgenerate
 
 endmodule
