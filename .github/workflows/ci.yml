@@ -16,12 +16,35 @@ jobs:
 
       - name: Lint Xilinx PHY Verilog
         run: |
+          # Lint shared adapters/common logic.
           verilator --lint-only -Wall -Wno-fatal \
             litepcie/phy/xilinx/axis_iff.v \
             litepcie/phy/xilinx/m_axis_rc_adapt.v \
             litepcie/phy/xilinx/m_axis_cq_adapt.v \
             litepcie/phy/xilinx/s_axis_cc_adapt.v \
             litepcie/phy/xilinx/s_axis_rq_adapt.v
+          # Lint US support wrapper with lint-only pcie_us stub.
+          verilator --lint-only -Wall -Wno-fatal --top-module pcie_support \
+            -Wno-DECLFILENAME -Wno-PINMISSING -Wno-PINCONNECTEMPTY -Wno-TIMESCALEMOD \
+            -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN -Wno-UNUSEDPARAM \
+            litepcie/phy/xilinx/axis_iff.v \
+            litepcie/phy/xilinx/m_axis_rc_adapt.v \
+            litepcie/phy/xilinx/m_axis_cq_adapt.v \
+            litepcie/phy/xilinx/s_axis_cc_adapt.v \
+            litepcie/phy/xilinx/s_axis_rq_adapt.v \
+            litepcie/phy/xilinx/lint_stubs/pcie_us_stub.v \
+            litepcie/phy/xilinx/pcie_us_support.v
+          # Lint USP support wrapper with lint-only pcie_usp stub.
+          verilator --lint-only -Wall -Wno-fatal --top-module pcie_support \
+            -Wno-DECLFILENAME -Wno-PINMISSING -Wno-PINCONNECTEMPTY -Wno-TIMESCALEMOD \
+            -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN -Wno-UNUSEDPARAM \
+            litepcie/phy/xilinx/axis_iff.v \
+            litepcie/phy/xilinx/m_axis_rc_adapt.v \
+            litepcie/phy/xilinx/m_axis_cq_adapt.v \
+            litepcie/phy/xilinx/s_axis_cc_adapt.v \
+            litepcie/phy/xilinx/s_axis_rq_adapt.v \
+            litepcie/phy/xilinx/lint_stubs/pcie_usp_stub.v \
+            litepcie/phy/xilinx/pcie_usp_support.v
 
   build:
     runs-on: ubuntu-22.04

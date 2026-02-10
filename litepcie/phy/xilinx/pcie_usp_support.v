@@ -312,7 +312,7 @@ module pcie_support # (
   //   AXIS Adaption Logic                                                                                          //
   //----------------------------------------------------------------------------------------------------------------//
 
-   //----------------------------------------------------- RQ AXIS -------------------------------------------------//
+  //----------------------------------------------------- RQ AXIS -------------------------------------------------//
 
   wire                     s_axis_rq_tvalid_a;
   wire                     s_axis_rq_tready_a;
@@ -321,10 +321,10 @@ module pcie_support # (
   wire [255            :0] s_axis_rq_tuser_a;
   wire                     s_axis_rq_tlast_a;
 
-   s_axis_rq_adapt #(
+  s_axis_rq_adapt #(
     .DATA_WIDTH(C_DATA_WIDTH),
     .KEEP_WIDTH(KEEP_WIDTH)
-   ) s_axis_rq_adapt_i (
+  ) s_axis_rq_adapt_i (
     .user_clk(user_clk_out),
     .user_reset(user_reset_out),
 
@@ -341,7 +341,7 @@ module pcie_support # (
     .s_axis_rq_tready_a(s_axis_rq_tready_a),
     .s_axis_rq_tuser_a(s_axis_rq_tuser_a),
     .s_axis_rq_tvalid_a(s_axis_rq_tvalid_a)
-   );
+  );
 
   //----------------------------------------------------- RC AXIS --------------------------------------------------//
 
@@ -352,27 +352,27 @@ module pcie_support # (
   wire [255            :0] m_axis_rc_tuser_a;
   wire                     m_axis_rc_tlast_a;
 
-   m_axis_rc_adapt #(
+  m_axis_rc_adapt #(
     .DATA_WIDTH(C_DATA_WIDTH),
     .KEEP_WIDTH(KEEP_WIDTH)
-   ) m_axis_rc_adapt_i (
+  ) m_axis_rc_adapt_i (
     .user_clk(user_clk_out),
     .user_reset(user_reset_out),
 
-    .m_axis_rc_tdata( m_axis_rc_tdata),
-    .m_axis_rc_tkeep( m_axis_rc_tkeep),
-    .m_axis_rc_tlast( m_axis_rc_tlast),
+    .m_axis_rc_tdata(m_axis_rc_tdata),
+    .m_axis_rc_tkeep(m_axis_rc_tkeep),
+    .m_axis_rc_tlast(m_axis_rc_tlast),
     .m_axis_rc_tready(m_axis_rc_tready),
-    .m_axis_rc_tuser( m_axis_rc_tuser),
+    .m_axis_rc_tuser(m_axis_rc_tuser),
     .m_axis_rc_tvalid(m_axis_rc_tvalid),
 
-    .m_axis_rc_tdata_a( m_axis_rc_tdata_a),
-    .m_axis_rc_tkeep_a( m_axis_rc_tkeep_a),
-    .m_axis_rc_tlast_a( m_axis_rc_tlast_a),
+    .m_axis_rc_tdata_a(m_axis_rc_tdata_a),
+    .m_axis_rc_tkeep_a(m_axis_rc_tkeep_a),
+    .m_axis_rc_tlast_a(m_axis_rc_tlast_a),
     .m_axis_rc_tready_a(m_axis_rc_tready_a),
-    .m_axis_rc_tuser_a( m_axis_rc_tuser_a),
+    .m_axis_rc_tuser_a(m_axis_rc_tuser_a),
     .m_axis_rc_tvalid_a(m_axis_rc_tvalid_a)
-   );
+  );
 
   //----------------------------------------------------- CQ AXIS --------------------------------------------------//
 
@@ -383,27 +383,27 @@ module pcie_support # (
   wire [255            :0] m_axis_cq_tuser_a;
   wire                     m_axis_cq_tlast_a;
 
-   m_axis_cq_adapt #(
+  m_axis_cq_adapt #(
     .DATA_WIDTH(C_DATA_WIDTH),
     .KEEP_WIDTH(KEEP_WIDTH)
-   ) m_axis_cq_adapt_i (
+  ) m_axis_cq_adapt_i (
     .user_clk(user_clk_out),
     .user_reset(user_reset_out),
 
-    .m_axis_cq_tdata( m_axis_cq_tdata),
-    .m_axis_cq_tkeep( m_axis_cq_tkeep),
-    .m_axis_cq_tlast( m_axis_cq_tlast),
+    .m_axis_cq_tdata(m_axis_cq_tdata),
+    .m_axis_cq_tkeep(m_axis_cq_tkeep),
+    .m_axis_cq_tlast(m_axis_cq_tlast),
     .m_axis_cq_tready(m_axis_cq_tready),
-    .m_axis_cq_tuser( m_axis_cq_tuser),
+    .m_axis_cq_tuser(m_axis_cq_tuser),
     .m_axis_cq_tvalid(m_axis_cq_tvalid),
 
-    .m_axis_cq_tdata_a( m_axis_cq_tdata_a),
-    .m_axis_cq_tkeep_a( m_axis_cq_tkeep_a),
-    .m_axis_cq_tlast_a( m_axis_cq_tlast_a),
+    .m_axis_cq_tdata_a(m_axis_cq_tdata_a),
+    .m_axis_cq_tkeep_a(m_axis_cq_tkeep_a),
+    .m_axis_cq_tlast_a(m_axis_cq_tlast_a),
     .m_axis_cq_tready_a(m_axis_cq_tready_a),
-    .m_axis_cq_tuser_a( m_axis_cq_tuser_a),
+    .m_axis_cq_tuser_a(m_axis_cq_tuser_a),
     .m_axis_cq_tvalid_a(m_axis_cq_tvalid_a)
-   );
+  );
 
   //----------------------------------------------------- CC AXIS --------------------------------------------------//
 
@@ -417,7 +417,7 @@ module pcie_support # (
   s_axis_cc_adapt #(
     .DATA_WIDTH(C_DATA_WIDTH),
     .KEEP_WIDTH(KEEP_WIDTH)
-   ) s_axis_cc_adapt_i (
+  ) s_axis_cc_adapt_i (
     .user_clk(user_clk_out),
     .user_reset(user_reset_out),
 
@@ -434,7 +434,7 @@ module pcie_support # (
     .s_axis_cc_tready_a(s_axis_cc_tready_a),
     .s_axis_cc_tuser_a(s_axis_cc_tuser_a),
     .s_axis_cc_tvalid_a(s_axis_cc_tvalid_a)
-   );
+  );
 
   //---------------------------------------------------------------------------------------------------------------//
   //   MSI Adaptation Logic                                                                                        //
