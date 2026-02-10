@@ -110,7 +110,6 @@ module s_axis_rq_adapt # (
       reg [3:0] s_axis_rq_firstbe_l;
       reg [3:0] s_axis_rq_lastbe_l;
       reg [31:0] s_axis_rq_tdata_l;
-      reg s_axis_rq_tvalid_lat;
 
       wire s_axis_rq_tfirst  = (s_axis_rq_cnt == 0) && (!s_axis_rq_tlast_lat);
       wire s_axis_rq_read    = (s_axis_rq_tdata_ff[31:30] == 2'b0);
@@ -137,16 +136,6 @@ module s_axis_rq_adapt # (
                   if (s_axis_rq_tfirst) s_axis_rq_tlast_lat <= s_axis_rq_write ? 1'b1 : 1'b0;
                   else s_axis_rq_tlast_lat <= s_axis_rq_tlast_dly_en;
               end
-
-      always @(posedge user_clk)
-          if (user_reset) s_axis_rq_tvalid_lat <= 1'b0;
-          else if (s_axis_rq_tvalid_lat && s_axis_rq_tready_a)
-              begin
-                  if (s_axis_rq_tlast_dly_en) s_axis_rq_tvalid_lat <= !s_axis_rq_tlast_lat;
-                  else s_axis_rq_tvalid_lat <= !(s_axis_rq_tlast_ff && s_axis_rq_tvalid_ff);
-              end
-          else if (s_axis_rq_tvalid_ff & s_axis_rq_tfirst & s_axis_rq_write)
-              s_axis_rq_tvalid_lat <= 1'b1;
 
       always @(posedge user_clk)
           if (s_axis_rq_tvalid_ff && s_axis_rq_tfirst)

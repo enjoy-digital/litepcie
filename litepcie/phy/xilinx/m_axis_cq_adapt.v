@@ -29,11 +29,14 @@ module m_axis_cq_adapt # (
   localparam IS_128 = (DATA_WIDTH == 128);
   localparam IS_256 = (DATA_WIDTH == 256);
 
+  wire            m_axis_cq_tready_s   = m_axis_cq_tready[0];
+  wire            m_axis_cq_tready_a_s = m_axis_cq_tready_a[0];
+
   // Dword counter: 0-2 & latch.
   reg [1:0] m_axis_cq_cnt;
   always @(posedge user_clk)
       if (user_reset) m_axis_cq_cnt <= 2'd0;
-      else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a)
+      else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a_s)
           begin
               if (m_axis_cq_tlast_a) m_axis_cq_cnt <= 2'd0;
               else if (!m_axis_cq_cnt[1]) m_axis_cq_cnt <= m_axis_cq_cnt + 1;
@@ -100,7 +103,7 @@ module m_axis_cq_adapt # (
           if (m_axis_cq_tvalid_a && m_axis_cq_sop)
               m_axis_cq_mode_l <= IS_128 ? m_axis_cq_read : m_axis_cq_tlast_a;
 
-          if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_dly_en <= 1'd0;
+          if (m_axis_cq_tlast_lat && m_axis_cq_tready_s) m_axis_cq_tlast_dly_en <= 1'd0;
           else if (m_axis_cq_tvalid_a && m_axis_cq_sop) begin
               if (IS_128) begin
                   if (m_axis_cq_read) m_axis_cq_tlast_dly_en <= 1'b1;
@@ -112,13 +115,13 @@ module m_axis_cq_adapt # (
               end
           end
 
-          if (m_axis_cq_tlast_lat && m_axis_cq_tready) m_axis_cq_tlast_lat <= 1'd0;
-          else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a && m_axis_cq_tlast_a) begin
+          if (m_axis_cq_tlast_lat && m_axis_cq_tready_s) m_axis_cq_tlast_lat <= 1'd0;
+          else if (m_axis_cq_tvalid_a && m_axis_cq_tready_a_s && m_axis_cq_tlast_a) begin
               if (m_axis_cq_sop) m_axis_cq_tlast_lat <= 1'b1;
               else if (m_axis_cq_tlast_dly_en) m_axis_cq_tlast_lat <= 1'b1;
           end
 
-          if (m_axis_cq_tvalid_a && m_axis_cq_tready_a) begin
+          if (m_axis_cq_tvalid_a && m_axis_cq_tready_a_s) begin
               m_axis_cq_tdata_a1 <= m_axis_cq_tdata_a;
               if (IS_128)       m_axis_cq_tlast_be1 <= m_axis_cq_tuser_a[23:8];
               else if (IS_256)  m_axis_cq_tlast_be1 <= m_axis_cq_tuser_a[39:8];
@@ -129,7 +132,7 @@ module m_axis_cq_adapt # (
       end
 
   // Generate ready for PCIe IP.
-  assign m_axis_cq_tready_a = ((m_axis_cq_cnt == 0) | m_axis_cq_tready) && (!m_axis_cq_tlast_lat);
+  assign m_axis_cq_tready_a = {4{((m_axis_cq_cnt == 0) | m_axis_cq_tready_s) && (!m_axis_cq_tlast_lat)}};
 
   // Output for TLP.
   assign m_axis_cq_tlast  = m_axis_cq_tlast_dly_en ? m_axis_cq_tlast_lat : m_axis_cq_tlast_a;
@@ -149,13 +152,8 @@ module m_axis_cq_adapt # (
                           (m_axis_cq_tlast_lat ? {4'b0, m_axis_cq_tlast_be1[KEEP_WIDTH-1:4]} : {KEEP_WIDTH{1'b1}}));
 
   wire m_axis_cq_ecrc = IS_128 ? m_axis_cq_ecrc_128_l : (IS_256 ? m_axis_cq_tuser_a[41] : m_axis_cq_tuser_a[96]);
-  assign m_axis_cq_tuser = {
-                            5'b0,
-                            2'b0,
-                            5'b0,
-                            m_axis_cq_tuser_barhit,
-                            1'b0,
-                            m_axis_cq_ecrc
-                            };
+  assign m_axis_cq_tuser = {63'b0,
+                            5'b0, 2'b0, 5'b0, m_axis_cq_tuser_barhit,
+                            1'b0, m_axis_cq_ecrc};
 
 endmodule
