@@ -530,3 +530,158 @@ class MAxisCQAdapter(LiteXModule):
                     C(0, 63)
                 ))
             ]
+
+
+class SAxisCCAdapter(LiteXModule):
+    def __init__(self, data_width):
+        assert data_width in [128, 256, 512]
+        keep_width = data_width // 8
+
+        # LitePCIe CC AXIS (input).
+        self.s_axis_tdata  = Signal(data_width)
+        self.s_axis_tkeep  = Signal(keep_width)
+        self.s_axis_tlast  = Signal()
+        self.s_axis_tready = Signal()
+        self.s_axis_tuser  = Signal(4)
+        self.s_axis_tvalid = Signal()
+
+        # Raw CC AXIS to Xilinx hard IP/support wrapper (output).
+        self.m_axis_tdata  = Signal(data_width)
+        self.m_axis_tkeep  = Signal(keep_width // 4)
+        self.m_axis_tlast  = Signal()
+        self.m_axis_tready = Signal()
+        self.m_axis_tuser  = Signal(33)
+        self.m_axis_tvalid = Signal()
+
+        # # #
+
+        cnt = Signal(2)
+        self.sync += [
+            If(self.s_axis_tvalid & self.m_axis_tready,
+                If(self.s_axis_tlast,
+                    cnt.eq(0)
+                ).Elif(~cnt[1],
+                    cnt.eq(cnt + 1)
+                )
+            )
+        ]
+        tfirst = Signal()
+        self.comb += tfirst.eq(cnt == 0)
+
+        tkeep_or = Signal(keep_width // 4)
+        if data_width == 128:
+            self.comb += tkeep_or.eq(Cat(
+                self.s_axis_tkeep[0:4] != 0,
+                self.s_axis_tkeep[4:8] != 0,
+                self.s_axis_tkeep[8:12] != 0,
+                self.s_axis_tkeep[12:16] != 0
+            ))
+        elif data_width == 256:
+            self.comb += tkeep_or.eq(Cat(
+                self.s_axis_tkeep[0:4] != 0,
+                self.s_axis_tkeep[4:8] != 0,
+                self.s_axis_tkeep[8:12] != 0,
+                self.s_axis_tkeep[12:16] != 0,
+                self.s_axis_tkeep[16:20] != 0,
+                self.s_axis_tkeep[20:24] != 0,
+                self.s_axis_tkeep[24:28] != 0,
+                self.s_axis_tkeep[28:32] != 0
+            ))
+        else:
+            self.comb += tkeep_or.eq(Cat(
+                self.s_axis_tkeep[0],
+                self.s_axis_tkeep[4],
+                self.s_axis_tkeep[8],
+                self.s_axis_tkeep[12],
+                self.s_axis_tkeep[16],
+                self.s_axis_tkeep[20],
+                self.s_axis_tkeep[24],
+                self.s_axis_tkeep[28],
+                self.s_axis_tkeep[32],
+                self.s_axis_tkeep[36],
+                self.s_axis_tkeep[40],
+                self.s_axis_tkeep[44],
+                self.s_axis_tkeep[48],
+                self.s_axis_tkeep[52],
+                self.s_axis_tkeep[56],
+                self.s_axis_tkeep[60]
+            ))
+
+        lowaddr     = Signal(7)
+        bytecnt     = Signal(13)
+        lockedrdcmp = Signal()
+        dwordcnt    = Signal(10)
+        cmpstatus   = Signal(3)
+        poison      = Signal()
+        requesterid = Signal(16)
+        tag         = Signal(8)
+        completerid = Signal(16)
+        tc          = Signal(3)
+        attr        = Signal(3)
+        td          = Signal()
+        self.comb += [
+            lowaddr.eq(self.s_axis_tdata[64:71]),
+            bytecnt.eq(Cat(self.s_axis_tdata[32:44], C(0, 1))),
+            lockedrdcmp.eq(self.s_axis_tdata[24:30] == 0b001011),
+            dwordcnt.eq(self.s_axis_tdata[0:10]),
+            cmpstatus.eq(self.s_axis_tdata[45:48]),
+            poison.eq(self.s_axis_tdata[14]),
+            requesterid.eq(self.s_axis_tdata[80:96]),
+            tag.eq(self.s_axis_tdata[72:80]),
+            completerid.eq(self.s_axis_tdata[48:64]),
+            tc.eq(self.s_axis_tdata[20:23]),
+            attr.eq(Cat(self.s_axis_tdata[12:14], C(0, 1))),
+            td.eq(self.s_axis_tdata[15] | self.s_axis_tuser[0]),
+        ]
+
+        header0 = Signal(64)
+        header1 = Signal(64)
+        self.comb += [
+            header0.eq(Cat(
+                lowaddr,
+                C(0, 1),
+                C(0, 2),  # at
+                C(0, 6),
+                bytecnt,
+                lockedrdcmp,
+                C(0, 2),
+                dwordcnt,
+                cmpstatus,
+                poison,
+                C(0, 2),
+                requesterid
+            )),
+            header1.eq(Cat(
+                tag,
+                completerid,
+                C(0, 1),  # completerid_en
+                tc,
+                attr,
+                td,
+                self.s_axis_tdata[96:128]
+            ))
+        ]
+
+        self.comb += [
+            self.s_axis_tready.eq(self.m_axis_tready),
+            self.m_axis_tvalid.eq(self.s_axis_tvalid),
+            self.m_axis_tlast.eq(self.s_axis_tlast),
+            self.m_axis_tkeep.eq(tkeep_or),
+            self.m_axis_tuser.eq(Cat(self.s_axis_tuser[3])),
+        ]
+        if data_width == 128:
+            self.comb += [
+                If(tfirst,
+                    self.m_axis_tdata.eq(Cat(header0, header1))
+                ).Else(
+                    self.m_axis_tdata.eq(self.s_axis_tdata)
+                )
+            ]
+        else:
+            self.comb += [
+                If(tfirst,
+                    self.m_axis_tdata.eq(Cat(header0, header1, self.s_axis_tdata[128:data_width]))
+                ).Else(
+                    self.m_axis_tdata.eq(self.s_axis_tdata)
+                )
+            ]

@@ -131,9 +131,9 @@ module pcie_support # (
 
   //Completer Completion
   input                [C_DATA_WIDTH-1:0]    s_axis_cc_tdata,
-  input                            [3:0]     s_axis_cc_tuser,
+  input                           [32:0]     s_axis_cc_tuser,
   input                                      s_axis_cc_tlast,
-  input                  [KEEP_WIDTH-1:0]    s_axis_cc_tkeep,
+  input               [KEEP_WIDTH/4-1:0]     s_axis_cc_tkeep,
   input                                      s_axis_cc_tvalid,
   output                                     s_axis_cc_tready,
 
@@ -381,30 +381,15 @@ module pcie_support # (
   wire                     s_axis_cc_tready_a;
   wire [KEEP_WIDTH/4-1 :0] s_axis_cc_tkeep_a;
   wire [C_DATA_WIDTH-1 :0] s_axis_cc_tdata_a;
-  wire [255            :0] s_axis_cc_tuser_a;
+  wire [32             :0] s_axis_cc_tuser_a;
   wire                     s_axis_cc_tlast_a;
 
-  s_axis_cc_adapt #(
-    .DATA_WIDTH(C_DATA_WIDTH),
-    .KEEP_WIDTH(KEEP_WIDTH)
-  ) s_axis_cc_adapt_i (
-    .user_clk(user_clk_out),
-    .user_reset(user_reset_out),
-
-    .s_axis_cc_tdata(s_axis_cc_tdata),
-    .s_axis_cc_tkeep(s_axis_cc_tkeep),
-    .s_axis_cc_tlast(s_axis_cc_tlast),
-    .s_axis_cc_tready(s_axis_cc_tready),
-    .s_axis_cc_tuser(s_axis_cc_tuser),
-    .s_axis_cc_tvalid(s_axis_cc_tvalid),
-
-    .s_axis_cc_tdata_a(s_axis_cc_tdata_a),
-    .s_axis_cc_tkeep_a(s_axis_cc_tkeep_a),
-    .s_axis_cc_tlast_a(s_axis_cc_tlast_a),
-    .s_axis_cc_tready_a(s_axis_cc_tready_a),
-    .s_axis_cc_tuser_a(s_axis_cc_tuser_a),
-    .s_axis_cc_tvalid_a(s_axis_cc_tvalid_a)
-  );
+  assign s_axis_cc_tdata_a  = s_axis_cc_tdata;
+  assign s_axis_cc_tkeep_a  = s_axis_cc_tkeep;
+  assign s_axis_cc_tlast_a  = s_axis_cc_tlast;
+  assign s_axis_cc_tuser_a  = s_axis_cc_tuser;
+  assign s_axis_cc_tvalid_a = s_axis_cc_tvalid;
+  assign s_axis_cc_tready   = s_axis_cc_tready_a;
 
   //---------------------------------------------------------------------------------------------------------------//
   //   MSI Adaptation Logic                                                                                        //

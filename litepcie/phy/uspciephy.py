@@ -16,7 +16,7 @@ from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 from litepcie.phy.common import *
-from litepcie.phy.xilinx.axis_adapters import MAxisCQAdapter, MAxisRCAdapter
+from litepcie.phy.xilinx.axis_adapters import MAxisCQAdapter, MAxisRCAdapter, SAxisCCAdapter
 
 # USPCIEPHY ----------------------------------------------------------------------------------------
 
@@ -214,6 +214,12 @@ class USPCIEPHY(LiteXModule):
         m_axis_cq_tlast_raw  = Signal()
         m_axis_cq_tvalid_raw = Signal()
         m_axis_cq_tready_raw = Signal(4)
+        s_axis_cc_tdata_raw  = Signal(pcie_data_width)
+        s_axis_cc_tkeep_raw  = Signal(pcie_data_width//32)
+        s_axis_cc_tuser_raw  = Signal(33)
+        s_axis_cc_tlast_raw  = Signal()
+        s_axis_cc_tvalid_raw = Signal()
+        s_axis_cc_tready_raw = Signal()
 
         if self.mode == "Endpoint":
             msi_ports = dict(
@@ -310,12 +316,12 @@ class USPCIEPHY(LiteXModule):
             o_m_axis_rc_tuser                  = m_axis_rc_tuser_raw,
 
             # (FPGA -> Host) Completer Completion
-            i_s_axis_cc_tvalid                 = s_axis_cc.valid,
-            i_s_axis_cc_tlast                  = s_axis_cc.last,
-            o_s_axis_cc_tready                 = s_axis_cc.ready,
-            i_s_axis_cc_tdata                  = s_axis_cc.dat,
-            i_s_axis_cc_tkeep                  = s_axis_cc.be,
-            i_s_axis_cc_tuser                  = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
+            i_s_axis_cc_tvalid                 = s_axis_cc_tvalid_raw,
+            i_s_axis_cc_tlast                  = s_axis_cc_tlast_raw,
+            o_s_axis_cc_tready                 = s_axis_cc_tready_raw,
+            i_s_axis_cc_tdata                  = s_axis_cc_tdata_raw,
+            i_s_axis_cc_tkeep                  = s_axis_cc_tkeep_raw,
+            i_s_axis_cc_tuser                  = s_axis_cc_tuser_raw,
 
             # Management Interface -----------------------------------------------------------------
             o_cfg_mgmt_do                      = Open(32),
@@ -438,6 +444,23 @@ class USPCIEPHY(LiteXModule):
             m_axis_rc.last.eq(m_axis_rc_tlast),
         ]
 
+        self.s_axis_cc_adapt = s_axis_cc_adapt = ClockDomainsRenamer("pcie")(SAxisCCAdapter(pcie_data_width))
+        self.comb += [
+            s_axis_cc_adapt.s_axis_tdata.eq(s_axis_cc.dat),
+            s_axis_cc_adapt.s_axis_tkeep.eq(s_axis_cc.be),
+            s_axis_cc_adapt.s_axis_tlast.eq(s_axis_cc.last),
+            s_axis_cc_adapt.s_axis_tuser.eq(Constant(0b0000)),
+            s_axis_cc_adapt.s_axis_tvalid.eq(s_axis_cc.valid),
+            s_axis_cc.ready.eq(s_axis_cc_adapt.s_axis_tready),
+
+            s_axis_cc_tdata_raw.eq(s_axis_cc_adapt.m_axis_tdata),
+            s_axis_cc_tkeep_raw.eq(s_axis_cc_adapt.m_axis_tkeep),
+            s_axis_cc_tlast_raw.eq(s_axis_cc_adapt.m_axis_tlast),
+            s_axis_cc_tuser_raw.eq(s_axis_cc_adapt.m_axis_tuser),
+            s_axis_cc_tvalid_raw.eq(s_axis_cc_adapt.m_axis_tvalid),
+            s_axis_cc_adapt.m_axis_tready.eq(s_axis_cc_tready_raw),
+        ]
+
     # Resync Helper --------------------------------------------------------------------------------
     def add_resync(self, sig, clk="sys"):
         _sig = Signal.like(sig)
@@ -537,7 +560,6 @@ class USPCIEPHY(LiteXModule):
 
         platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
         platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt.v"))
-        platform.add_source(os.path.join(verilog_path, "s_axis_cc_adapt.v"))
         platform.add_source(os.path.join(verilog_path, "pcie_us_support.v"))
 
 
