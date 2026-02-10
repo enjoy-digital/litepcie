@@ -68,6 +68,7 @@ module pcie_support # (
   parameter LINK_CAP_MAX_LINK_WIDTH = 4,                       // PCIe Lane Width
   parameter C_DATA_WIDTH            = 128,                     // AXI interface data width
   parameter KEEP_WIDTH              = C_DATA_WIDTH / 8,        // TSTRB width
+  parameter TUSER_WIDTH_RQ_A        = (C_DATA_WIDTH == 512) ? 137 : 60,
   parameter PCIE_GT_DEVICE          = "GTH",                   // PCIe GT device
   parameter PCIE_USE_MODE           = "2.0"                    // PCIe use mode
 )
@@ -108,8 +109,8 @@ module pcie_support # (
   output                           [1:0]     pcie_rq_tag_av,
   input                                      s_axis_rq_tlast,
   input               [C_DATA_WIDTH-1:0]     s_axis_rq_tdata,
-  input                            [3:0]     s_axis_rq_tuser,
-  input                 [KEEP_WIDTH-1:0]     s_axis_rq_tkeep,
+  input             [TUSER_WIDTH_RQ_A-1:0]   s_axis_rq_tuser,
+  input               [KEEP_WIDTH/4-1:0]     s_axis_rq_tkeep,
   output                                     s_axis_rq_tready,
   input                                      s_axis_rq_tvalid,
 
@@ -318,30 +319,14 @@ module pcie_support # (
   wire                     s_axis_rq_tready_a;
   wire [KEEP_WIDTH/4-1 :0] s_axis_rq_tkeep_a;
   wire [C_DATA_WIDTH-1 :0] s_axis_rq_tdata_a;
-  wire [255            :0] s_axis_rq_tuser_a;
+  wire [TUSER_WIDTH_RQ_A-1:0] s_axis_rq_tuser_a;
   wire                     s_axis_rq_tlast_a;
-
-  s_axis_rq_adapt #(
-    .DATA_WIDTH(C_DATA_WIDTH),
-    .KEEP_WIDTH(KEEP_WIDTH)
-  ) s_axis_rq_adapt_i (
-    .user_clk(user_clk_out),
-    .user_reset(user_reset_out),
-
-    .s_axis_rq_tdata(s_axis_rq_tdata),
-    .s_axis_rq_tkeep(s_axis_rq_tkeep),
-    .s_axis_rq_tlast(s_axis_rq_tlast),
-    .s_axis_rq_tready(s_axis_rq_tready),
-    .s_axis_rq_tuser(s_axis_rq_tuser),
-    .s_axis_rq_tvalid(s_axis_rq_tvalid),
-
-    .s_axis_rq_tdata_a(s_axis_rq_tdata_a),
-    .s_axis_rq_tkeep_a(s_axis_rq_tkeep_a),
-    .s_axis_rq_tlast_a(s_axis_rq_tlast_a),
-    .s_axis_rq_tready_a(s_axis_rq_tready_a),
-    .s_axis_rq_tuser_a(s_axis_rq_tuser_a),
-    .s_axis_rq_tvalid_a(s_axis_rq_tvalid_a)
-  );
+  assign s_axis_rq_tdata_a  = s_axis_rq_tdata;
+  assign s_axis_rq_tkeep_a  = s_axis_rq_tkeep;
+  assign s_axis_rq_tlast_a  = s_axis_rq_tlast;
+  assign s_axis_rq_tuser_a  = s_axis_rq_tuser;
+  assign s_axis_rq_tvalid_a = s_axis_rq_tvalid;
+  assign s_axis_rq_tready   = s_axis_rq_tready_a;
 
   //----------------------------------------------------- RC AXIS --------------------------------------------------//
 

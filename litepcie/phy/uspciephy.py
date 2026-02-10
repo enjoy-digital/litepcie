@@ -16,7 +16,7 @@ from litex.soc.interconnect.csr import *
 
 from litepcie.common import *
 from litepcie.phy.common import *
-from litepcie.phy.xilinx.axis_adapters import MAxisCQAdapter, MAxisRCAdapter, SAxisCCAdapter
+from litepcie.phy.xilinx.axis_adapters import MAxisCQAdapter, MAxisRCAdapter, SAxisCCAdapter, SAxisRQAdapter
 
 # USPCIEPHY ----------------------------------------------------------------------------------------
 
@@ -198,10 +198,18 @@ class USPCIEPHY(LiteXModule):
 
         # Hard IP ----------------------------------------------------------------------------------
 
+        rq_tuser_width = 137 if pcie_data_width == 512 else 60
+
         m_axis_rc_tuser = Signal(85)
         m_axis_cq_tuser = Signal(85)
         m_axis_rc_tlast = Signal()
         m_axis_cq_tlast = Signal()
+        s_axis_rq_tdata_raw  = Signal(pcie_data_width)
+        s_axis_rq_tkeep_raw  = Signal(pcie_data_width//32)
+        s_axis_rq_tuser_raw  = Signal(rq_tuser_width)
+        s_axis_rq_tlast_raw  = Signal()
+        s_axis_rq_tvalid_raw = Signal()
+        s_axis_rq_tready_raw = Signal()
         m_axis_rc_tdata_raw  = Signal(pcie_data_width)
         m_axis_rc_tkeep_raw  = Signal(pcie_data_width//32)
         m_axis_rc_tuser_raw  = Signal(85)
@@ -290,12 +298,12 @@ class USPCIEPHY(LiteXModule):
             o_pcie_rq_seq_num_vld              = Open(),
             o_pcie_rq_tag                      = Open(6),
             o_pcie_rq_tag_vld                  = Open(),
-            i_s_axis_rq_tvalid                 = s_axis_rq.valid,
-            i_s_axis_rq_tlast                  = s_axis_rq.last,
-            o_s_axis_rq_tready                 = s_axis_rq.ready,
-            i_s_axis_rq_tdata                  = s_axis_rq.dat,
-            i_s_axis_rq_tkeep                  = s_axis_rq.be,
-            i_s_axis_rq_tuser                  = Constant(0b0000), # Discontinue, Streaming-AXIS, EP(Poisioning), TP(TLP-Digest)
+            i_s_axis_rq_tvalid                 = s_axis_rq_tvalid_raw,
+            i_s_axis_rq_tlast                  = s_axis_rq_tlast_raw,
+            o_s_axis_rq_tready                 = s_axis_rq_tready_raw,
+            i_s_axis_rq_tdata                  = s_axis_rq_tdata_raw,
+            i_s_axis_rq_tkeep                  = s_axis_rq_tkeep_raw,
+            i_s_axis_rq_tuser                  = s_axis_rq_tuser_raw,
 
             # (Host -> FPGA) Completer Request
             i_pcie_cq_np_req                   = 1,
@@ -461,6 +469,23 @@ class USPCIEPHY(LiteXModule):
             s_axis_cc_adapt.m_axis_tready.eq(s_axis_cc_tready_raw),
         ]
 
+        self.s_axis_rq_adapt = s_axis_rq_adapt = ClockDomainsRenamer("pcie")(SAxisRQAdapter(pcie_data_width))
+        self.comb += [
+            s_axis_rq_adapt.s_axis_tdata.eq(s_axis_rq.dat),
+            s_axis_rq_adapt.s_axis_tkeep.eq(s_axis_rq.be),
+            s_axis_rq_adapt.s_axis_tlast.eq(s_axis_rq.last),
+            s_axis_rq_adapt.s_axis_tuser.eq(Constant(0b0000)),
+            s_axis_rq_adapt.s_axis_tvalid.eq(s_axis_rq.valid),
+            s_axis_rq.ready.eq(s_axis_rq_adapt.s_axis_tready),
+
+            s_axis_rq_tdata_raw.eq(s_axis_rq_adapt.m_axis_tdata),
+            s_axis_rq_tkeep_raw.eq(s_axis_rq_adapt.m_axis_tkeep),
+            s_axis_rq_tlast_raw.eq(s_axis_rq_adapt.m_axis_tlast),
+            s_axis_rq_tuser_raw.eq(s_axis_rq_adapt.m_axis_tuser),
+            s_axis_rq_tvalid_raw.eq(s_axis_rq_adapt.m_axis_tvalid),
+            s_axis_rq_adapt.m_axis_tready.eq(s_axis_rq_tready_raw),
+        ]
+
     # Resync Helper --------------------------------------------------------------------------------
     def add_resync(self, sig, clk="sys"):
         _sig = Signal.like(sig)
@@ -559,7 +584,6 @@ class USPCIEPHY(LiteXModule):
         verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx")
 
         platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
-        platform.add_source(os.path.join(verilog_path, "s_axis_rq_adapt.v"))
         platform.add_source(os.path.join(verilog_path, "pcie_us_support.v"))
 
 
