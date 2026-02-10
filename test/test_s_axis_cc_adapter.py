@@ -136,3 +136,56 @@ class TestSAxisCCAdapter(unittest.TestCase):
 
     def test_s_axis_cc_adapter_512(self):
         self._run_case(data_width=512)
+
+    def test_s_axis_cc_adapter_256_backpressure(self):
+        data = int("ffeeddccbbaa99887766554433221100" * 2, 16)
+        keep = 0x00FF_0F0F
+        user = 0b1001
+
+        in_beats = [dict(data=data, keep=keep, user=user, last=1)]
+
+        def run(ready_pattern):
+            dut = SAxisCCAdapter(256)
+            out_beats = []
+
+            @passive
+            def monitor():
+                while len(out_beats) < 1:
+                    if (yield dut.m_axis_tvalid) and (yield dut.m_axis_tready):
+                        out_beats.append((
+                            (yield dut.m_axis_tdata),
+                            (yield dut.m_axis_tkeep),
+                            (yield dut.m_axis_tlast),
+                            (yield dut.m_axis_tuser),
+                        ))
+                    yield
+
+            def stim():
+                yield dut.s_axis_tvalid.eq(0)
+                yield
+                cyc = 0
+                i = 0
+                while i < len(in_beats):
+                    yield dut.m_axis_tready.eq(1 if ready_pattern[cyc % len(ready_pattern)] else 0)
+                    beat = in_beats[i]
+                    yield dut.s_axis_tvalid.eq(1)
+                    yield dut.s_axis_tdata.eq(beat["data"])
+                    yield dut.s_axis_tkeep.eq(beat["keep"])
+                    yield dut.s_axis_tuser.eq(beat["user"])
+                    yield dut.s_axis_tlast.eq(beat["last"])
+                    if (yield dut.s_axis_tready):
+                        i += 1
+                    cyc += 1
+                    yield
+                yield dut.s_axis_tvalid.eq(0)
+                for _ in range(16):
+                    yield dut.m_axis_tready.eq(1 if ready_pattern[cyc % len(ready_pattern)] else 0)
+                    cyc += 1
+                    yield
+
+            run_simulation(dut, [stim(), monitor()], vcd_name=None)
+            return out_beats
+
+        ready_all_ones = [1] * 64
+        ready_bursty = [1 if ((i * 11 + 5) % 8) not in [0, 1] else 0 for i in range(64)]
+        self.assertEqual(run(ready_bursty), run(ready_all_ones))

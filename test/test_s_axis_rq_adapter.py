@@ -276,3 +276,60 @@ class TestSAxisRQAdapter(unittest.TestCase):
         self.assertEqual(len(beats), 2)
         self.assertEqual(beats[0], (0xFFFF, 0))
         self.assertEqual(beats[1], (0x0001, 1))
+
+    def test_256_backpressure_equivalence(self):
+        beat0 = int("00112233445566778899aabbccddeeff" * 2, 16)
+        beat1 = int("ffeeddccbbaa99887766554433221100" * 2, 16)
+        beat0 &= ~0x3FF
+        beat0 |= 0x055
+
+        in_beats = [
+            dict(data=beat0, keep=(1 << 32) - 1, user=0, last=0),
+            dict(data=beat1, keep=(1 << 32) - 1, user=0, last=1),
+        ]
+
+        def run(ready_pattern):
+            dut = SAxisRQAdapter(256)
+            out_beats = []
+
+            @passive
+            def monitor():
+                while len(out_beats) < 2:
+                    if (yield dut.m_axis_tvalid) and (yield dut.m_axis_tready):
+                        out_beats.append((
+                            (yield dut.m_axis_tdata),
+                            (yield dut.m_axis_tkeep),
+                            (yield dut.m_axis_tlast),
+                            (yield dut.m_axis_tuser),
+                        ))
+                    yield
+
+            def stim():
+                yield dut.s_axis_tvalid.eq(0)
+                yield
+                cyc = 0
+                i = 0
+                while i < len(in_beats):
+                    yield dut.m_axis_tready.eq(1 if ready_pattern[cyc % len(ready_pattern)] else 0)
+                    beat = in_beats[i]
+                    yield dut.s_axis_tvalid.eq(1)
+                    yield dut.s_axis_tdata.eq(beat["data"])
+                    yield dut.s_axis_tkeep.eq(beat["keep"])
+                    yield dut.s_axis_tuser.eq(beat["user"])
+                    yield dut.s_axis_tlast.eq(beat["last"])
+                    if (yield dut.s_axis_tready):
+                        i += 1
+                    cyc += 1
+                    yield
+                yield dut.s_axis_tvalid.eq(0)
+                for _ in range(24):
+                    yield dut.m_axis_tready.eq(1 if ready_pattern[cyc % len(ready_pattern)] else 0)
+                    cyc += 1
+                    yield
+
+            run_simulation(dut, [stim(), monitor()], vcd_name=None)
+            return out_beats
+
+        ready_all_ones = [1] * 128
+        ready_bursty = [1 if ((i * 19 + 7) % 10) not in [0, 1, 2, 3] else 0 for i in range(128)]
+        self.assertEqual(run(ready_bursty), run(ready_all_ones))
