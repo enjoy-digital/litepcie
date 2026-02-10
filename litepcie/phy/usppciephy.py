@@ -583,7 +583,6 @@ class USPPCIEPHY(LiteXModule):
 
         verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx")
 
-        platform.add_source(os.path.join(verilog_path, "axis_iff.v"))
         platform.add_source(os.path.join(verilog_path, "pcie_usp_support.v"))
 
 

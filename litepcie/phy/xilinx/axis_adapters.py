@@ -8,6 +8,9 @@ from migen import *
 
 from litex.gen import *
 
+# Note: Xilinx AXIS adaptation is now implemented on the LiteX side.
+# Legacy Verilog adapters (m_axis_rc/cq, s_axis_cc/rq) were removed.
+
 
 class MAxisRCAdapter(LiteXModule):
     def __init__(self, data_width):
