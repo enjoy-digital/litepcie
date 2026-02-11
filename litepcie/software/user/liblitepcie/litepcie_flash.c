@@ -18,6 +18,9 @@
 
 #ifdef CSR_FLASH_BASE
 
+#ifdef CSR_FLASH_SPI_CONTROL_ADDR
+/* ─── SPI Flash Path ─── */
+
 //#define FLASH_FULL_ERASE
 #define FLASH_RETRIES 16
 
@@ -261,4 +264,223 @@ int litepcie_flash_write(int fd,
     return 0;
 }
 
-#endif
+#endif /* CSR_FLASH_SPI_CONTROL_ADDR */
+
+#ifdef CSR_FLASH_BPI_CONTROL_ADDR
+/* ─── BPI Flash Path ─── */
+
+#define BPI_BUFFER_WORDS 512  /* 512 words = 1KB programming region */
+
+/* Low-level BPI word write via CSR registers. */
+static void bpi_write_word(int fd, uint32_t word_addr, uint16_t data)
+{
+    litepcie_writel(fd, CSR_FLASH_BPI_ADDR_ADDR, word_addr);
+    litepcie_writel(fd, CSR_FLASH_BPI_DATA_W_ADDR, data);
+    litepcie_writel(fd, CSR_FLASH_BPI_CONTROL_ADDR,
+        BPI_CTRL_RW | BPI_CTRL_START);  /* rw=1 (write), start=1 */
+    while (!(litepcie_readl(fd, CSR_FLASH_BPI_STATUS_ADDR) & BPI_STATUS_DONE))
+        ;
+}
+
+/* Low-level BPI word read via CSR registers. */
+static uint16_t bpi_read_word(int fd, uint32_t word_addr)
+{
+    litepcie_writel(fd, CSR_FLASH_BPI_ADDR_ADDR, word_addr);
+    litepcie_writel(fd, CSR_FLASH_BPI_CONTROL_ADDR,
+        BPI_CTRL_START);  /* rw=0 (read), start=1 */
+    while (!(litepcie_readl(fd, CSR_FLASH_BPI_STATUS_ADDR) & BPI_STATUS_DONE))
+        ;
+    return litepcie_readl(fd, CSR_FLASH_BPI_DATA_R_ADDR) & 0xFFFF;
+}
+
+/* Send a CFI command word to a BPI address. */
+static void bpi_cmd(int fd, uint32_t word_addr, uint16_t cmd)
+{
+    bpi_write_word(fd, word_addr, cmd);
+}
+
+/* Read BPI status register and return it. */
+static uint16_t bpi_read_status(int fd)
+{
+    bpi_cmd(fd, 0, BPI_CMD_READ_STATUS);
+    return bpi_read_word(fd, 0);
+}
+
+/* Wait for BPI flash ready (SR bit 7 = 1).
+ * On success, clears any errors and returns to READ_ARRAY mode. */
+static int bpi_wait_ready(int fd, uint32_t timeout_ms)
+{
+    uint16_t sr;
+    uint32_t elapsed = 0;
+
+    while (elapsed < timeout_ms) {
+        sr = bpi_read_status(fd);
+        if (sr & BPI_SR_READY) {
+            if (sr & (BPI_SR_ERASE_ERR | BPI_SR_PROG_ERR)) {
+                printf("BPI: error status 0x%04x\n", sr);
+                bpi_cmd(fd, 0, BPI_CMD_CLEAR_STATUS);
+                return -1;
+            }
+            /* Return to read array mode. */
+            bpi_cmd(fd, 0, BPI_CMD_READ_ARRAY);
+            return 0;
+        }
+        usleep(1000);
+        elapsed++;
+    }
+    printf("BPI: timeout waiting for ready (SR=0x%04x)\n", sr);
+    return -1;
+}
+
+/* Unlock a BPI block at word_addr. */
+static void bpi_unlock_block(int fd, uint32_t word_addr)
+{
+    bpi_cmd(fd, word_addr, BPI_CMD_UNLOCK_BLOCK);
+    usleep(100);
+    bpi_cmd(fd, word_addr, BPI_CMD_CONFIRM);
+    usleep(100);
+}
+
+/* Erase a BPI block at word_addr. */
+static int bpi_erase_block(int fd, uint32_t word_addr)
+{
+    bpi_unlock_block(fd, word_addr);
+    bpi_cmd(fd, word_addr, BPI_CMD_BLOCK_ERASE);
+    usleep(100);
+    bpi_cmd(fd, word_addr, BPI_CMD_CONFIRM);
+    return bpi_wait_ready(fd, 30000);
+}
+
+/* Read a single byte from flash (byte-addressed). */
+uint8_t litepcie_flash_read(int fd, uint32_t addr)
+{
+    uint32_t word_addr = addr / 2;
+    uint16_t word;
+
+    /* Put flash in read-array mode. */
+    bpi_cmd(fd, 0, BPI_CMD_READ_ARRAY);
+    word = bpi_read_word(fd, word_addr);
+
+    if (addr & 1)
+        return (word >> 8) & 0xFF;  /* Odd byte = high byte. */
+    else
+        return word & 0xFF;         /* Even byte = low byte. */
+}
+
+int litepcie_flash_get_erase_block_size(int fd)
+{
+    return BPI_BLOCK_SIZE;
+}
+
+int litepcie_flash_write(int fd,
+                     uint8_t *buf, uint32_t base, uint32_t size,
+                     void (*progress_cb)(void *opaque, const char *fmt, ...),
+                     void *opaque)
+{
+    uint32_t i;
+
+    /* Read flash ID for sanity check. */
+    bpi_cmd(fd, 0, BPI_CMD_READ_ID);
+    uint16_t mfr = bpi_read_word(fd, 0);
+    uint16_t dev = bpi_read_word(fd, 1);
+    printf("BPI Flash ID: manufacturer=0x%04x device=0x%04x\n", mfr, dev);
+
+    /* Erase blocks covering [base, base+size). */
+    for (i = 0; i < size; i += BPI_BLOCK_SIZE) {
+        uint32_t word_addr = (base + i) / 2;
+        if (progress_cb)
+            progress_cb(opaque, "Erasing @%08x\r", base + i);
+        if (bpi_erase_block(fd, word_addr) != 0) {
+            printf("BPI: erase failed at 0x%08x\n", base + i);
+            return 1;
+        }
+    }
+    if (progress_cb)
+        progress_cb(opaque, "\n");
+
+    /* Program using buffered programming (0xE9).
+     * Per-chunk sequence:
+     *   1. Clear status (0x50)
+     *   2. Buffered program setup (0xE9) → block base word addr
+     *   3. Word count (N-1) → block base word addr
+     *   4. N data words → sequential word addresses
+     *   5. Confirm (0xD0) → block base word addr
+     *   6. Wait ready
+     */
+    uint32_t last_block = 0xFFFFFFFF;
+    uint32_t offset = 0;
+
+    while (offset < size) {
+        uint32_t byte_addr = base + offset;
+        uint32_t word_addr = byte_addr / 2;
+
+        /* Block base word address. */
+        uint32_t block_byte = (byte_addr / BPI_BLOCK_SIZE) * BPI_BLOCK_SIZE;
+        uint32_t block_word_addr = block_byte / 2;
+
+        /* Unlock when entering a new block. */
+        uint32_t current_block = byte_addr / BPI_BLOCK_SIZE;
+        if (current_block != last_block) {
+            if (progress_cb)
+                progress_cb(opaque, "Writing @%08x\r", byte_addr);
+            bpi_unlock_block(fd, block_word_addr);
+            last_block = current_block;
+        }
+
+        /* Calculate chunk size (up to 512 words = 1KB). */
+        uint32_t remaining = size - offset;
+        uint32_t chunk_bytes = (remaining > BPI_BUFFER_WORDS * 2)
+            ? BPI_BUFFER_WORDS * 2 : remaining;
+
+        /* Don't cross block boundaries. */
+        uint32_t to_block_end = BPI_BLOCK_SIZE - (byte_addr % BPI_BLOCK_SIZE);
+        if (chunk_bytes > to_block_end)
+            chunk_bytes = to_block_end;
+
+        uint32_t chunk_words = (chunk_bytes + 1) / 2;
+
+        /* 1. Clear status. */
+        bpi_cmd(fd, 0, BPI_CMD_CLEAR_STATUS);
+
+        /* 2. Buffered program setup → block base. */
+        bpi_cmd(fd, block_word_addr, BPI_CMD_BUFFERED_PRG);
+
+        /* 3. Word count (N-1) → block base. */
+        bpi_write_word(fd, block_word_addr, chunk_words - 1);
+
+        /* 4. Write data words → sequential addresses. */
+        for (uint32_t w = 0; w < chunk_words; w++) {
+            uint16_t word;
+            uint32_t d = offset + w * 2;
+            word = buf[d];
+            if (d + 1 < size)
+                word |= ((uint16_t)buf[d + 1]) << 8;
+            else
+                word |= 0xFF00;  /* Pad odd trailing byte. */
+            bpi_write_word(fd, word_addr + w, word);
+        }
+
+        /* 5. Confirm → block base. */
+        bpi_cmd(fd, block_word_addr, BPI_CMD_CONFIRM);
+
+        /* 6. Wait for program to complete. */
+        if (bpi_wait_ready(fd, 5000) != 0) {
+            printf("BPI: buffered program failed at 0x%08x\n", byte_addr);
+            return 1;
+        }
+
+        offset += chunk_words * 2;
+    }
+
+    /* Return to read array mode. */
+    bpi_cmd(fd, 0, BPI_CMD_READ_ARRAY);
+
+    if (progress_cb)
+        progress_cb(opaque, "\n");
+
+    return 0;
+}
+
+#endif /* CSR_FLASH_BPI_CONTROL_ADDR */
+
+#endif /* CSR_FLASH_BASE */
