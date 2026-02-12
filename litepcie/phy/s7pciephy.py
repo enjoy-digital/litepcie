@@ -22,6 +22,10 @@ from litepcie.phy.common import *
 class S7PCIEPHY(LiteXModule):
     endianness    = "big"
     qword_aligned = False
+    gt_channel_path = {
+        "gtp": "gtp_channel.gtpe2_channel_i",
+        "gtx": "gtx_channel.gtxe2_channel_i",
+    }
     def __init__(self, platform, pads, data_width=64,  cd="sys",
         # PCIe hardblock parameters.
         pcie_data_width               = None,
@@ -515,6 +519,31 @@ class S7PCIEPHY(LiteXModule):
     # Hard IP sources ------------------------------------------------------------------------------
     def update_config(self, config):
         self.config.update(config)
+
+    def add_gt_loc_constraints(self, locs, gt_type=None, by_pipe_lane=True):
+        if gt_type is None:
+            gt_type = "gtp" if self.platform.device.startswith("xc7a") else "gtx"
+        gt_channel_path = self.gt_channel_path[gt_type]
+
+        commands = self.platform.toolchain.pre_placement_commands
+        commands.append(
+            f"reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*{gt_channel_path}}}]"
+        )
+        if by_pipe_lane:
+            for lane, loc in enumerate(locs):
+                commands.append(
+                    "set_property LOC "
+                    f"{loc} "
+                    "[get_cells -hierarchical -filter "
+                    f"{{{{NAME=~pcie_s7/*pipe_lane[{lane}].gt_wrapper_i/{gt_channel_path}}}}}]"
+                )
+        else:
+            assert len(locs) == 1
+            commands.append(
+                "set_property LOC "
+                f"{locs[0]} "
+                f"[get_cells -hierarchical -filter {{{{NAME=~pcie_s7/*{gt_channel_path}}}}}]"
+            )
 
     def add_sources(self, platform, phy_path, phy_filename=None, user_config=None):
         if phy_filename is not None:
