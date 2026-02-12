@@ -527,7 +527,9 @@ class S7PCIEPHY(LiteXModule):
 
         commands = self.platform.toolchain.pre_placement_commands
         commands.append(
-            f"reset_property LOC [get_cells -hierarchical -filter {{NAME=~pcie_s7/*{gt_channel_path}}}]"
+            "reset_property LOC "
+            "[get_cells -hierarchical -filter "
+            f"{{{{NAME=~pcie_s7/*{gt_channel_path}}}}}]"
         )
         if by_pipe_lane:
             for lane, loc in enumerate(locs):
