@@ -28,16 +28,17 @@ class S7PCIEPHY(LiteXModule):
     }
     def __init__(self, platform, pads, data_width=64,  cd="sys",
         # PCIe hardblock parameters.
-        pcie_data_width               = None,
-        refclk_freq                   = 100e6,
-        bar0_size                     = 0x100000,
-        msi_type                      = "msi",
-        with_ptm                      = False,
-        mode                          = "Endpoint",
-        with_perst_refclk_gating      = False,
+        pcie_data_width              = None,
+        refclk_freq                  = 100e6,
+        bar0_size                    = 0x100000,
+        msi_type                     = "msi",
+        with_ptm                     = False,
+        mode                         = "Endpoint",
+        with_perst_refclk_gating     = False,
         # MMCM parameters.
-        mmcm_clk125_buf               = "bufg",
-        mmcm_clk250_buf               = "bufg",
+        mmcm_clk125_buf              = "bufg",
+        mmcm_clk250_buf              = "bufg",
+        mmcm_speedgrade              = -2,
     ):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
@@ -188,7 +189,7 @@ class S7PCIEPHY(LiteXModule):
         # MMCM.
         userclk1_freq = {1:125e6, 2:125e6, 4:250e6, 8:500e6}[nlanes]
         userclk2_freq = {1:125e6, 2:125e6, 4:125e6, 8:250e6}[nlanes]
-        self.mmcm = mmcm = S7MMCM(speedgrade=-2)
+        self.mmcm = mmcm = S7MMCM(speedgrade=mmcm_speedgrade)
         self.specials += Instance("BUFG",
             i_I = pipe_txoutclk,
             o_O = pipe_txoutclk_bufg,
