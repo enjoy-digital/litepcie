@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2026 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
@@ -11,6 +11,7 @@ from litex.gen import *
 from litepcie.tlp.common import *
 
 # LitePCIeTLPHeaderInserter ------------------------------------------------------------------------
+
 
 class LitePCIeTLPHeaderInserter3DWs4DWs(LiteXModule):
     def __init__(self, data_width, header_inserter_3dws_cls, header_inserter_4dws_cls, fmt):
@@ -53,7 +54,216 @@ class LitePCIeTLPHeaderInserter3DWs4DWs(LiteXModule):
             ],
         })
 
+
+# Generic TLP Header Inserter (3DWs/4DWs, >=128-bit) -----------------------------------------------
+
+
+class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
+    """
+    Insert a 3DW or 4DW header in front of a payload stream on >=128-bit datapaths.
+
+    The 64-bit path remains separate because it needs a dedicated two-beat header FSM.
+    """
+    def __init__(self, data_width, header_dws):
+        assert data_width in [128, 256, 512]
+        assert header_dws in [3, 4]
+
+        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(data_width))
+        self.source = source = stream.Endpoint(phy_layout(data_width))
+
+        # # #
+
+        # Geometry --------------------------------------------------------------------------------
+
+        dws_per_beat = data_width // 32
+
+        # Header always fits in the first beat on >=128-bit datapaths.
+        spill_dws = dws_per_beat - header_dws  # 0..dws_per_beat-1
+
+        # State needed by shift/flush path ---------------------------------------------------------
+
+        dat_r  = Signal(data_width,    reset_less=True)
+        be_r   = Signal(data_width//8, reset_less=True)
+        last_r = Signal(               reset_less=True)
+
+        self.sync += [
+            If(sink.valid & sink.ready,
+                dat_r.eq(sink.dat),
+                be_r.eq(sink.be),
+                last_r.eq(sink.last),
+            )
+        ]
+
+        # When the header ends exactly on a beat boundary (4DWs on 128-bit), the first payload beat
+        # must be replayed from the registered input in DATA.
+        replay_first = Signal(reset=0)
+
+        # Helpers ----------------------------------------------------------------------------------
+
+        def _dw(sig, i):
+            return sig[32*i:32*(i+1)]
+
+        def _be(sig, i):
+            return sig[4*i:4*(i+1)]
+
+        def _header_dw(i):
+            return sink.header[32*i:32*(i+1)]
+
+        def _payload_dw(i):
+            return _dw(sink.dat, i)
+
+        def _payload_be(i):
+            return _be(sink.be, i)
+
+        def _header_last_condition(be_sig, last_sig):
+            """
+            Detect "header-only" termination in the first beat.
+            """
+            if spill_dws == 0:
+                be_empty = (be_sig == 0)
+            else:
+                be_empty = (be_sig[4*spill_dws:] == 0)
+            return last_sig & be_empty
+
+        def _emit_shifted_data():
+            """
+            DATA state when the header spills into the first payload beat.
+            """
+            stmts = []
+
+            left_lanes = dws_per_beat - spill_dws
+
+            # Left lanes from previous beat.
+            for lane in range(left_lanes):
+                stmts += [
+                    _dw(source.dat, lane).eq(_dw(dat_r, spill_dws + lane)),
+                    _be(source.be,  lane).eq(_be(be_r,  spill_dws + lane)),
+                ]
+
+            # Right lanes from current sink beat (or flush).
+            for lane in range(left_lanes, dws_per_beat):
+                in_lane = lane - left_lanes
+                stmts += [
+                    _dw(source.dat, lane).eq(_dw(sink.dat, in_lane)),
+                    If(last_r,
+                        _be(source.be, lane).eq(0x0)
+                    ).Else(
+                        _be(source.be, lane).eq(_be(sink.be, in_lane))
+                    ),
+                ]
+
+            return stmts
+
+        def _emit_header_plus_payload_1beat():
+            """
+            Safe 1-beat header emission.
+            """
+            stmts = []
+
+            # Header always starts at lane 0.
+            for lane in range(header_dws):
+                stmts += [
+                    _dw(source.dat, lane).eq(_header_dw(lane)),
+                    _be(source.be,  lane).eq(0xF),
+                ]
+
+            # Payload begins right after the header.
+            for out_lane in range(header_dws, dws_per_beat):
+                in_lane = out_lane - header_dws
+                stmts += [
+                    _dw(source.dat, out_lane).eq(_payload_dw(in_lane)),
+                    _be(source.be,  out_lane).eq(_payload_be(in_lane)),
+                ]
+
+            return stmts
+
+        # FSM --------------------------------------------------------------------------------------
+
+        self.fsm = fsm = FSM(reset_state="HEADER")
+
+        fsm.act("HEADER",
+            sink.ready.eq(source.ready),
+            source.valid.eq(sink.valid),
+            source.first.eq(sink.first),
+
+            *_emit_header_plus_payload_1beat(),
+
+            source.last.eq(_header_last_condition(sink.be, sink.last)),
+
+            If(source.valid & source.ready,
+                If(~source.last & (spill_dws == 0),
+                    NextValue(replay_first, 1)
+                ),
+                If(~source.last,
+                    NextState("DATA")
+                )
+            )
+        )
+
+        if spill_dws == 0:
+            fsm.act("DATA",
+                If(replay_first,
+                    source.valid.eq(1),
+                    source.first.eq(0),
+                    source.last.eq(last_r),
+                    source.dat.eq(dat_r),
+                    source.be.eq(be_r),
+
+                    sink.ready.eq(0),
+
+                    If(source.ready,
+                        NextValue(replay_first, 0),
+                        If(last_r,
+                            NextState("HEADER")
+                        )
+                    )
+                ).Else(
+                    source.valid.eq(sink.valid),
+                    source.first.eq(0),
+                    source.last.eq(sink.last),
+                    source.dat.eq(sink.dat),
+                    source.be.eq(sink.be),
+
+                    sink.ready.eq(source.ready),
+
+                    If(source.valid & source.ready & source.last,
+                        NextState("HEADER")
+                    )
+                )
+            )
+        else:
+            fsm.act("DATA",
+                source.valid.eq(sink.valid | last_r),
+                source.first.eq(0),
+                source.last.eq(last_r),
+
+                *_emit_shifted_data(),
+
+                If(source.valid & source.ready,
+                    sink.ready.eq(~last_r),
+                    If(source.last,
+                        NextState("HEADER")
+                    )
+                )
+            )
+class LitePCIeTLPHeaderInserter3DWs(_LitePCIeTLPHeaderInserterNDWs):
+    def __init__(self, data_width):
+        _LitePCIeTLPHeaderInserterNDWs.__init__(self,
+            data_width = data_width,
+            header_dws = 3,
+        )
+
+
+class LitePCIeTLPHeaderInserter4DWs(_LitePCIeTLPHeaderInserterNDWs):
+    def __init__(self, data_width):
+        _LitePCIeTLPHeaderInserterNDWs.__init__(self,
+            data_width = data_width,
+            header_dws = 4,
+        )
+
+
 # LitePCIeTLPHeaderInserter64b ---------------------------------------------------------------------
+
 
 class LitePCIeTLPHeaderInserter64b3DWs(LiteXModule):
     def __init__(self):
@@ -81,7 +291,7 @@ class LitePCIeTLPHeaderInserter64b3DWs(LiteXModule):
                 sink.ready.eq(0),
                 source.valid.eq(1),
                 source.first.eq((count == 0) & sink.first),
-                source.last.eq( (count == 1) & sink.last & (sink.be[4*1:] == 0)),
+                source.last.eq((count == 1) & sink.last & (sink.be[4*1:] == 0)),
                 If(count == 0,
                     source.dat[32*0:32*1].eq(sink.header[32*0:]),
                     source.dat[32*1:32*2].eq(sink.header[32*1:]),
@@ -127,6 +337,7 @@ class LitePCIeTLPHeaderInserter64b3DWs(LiteXModule):
             )
         )
 
+
 class LitePCIeTLPHeaderInserter64b4DWs(LiteXModule):
     def __init__(self):
         self.sink   = sink   = stream.Endpoint(tlp_raw_layout(64))
@@ -142,7 +353,7 @@ class LitePCIeTLPHeaderInserter64b4DWs(LiteXModule):
                 sink.ready.eq(0),
                 source.valid.eq(1),
                 source.first.eq((count == 0) & sink.first),
-                source.last.eq( (count == 1) & sink.last & (sink.be == 0)),
+                source.last.eq((count == 1) & sink.last & (sink.be == 0)),
                 If(count == 0,
                     source.dat[32*0:32*1].eq(sink.header[32*0:]),
                     source.dat[32*1:32*2].eq(sink.header[32*1:]),
@@ -184,6 +395,7 @@ class LitePCIeTLPHeaderInserter64b4DWs(LiteXModule):
             )
         )
 
+
 class LitePCIeTLPHeaderInserter64b(LitePCIeTLPHeaderInserter3DWs4DWs):
     def __init__(self, fmt):
         LitePCIeTLPHeaderInserter3DWs4DWs.__init__(self,
@@ -193,575 +405,45 @@ class LitePCIeTLPHeaderInserter64b(LitePCIeTLPHeaderInserter3DWs4DWs):
             fmt                      = fmt,
         )
 
+
 # LitePCIeTLPHeaderInserter128b --------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter128b3DWs(LiteXModule):
-    def __init__(self):
-        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(128))
-        self.source = source = stream.Endpoint(phy_layout(128))
-
-        # # #
-
-        dat  = Signal(128,    reset_less=True)
-        be   = Signal(128//8, reset_less=True)
-        last = Signal(        reset_less=True)
-        self.sync += [
-            If(sink.valid & sink.ready,
-                dat.eq(sink.dat),
-                be.eq(sink.be),
-                last.eq(sink.last)
-            )
-        ]
-
-        self.fsm = fsm = FSM(reset_state="HEADER")
-        fsm.act("HEADER",
-            sink.ready.eq(1),
-            If(sink.valid & sink.first,
-                sink.ready.eq(0),
-                source.valid.eq(1),
-                source.first.eq(1),
-                source.last.eq(sink.last & (sink.be[4*1:] == 0)),
-
-                source.dat[32*0:32*1].eq(sink.header[32*0:]),
-                source.dat[32*1:32*2].eq(sink.header[32*1:]),
-                source.dat[32*2:32*3].eq(sink.header[32*2:]),
-                source.dat[32*3:32*4].eq(sink.dat[32*0:]),
-
-                source.be[4*0:4*1].eq(0xf),
-                source.be[4*1:4*2].eq(0xf),
-                source.be[4*2:4*3].eq(0xf),
-                source.be[4*3:4*4].eq(sink.be[0:]),
-
-                If(source.valid & source.ready,
-                    sink.ready.eq(1),
-                    If(~source.last,
-                        NextState("DATA"),
-                    )
-                )
-            )
-        )
-        fsm.act("DATA",
-            source.valid.eq(sink.valid | last),
-            source.last.eq(last),
-
-            source.dat[32*0:32*1].eq(dat[32*1:]),
-            source.dat[32*1:32*2].eq(dat[32*2:]),
-            source.dat[32*2:32*3].eq(dat[32*3:]),
-            source.dat[32*3:32*4].eq(sink.dat[32*0:]),
-
-            source.be[4*0:4*1].eq(be[1:]),
-            source.be[4*1:4*2].eq(be[2:]),
-            source.be[4*2:4*3].eq(be[3:]),
-            If(last,
-                source.be[4*3:4*4].eq(0x0)
-            ).Else(
-                source.be[4*3:4*4].eq(sink.be[0:])
-            ),
-
-            If(source.valid & source.ready,
-                sink.ready.eq(~last),
-                If(source.last,
-                    NextState("HEADER")
-                )
-            )
-        )
-
-class LitePCIeTLPHeaderInserter128b4DWs(LiteXModule):
-    def __init__(self):
-        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(128))
-        self.source = source = stream.Endpoint(phy_layout(128))
-
-        # # #
-
-        self.fsm = fsm = FSM(reset_state="HEADER")
-        fsm.act("HEADER",
-            sink.ready.eq(1),
-            If(sink.valid & sink.first,
-                sink.ready.eq(0),
-                source.valid.eq(1),
-                source.first.eq(1),
-                source.last.eq(sink.last & (sink.be == 0)),
-
-                source.dat[32*0:32*1].eq(sink.header[32*0:]),
-                source.dat[32*1:32*2].eq(sink.header[32*1:]),
-                source.dat[32*2:32*3].eq(sink.header[32*2:]),
-                source.dat[32*3:32*4].eq(sink.header[32*3:]),
-
-                source.be[4*0:4*1].eq(0xf),
-                source.be[4*1:4*2].eq(0xf),
-                source.be[4*2:4*3].eq(0xf),
-                source.be[4*3:4*4].eq(0xf),
-
-                If(source.valid & source.ready,
-                    sink.ready.eq(1),
-                    If(~source.last,
-                        sink.ready.eq(0),
-                        NextState("DATA"),
-                    )
-                )
-            )
-        )
-        fsm.act("DATA",
-            source.valid.eq(sink.valid),
-            source.last.eq(sink.last),
-
-            source.dat[32*0:32*1].eq(sink.dat[32*0:]),
-            source.dat[32*1:32*2].eq(sink.dat[32*1:]),
-            source.dat[32*2:32*3].eq(sink.dat[32*2:]),
-            source.dat[32*3:32*4].eq(sink.dat[32*3:]),
-
-            source.be[4*0:4*1].eq(sink.be[4*0:]),
-            source.be[4*1:4*2].eq(sink.be[4*1:]),
-            source.be[4*2:4*3].eq(sink.be[4*2:]),
-            source.be[4*3:4*4].eq(sink.be[4*3:]),
-
-            If(source.valid & source.ready,
-                sink.ready.eq(1),
-                If(source.last,
-                    NextState("HEADER")
-                )
-            )
-        )
 
 class LitePCIeTLPHeaderInserter128b(LitePCIeTLPHeaderInserter3DWs4DWs):
     def __init__(self, fmt):
         LitePCIeTLPHeaderInserter3DWs4DWs.__init__(self,
             data_width               = 128,
-            header_inserter_3dws_cls = LitePCIeTLPHeaderInserter128b3DWs,
-            header_inserter_4dws_cls = LitePCIeTLPHeaderInserter128b4DWs,
+            header_inserter_3dws_cls = lambda: LitePCIeTLPHeaderInserter3DWs(128),
+            header_inserter_4dws_cls = lambda: LitePCIeTLPHeaderInserter4DWs(128),
             fmt                      = fmt,
         )
 
+
 # LitePCIeTLPHeaderInserter256b --------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter256b3DWs(LiteXModule):
-    def __init__(self):
-        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(256))
-        self.source = source = stream.Endpoint(phy_layout(256))
-
-        # # #
-
-        dat  = Signal(256,    reset_less=True)
-        be   = Signal(256//8, reset_less=True)
-        last = Signal(        reset_less=True)
-        self.sync += [
-            If(sink.valid & sink.ready,
-                dat.eq(sink.dat),
-                be.eq(sink.be),
-                last.eq(sink.last)
-            )
-        ]
-
-        self.fsm = fsm = FSM(reset_state="HEADER")
-        fsm.act("HEADER",
-            sink.ready.eq(1),
-            If(sink.valid & sink.first,
-                sink.ready.eq(0),
-                source.valid.eq(1),
-                source.first.eq(1),
-                source.last.eq(sink.last & (sink.be[4*5:] == 0)),
-
-                source.dat[32*0:32*1].eq(sink.header[32*0:]),
-                source.dat[32*1:32*2].eq(sink.header[32*1:]),
-                source.dat[32*2:32*3].eq(sink.header[32*2:]),
-                source.dat[32*3:32*4].eq(sink.dat[32*0:]),
-                source.dat[32*4:32*5].eq(sink.dat[32*1:]),
-                source.dat[32*5:32*6].eq(sink.dat[32*2:]),
-                source.dat[32*6:32*7].eq(sink.dat[32*3:]),
-                source.dat[32*7:32*8].eq(sink.dat[32*4:]),
-
-                source.be[4*0:4*1].eq(0xf),
-                source.be[4*1:4*2].eq(0xf),
-                source.be[4*2:4*3].eq(0xf),
-                source.be[4*3:4*4].eq(sink.be[4*0:]),
-                source.be[4*4:4*5].eq(sink.be[4*1:]),
-                source.be[4*5:4*6].eq(sink.be[4*2:]),
-                source.be[4*6:4*7].eq(sink.be[4*3:]),
-                source.be[4*7:4*8].eq(sink.be[4*4:]),
-
-                If(source.valid & source.ready,
-                    sink.ready.eq(1),
-                    If(~source.last,
-                        NextState("DATA"),
-                    )
-                )
-            )
-        )
-        fsm.act("DATA",
-            source.valid.eq(sink.valid | last),
-            source.last.eq(last),
-
-            source.dat[32*0:32*1].eq(dat[32*5:]),
-            source.dat[32*1:32*2].eq(dat[32*6:]),
-            source.dat[32*2:32*3].eq(dat[32*7:]),
-            source.dat[32*3:32*4].eq(sink.dat[32*0:]),
-            source.dat[32*4:32*5].eq(sink.dat[32*1:]),
-            source.dat[32*5:32*6].eq(sink.dat[32*2:]),
-            source.dat[32*6:32*7].eq(sink.dat[32*3:]),
-            source.dat[32*7:32*8].eq(sink.dat[32*4:]),
-
-            source.be[4*0:4*1].eq(be[4*5:]),
-            source.be[4*1:4*2].eq(be[4*6:]),
-            source.be[4*2:4*3].eq(be[4*7:]),
-            If(last,
-                source.be[4*3:4*8].eq(0x0)
-            ).Else(
-                source.be[4*3:4*4].eq(sink.be[4*0:]),
-                source.be[4*4:4*5].eq(sink.be[4*1:]),
-                source.be[4*5:4*6].eq(sink.be[4*2:]),
-                source.be[4*6:4*7].eq(sink.be[4*3:]),
-                source.be[4*7:4*8].eq(sink.be[4*4:]),
-            ),
-            If(source.valid & source.ready,
-                sink.ready.eq(~last),
-                If(source.last,
-                    NextState("HEADER")
-                )
-            )
-        )
-
-class LitePCIeTLPHeaderInserter256b4DWs(LiteXModule):
-    def __init__(self):
-        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(256))
-        self.source = source = stream.Endpoint(phy_layout(256))
-
-        # # #
-
-        dat  = Signal(256,    reset_less=True)
-        be   = Signal(256//8, reset_less=True)
-        last = Signal(        reset_less=True)
-        self.sync += [
-            If(sink.valid & sink.ready,
-                dat.eq(sink.dat),
-                be.eq(sink.be),
-                last.eq(sink.last)
-            )
-        ]
-
-        self.fsm = fsm = FSM(reset_state="HEADER")
-        fsm.act("HEADER",
-            sink.ready.eq(1),
-            If(sink.valid & sink.first,
-                sink.ready.eq(0),
-                source.valid.eq(1),
-                source.first.eq(1),
-                source.last.eq(sink.last & (sink.be[4*4:] == 0)),
-
-                source.dat[32*0:32*1].eq(sink.header[32*0:]),
-                source.dat[32*1:32*2].eq(sink.header[32*1:]),
-                source.dat[32*2:32*3].eq(sink.header[32*2:]),
-                source.dat[32*3:32*4].eq(sink.header[32*3:]),
-                source.dat[32*4:32*5].eq(sink.dat[32*0:]),
-                source.dat[32*5:32*6].eq(sink.dat[32*1:]),
-                source.dat[32*6:32*7].eq(sink.dat[32*2:]),
-                source.dat[32*7:32*8].eq(sink.dat[32*3:]),
-
-                source.be[4*0:4*1].eq(0xf),
-                source.be[4*1:4*2].eq(0xf),
-                source.be[4*2:4*3].eq(0xf),
-                source.be[4*3:4*4].eq(0xf),
-                source.be[4*4:4*5].eq(sink.be[4*0:]),
-                source.be[4*5:4*6].eq(sink.be[4*1:]),
-                source.be[4*6:4*7].eq(sink.be[4*2:]),
-                source.be[4*7:4*8].eq(sink.be[4*3:]),
-
-                If(source.valid & source.ready,
-                    sink.ready.eq(1),
-                    If(~source.last,
-                        NextState("DATA"),
-                    )
-                )
-            )
-        )
-        fsm.act("DATA",
-            source.valid.eq(sink.valid | last),
-            source.last.eq(last),
-
-            source.dat[32*0:32*1].eq(dat[32*4:]),
-            source.dat[32*1:32*2].eq(dat[32*5:]),
-            source.dat[32*2:32*3].eq(dat[32*6:]),
-            source.dat[32*3:32*4].eq(dat[32*7:]),
-            source.dat[32*4:32*5].eq(sink.dat[32*0:]),
-            source.dat[32*5:32*6].eq(sink.dat[32*1:]),
-            source.dat[32*6:32*7].eq(sink.dat[32*2:]),
-            source.dat[32*7:32*8].eq(sink.dat[32*3:]),
-
-            source.be[4*0:4*1].eq(be[4*4:]),
-            source.be[4*1:4*2].eq(be[4*5:]),
-            source.be[4*2:4*3].eq(be[4*6:]),
-            source.be[4*3:4*4].eq(be[4*7:]),
-            If(last,
-                source.be[4*4:4*8].eq(0x0)
-            ).Else(
-                source.be[4*4:4*5].eq(sink.be[4*0:]),
-                source.be[4*5:4*6].eq(sink.be[4*1:]),
-                source.be[4*6:4*7].eq(sink.be[4*2:]),
-                source.be[4*7:4*8].eq(sink.be[4*3:]),
-            ),
-            If(source.valid & source.ready,
-                sink.ready.eq(~last),
-                If(source.last,
-                    NextState("HEADER")
-                )
-            )
-        )
 
 class LitePCIeTLPHeaderInserter256b(LitePCIeTLPHeaderInserter3DWs4DWs):
     def __init__(self, fmt):
         LitePCIeTLPHeaderInserter3DWs4DWs.__init__(self,
             data_width               = 256,
-            header_inserter_3dws_cls = LitePCIeTLPHeaderInserter256b3DWs,
-            header_inserter_4dws_cls = LitePCIeTLPHeaderInserter256b4DWs,
+            header_inserter_3dws_cls = lambda: LitePCIeTLPHeaderInserter3DWs(256),
+            header_inserter_4dws_cls = lambda: LitePCIeTLPHeaderInserter4DWs(256),
             fmt                      = fmt,
         )
 
+
 # LitePCIeTLPHeaderInserter512b --------------------------------------------------------------------
 
-class LitePCIeTLPHeaderInserter512b3DWs(LiteXModule):
-    def __init__(self):
-        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(512))
-        self.source = source = stream.Endpoint(phy_layout(512))
-
-        # # #
-
-        dat  = Signal(512,    reset_less=True)
-        be   = Signal(512//8, reset_less=True)
-        last = Signal(        reset_less=True)
-        self.sync += [
-            If(sink.valid & sink.ready,
-                dat.eq(sink.dat),
-                be.eq(sink.be),
-                last.eq(sink.last)
-            )
-        ]
-
-        self.fsm = fsm = FSM(reset_state="HEADER")
-        fsm.act("HEADER",
-            sink.ready.eq(1),
-            If(sink.valid & sink.first,
-                sink.ready.eq(0),
-                source.valid.eq(1),
-                source.first.eq(1),
-                source.last.eq(sink.last & (sink.be[4*13:] == 0)),
-
-                source.dat[32* 0:32* 1].eq(sink.header[32*0:]),
-                source.dat[32* 1:32* 2].eq(sink.header[32*1:]),
-                source.dat[32* 2:32* 3].eq(sink.header[32*2:]),
-                source.dat[32* 3:32* 4].eq(sink.dat[32* 0:]),
-                source.dat[32* 4:32* 5].eq(sink.dat[32* 1:]),
-                source.dat[32* 5:32* 6].eq(sink.dat[32* 2:]),
-                source.dat[32* 6:32* 7].eq(sink.dat[32* 3:]),
-                source.dat[32* 7:32* 8].eq(sink.dat[32* 4:]),
-                source.dat[32* 8:32* 9].eq(sink.dat[32* 5:]),
-                source.dat[32* 9:32*10].eq(sink.dat[32* 6:]),
-                source.dat[32*10:32*11].eq(sink.dat[32* 7:]),
-                source.dat[32*11:32*12].eq(sink.dat[32* 8:]),
-                source.dat[32*12:32*13].eq(sink.dat[32* 9:]),
-                source.dat[32*13:32*14].eq(sink.dat[32*10:]),
-                source.dat[32*14:32*15].eq(sink.dat[32*11:]),
-                source.dat[32*15:32*16].eq(sink.dat[32*12:]),
-
-                source.be[4* 0:4* 1].eq(0xf),
-                source.be[4* 1:4* 2].eq(0xf),
-                source.be[4* 2:4* 3].eq(0xf),
-                source.be[4* 3:4* 4].eq(sink.be[4* 0:]),
-                source.be[4* 4:4* 5].eq(sink.be[4* 1:]),
-                source.be[4* 5:4* 6].eq(sink.be[4* 2:]),
-                source.be[4* 6:4* 7].eq(sink.be[4* 3:]),
-                source.be[4* 7:4* 8].eq(sink.be[4* 4:]),
-                source.be[4* 8:4* 9].eq(sink.be[4* 5:]),
-                source.be[4* 9:4*10].eq(sink.be[4* 6:]),
-                source.be[4*10:4*11].eq(sink.be[4* 7:]),
-                source.be[4*11:4*12].eq(sink.be[4* 8:]),
-                source.be[4*12:4*13].eq(sink.be[4* 9:]),
-                source.be[4*13:4*14].eq(sink.be[4*10:]),
-                source.be[4*14:4*15].eq(sink.be[4*11:]),
-                source.be[4*15:4*16].eq(sink.be[4*12:]),
-
-                If(source.valid & source.ready,
-                    sink.ready.eq(1),
-                    If(~source.last,
-                        NextState("DATA"),
-                    )
-                )
-            )
-        )
-        fsm.act("DATA",
-            source.valid.eq(sink.valid | last),
-            source.last.eq(last),
-
-            source.dat[32* 0:32* 1].eq(     dat[32*13:]),
-            source.dat[32* 1:32* 2].eq(     dat[32*14:]),
-            source.dat[32* 2:32* 3].eq(     dat[32*15:]),
-            source.dat[32* 3:32* 4].eq(sink.dat[32* 0:]),
-            source.dat[32* 4:32* 5].eq(sink.dat[32* 1:]),
-            source.dat[32* 5:32* 6].eq(sink.dat[32* 2:]),
-            source.dat[32* 6:32* 7].eq(sink.dat[32* 3:]),
-            source.dat[32* 7:32* 8].eq(sink.dat[32* 4:]),
-            source.dat[32* 8:32* 9].eq(sink.dat[32* 5:]),
-            source.dat[32* 9:32*10].eq(sink.dat[32* 6:]),
-            source.dat[32*10:32*11].eq(sink.dat[32* 7:]),
-            source.dat[32*11:32*12].eq(sink.dat[32* 8:]),
-            source.dat[32*12:32*13].eq(sink.dat[32* 9:]),
-            source.dat[32*13:32*14].eq(sink.dat[32*10:]),
-            source.dat[32*14:32*15].eq(sink.dat[32*11:]),
-            source.dat[32*15:32*16].eq(sink.dat[32*12:]),
-
-            source.be[4*0:4*1].eq(be[4*13:]),
-            source.be[4*1:4*2].eq(be[4*14:]),
-            source.be[4*2:4*3].eq(be[4*15:]),
-            If(last,
-                source.be[4*3:4*16].eq(0x0)
-            ).Else(
-                source.be[4* 3:4* 4].eq(sink.be[4* 0:]),
-                source.be[4* 4:4* 5].eq(sink.be[4* 1:]),
-                source.be[4* 5:4* 6].eq(sink.be[4* 2:]),
-                source.be[4* 6:4* 7].eq(sink.be[4* 3:]),
-                source.be[4* 7:4* 8].eq(sink.be[4* 4:]),
-                source.be[4* 8:4* 9].eq(sink.be[4* 5:]),
-                source.be[4* 9:4*10].eq(sink.be[4* 6:]),
-                source.be[4*10:4*11].eq(sink.be[4* 7:]),
-                source.be[4*11:4*12].eq(sink.be[4* 8:]),
-                source.be[4*12:4*13].eq(sink.be[4* 9:]),
-                source.be[4*13:4*14].eq(sink.be[4*10:]),
-                source.be[4*14:4*15].eq(sink.be[4*11:]),
-                source.be[4*15:4*16].eq(sink.be[4*12:]),
-            ),
-            If(source.valid & source.ready,
-                sink.ready.eq(~last),
-                If(source.last,
-                    NextState("HEADER")
-                )
-            )
-        )
-
-class LitePCIeTLPHeaderInserter512b4DWs(LiteXModule):
-    def __init__(self):
-        self.sink   = sink   = stream.Endpoint(tlp_raw_layout(512))
-        self.source = source = stream.Endpoint(phy_layout(512))
-
-        # # #
-
-        dat  = Signal(512,    reset_less=True)
-        be   = Signal(512//8, reset_less=True)
-        last = Signal(        reset_less=True)
-        self.sync += [
-            If(sink.valid & sink.ready,
-                dat.eq(sink.dat),
-                be.eq(sink.be),
-                last.eq(sink.last)
-            )
-        ]
-
-        self.fsm = fsm = FSM(reset_state="HEADER")
-        fsm.act("HEADER",
-            sink.ready.eq(1),
-            If(sink.valid & sink.first,
-                sink.ready.eq(0),
-                source.valid.eq(1),
-                source.first.eq(1),
-                source.last.eq(sink.last & (sink.be[4*12:] == 0)),
-
-                source.dat[32* 0:32* 1].eq(sink.header[32*0:]),
-                source.dat[32* 1:32* 2].eq(sink.header[32*1:]),
-                source.dat[32* 2:32* 3].eq(sink.header[32*2:]),
-                source.dat[32* 3:32* 4].eq(sink.header[32*3:]),
-                source.dat[32* 4:32* 5].eq(sink.dat[32* 0:]),
-                source.dat[32* 5:32* 6].eq(sink.dat[32* 1:]),
-                source.dat[32* 6:32* 7].eq(sink.dat[32* 2:]),
-                source.dat[32* 7:32* 8].eq(sink.dat[32* 3:]),
-                source.dat[32* 8:32* 9].eq(sink.dat[32* 4:]),
-                source.dat[32* 9:32*10].eq(sink.dat[32* 5:]),
-                source.dat[32*10:32*11].eq(sink.dat[32* 6:]),
-                source.dat[32*11:32*12].eq(sink.dat[32* 7:]),
-                source.dat[32*12:32*13].eq(sink.dat[32* 8:]),
-                source.dat[32*13:32*14].eq(sink.dat[32* 9:]),
-                source.dat[32*14:32*15].eq(sink.dat[32*10:]),
-                source.dat[32*15:32*16].eq(sink.dat[32*11:]),
-
-                source.be[4* 0:4* 1].eq(0xf),
-                source.be[4* 1:4* 2].eq(0xf),
-                source.be[4* 2:4* 3].eq(0xf),
-                source.be[4* 3:4* 4].eq(0xf),
-                source.be[4* 4:4* 5].eq(sink.be[4* 0:]),
-                source.be[4* 5:4* 6].eq(sink.be[4* 1:]),
-                source.be[4* 6:4* 7].eq(sink.be[4* 2:]),
-                source.be[4* 7:4* 8].eq(sink.be[4* 3:]),
-                source.be[4* 8:4* 9].eq(sink.be[4* 4:]),
-                source.be[4* 9:4*10].eq(sink.be[4* 5:]),
-                source.be[4*10:4*11].eq(sink.be[4* 6:]),
-                source.be[4*11:4*12].eq(sink.be[4* 7:]),
-                source.be[4*12:4*13].eq(sink.be[4* 8:]),
-                source.be[4*13:4*14].eq(sink.be[4* 9:]),
-                source.be[4*14:4*15].eq(sink.be[4*10:]),
-                source.be[4*15:4*16].eq(sink.be[4*11:]),
-
-                If(source.valid & source.ready,
-                    sink.ready.eq(1),
-                    If(~source.last,
-                        NextState("DATA"),
-                    )
-                )
-            )
-        )
-        fsm.act("DATA",
-            source.valid.eq(sink.valid | last),
-            source.last.eq(last),
-
-            source.dat[32* 0:32* 1].eq(     dat[32*12:]),
-            source.dat[32* 1:32* 2].eq(     dat[32*13:]),
-            source.dat[32* 2:32* 3].eq(     dat[32*14:]),
-            source.dat[32* 3:32* 4].eq(     dat[32*15:]),
-            source.dat[32* 4:32* 5].eq(sink.dat[32* 0:]),
-            source.dat[32* 5:32* 6].eq(sink.dat[32* 1:]),
-            source.dat[32* 6:32* 7].eq(sink.dat[32* 2:]),
-            source.dat[32* 7:32* 8].eq(sink.dat[32* 3:]),
-            source.dat[32* 8:32* 9].eq(sink.dat[32* 4:]),
-            source.dat[32* 9:32*10].eq(sink.dat[32* 5:]),
-            source.dat[32*10:32*11].eq(sink.dat[32* 6:]),
-            source.dat[32*11:32*12].eq(sink.dat[32* 7:]),
-            source.dat[32*12:32*13].eq(sink.dat[32* 8:]),
-            source.dat[32*13:32*14].eq(sink.dat[32* 9:]),
-            source.dat[32*14:32*15].eq(sink.dat[32*10:]),
-            source.dat[32*15:32*16].eq(sink.dat[32*11:]),
-
-            source.be[4*0:4*1].eq(be[4*12:]),
-            source.be[4*1:4*2].eq(be[4*13:]),
-            source.be[4*2:4*3].eq(be[4*14:]),
-            source.be[4*3:4*4].eq(be[4*15:]),
-
-            If(last,
-                source.be[4*4:4*16].eq(0x0)
-            ).Else(
-                source.be[ 4*4: 4*5].eq(sink.be[4* 0:]),
-                source.be[ 4*5: 4*6].eq(sink.be[4* 1:]),
-                source.be[ 4*6: 4*7].eq(sink.be[4* 2:]),
-                source.be[ 4*7: 4*8].eq(sink.be[4* 3:]),
-                source.be[ 4*8: 4*9].eq(sink.be[4* 4:]),
-                source.be[ 4*9:4*10].eq(sink.be[4* 5:]),
-                source.be[4*10:4*11].eq(sink.be[4* 6:]),
-                source.be[4*11:4*12].eq(sink.be[4* 7:]),
-                source.be[4*12:4*13].eq(sink.be[4* 8:]),
-                source.be[4*13:4*14].eq(sink.be[4* 9:]),
-                source.be[4*14:4*15].eq(sink.be[4*10:]),
-                source.be[4*15:4*16].eq(sink.be[4*11:]),
-            ),
-            If(source.valid & source.ready,
-                sink.ready.eq(~last),
-                If(source.last,
-                    NextState("HEADER")
-                )
-            )
-        )
 
 class LitePCIeTLPHeaderInserter512b(LitePCIeTLPHeaderInserter3DWs4DWs):
     def __init__(self, fmt):
         LitePCIeTLPHeaderInserter3DWs4DWs.__init__(self,
             data_width               = 512,
-            header_inserter_3dws_cls = LitePCIeTLPHeaderInserter512b3DWs,
-            header_inserter_4dws_cls = LitePCIeTLPHeaderInserter512b4DWs,
+            header_inserter_3dws_cls = lambda: LitePCIeTLPHeaderInserter3DWs(512),
+            header_inserter_4dws_cls = lambda: LitePCIeTLPHeaderInserter4DWs(512),
             fmt                      = fmt,
         )
+
 
 # LitePCIeTLPPacketizer ----------------------------------------------------------------------------
 
@@ -1103,7 +785,7 @@ class LitePCIeTLPPacketizer(LiteXModule):
         header_inserter = header_inserter_cls[data_width](fmt=tlp_raw_d.fmt)
         self.submodules += header_inserter
         self.comb += tlp_raw_d.connect(header_inserter.sink)
-        self.comb += header_inserter.source.connect(self.source, omit={"data", "be"})
+        self.comb += header_inserter.source.connect(self.source, omit={"dat", "be"})
         for name in ["dat", "be"]:
             self.comb += dword_endianness_swap(
                 src        = getattr(header_inserter.source, name),
