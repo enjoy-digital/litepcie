@@ -122,8 +122,8 @@ def _model_extracter_output_beats(data_width, phy_beats):
             out_beats.append({
                 "first": 1,
                 "last" : 1,
-                "dws"  : [b0["dws"][1], b0["dws"][0]],
-                "be"   : [b0["be"][1],  b0["be"][0]],
+                "dws"  : [b0["dws"][1], 0],
+                "be"   : [b0["be"][1],  0],
             })
             return out_beats
 
@@ -132,8 +132,8 @@ def _model_extracter_output_beats(data_width, phy_beats):
             out_beats.append({
                 "first": 1,
                 "last" : 1,
-                "dws"  : [b1["dws"][1], b1["dws"][0]],
-                "be"   : [b1["be"][1],  b1["be"][0]],
+                "dws"  : [b1["dws"][1], 0],
+                "be"   : [b1["be"][1],  0],
             })
             return out_beats
 
@@ -152,8 +152,8 @@ def _model_extracter_output_beats(data_width, phy_beats):
     cut = 3
     if len(phy_beats) == 1:
         prev = phy_beats[0]
-        out_dws = prev["dws"][cut:] + prev["dws"][:cut]
-        out_be  = prev["be"][cut:]  + prev["be"][:cut]
+        out_dws = prev["dws"][cut:] + [0] * cut
+        out_be  = prev["be"][cut:]  + [0] * cut
         out_beats.append({"first": 1, "last": 1, "dws": out_dws, "be": out_be})
     else:
         for i in range(1, len(phy_beats)):
@@ -258,8 +258,10 @@ class TestLitePCIeTLPHeaderExtracter(unittest.TestCase):
                         break
                     yield
 
-            # Deassert valid but keep dat/be stable (flush deterministic).
+            # Deassert valid and perturb dat/be to ensure flush does not depend on invalid sink payload.
             yield dut.sink.valid.eq(0)
+            yield dut.sink.dat.eq(random.getrandbits(data_width))
+            yield dut.sink.be.eq(random.getrandbits(data_width//8))
 
             # Drain.
             for _ in range(50):

@@ -10,21 +10,16 @@ from litex.gen import *
 
 from litepcie.tlp.common import *
 
-# Generic Header Extracter -------------------------------------------------------------------------
+# Generic Header Extracter (>=128-bit) ------------------------------------------------------------
 
 class _LitePCIeTLPHeaderExtracter(LiteXModule):
     """
-    Generic (width-parameterized) header extracter.
+    Generic (width-parameterized) header extracter for >=128-bit datapaths.
 
-    Preserves the legacy behavior:
-    - 64b: header spans 2 beats, then COPY shifts by 1 DW across beats.
-    - >=128b: header in first beat, then COPY shifts by 3 DWs across beats.
-    - Flush is implemented with 'last' sticky flag (legacy style).
-    - 2-phase flow: HEADER then COPY (with an initial IDLE).
+    The 64-bit path remains separate because it needs a dedicated two-beat header capture path.
     """
     def __init__(self, data_width):
-        assert data_width in [64, 128, 256, 512]
-        assert data_width % 32 == 0
+        assert data_width in [128, 256, 512]
 
         self.sink   = sink   = stream.Endpoint(phy_layout(data_width))
         self.source = source = stream.Endpoint(tlp_raw_layout(data_width))
@@ -33,11 +28,8 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
 
         dws_per_beat = data_width // 32
 
-        # Legacy shift:
-        # - 64b  : shift by 1 DW.
-        # - >=128: shift by 3 DWs.
-        shift_dws = 1 if data_width == 64 else 3
-        assert 0 < shift_dws < dws_per_beat
+        # The header occupies 4 DWs and the first payload beat starts at DW3 of the current beat.
+        shift_dws = 3
 
         # Hold last accepted beat for COPY shifting.
         dat_r = Signal(data_width,    reset_less=True)
@@ -50,9 +42,6 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
         first = Signal()
         last  = Signal()  # "flush pending"
 
-        # Only used for 64b header capture (2 beats).
-        hdr_cnt = Signal(max=2)
-
         # Helpers ----------------------------------------------------------------------------------
 
         def _dw(sig, i):
@@ -63,8 +52,7 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
 
         def _emit_shifted(prev_dat, prev_be, curr_dat, curr_be):
             """
-            Output beat = prev[shift_dws:] + curr[:shift_dws]
-            (DW/BE-wise).
+            Output beat = prev[3:] + curr[:3] (DW/BE-wise).
             """
             stmts = []
             left_lanes = dws_per_beat - shift_dws
@@ -80,8 +68,13 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
             for lane in range(left_lanes, dws_per_beat):
                 in_lane = lane - left_lanes
                 stmts += [
-                    _dw(source.dat, lane).eq(_dw(curr_dat, in_lane)),
-                    _be(source.be,  lane).eq(_be(curr_be,  in_lane)),
+                    If(last,
+                        _dw(source.dat, lane).eq(0),
+                        _be(source.be,  lane).eq(0),
+                    ).Else(
+                        _dw(source.dat, lane).eq(_dw(curr_dat, in_lane)),
+                        _be(source.be,  lane).eq(_be(curr_be,  in_lane)),
+                    )
                 ]
 
             return stmts
@@ -93,53 +86,23 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
         fsm.act("IDLE",
             NextValue(first, 1),
             NextValue(last,  0),
-            If(data_width == 64,
-                NextValue(hdr_cnt, 0),
-            ),
             If(sink.valid,
                 NextState("HEADER")
             )
         )
-
-        if data_width == 64:
-            # 64-bit: capture 4DW header over 2 beats (2DW/beat).
-            fsm.act("HEADER",
-                sink.ready.eq(1),
-                If(sink.valid,
-                    If(hdr_cnt == 0,
-                        # Beat0 provides DW0..DW1.
-                        NextValue(source.header[32*0:32*1], sink.dat[32*0:32*1]),
-                        NextValue(source.header[32*1:32*2], sink.dat[32*1:32*2]),
-                        NextValue(hdr_cnt, 1),
-                        If(sink.last,
-                            NextValue(last, 1)
-                        ),
-                    ).Else(
-                        # Beat1 provides DW2..DW3.
-                        NextValue(source.header[32*2:32*3], sink.dat[32*0:32*1]),
-                        NextValue(source.header[32*3:32*4], sink.dat[32*1:32*2]),
-                        If(sink.last,
-                            NextValue(last, 1)
-                        ),
-                        NextState("COPY")
-                    )
-                )
+        fsm.act("HEADER",
+            sink.ready.eq(1),
+            If(sink.valid,
+                NextValue(source.header[32*0:32*1], sink.dat[32*0:32*1]),
+                NextValue(source.header[32*1:32*2], sink.dat[32*1:32*2]),
+                NextValue(source.header[32*2:32*3], sink.dat[32*2:32*3]),
+                NextValue(source.header[32*3:32*4], sink.dat[32*3:32*4]),
+                If(sink.last,
+                    NextValue(last, 1)
+                ),
+                NextState("COPY")
             )
-        else:
-            # >=128-bit: capture header in first beat.
-            fsm.act("HEADER",
-                sink.ready.eq(1),
-                If(sink.valid,
-                    NextValue(source.header[32*0:32*1], sink.dat[32*0:32*1]),
-                    NextValue(source.header[32*1:32*2], sink.dat[32*1:32*2]),
-                    NextValue(source.header[32*2:32*3], sink.dat[32*2:32*3]),
-                    NextValue(source.header[32*3:32*4], sink.dat[32*3:32*4]),
-                    If(sink.last,
-                        NextValue(last, 1)
-                    ),
-                    NextState("COPY")
-                )
-            )
+        )
 
         fsm.act("COPY",
             source.valid.eq(sink.valid | last),
@@ -161,9 +124,67 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
 
 class LitePCIeTLPHeaderExtracter64b(LiteXModule):
     def __init__(self):
-        self.submodules.impl = _LitePCIeTLPHeaderExtracter(data_width=64)
-        self.sink   = self.impl.sink
-        self.source = self.impl.source
+        self.sink   = sink   = stream.Endpoint(phy_layout(64))
+        self.source = source = stream.Endpoint(tlp_raw_layout(64))
+
+        # # #
+
+        first = Signal()
+        last  = Signal()
+        count = Signal()
+        dat   = Signal(64,    reset_less=True)
+        be    = Signal(64//8, reset_less=True)
+        self.sync += \
+            If(sink.valid & sink.ready,
+                dat.eq(sink.dat),
+                be.eq(sink.be)
+            )
+
+        self.fsm = fsm = FSM(reset_state="IDLE")
+        fsm.act("IDLE",
+            NextValue(first, 1),
+            NextValue(last,  0),
+            NextValue(count, 0),
+            If(sink.valid, NextState("HEADER"))
+        )
+        fsm.act("HEADER",
+            sink.ready.eq(1),
+            If(sink.valid,
+                NextValue(count, count + 1),
+                NextValue(source.header[32*0:32*1], source.header[32*2:32*3]),
+                NextValue(source.header[32*1:32*2], source.header[32*3:32*4]),
+                NextValue(source.header[32*2:32*3],      sink.dat[32*0:32*1]),
+                NextValue(source.header[32*3:32*4],      sink.dat[32*1:32*2]),
+                If(count,
+                    If(sink.last, NextValue(last, 1)),
+                    NextState("COPY")
+                )
+            )
+        )
+        fsm.act("COPY",
+            source.valid.eq(sink.valid | last),
+            source.first.eq(first),
+            source.last.eq(sink.last | last),
+            If(source.valid & source.ready,
+                NextValue(first, 0),
+                sink.ready.eq(1 & ~last),
+                If(source.last, NextState("IDLE"))
+            )
+        )
+        self.comb += [
+            source.dat[32*0:32*1].eq(     dat[32*1:32*2]),
+            If(last,
+                source.dat[32*1:32*2].eq(0),
+            ).Else(
+                source.dat[32*1:32*2].eq(sink.dat[32*0:32*1]),
+            ),
+            source.be[  4*0: 4*1].eq(     be[4*1:4*2]),
+            If(last,
+                source.be[  4*1: 4*2].eq(0),
+            ).Else(
+                source.be[  4*1: 4*2].eq(sink.be[4*0:4*1])
+            )
+        ]
 
 # LitePCIeTLPHeaderExtracter128b -------------------------------------------------------------------
 
