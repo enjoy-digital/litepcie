@@ -635,7 +635,7 @@ static unsigned int litepcie_poll(struct file *file, poll_table *wait)
 	return mask;
 }
 
-#ifdef CSR_FLASH_BASE
+#ifdef CSR_FLASH_SPI_CONTROL_ADDR
 /* SPI */
 
 #define SPI_TIMEOUT 100000 /* in us */
@@ -692,7 +692,7 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 		}
 	}
 	break;
-#ifdef CSR_FLASH_BASE
+#ifdef CSR_FLASH_SPI_CONTROL_ADDR
 	case LITEPCIE_IOCTL_FLASH:
 	{
 		struct litepcie_ioctl_flash m;
