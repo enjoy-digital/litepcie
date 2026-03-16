@@ -30,6 +30,7 @@ class USPPCIEPHY(LiteXModule):
         pcie_data_width = None,
         bar0_size       = 0x100000,
         mode            = "Endpoint",
+        use_support_wrapper = None,
     ):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
@@ -102,6 +103,9 @@ class USPPCIEPHY(LiteXModule):
         assert nlanes          in [1, 2, 4, 8, 16]
         assert data_width      in [64, 128, 256, 512]
         assert pcie_data_width in [64, 128, 256, 512]
+        if use_support_wrapper is None:
+            use_support_wrapper = False
+        self.use_support_wrapper = use_support_wrapper
 
         # Clocking / Reset -------------------------------------------------------------------------
         self.pcie_refclk    = pcie_refclk    = Signal()
@@ -214,6 +218,7 @@ class USPPCIEPHY(LiteXModule):
         # Hard IP ----------------------------------------------------------------------------------
 
         rq_tuser_width = 137 if pcie_data_width == 512 else 60
+        tkeep_width    = pcie_data_width // 8
 
         m_axis_rc_tuser = Signal(85)
         m_axis_cq_tuser = Signal(85)
@@ -228,14 +233,14 @@ class USPPCIEPHY(LiteXModule):
         m_axis_rc_tdata_raw  = Signal(pcie_data_width)
         m_axis_rc_tkeep_raw  = Signal(pcie_data_width//32)
         m_axis_rc_tuser_raw  = Signal(85)
-        m_axis_rc_tuser_full = Signal(75)
+        m_axis_rc_tuser_full = Signal(161 if pcie_data_width == 512 else 75)
         m_axis_rc_tlast_raw  = Signal()
         m_axis_rc_tvalid_raw = Signal()
         m_axis_rc_tready_raw = Signal(4)
         m_axis_cq_tdata_raw  = Signal(pcie_data_width)
         m_axis_cq_tkeep_raw  = Signal(pcie_data_width//32)
-        m_axis_cq_tuser_raw  = Signal(85)
-        m_axis_cq_tuser_full = Signal(88)
+        m_axis_cq_tuser_raw  = Signal(256)
+        m_axis_cq_tuser_full = Signal(183 if pcie_data_width == 512 else 88)
         m_axis_cq_tlast_raw  = Signal()
         m_axis_cq_tvalid_raw = Signal()
         m_axis_cq_tready_raw = Signal(4)
@@ -322,9 +327,22 @@ class USPPCIEPHY(LiteXModule):
         self.comb += cfg_interrupt_msi_int_enc_mux.eq(Mux(cfg_interrupt_msi_int_valid_edge1, cfg_interrupt_msi_int_enc_lat, 0))
         self.comb += [
             msi_enable_sys.eq(cfg_interrupt_msi_enable_x4[0]),
-            m_axis_rc_tuser_raw.eq(Cat(m_axis_rc_tuser_full, C(0, 10))),
-            m_axis_cq_tuser_raw.eq(m_axis_cq_tuser_full[:85]),
         ]
+        if pcie_data_width == 512:
+            self.comb += [
+                m_axis_rc_tuser_raw.eq(Cat(m_axis_rc_tuser_full[0:tkeep_width], C(0, 85 - tkeep_width))),
+                m_axis_cq_tuser_raw.eq(Cat(
+                    m_axis_cq_tuser_full[0:80],
+                    C(0, 16),
+                    m_axis_cq_tuser_full[96],
+                    C(0, 159),
+                )),
+            ]
+        else:
+            self.comb += [
+                m_axis_rc_tuser_raw.eq(Cat(m_axis_rc_tuser_full, C(0, 10))),
+                m_axis_cq_tuser_raw.eq(Cat(m_axis_cq_tuser_full, C(0, 256 - 88))),
+            ]
         if self.mode == "Endpoint":
             self.comb += cfg_msi.ready.eq(cfg_interrupt_msi_sent)
 
@@ -612,77 +630,216 @@ class USPPCIEPHY(LiteXModule):
             i_cfg_interrupt_msi_function_number               = 0,
         )
 
-        self.m_axis_cq_adapt = m_axis_cq_adapt = ClockDomainsRenamer("pcie")(MAxisCQAdapter(pcie_data_width))
-        self.comb += [
-            m_axis_cq_adapt.s_axis_tdata.eq(m_axis_cq_tdata_raw),
-            m_axis_cq_adapt.s_axis_tkeep.eq(m_axis_cq_tkeep_raw),
-            m_axis_cq_adapt.s_axis_tuser.eq(m_axis_cq_tuser_raw),
-            m_axis_cq_adapt.s_axis_tlast.eq(m_axis_cq_tlast_raw),
-            m_axis_cq_adapt.s_axis_tvalid.eq(m_axis_cq_tvalid_raw),
-            m_axis_cq_tready_raw.eq(m_axis_cq_adapt.s_axis_tready),
+        if self.use_support_wrapper:
+            m_axis_rc_tuser_wrap = Signal(22)
+            m_axis_cq_tuser_wrap = Signal(22)
+            m_axis_rc_tlast_wrap = Signal()
+            m_axis_cq_tlast_wrap = Signal()
 
-            m_axis_cq.dat.eq(m_axis_cq_adapt.m_axis_tdata),
-            m_axis_cq.be.eq(m_axis_cq_adapt.m_axis_tkeep),
-            m_axis_cq_tuser.eq(m_axis_cq_adapt.m_axis_tuser),
-            m_axis_cq_tlast.eq(m_axis_cq_adapt.m_axis_tlast),
-            m_axis_cq.valid.eq(m_axis_cq_adapt.m_axis_tvalid),
-            m_axis_cq_adapt.m_axis_tready.eq(m_axis_cq.ready),
-            m_axis_cq.first.eq(m_axis_cq_tuser[14]),
-            m_axis_cq.last.eq(m_axis_cq_tlast),
-        ]
+            self.pcie_phy_params = dict(
+                p_LINK_CAP_MAX_LINK_WIDTH          = nlanes,
+                p_C_DATA_WIDTH                     = pcie_data_width,
+                p_KEEP_WIDTH                       = pcie_data_width//8,
+                p_PCIE_GT_DEVICE                   = "GTY",
+                p_PCIE_USE_MODE                    = "2.0",
 
-        self.m_axis_rc_adapt = m_axis_rc_adapt = ClockDomainsRenamer("pcie")(MAxisRCAdapter(pcie_data_width))
-        self.comb += [
-            m_axis_rc_adapt.s_axis_tdata.eq(m_axis_rc_tdata_raw),
-            m_axis_rc_adapt.s_axis_tkeep.eq(m_axis_rc_tkeep_raw),
-            m_axis_rc_adapt.s_axis_tuser.eq(m_axis_rc_tuser_raw),
-            m_axis_rc_adapt.s_axis_tlast.eq(m_axis_rc_tlast_raw),
-            m_axis_rc_adapt.s_axis_tvalid.eq(m_axis_rc_tvalid_raw),
-            m_axis_rc_tready_raw.eq(m_axis_rc_adapt.s_axis_tready),
+                i_sys_clk                          = pcie_refclk,
+                i_sys_clk_gt                       = pcie_refclk_gt,
+                i_sys_rst_n                        = pcie_rst_n,
 
-            m_axis_rc.dat.eq(m_axis_rc_adapt.m_axis_tdata),
-            m_axis_rc.be.eq(m_axis_rc_adapt.m_axis_tkeep),
-            m_axis_rc_tuser.eq(m_axis_rc_adapt.m_axis_tuser),
-            m_axis_rc_tlast.eq(m_axis_rc_adapt.m_axis_tlast),
-            m_axis_rc.valid.eq(m_axis_rc_adapt.m_axis_tvalid),
-            m_axis_rc_adapt.m_axis_tready.eq(m_axis_rc.ready),
-            m_axis_rc.first.eq(m_axis_rc_adapt.m_axis_sop),
-            m_axis_rc.last.eq(m_axis_rc_tlast),
-        ]
+                o_pci_exp_txp                      = pads.tx_p,
+                o_pci_exp_txn                      = pads.tx_n,
+                i_pci_exp_rxp                      = pads.rx_p,
+                i_pci_exp_rxn                      = pads.rx_n,
 
-        self.s_axis_cc_adapt = s_axis_cc_adapt = ClockDomainsRenamer("pcie")(SAxisCCAdapter(pcie_data_width))
-        self.comb += [
-            s_axis_cc_adapt.s_axis_tdata.eq(s_axis_cc.dat),
-            s_axis_cc_adapt.s_axis_tkeep.eq(s_axis_cc.be),
-            s_axis_cc_adapt.s_axis_tlast.eq(s_axis_cc.last),
-            s_axis_cc_adapt.s_axis_tuser.eq(Constant(0b0000)),
-            s_axis_cc_adapt.s_axis_tvalid.eq(s_axis_cc.valid),
-            s_axis_cc.ready.eq(s_axis_cc_adapt.s_axis_tready),
+                o_user_clk_out                     = ClockSignal("pcie"),
+                o_user_reset_out                   = ResetSignal("pcie"),
+                o_user_lnk_up                      = link_status_sys,
+                o_user_app_rdy                     = Open(),
 
-            s_axis_cc_tdata_raw.eq(s_axis_cc_adapt.m_axis_tdata),
-            s_axis_cc_tkeep_raw.eq(s_axis_cc_adapt.m_axis_tkeep),
-            s_axis_cc_tlast_raw.eq(s_axis_cc_adapt.m_axis_tlast),
-            s_axis_cc_tuser_raw.eq(s_axis_cc_adapt.m_axis_tuser),
-            s_axis_cc_tvalid_raw.eq(s_axis_cc_adapt.m_axis_tvalid),
-            s_axis_cc_adapt.m_axis_tready.eq(s_axis_cc_tready_raw[0]),
-        ]
+                o_pcie_tfc_nph_av                  = Open(2),
+                o_pcie_tfc_npd_av                  = Open(2),
+                o_pcie_rq_tag_av                   = Open(2),
+                o_pcie_rq_seq_num                  = Open(4),
+                o_pcie_rq_seq_num_vld              = Open(),
+                o_pcie_rq_tag                      = Open(6),
+                o_pcie_rq_tag_vld                  = Open(),
+                i_s_axis_rq_tvalid                 = s_axis_rq.valid,
+                i_s_axis_rq_tlast                  = s_axis_rq.last,
+                o_s_axis_rq_tready                 = s_axis_rq.ready,
+                i_s_axis_rq_tdata                  = s_axis_rq.dat,
+                i_s_axis_rq_tkeep                  = s_axis_rq.be,
+                i_s_axis_rq_tuser                  = Constant(0b0000),
 
-        self.s_axis_rq_adapt = s_axis_rq_adapt = ClockDomainsRenamer("pcie")(SAxisRQAdapter(pcie_data_width))
-        self.comb += [
-            s_axis_rq_adapt.s_axis_tdata.eq(s_axis_rq.dat),
-            s_axis_rq_adapt.s_axis_tkeep.eq(s_axis_rq.be),
-            s_axis_rq_adapt.s_axis_tlast.eq(s_axis_rq.last),
-            s_axis_rq_adapt.s_axis_tuser.eq(Constant(0b0000)),
-            s_axis_rq_adapt.s_axis_tvalid.eq(s_axis_rq.valid),
-            s_axis_rq.ready.eq(s_axis_rq_adapt.s_axis_tready),
+                i_pcie_cq_np_req                   = 1,
+                o_pcie_cq_np_req_count             = Open(6),
+                o_m_axis_cq_tvalid                 = m_axis_cq.valid,
+                o_m_axis_cq_tlast                  = m_axis_cq_tlast_wrap,
+                i_m_axis_cq_tready                 = m_axis_cq.ready,
+                o_m_axis_cq_tdata                  = m_axis_cq.dat,
+                o_m_axis_cq_tkeep                  = m_axis_cq.be,
+                o_m_axis_cq_tuser                  = m_axis_cq_tuser_wrap,
 
-            s_axis_rq_tdata_raw.eq(s_axis_rq_adapt.m_axis_tdata),
-            s_axis_rq_tkeep_raw.eq(s_axis_rq_adapt.m_axis_tkeep),
-            s_axis_rq_tlast_raw.eq(s_axis_rq_adapt.m_axis_tlast),
-            s_axis_rq_tuser_raw.eq(s_axis_rq_adapt.m_axis_tuser),
-            s_axis_rq_tvalid_raw.eq(s_axis_rq_adapt.m_axis_tvalid),
-            s_axis_rq_adapt.m_axis_tready.eq(s_axis_rq_tready_raw[0]),
-        ]
+                o_m_axis_rc_tvalid                 = m_axis_rc.valid,
+                o_m_axis_rc_tlast                  = m_axis_rc_tlast_wrap,
+                i_m_axis_rc_tready                 = m_axis_rc.ready,
+                o_m_axis_rc_tdata                  = m_axis_rc.dat,
+                o_m_axis_rc_tkeep                  = m_axis_rc.be,
+                o_m_axis_rc_tuser                  = m_axis_rc_tuser_wrap,
+
+                i_s_axis_cc_tvalid                 = s_axis_cc.valid,
+                i_s_axis_cc_tlast                  = s_axis_cc.last,
+                o_s_axis_cc_tready                 = s_axis_cc.ready,
+                i_s_axis_cc_tdata                  = s_axis_cc.dat,
+                i_s_axis_cc_tkeep                  = s_axis_cc.be,
+                i_s_axis_cc_tuser                  = Constant(0b0000),
+
+                o_cfg_mgmt_do                      = Open(32),
+                o_cfg_mgmt_rd_wr_done              = Open(),
+                i_cfg_mgmt_di                      = 0,
+                i_cfg_mgmt_byte_en                 = 0,
+                i_cfg_mgmt_dwaddr                  = 0,
+                i_cfg_mgmt_wr_en                   = 0,
+                i_cfg_mgmt_rd_en                   = 0,
+
+                o_cfg_fc_cpld                      = Open(12),
+                o_cfg_fc_cplh                      = Open(8),
+                o_cfg_fc_npd                       = Open(12),
+                o_cfg_fc_nph                       = Open(8),
+                o_cfg_fc_pd                        = Open(12),
+                o_cfg_fc_ph                        = Open(8),
+                i_cfg_fc_sel                       = 0,
+
+                i_cfg_msg_transmit                 = 0,
+                i_cfg_msg_transmit_data            = 0,
+                i_cfg_msg_transmit_type            = 0,
+                o_cfg_msg_transmit_done            = Open(),
+
+                o_pl_received_hot_rst              = Open(),
+                i_pl_transmit_hot_rst              = 0,
+
+                i_cfg_dsn                          = serial_number,
+                i_cfg_ds_bus_number                = bus_number,
+                i_cfg_ds_device_number             = device_number,
+                i_cfg_ds_function_number           = function_number,
+                i_cfg_ds_port_number               = 0,
+                i_cfg_subsys_vend_id               = 0x10ee,
+
+                i_cfg_power_state_change_ack       = 0,
+                o_cfg_power_state_change_interrupt = Open(),
+
+                i_cfg_interrupt_int                = 0,
+                i_cfg_interrupt_pending            = 0,
+                o_cfg_interrupt_sent               = Open(),
+
+                o_cfg_phy_link_down                = link_phy_down_sys,
+                o_cfg_phy_link_status              = link_phy_status_sys,
+                o_cfg_negotiated_width             = link_width_sys,
+                o_cfg_current_speed                = link_rate_sys,
+                o_cfg_max_payload                  = cfg_max_payload_sys,
+                o_cfg_max_read_req                 = cfg_max_read_req_sys,
+                o_cfg_function_status              = cfg_function_status_sys,
+                o_cfg_function_power_state         = Open(12),
+                o_cfg_vf_status                    = Open(16),
+                o_cfg_vf_power_state               = Open(24),
+                o_cfg_link_power_state             = Open(2),
+
+                o_cfg_err_cor_out                  = Open(),
+                o_cfg_err_nonfatal_out             = Open(),
+                o_cfg_err_fatal_out                = Open(),
+                o_cfg_ltr_enable                   = Open(),
+                o_cfg_ltssm_state                  = link_ltssm_sys,
+                o_cfg_rcb_status                   = Open(4),
+                o_cfg_dpa_substate_change          = Open(4),
+                o_cfg_obff_enable                  = Open(2),
+                o_cfg_pl_status_change             = Open(),
+
+                o_cfg_tph_requester_enable         = Open(4),
+                o_cfg_tph_st_mode                  = Open(12),
+                o_cfg_vf_tph_requester_enable      = Open(8),
+                o_cfg_vf_tph_st_mode               = Open(24),
+            )
+            self.pcie_phy_params.update(msi_ports)
+            self.pcie_phy_params.update(cfg_msg_ports)
+
+            self.comb += [
+                m_axis_cq.first.eq(m_axis_cq_tuser_wrap[14]),
+                m_axis_cq.last.eq(m_axis_cq_tlast_wrap),
+                m_axis_rc.first.eq(m_axis_rc_tuser_wrap[14]),
+                m_axis_rc.last.eq(m_axis_rc_tlast_wrap),
+            ]
+        else:
+            self.m_axis_cq_adapt = m_axis_cq_adapt = ClockDomainsRenamer("pcie")(MAxisCQAdapter(pcie_data_width))
+            self.comb += [
+                m_axis_cq_adapt.s_axis_tdata.eq(m_axis_cq_tdata_raw),
+                m_axis_cq_adapt.s_axis_tkeep.eq(m_axis_cq_tkeep_raw),
+                m_axis_cq_adapt.s_axis_tuser.eq(m_axis_cq_tuser_raw),
+                m_axis_cq_adapt.s_axis_tlast.eq(m_axis_cq_tlast_raw),
+                m_axis_cq_adapt.s_axis_tvalid.eq(m_axis_cq_tvalid_raw),
+                m_axis_cq_tready_raw.eq(m_axis_cq_adapt.s_axis_tready),
+
+                m_axis_cq.dat.eq(m_axis_cq_adapt.m_axis_tdata),
+                m_axis_cq.be.eq(m_axis_cq_adapt.m_axis_tkeep),
+                m_axis_cq_tuser.eq(m_axis_cq_adapt.m_axis_tuser),
+                m_axis_cq_tlast.eq(m_axis_cq_adapt.m_axis_tlast),
+                m_axis_cq.valid.eq(m_axis_cq_adapt.m_axis_tvalid),
+                m_axis_cq_adapt.m_axis_tready.eq(m_axis_cq.ready),
+                m_axis_cq.first.eq(m_axis_cq_tuser[14]),
+                m_axis_cq.last.eq(m_axis_cq_tlast),
+            ]
+
+            self.m_axis_rc_adapt = m_axis_rc_adapt = ClockDomainsRenamer("pcie")(MAxisRCAdapter(pcie_data_width))
+            self.comb += [
+                m_axis_rc_adapt.s_axis_tdata.eq(m_axis_rc_tdata_raw),
+                m_axis_rc_adapt.s_axis_tkeep.eq(m_axis_rc_tkeep_raw),
+                m_axis_rc_adapt.s_axis_tuser.eq(m_axis_rc_tuser_raw),
+                m_axis_rc_adapt.s_axis_tlast.eq(m_axis_rc_tlast_raw),
+                m_axis_rc_adapt.s_axis_tvalid.eq(m_axis_rc_tvalid_raw),
+                m_axis_rc_tready_raw.eq(m_axis_rc_adapt.s_axis_tready),
+
+                m_axis_rc.dat.eq(m_axis_rc_adapt.m_axis_tdata),
+                m_axis_rc.be.eq(m_axis_rc_adapt.m_axis_tkeep),
+                m_axis_rc_tuser.eq(m_axis_rc_adapt.m_axis_tuser),
+                m_axis_rc_tlast.eq(m_axis_rc_adapt.m_axis_tlast),
+                m_axis_rc.valid.eq(m_axis_rc_adapt.m_axis_tvalid),
+                m_axis_rc_adapt.m_axis_tready.eq(m_axis_rc.ready),
+                m_axis_rc.first.eq(m_axis_rc_adapt.m_axis_sop),
+                m_axis_rc.last.eq(m_axis_rc_tlast),
+            ]
+
+            self.s_axis_cc_adapt = s_axis_cc_adapt = ClockDomainsRenamer("pcie")(SAxisCCAdapter(pcie_data_width))
+            self.comb += [
+                s_axis_cc_adapt.s_axis_tdata.eq(s_axis_cc.dat),
+                s_axis_cc_adapt.s_axis_tkeep.eq(s_axis_cc.be),
+                s_axis_cc_adapt.s_axis_tlast.eq(s_axis_cc.last),
+                s_axis_cc_adapt.s_axis_tuser.eq(Constant(0b0000)),
+                s_axis_cc_adapt.s_axis_tvalid.eq(s_axis_cc.valid),
+                s_axis_cc.ready.eq(s_axis_cc_adapt.s_axis_tready),
+
+                s_axis_cc_tdata_raw.eq(s_axis_cc_adapt.m_axis_tdata),
+                s_axis_cc_tkeep_raw.eq(s_axis_cc_adapt.m_axis_tkeep),
+                s_axis_cc_tlast_raw.eq(s_axis_cc_adapt.m_axis_tlast),
+                s_axis_cc_tuser_raw.eq(s_axis_cc_adapt.m_axis_tuser),
+                s_axis_cc_tvalid_raw.eq(s_axis_cc_adapt.m_axis_tvalid),
+                s_axis_cc_adapt.m_axis_tready.eq(s_axis_cc_tready_raw[0]),
+            ]
+
+            self.s_axis_rq_adapt = s_axis_rq_adapt = ClockDomainsRenamer("pcie")(SAxisRQAdapter(pcie_data_width))
+            self.comb += [
+                s_axis_rq_adapt.s_axis_tdata.eq(s_axis_rq.dat),
+                s_axis_rq_adapt.s_axis_tkeep.eq(s_axis_rq.be),
+                s_axis_rq_adapt.s_axis_tlast.eq(s_axis_rq.last),
+                s_axis_rq_adapt.s_axis_tuser.eq(Constant(0b0000)),
+                s_axis_rq_adapt.s_axis_tvalid.eq(s_axis_rq.valid),
+                s_axis_rq.ready.eq(s_axis_rq_adapt.s_axis_tready),
+
+                s_axis_rq_tdata_raw.eq(s_axis_rq_adapt.m_axis_tdata),
+                s_axis_rq_tkeep_raw.eq(s_axis_rq_adapt.m_axis_tkeep),
+                s_axis_rq_tlast_raw.eq(s_axis_rq_adapt.m_axis_tlast),
+                s_axis_rq_tuser_raw.eq(s_axis_rq_adapt.m_axis_tuser),
+                s_axis_rq_tvalid_raw.eq(s_axis_rq_adapt.m_axis_tvalid),
+                s_axis_rq_adapt.m_axis_tready.eq(s_axis_rq_tready_raw[0]),
+            ]
 
     # Resync Helper --------------------------------------------------------------------------------
     def add_resync(self, sig, clk="sys"):
@@ -724,14 +881,14 @@ class USPPCIEPHY(LiteXModule):
 
             # AXI-S / interface.
             axisten_if_width    = f"{self.pcie_data_width}_bit"
-            axisten_rc_straddle = False
+            axisten_rc_straddle = self.use_support_wrapper
             enable_client_tag   = True
 
             # Power management.
             aspm_support = "No_ASPM"
 
             # PLL selection.
-            plltype = "QPLL0"
+            plltype = "QPLL1" if self.use_support_wrapper else "QPLL0"
 
             config = {
                 # Core.
@@ -779,9 +936,13 @@ class USPPCIEPHY(LiteXModule):
             ip_tcl.append("synth_ip $obj")
             platform.toolchain.pre_synthesis_commands += ip_tcl
 
-        verilog_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "xilinx")
-
-        # No support-wrapper Verilog source required in direct mode.
+        if self.use_support_wrapper:
+            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "axis_iff.v"))
+            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "s_axis_rq_adapt_x16.v"))
+            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "m_axis_rc_adapt_x16.v"))
+            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "m_axis_cq_adapt_x16.v"))
+            platform.add_source(os.path.join(phy_path, "..", "xilinx_usp", "s_axis_cc_adapt_x16.v"))
+            platform.add_source(os.path.join(phy_path, "pcie_usp_support.v"))
 
 
     # External Hard IP -----------------------------------------------------------------------------
@@ -792,8 +953,18 @@ class USPPCIEPHY(LiteXModule):
     # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
         if not self.external_hard_ip:
-            self.add_sources(self.platform)
-        self.specials += Instance("pcie_usp", **self.pcie_usp_phy_params)
+            if self.use_support_wrapper:
+                phy_path = os.path.join(
+                    os.path.abspath(os.path.dirname(__file__)),
+                    f"xilinx_usp{'_hbm' if isinstance(self, USPHBMPCIEPHY) else ''}_{self.speed}_x{self.nlanes}"
+                )
+                self.add_sources(self.platform, phy_path=phy_path)
+            else:
+                self.add_sources(self.platform)
+        if self.use_support_wrapper:
+            self.specials += Instance("pcie_support", **self.pcie_phy_params)
+        else:
+            self.specials += Instance("pcie_usp", **self.pcie_usp_phy_params)
 
 # USPHBMPCIEPHY ------------------------------------------------------------------------------------
 

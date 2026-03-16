@@ -209,6 +209,7 @@ class USPCIEPHY(LiteXModule):
         # Hard IP ----------------------------------------------------------------------------------
 
         rq_tuser_width = 137 if pcie_data_width == 512 else 60
+        tkeep_width    = pcie_data_width // 8
 
         m_axis_rc_tuser = Signal(85)
         m_axis_cq_tuser = Signal(85)
@@ -223,14 +224,14 @@ class USPCIEPHY(LiteXModule):
         m_axis_rc_tdata_raw  = Signal(pcie_data_width)
         m_axis_rc_tkeep_raw  = Signal(pcie_data_width//32)
         m_axis_rc_tuser_raw  = Signal(85)
-        m_axis_rc_tuser_full = Signal(75)
+        m_axis_rc_tuser_full = Signal(161 if pcie_data_width == 512 else 75)
         m_axis_rc_tlast_raw  = Signal()
         m_axis_rc_tvalid_raw = Signal()
         m_axis_rc_tready_raw = Signal(4)
         m_axis_cq_tdata_raw  = Signal(pcie_data_width)
         m_axis_cq_tkeep_raw  = Signal(pcie_data_width//32)
-        m_axis_cq_tuser_raw  = Signal(85)
-        m_axis_cq_tuser_full = Signal(88)
+        m_axis_cq_tuser_raw  = Signal(256)
+        m_axis_cq_tuser_full = Signal(183 if pcie_data_width == 512 else 88)
         m_axis_cq_tlast_raw  = Signal()
         m_axis_cq_tvalid_raw = Signal()
         m_axis_cq_tready_raw = Signal(4)
@@ -319,9 +320,22 @@ class USPCIEPHY(LiteXModule):
         self.comb += cfg_interrupt_msi_int_enc_mux.eq(Mux(cfg_interrupt_msi_int_valid_edge1, cfg_interrupt_msi_int_enc_lat, 0))
         self.comb += [
             msi_enable_sys.eq(cfg_interrupt_msi_enable_x4[0]),
-            m_axis_rc_tuser_raw.eq(Cat(m_axis_rc_tuser_full, C(0, 10))),
-            m_axis_cq_tuser_raw.eq(m_axis_cq_tuser_full[:85]),
         ]
+        if pcie_data_width == 512:
+            self.comb += [
+                m_axis_rc_tuser_raw.eq(Cat(m_axis_rc_tuser_full[0:tkeep_width], C(0, 85 - tkeep_width))),
+                m_axis_cq_tuser_raw.eq(Cat(
+                    m_axis_cq_tuser_full[0:80],
+                    C(0, 16),
+                    m_axis_cq_tuser_full[96],
+                    C(0, 159),
+                )),
+            ]
+        else:
+            self.comb += [
+                m_axis_rc_tuser_raw.eq(Cat(m_axis_rc_tuser_full, C(0, 10))),
+                m_axis_cq_tuser_raw.eq(Cat(m_axis_cq_tuser_full, C(0, 256 - 88))),
+            ]
         if self.mode == "Endpoint":
             self.comb += cfg_msi.ready.eq(cfg_interrupt_msi_sent)
 
