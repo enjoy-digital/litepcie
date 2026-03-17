@@ -14,6 +14,11 @@ from litepcie.tlp.common  import *
 
 # LitePCIe TLP Controller --------------------------------------------------------------------------
 
+def completion_buffer_depth(data_width, max_request_size_bytes=max_request_size):
+    beat_bytes = data_width//8
+    return (max_request_size_bytes + beat_bytes - 1)//beat_bytes
+
+
 class LitePCIeTLPController(LiteXModule):
     """LitePCIe TLP requests/completions controller.
 
@@ -128,7 +133,7 @@ class LitePCIeTLPController(LiteXModule):
 
         # Create Buffers.
         if cmp_buf_depth is None:
-            cmp_buf_depth = 4*max_request_size//(data_width//8)
+            cmp_buf_depth = completion_buffer_depth(data_width)
         for i in range(max_pending_requests):
             cmp_buf       = ResetInserter()(SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered))
             cmp_bufs.append(cmp_buf)

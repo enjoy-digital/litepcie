@@ -9,7 +9,7 @@ import unittest
 from litex.gen import *
 
 from litepcie.tlp.common import max_request_size
-from litepcie.tlp.controller import LitePCIeTLPController
+from litepcie.tlp.controller import LitePCIeTLPController, completion_buffer_depth
 
 
 def _request_word(index):
@@ -25,6 +25,13 @@ def _completion_beats_for(data_width, request_size=max_request_size):
 
 
 class TestTLPController(unittest.TestCase):
+    def test_completion_buffer_depth_formula(self):
+        self.assertEqual(completion_buffer_depth(64),  64)
+        self.assertEqual(completion_buffer_depth(128), 32)
+        self.assertEqual(completion_buffer_depth(256), 16)
+        self.assertEqual(completion_buffer_depth(512), 8)
+        self.assertEqual(completion_buffer_depth(128, max_request_size_bytes=124), 8)
+
     def _issue_read_request(self, controller, *, index, channel=0, user_id=0, length_dwords=8):
         sink = controller.master_in.sink
         while True:
@@ -182,7 +189,7 @@ class TestTLPController(unittest.TestCase):
 
     def test_completion_buffer_depth_matches_request_footprint(self):
         data_width = 128
-        beats_needed = _completion_beats_for(data_width)
+        beats_needed = completion_buffer_depth(data_width)
 
         def accepted_beats(cmp_buf_depth):
             controller = LitePCIeTLPController(
