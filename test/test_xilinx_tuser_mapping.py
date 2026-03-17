@@ -41,6 +41,13 @@ def _simulate_value(dut, value):
 
 
 class TestXilinxTUserMapping(unittest.TestCase):
+    def test_rc_128_mapping_keeps_legacy_layout(self):
+        dut = _RCMappingDUT(128)
+        full = (1 << 0) | (1 << 10) | (1 << 74)
+        raw = _simulate_value(dut, full)
+        self.assertEqual(raw & ((1 << 75) - 1), full)
+        self.assertEqual(raw >> 75, 0)
+
     def test_rc_256_mapping_keeps_legacy_layout(self):
         dut = _RCMappingDUT(256)
         full = (1 << 0) | (1 << 10) | (1 << 74)
@@ -57,6 +64,13 @@ class TestXilinxTUserMapping(unittest.TestCase):
 
     def test_cq_256_mapping_keeps_legacy_layout(self):
         dut = _CQMappingDUT(256)
+        full = (1 << 0) | (1 << 15) | (1 << 87)
+        raw = _simulate_value(dut, full)
+        self.assertEqual(raw & ((1 << 88) - 1), full)
+        self.assertEqual(raw >> 88, 0)
+
+    def test_cq_128_mapping_keeps_legacy_layout(self):
+        dut = _CQMappingDUT(128)
         full = (1 << 0) | (1 << 15) | (1 << 87)
         raw = _simulate_value(dut, full)
         self.assertEqual(raw & ((1 << 88) - 1), full)

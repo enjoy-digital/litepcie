@@ -138,13 +138,26 @@ class TestDMAStatus(unittest.TestCase):
         self.assertEqual(memory[5:8], [0, 0, 0])
         self.assertEqual(memory[8:16], [self._swap32(0x100 + i) for i in range(8)])
 
+    def _assert_writes(self, writes, dwords_per_write, base=0x40):
+        self.assertEqual(len(writes), 16 // dwords_per_write)
+        self.assertEqual([write.length for write in writes], [dwords_per_write] * len(writes))
+        self.assertEqual(
+            [write.address for write in writes],
+            [base + 4*dwords_per_write*i for i in range(len(writes))]
+        )
+
+    def test_status_128bit_emits_four_writes(self):
+        result = self._run_status_update(data_width=128, trigger_mode=0b00)
+        writes = result["writes"]
+
+        self._assert_writes(writes, dwords_per_write=4)
+        self._assert_status_words(result["memory"])
+
     def test_status_256bit_emits_two_writes(self):
         result = self._run_status_update(data_width=256, trigger_mode=0b00)
         writes = result["writes"]
 
-        self.assertEqual(len(writes), 2)
-        self.assertEqual([write.length for write in writes], [8, 8])
-        self.assertEqual([write.address for write in writes], [0x40, 0x60])
+        self._assert_writes(writes, dwords_per_write=8)
         self._assert_status_words(result["memory"])
 
     def test_status_512bit_emits_single_write(self):
@@ -160,8 +173,14 @@ class TestDMAStatus(unittest.TestCase):
         result = self._run_status_update(data_width=256, trigger_mode=0b01)
         writes = result["writes"]
 
-        self.assertEqual(len(writes), 2)
-        self.assertEqual([write.length for write in writes], [8, 8])
+        self._assert_writes(writes, dwords_per_write=8)
+        self._assert_status_words(result["memory"])
+
+    def test_status_writer_irq_trigger_128bit(self):
+        result = self._run_status_update(data_width=128, trigger_mode=0b01)
+        writes = result["writes"]
+
+        self._assert_writes(writes, dwords_per_write=4)
         self._assert_status_words(result["memory"])
 
     def test_status_reader_irq_trigger_512bit(self):
