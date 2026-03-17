@@ -331,3 +331,60 @@ class TestTLPController(unittest.TestCase):
             observed_requests[1],
         ])
         self.assertEqual([c["end"] for c in observed_completions], [0, 1, 1])
+
+    def test_request_footprint_depth_accepts_legal_younger_completions(self):
+        data_width = 128
+        beats_needed = completion_buffer_depth(data_width)
+        controller = LitePCIeTLPController(
+            data_width           = data_width,
+            address_width        = 32,
+            max_pending_requests = 4,
+            cmp_bufs_buffered    = False,
+            cmp_buf_depth        = beats_needed,
+        )
+
+        observed_requests = []
+        accepted = []
+
+        @passive
+        def monitor_requests():
+            source = controller.master_out.sink
+            while len(observed_requests) < 3:
+                yield source.ready.eq(1)
+                if (yield source.valid) and (yield source.ready):
+                    observed_requests.append((yield source.tag))
+                yield
+
+        def stim():
+            yield
+            for index in range(3):
+                yield from self._issue_read_request(
+                    controller,
+                    index         = index,
+                    length_dwords = beats_needed * (data_width // 32),
+                )
+
+            while len(observed_requests) < 3:
+                yield
+
+            # Fill two younger tags to their exact legal footprint while the oldest request
+            # is still pending. This must not stall because each tag only needs one request's
+            # worth of buffering.
+            for tag in observed_requests[1:]:
+                accepted_for_tag = []
+                yield from self._push_completion(
+                    controller,
+                    tag      = tag,
+                    channel  = 0,
+                    user_id  = 0,
+                    beats    = beats_needed,
+                    accepted = accepted_for_tag,
+                    timeout  = beats_needed + 8,
+                )
+                accepted.extend(accepted_for_tag)
+
+            for _ in range(4):
+                yield
+
+        run_simulation(controller, [stim(), monitor_requests()], vcd_name=None)
+        self.assertEqual(len(accepted), 2 * beats_needed)
