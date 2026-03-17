@@ -242,3 +242,15 @@ class TestDMA(unittest.TestCase):
 
     def test_dma_64b_data_width_64b_address_width(self):
         self.dma_test(data_width=64, address_width=64)
+
+    def test_dma_256b_data_width_32b_address_width(self):
+        self.dma_test(data_width=256, address_width=32)
+
+    def test_dma_256b_data_width_64b_address_width(self):
+        self.dma_test(data_width=256, address_width=64)
+
+    def test_dma_512b_data_width_32b_address_width(self):
+        self.dma_test(data_width=512, address_width=32)
+
+    def test_dma_512b_data_width_64b_address_width(self):
+        self.dma_test(data_width=512, address_width=64)

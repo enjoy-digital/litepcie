@@ -133,7 +133,7 @@ class PHY(LiteXModule):
                     dat[n] = dat[n] << 32
                     be[n]  = be[n] << 4
                     try:
-                        dat[n] |= dwords[2*n+i]
+                        dat[n] |= dwords[ratio*n+i]
                         be[n]  |= 0xF
                     except:
                         pass
@@ -166,4 +166,3 @@ class PHY(LiteXModule):
             return self.packet2dwords(self.phy_sink.packet.dat, self.phy_sink.packet.be)
         else:
             return None
-
