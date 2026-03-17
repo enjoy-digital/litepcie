@@ -43,7 +43,7 @@ from litex.gen import *
 from litepcie.common import *
 from litepcie.core import LitePCIeEndpoint
 from litepcie.core.msi import LitePCIeMSI
-from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader
+from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader, dma_words_for_bytes
 
 from test.common import seed_to_data
 from test.model.host import *
@@ -138,7 +138,14 @@ class MSIHandler(LiteXModule):
 # Test DMA -----------------------------------------------------------------------------------------
 
 class TestDMA(unittest.TestCase):
-    def dma_test(self, data_width, address_width, descriptor_lengths=None, test_size=1024):
+    def test_dma_word_rounding(self):
+        self.assertEqual(dma_words_for_bytes(124, 128), 8)
+        self.assertEqual(dma_words_for_bytes(128, 128), 8)
+        self.assertEqual(dma_words_for_bytes(252, 128), 16)
+        self.assertEqual(dma_words_for_bytes(512, 128), 32)
+
+    def dma_test(self, data_width, address_width, descriptor_lengths=None, test_size=1024,
+        chipset_split=True, chipset_reordering=True):
         if descriptor_lengths is None:
             descriptor_lengths = [test_size//8] * 8
         test_size = sum(descriptor_lengths)
@@ -211,8 +218,8 @@ class TestDMA(unittest.TestCase):
                 self.host = Host(data_width, root_id, endpoint_id,
                     phy_debug          = False,
                     chipset_debug      = False,
-                    chipset_split      = True,
-                    chipset_reordering = True,
+                    chipset_split      = chipset_split,
+                    chipset_reordering = chipset_reordering,
                     host_debug         = False)
 
                 # Endpoint -------------------------------------------------------------------------
@@ -257,6 +264,15 @@ class TestDMA(unittest.TestCase):
 
     def test_dma_64b_data_width_64b_address_width(self):
         self.dma_test(data_width=64, address_width=64)
+
+    def test_dma_128b_data_width_32b_address_width_awkward_lengths(self):
+        self.dma_test(
+            data_width         = 128,
+            address_width      = 32,
+            descriptor_lengths = [124, 128, 252, 512],
+            chipset_split      = False,
+            chipset_reordering = False,
+        )
 
     def test_dma_256b_data_width_32b_address_width(self):
         self.dma_test(data_width=256, address_width=32)

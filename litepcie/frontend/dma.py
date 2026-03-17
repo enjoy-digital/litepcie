@@ -24,6 +24,11 @@ def descriptor_layout(address_width=32, with_user_id=False):
     return EndpointDescription(layout)
 
 
+def dma_words_for_bytes(length, data_width):
+    data_width_bytes = data_width//8
+    return (length + (data_width_bytes - 1)) >> log2_int(data_width_bytes)
+
+
 # LitePCIeDMAScatterGather --------------------------------------------------------------------------
 
 class LitePCIeDMAScatterGather(LiteXModule):
@@ -282,9 +287,9 @@ class LitePCIeDMAReader(LiteXModule):
         # CSR/Parameters ---------------------------------------------------------------------------
         self.enable = enable = self._enable.storage[0]
 
-        length_shift          = log2_int(endpoint.phy.data_width//8)
         max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
         max_pending_words     = endpoint.max_pending_requests*max_words_per_request
+        request_words         = Signal(24)
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
@@ -339,9 +344,10 @@ class LitePCIeDMAReader(LiteXModule):
         pending_words_queue   = Signal.like(pending_words)
         pending_words_dequeue = Signal.like(pending_words)
         self.comb += [
+            request_words.eq(dma_words_for_bytes(splitter.source.length, endpoint.phy.data_width)),
             # Queue Pending words as Read Requests are emitted.
             If(splitter.source.valid & splitter.source.ready,
-                pending_words_queue.eq(splitter.source.length[length_shift:])
+                pending_words_queue.eq(request_words)
             ),
             # Dequeue Pending words as Read Responses are received.
             If(data_fifo.source.valid & data_fifo.source.ready,
@@ -428,7 +434,6 @@ class LitePCIeDMAWriter(LiteXModule):
         # CSR/Parameters ---------------------------------------------------------------------------
         self.enable = enable = self._enable.storage[0]
 
-        length_shift          = log2_int(endpoint.phy.data_width//8)
         max_words_per_request = max_payload_size//(endpoint.phy.data_width//8)
 
         # Table ------------------------------------------------------------------------------------
@@ -466,7 +471,9 @@ class LitePCIeDMAWriter(LiteXModule):
 
         # FSM --------------------------------------------------------------------------------------
         req_count = Signal.like(splitter.source.length)
+        request_words = Signal(24)
         self.fsm = fsm = FSM(reset_state="IDLE")
+        self.comb += request_words.eq(dma_words_for_bytes(splitter.source.length, endpoint.phy.data_width))
         fsm.act("IDLE",
             # Reset Request Count.
             NextValue(req_count, 0),
@@ -475,7 +482,7 @@ class LitePCIeDMAWriter(LiteXModule):
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
             # Else wait for a Descriptor and to have enough Data to generate the Request.
-            ).Elif(splitter.source.valid & (data_fifo.level >= splitter.source.length[length_shift:]),
+            ).Elif(splitter.source.valid & (data_fifo.level >= request_words),
                 NextState("MEM-WR"),
             )
         )
@@ -486,7 +493,7 @@ class LitePCIeDMAWriter(LiteXModule):
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
             port.source.first.eq(req_count == 0),
-            port.source.last.eq( req_count == (splitter.source.length[length_shift:] - 1)),
+            port.source.last.eq(req_count == (request_words - 1)),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
