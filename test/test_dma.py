@@ -138,11 +138,15 @@ class MSIHandler(LiteXModule):
 # Test DMA -----------------------------------------------------------------------------------------
 
 class TestDMA(unittest.TestCase):
-    def dma_test(self, data_width, address_width, test_size=1024):
+    def dma_test(self, data_width, address_width, descriptor_lengths=None, test_size=1024):
+        if descriptor_lengths is None:
+            descriptor_lengths = [test_size//8] * 8
+        test_size = sum(descriptor_lengths)
+
         host_data     = [seed_to_data(i, True) for i in range(test_size//4)]
         loopback_data = []
 
-        def main_generator(dut, nreads=8, nwrites=8):
+        def main_generator(dut):
             # Allocate Host's Memory.
             dut.host.malloc(0x00000000, test_size*2)
 
@@ -159,14 +163,18 @@ class TestDMA(unittest.TestCase):
             # Program DMA Reader descriptors.
             yield from dma_reader_driver.set_prog_mode()
             yield from dma_reader_driver.flush()
-            for i in range(nreads):
-                yield from dma_reader_driver.program_descriptor((test_size//8)*i, test_size//8)
+            read_offset = 0
+            for length in descriptor_lengths:
+                yield from dma_reader_driver.program_descriptor(read_offset, length)
+                read_offset += length
 
             # Program DMA Writer descriptors.
             yield from dma_writer_driver.set_prog_mode()
             yield from dma_writer_driver.flush()
-            for i in range(nwrites):
-                yield from dma_writer_driver.program_descriptor(test_size + (test_size//8)*i, test_size//8)
+            write_offset = test_size
+            for length in descriptor_lengths:
+                yield from dma_writer_driver.program_descriptor(write_offset, length)
+                write_offset += length
 
             # Enable MSI.
             yield dut.msi.enable.storage.eq(DMA_READER_IRQ | DMA_WRITER_IRQ)
@@ -176,7 +184,14 @@ class TestDMA(unittest.TestCase):
             yield from dma_writer_driver.enable()
 
             # Wait for all writes.
-            while dut.msi_handler.dma_writer_irq_count != nwrites:
+            timeout = 0
+            while dut.msi_handler.dma_writer_irq_count != len(descriptor_lengths):
+                timeout += 1
+                if timeout > 20000:
+                    self.fail(
+                        f"DMA loopback timed out (width={data_width}, address_width={address_width}, "
+                        f"descriptors={descriptor_lengths}, writes={dut.msi_handler.dma_writer_irq_count})"
+                    )
                 yield
 
             # Delay to ensure all the data has been written.
@@ -198,7 +213,7 @@ class TestDMA(unittest.TestCase):
                     chipset_debug      = False,
                     chipset_split      = True,
                     chipset_reordering = True,
-                    host_debug         = True)
+                    host_debug         = False)
 
                 # Endpoint -------------------------------------------------------------------------
                 self.endpoint = LitePCIeEndpoint(self.host.phy,
