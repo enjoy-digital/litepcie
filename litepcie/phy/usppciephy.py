@@ -18,6 +18,7 @@ from litex.soc.interconnect.csr import *
 from litepcie.common import *
 from litepcie.phy.common import *
 from litepcie.phy.axis_adapters import MAxisCQAdapter, MAxisRCAdapter, SAxisCCAdapter, SAxisRQAdapter
+from litepcie.phy.xilinx_tuser import cq_tuser_full_to_raw_expr, rc_tuser_full_to_raw_expr
 
 # USPPCIEPHY ---------------------------------------------------------------------------------------
 
@@ -214,7 +215,6 @@ class USPPCIEPHY(LiteXModule):
         # Hard IP ----------------------------------------------------------------------------------
 
         rq_tuser_width = 137 if pcie_data_width == 512 else 60
-        tkeep_width    = pcie_data_width // 8
 
         m_axis_rc_tuser = Signal(85)
         m_axis_cq_tuser = Signal(85)
@@ -324,21 +324,10 @@ class USPPCIEPHY(LiteXModule):
         self.comb += [
             msi_enable_sys.eq(cfg_interrupt_msi_enable_x4[0]),
         ]
-        if pcie_data_width == 512:
-            self.comb += [
-                m_axis_rc_tuser_raw.eq(Cat(m_axis_rc_tuser_full[0:tkeep_width], C(0, 85 - tkeep_width))),
-                m_axis_cq_tuser_raw.eq(Cat(
-                    m_axis_cq_tuser_full[0:80],
-                    C(0, 16),
-                    m_axis_cq_tuser_full[96],
-                    C(0, 159),
-                )),
-            ]
-        else:
-            self.comb += [
-                m_axis_rc_tuser_raw.eq(Cat(m_axis_rc_tuser_full, C(0, 10))),
-                m_axis_cq_tuser_raw.eq(Cat(m_axis_cq_tuser_full, C(0, 256 - 88))),
-            ]
+        self.comb += [
+            m_axis_rc_tuser_raw.eq(rc_tuser_full_to_raw_expr(m_axis_rc_tuser_full, pcie_data_width)),
+            m_axis_cq_tuser_raw.eq(cq_tuser_full_to_raw_expr(m_axis_cq_tuser_full, pcie_data_width)),
+        ]
         if self.mode == "Endpoint":
             self.comb += cfg_msi.ready.eq(cfg_interrupt_msi_sent)
 
