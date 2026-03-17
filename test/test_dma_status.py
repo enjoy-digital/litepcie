@@ -49,7 +49,7 @@ class TestDMAStatus(unittest.TestCase):
             ((value << 24) & 0xFF000000)
         )
 
-    def _run_status_update(self, data_width):
+    def _run_status_update(self, data_width, trigger_mode):
         status_base = 0x40
         external_words = [0x100 + i for i in range(8)]
         captured = {}
@@ -92,10 +92,22 @@ class TestDMAStatus(unittest.TestCase):
 
             yield from dut.status.address_lsb.write(status_base)
             yield from dut.status.address_msb.write(0)
-            yield from dut.status.control.write(0b0001) # enable=1, update=external
-            yield dut.status.external_update.eq(1)
-            yield
-            yield dut.status.external_update.eq(0)
+            yield from dut.status.control.write(1 | (trigger_mode << 4))
+
+            if trigger_mode == 0b00:
+                yield dut.status.external_update.eq(1)
+                yield
+                yield dut.status.external_update.eq(0)
+            elif trigger_mode == 0b01:
+                yield dut.writer.irq.eq(1)
+                yield
+                yield dut.writer.irq.eq(0)
+            elif trigger_mode == 0b10:
+                yield dut.reader.irq.eq(1)
+                yield
+                yield dut.reader.irq.eq(0)
+            else:
+                raise ValueError("Unsupported trigger mode")
 
             for _ in range(128):
                 yield
@@ -127,7 +139,7 @@ class TestDMAStatus(unittest.TestCase):
         self.assertEqual(memory[8:16], [self._swap32(0x100 + i) for i in range(8)])
 
     def test_status_256bit_emits_two_writes(self):
-        result = self._run_status_update(data_width=256)
+        result = self._run_status_update(data_width=256, trigger_mode=0b00)
         writes = result["writes"]
 
         self.assertEqual(len(writes), 2)
@@ -136,10 +148,26 @@ class TestDMAStatus(unittest.TestCase):
         self._assert_status_words(result["memory"])
 
     def test_status_512bit_emits_single_write(self):
-        result = self._run_status_update(data_width=512)
+        result = self._run_status_update(data_width=512, trigger_mode=0b00)
         writes = result["writes"]
 
         self.assertEqual(len(writes), 1)
         self.assertEqual(writes[0].length, 16)
         self.assertEqual(writes[0].address, 0x40)
+        self._assert_status_words(result["memory"])
+
+    def test_status_writer_irq_trigger_256bit(self):
+        result = self._run_status_update(data_width=256, trigger_mode=0b01)
+        writes = result["writes"]
+
+        self.assertEqual(len(writes), 2)
+        self.assertEqual([write.length for write in writes], [8, 8])
+        self._assert_status_words(result["memory"])
+
+    def test_status_reader_irq_trigger_512bit(self):
+        result = self._run_status_update(data_width=512, trigger_mode=0b10)
+        writes = result["writes"]
+
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0].length, 16)
         self._assert_status_words(result["memory"])
