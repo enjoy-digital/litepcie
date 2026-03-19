@@ -275,6 +275,7 @@ class LitePCIeDMAReader(LiteXModule):
         self.data_width = data_width or endpoint.phy.data_width
         # Stream Endpoint.
         self.source = stream.Endpoint(dma_layout(self.data_width))
+        self.progress_bytes = Signal(64)
 
         # Control.
         self._enable = CSRStorage(size=2, description="DMA Reader Control. Write ``1`` to enable DMA Reader.", reset=0 if with_table else 1)
@@ -401,6 +402,18 @@ class LitePCIeDMAReader(LiteXModule):
             self.irq.eq(~splitter.source.irq_disable)
         )
 
+        # Progress ---------------------------------------------------------------------------------
+        # Count bytes once a split read request has been issued on PCIe. This provides a safe
+        # frontier for software updates of host TX buffers without changing the descriptor-granular
+        # loop status semantics.
+        self.sync += [
+            If(~enable,
+                self.progress_bytes.eq(0)
+            ).Elif(splitter.source.valid & splitter.source.ready,
+                self.progress_bytes.eq(self.progress_bytes + splitter.source.length)
+            )
+        ]
+
 # LitePCIeDMAWriter --------------------------------------------------------------------------------
 
 class LitePCIeDMAWriter(LiteXModule):
@@ -422,6 +435,7 @@ class LitePCIeDMAWriter(LiteXModule):
         self.data_width = data_width or endpoint.phy.data_width
         # Stream Endpoint.
         self.sink = stream.Endpoint(dma_layout(self.data_width))
+        self.progress_bytes = Signal(64)
 
         # Control.
         self._enable = CSRStorage(size=2, description="DMA Writer Control. Write ``1`` to enable DMA Writer.", reset=0 if with_table else 1)
@@ -529,6 +543,17 @@ class LitePCIeDMAWriter(LiteXModule):
         self.comb += If(splitter.source.valid & splitter.source.ready & splitter.source.last,
             self.irq.eq(~splitter.source.irq_disable)
         )
+
+        # Progress ---------------------------------------------------------------------------------
+        # Count bytes once a split write request has been fully emitted on PCIe, which is the
+        # committed RX frontier visible to software.
+        self.sync += [
+            If(~enable,
+                self.progress_bytes.eq(0)
+            ).Elif(splitter.source.valid & splitter.source.ready & splitter.source.last,
+                self.progress_bytes.eq(self.progress_bytes + splitter.source.length)
+            )
+        ]
 
 # LitePCIeDMALoopback ------------------------------------------------------------------------------
 
