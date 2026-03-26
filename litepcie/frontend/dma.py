@@ -403,14 +403,18 @@ class LitePCIeDMAReader(LiteXModule):
         )
 
         # Progress ---------------------------------------------------------------------------------
-        # Count bytes once a split read request has been issued on PCIe. This provides a safe
-        # frontier for software updates of host TX buffers without changing the descriptor-granular
-        # loop status semantics.
+        # Track progress within the current DMA descriptor. Count bytes once a split read request
+        # has been issued on PCIe, which provides a safe frontier for software updates of host TX
+        # buffers while resetting progress at each descriptor boundary.
         self.sync += [
             If(~enable,
                 self.progress_bytes.eq(0)
             ).Elif(splitter.source.valid & splitter.source.ready,
-                self.progress_bytes.eq(self.progress_bytes + splitter.source.length)
+                If(splitter.source.first,
+                    self.progress_bytes.eq(splitter.source.length)
+                ).Else(
+                    self.progress_bytes.eq(self.progress_bytes + splitter.source.length)
+                )
             )
         ]
 
@@ -545,13 +549,18 @@ class LitePCIeDMAWriter(LiteXModule):
         )
 
         # Progress ---------------------------------------------------------------------------------
-        # Count bytes once a split write request has been fully emitted on PCIe, which is the
-        # committed RX frontier visible to software.
+        # Track progress within the current DMA descriptor. Count bytes once a split write request
+        # has been fully emitted on PCIe, which is the committed RX frontier visible to software,
+        # while resetting progress at each descriptor boundary.
         self.sync += [
             If(~enable,
                 self.progress_bytes.eq(0)
             ).Elif(splitter.source.valid & splitter.source.ready & splitter.source.last,
-                self.progress_bytes.eq(self.progress_bytes + splitter.source.length)
+                If(splitter.source.first,
+                    self.progress_bytes.eq(splitter.source.length)
+                ).Else(
+                    self.progress_bytes.eq(self.progress_bytes + splitter.source.length)
+                )
             )
         ]
 
