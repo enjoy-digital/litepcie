@@ -555,7 +555,7 @@ class LitePCIeDMAWriter(LiteXModule):
         self.sync += [
             If(~enable,
                 self.progress_bytes.eq(0)
-            ).Elif(splitter.source.valid & splitter.source.ready & splitter.source.last,
+            ).Elif(splitter.source.valid & splitter.source.ready,
                 If(splitter.source.first,
                     self.progress_bytes.eq(splitter.source.length)
                 ).Else(
@@ -897,15 +897,17 @@ class LitePCIeDMAStatus(LiteXModule):
 
         # Update Logic.
         # -------------
-        port   = endpoint.crossbar.get_master_port(write_only=True)
-        dwords = len(port.source.dat)//32
-        offset = Signal(4)
+        port            = endpoint.crossbar.get_master_port(write_only=True)
+        dwords          = len(port.source.dat)//32
+        offset          = Signal(4)
+        status_snapshot = Array([Signal(32) for _ in range(len(status))])
         assert len(status)%dwords == 0
 
         self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             If(self.control.fields.enable,
                 If(update,
+                    *[NextValue(status_snapshot[i], status[i]) for i in range(len(status))],
                     NextValue(offset, 0),
                     NextState("WORDS-WRITE")
                 )
@@ -935,7 +937,7 @@ class LitePCIeDMAStatus(LiteXModule):
             }[address_width]),
         ]
         for n in range(dwords):
-            self.sync += port.source.dat[32*n:32*(n+1)].eq(status[offset + n])
+            self.sync += port.source.dat[32*n:32*(n+1)].eq(status_snapshot[offset + n])
 
         fsm.act("WORDS-WRITE",
             port.source.valid.eq(1),
