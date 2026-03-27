@@ -1,17 +1,20 @@
-module sniffer_tap (
+module sniffer_tap #(
+    parameter DATA_W = 32,
+    parameter CTRL_W = 4
+) (
     (* mark_debug = "true" *)
-    input wire         rst_n_in,
+    input wire               rst_n_in,
     (* mark_debug = "true" *)
-    input wire         clk_in,
+    input wire               clk_in,
     (* mark_debug = "true" *)
-    input wire [15:0]  rx_data_in,
+    input wire [DATA_W-1:0]  rx_data_in,
     (* mark_debug = "true" *)
-    input wire [1:0]   rx_ctl_in,
+    input wire [CTRL_W-1:0]  rx_ctl_in,
 
-    output wire        rst_n_out,
-    output wire        clk_out,
-    output wire [15:0] rx_data_out,
-    output wire [1:0]  rx_ctl_out
+    output wire              rst_n_out,
+    output wire              clk_out,
+    output wire [DATA_W-1:0] rx_data_out,
+    output wire [CTRL_W-1:0] rx_ctl_out
 );
 
     assign rst_n_out   = rst_n_in;

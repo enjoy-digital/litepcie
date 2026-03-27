@@ -296,6 +296,37 @@ class RawDatapath(LiteXModule):
             self.source,
         )
 
+# Raw Lane Datapath --------------------------------------------------------------------------------
+
+class RawLaneDatapath(LiteXModule):
+    """Per-lane raw datapath kept in the sniffer clock domain."""
+    def __init__(self):
+        self.sink   = stream.Endpoint([("data", 16), ("ctrl", 2)])
+        self.source = stream.Endpoint([("data", 32), ("ctrl", 4)])
+
+        # # #
+
+        converter = stream.StrideConverter(
+            [("data", 16), ("ctrl", 2)],
+            [("data", 32), ("ctrl", 4)],
+            reverse=False)
+        converter = stream.BufferizeEndpoints({"sink": stream.DIR_SINK})(converter)
+        self.converter = converter
+
+        word_aligner = RawWordAligner()
+        word_aligner = stream.BufferizeEndpoints({"source": stream.DIR_SOURCE})(word_aligner)
+        self.word_aligner = word_aligner
+
+        self.descrambler = descrambler = RawDescrambler()
+
+        self.submodules += stream.Pipeline(
+            self.sink,
+            converter,
+            word_aligner,
+            descrambler,
+            self.source,
+        )
+
 # TLP Aligner --------------------------------------------------------------------------------------
 
 class TLPAligner(LiteXModule):
@@ -500,13 +531,215 @@ class TLPFilterFormater(LiteXModule):
             )
         )
 
+# Link Stream Packer -------------------------------------------------------------------------------
+
+class LinkStreamPacker(LiteXModule):
+    """Reconstruct the logical PCIe byte stream from independently aligned PIPE lanes."""
+    def __init__(self, nlanes):
+        assert nlanes in [1, 2, 4, 8, 16]
+
+        self.sinks  = [stream.Endpoint([("data", 32), ("ctrl", 4)]) for _ in range(nlanes)]
+        self.width  = max(64, 32*nlanes)
+        self.source = stream.Endpoint([("data", self.width), ("ctrl", self.width//8)])
+
+        # # #
+
+        beat_data  = Signal(32*nlanes)
+        beat_ctrl  = Signal(4*nlanes)
+        beat_valid = Signal()
+
+        for lane, sink in enumerate(self.sinks):
+            self.comb += sink.ready.eq(1)
+            for symbol in range(4):
+                dst = symbol*nlanes + lane
+                self.comb += [
+                    beat_data[8*dst:8*(dst + 1)].eq(sink.data[8*symbol:8*(symbol + 1)]),
+                    beat_ctrl[dst].eq(sink.ctrl[symbol]),
+                ]
+
+        beat_valid_expr = 1
+        for sink in self.sinks:
+            beat_valid_expr = beat_valid_expr & sink.valid
+        self.comb += beat_valid.eq(beat_valid_expr)
+
+        if self.width == 64 and nlanes == 1:
+            lower_data  = Signal(32)
+            lower_ctrl  = Signal(4)
+            lower_valid = Signal()
+
+            self.comb += [
+                self.source.data[ 0:32].eq(lower_data),
+                self.source.data[32:64].eq(beat_data),
+                self.source.ctrl[0:4].eq(lower_ctrl),
+                self.source.ctrl[4:8].eq(beat_ctrl),
+            ]
+
+            self.sync += [
+                If(self.source.valid & self.source.ready,
+                    self.source.valid.eq(0)
+                ),
+                If(beat_valid,
+                    If(lower_valid,
+                        self.source.valid.eq(1),
+                        lower_valid.eq(0)
+                    ).Else(
+                        lower_data.eq(beat_data),
+                        lower_ctrl.eq(beat_ctrl),
+                        lower_valid.eq(1)
+                    )
+                )
+            ]
+        else:
+            self.comb += [
+                self.source.valid.eq(beat_valid),
+                self.source.data.eq(beat_data),
+                self.source.ctrl.eq(beat_ctrl),
+            ]
+
+# PTM Packet Parser --------------------------------------------------------------------------------
+
+class PTMPacketParser(LiteXModule):
+    """Decode PTM Request/Response packets directly from the reconstructed PCIe byte stream."""
+    def __init__(self, data_width):
+        assert data_width in [64, 128, 256, 512]
+
+        self.sink   = sink   = stream.Endpoint([("data", data_width), ("ctrl", data_width//8)])
+        self.source = source = stream.Endpoint([("message_code", 8), ("master_time", 64), ("link_delay", 32)])
+
+        # # #
+
+        bytes_per_beat = data_width//8
+        max_packet_len = 20
+
+        beat_m1_data  = Signal(data_width,     reset_less=True)
+        beat_m1_ctrl  = Signal(bytes_per_beat, reset_less=True)
+        beat_m1_valid = Signal()
+        beat_m0_data  = Signal(data_width,     reset_less=True)
+        beat_m0_ctrl  = Signal(bytes_per_beat, reset_less=True)
+        beat_m0_valid = Signal()
+
+        source_valid_r = Signal()
+        message_code_r = Signal(8,  reset_less=True)
+        master_time_r  = Signal(64, reset_less=True)
+        link_delay_r   = Signal(32, reset_less=True)
+
+        packet_found       = Signal()
+        packet_message     = Signal(8)
+        packet_master_time = Signal(64)
+        packet_link_delay  = Signal(32)
+
+        self.comb += [
+            sink.ready.eq(1),
+            source.valid.eq(source_valid_r),
+            source.message_code.eq(message_code_r),
+            source.master_time.eq(master_time_r),
+            source.link_delay.eq(link_delay_r),
+        ]
+
+        data_bytes = []
+        ctrl_bits  = []
+        valid_bits = []
+        for beat_data, beat_ctrl, beat_valid in [
+            (beat_m1_data, beat_m1_ctrl, beat_m1_valid),
+            (beat_m0_data, beat_m0_ctrl, beat_m0_valid),
+            (sink.data,     sink.ctrl,   sink.valid),
+        ]:
+            for i in range(bytes_per_beat):
+                data_bytes.append(beat_data[8*i:8*(i + 1)])
+                ctrl_bits.append(beat_ctrl[i])
+                valid_bits.append(beat_valid)
+
+        candidates = []
+        for end in range(2*bytes_per_beat, 3*bytes_per_beat):
+            for start in reversed(range(max(0, end - max_packet_len - 1), end)):
+                packet_len = end - start - 1
+                if packet_len < 12:
+                    continue
+
+                cond = (
+                    valid_bits[start] &
+                    valid_bits[end]   &
+                    ctrl_bits[start]  &
+                    ctrl_bits[end]    &
+                    (data_bytes[start] == SHP.value) &
+                    (data_bytes[end]   == END.value)
+                )
+                for i in range(start + 1, end):
+                    cond = cond & valid_bits[i] & ~ctrl_bits[i]
+
+                fmt_type = data_bytes[start + 1]
+                cond = cond & (
+                    (fmt_type == fmt_type_dict["ptm_req"]) |
+                    (fmt_type == fmt_type_dict["ptm_res"])
+                )
+
+                message_code = data_bytes[start + 8]
+
+                if packet_len >= 16:
+                    master_time = Cat(*[
+                        data_bytes[start + 1 + byte]
+                        for byte in reversed(range(8, 16))
+                    ])
+                else:
+                    master_time = Constant(0, 64)
+
+                if packet_len >= 20:
+                    link_delay = Cat(*[
+                        data_bytes[start + 1 + byte]
+                        for byte in reversed(range(16, 20))
+                    ])
+                else:
+                    link_delay = Constant(0, 32)
+
+                candidates.append((cond, message_code, master_time, link_delay))
+
+        detect_stmts = [
+            packet_found.eq(0),
+            packet_message.eq(0),
+            packet_master_time.eq(0),
+            packet_link_delay.eq(0),
+        ]
+        for cond, message_code, master_time, link_delay in reversed(candidates):
+            detect_stmts = [
+                If(cond,
+                    packet_found.eq(1),
+                    packet_message.eq(message_code),
+                    packet_master_time.eq(master_time),
+                    packet_link_delay.eq(link_delay),
+                ).Else(
+                    *detect_stmts
+                )
+            ]
+        self.comb += detect_stmts
+
+        self.sync += [
+            If(source_valid_r & source.ready,
+                source_valid_r.eq(0)
+            ),
+            If(sink.valid,
+                beat_m1_data.eq(beat_m0_data),
+                beat_m1_ctrl.eq(beat_m0_ctrl),
+                beat_m1_valid.eq(beat_m0_valid),
+                beat_m0_data.eq(sink.data),
+                beat_m0_ctrl.eq(sink.ctrl),
+                beat_m0_valid.eq(1),
+                If(packet_found,
+                    source_valid_r.eq(1),
+                    message_code_r.eq(packet_message),
+                    master_time_r.eq(packet_master_time),
+                    link_delay_r.eq(packet_link_delay),
+                )
+            )
+        ]
+
 # PCIe PTM Sniffer ---------------------------------------------------------------------------------
 
 class PCIePTMSniffer(LiteXModule):
-    def __init__(self, rx_rst_n, rx_clk, rx_data, rx_ctrl):
+    def __init__(self, rx_rst_n, rx_clk, rx_data, rx_ctrl, nlanes=1):
         self.source = source = stream.Endpoint([("message_code", 8), ("master_time", 64), ("link_delay", 32)])
-        assert len(rx_data) == 16
-        assert len(rx_ctrl) == 2
+        assert nlanes in [1, 2, 4, 8, 16]
+        assert len(rx_data) == 32*nlanes
+        assert len(rx_ctrl) == 4*nlanes
 
         # # #
 
@@ -515,49 +748,35 @@ class PCIePTMSniffer(LiteXModule):
         self.comb += self.cd_sniffer.clk.eq(rx_clk)
         self.comb += self.cd_sniffer.rst.eq(~rx_rst_n)
 
-        # Raw Sniffing.
-        self.raw_datapath    = ClockDomainsRenamer("sniffer")(RawDatapath(phy_dw=16))
-        self.raw_descrambler = ClockDomainsRenamer("sniffer")(RawDescrambler())
-        self.comb += [
-            self.raw_datapath.sink.valid.eq(1),
-            self.raw_datapath.sink.data.eq(rx_data),
-            self.raw_datapath.sink.ctrl.eq(rx_ctrl),
-            self.raw_datapath.source.connect(self.raw_descrambler.sink),
-        ]
+        # Per-lane raw sniffing.
+        lane_datapaths = []
+        for lane in range(nlanes):
+            datapath = ClockDomainsRenamer("sniffer")(RawLaneDatapath())
+            lane_datapaths.append(datapath)
+            self.submodules += datapath
+            setattr(self, f"lane_datapath{lane}", datapath)
+            self.comb += [
+                datapath.sink.valid.eq(1),
+                datapath.sink.data.eq(rx_data[32*lane:32*lane + 16]),
+                datapath.sink.ctrl.eq(rx_ctrl[ 4*lane: 4*lane + 2]),
+            ]
 
-        # TLP Sniffing.
-        self.tlp_aligner         = ClockDomainsRenamer("sniffer")(TLPAligner())
-        self.tlp_endianness_swap = ClockDomainsRenamer("sniffer")(TLPEndiannessSwap())
-        self.tlp_filter_formater = ClockDomainsRenamer("sniffer")(TLPFilterFormater())
+        # Reconstruct the logical link byte stream and decode PTM packets directly from it.
+        self.link_stream = link_stream = ClockDomainsRenamer("sniffer")(LinkStreamPacker(nlanes))
+        self.ptm_parser  = ptm_parser  = ClockDomainsRenamer("sniffer")(PTMPacketParser(link_stream.width))
+        self.submodules += link_stream, ptm_parser
+        for lane, datapath in enumerate(lane_datapaths):
+            self.comb += datapath.source.connect(link_stream.sinks[lane])
+        self.comb += link_stream.source.connect(ptm_parser.sink)
 
-        self.submodules += stream.Pipeline(
-            self.raw_descrambler,
-            self.tlp_aligner,
-            self.tlp_endianness_swap,
-            self.tlp_filter_formater,
-        )
-
-        # TLP Depacketizer. FIXME: Direct inject TLPs in LitePCIe through an Arbiter.
-        self.tlp_depacketizer = ClockDomainsRenamer("sniffer")(LitePCIeTLPDepacketizer(
-            data_width   = 64,
-            endianness   = "big",
-            address_mask = 0,
-            capabilities = ["PTM"],
-        ))
-        self.comb += self.tlp_filter_formater.source.connect(self.tlp_depacketizer.sink)
-
-        # TLP CDC.
+        # PTM CDC.
         self.cdc = cdc = stream.ClockDomainCrossing(
             layout  = self.source.description,
             cd_from = "sniffer",
             cd_to   = "sys",
         )
         self.comb += [
-            self.tlp_depacketizer.ptm_source.connect(cdc.sink, keep={"valid", "ready", "master_time"}),
-            cdc.sink.message_code.eq(self.tlp_depacketizer.ptm_source.message_code),
-            cdc.sink.master_time[ 0:32].eq(self.tlp_depacketizer.ptm_source.master_time[32:64]),
-            cdc.sink.master_time[32:64].eq(self.tlp_depacketizer.ptm_source.master_time[ 0:32]),
-            cdc.sink.link_delay.eq(reverse_bytes(self.tlp_depacketizer.ptm_source.dat[32:64])),
+            ptm_parser.source.connect(cdc.sink),
             cdc.source.connect(self.source)
         ]
 

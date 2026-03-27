@@ -418,22 +418,26 @@ class LitePCIeCore(SoCMini):
 
             # Sniffer Signals.
             # ----------------
-            sniffer_rst_n   = Signal()
-            sniffer_clk     = Signal()
-            sniffer_rx_data = Signal(16)
-            sniffer_rx_ctl  = Signal(2)
+            sniffer_rst_n     = Signal()
+            sniffer_clk       = Signal()
+            sniffer_rx_data_w = 32*core_config["phy_lanes"]
+            sniffer_rx_ctl_w  =  4*core_config["phy_lanes"]
+            sniffer_rx_data   = Signal(sniffer_rx_data_w)
+            sniffer_rx_ctl    = Signal(sniffer_rx_ctl_w)
 
             # Sniffer Tap.
             # ------------
-            rx_data = Signal(16)
-            rx_ctl  = Signal(2)
+            rx_data = Signal(sniffer_rx_data_w)
+            rx_ctl  = Signal(sniffer_rx_ctl_w)
             self.sync.pclk += rx_data.eq(rx_data + 1)
             self.sync.pclk += rx_ctl.eq(rx_ctl + 1)
             self.specials += Instance("sniffer_tap",
+                p_DATA_W      = sniffer_rx_data_w,
+                p_CTRL_W      = sniffer_rx_ctl_w,
                 i_rst_n_in    = 1,
-                i_clk_in     = ClockSignal("pclk"),
-                i_rx_data_in = rx_data, # /!\ Fake, will be re-connected post-synthesis /!\.
-                i_rx_ctl_in  = rx_ctl,  # /!\ Fake, will be re-connected post-synthesis /!\.
+                i_clk_in      = ClockSignal("pclk"),
+                i_rx_data_in  = rx_data, # /!\ Fake, will be re-connected post-synthesis /!\.
+                i_rx_ctl_in   = rx_ctl,  # /!\ Fake, will be re-connected post-synthesis /!\.
 
                 o_rst_n_out   = sniffer_rst_n,
                 o_clk_out     = sniffer_clk,
@@ -448,18 +452,19 @@ class LitePCIeCore(SoCMini):
                 rx_clk   = sniffer_clk,
                 rx_data  = sniffer_rx_data,
                 rx_ctrl  = sniffer_rx_ctl,
+                nlanes   = core_config["phy_lanes"],
             )
             self.pcie_ptm_sniffer.add_sources(platform)
 
             # Sniffer Post-Synthesis connections.
             # -----------------------------------
             pcie_ptm_sniffer_connections = []
-            for n in range(2):
+            for n in range(sniffer_rx_ctl_w):
                 pcie_ptm_sniffer_connections.append((
                     f"pcie_s7/inst/inst/gt_top_i/gt_rx_data_k_wire_filter[{n}]", # Src.
                     f"pcie_ptm_sniffer_tap/rx_ctl_in[{n}]",                      # Dst.
                 ))
-            for n in range(16):
+            for n in range(sniffer_rx_data_w):
                 pcie_ptm_sniffer_connections.append((
                     f"pcie_s7/inst/inst/gt_top_i/gt_rx_data_wire_filter[{n}]", # Src.
                     f"pcie_ptm_sniffer_tap/rx_data_in[{n}]",                   # Dst.
