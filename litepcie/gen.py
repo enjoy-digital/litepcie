@@ -212,10 +212,14 @@ class LitePCIeCore(SoCMini):
             self.bus.add_master(name="ctrl", master=axi)
 
         # PCIe PHY ---------------------------------------------------------------------------------
-        self.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
+        pcie_phy_kwargs = dict(
             pcie_data_width = core_config.get("phy_pcie_data_width", 64),
             data_width      = core_config["phy_data_width"],
-            bar0_size       = core_config["phy_bar0_size"])
+            bar0_size       = core_config["phy_bar0_size"],
+        )
+        if core_config["phy"] in [S7PCIEPHY, USPCIEPHY, USPPCIEPHY]:
+            pcie_phy_kwargs["with_ptm"] = core_config.get("ptm", False)
+        self.pcie_phy = core_config["phy"](platform, platform.request("pcie"), **pcie_phy_kwargs)
 
         # PCIe Endpoint ----------------------------------------------------------------------------
         self.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
@@ -420,39 +424,48 @@ class LitePCIeCore(SoCMini):
             # ----------------
             sniffer_rst_n     = Signal()
             sniffer_clk       = Signal()
-            sniffer_rx_data_w = 32*core_config["phy_lanes"]
-            sniffer_rx_ctl_w  =  4*core_config["phy_lanes"]
+            sniffer_rx_data_w = self.pcie_phy.ptm_sniffer_lane_data_width*core_config["phy_lanes"]
+            sniffer_rx_ctl_w  = 2*core_config["phy_lanes"]
+            sniffer_rx_vld_w  = core_config["phy_lanes"]
             sniffer_rx_data   = Signal(sniffer_rx_data_w)
             sniffer_rx_ctl    = Signal(sniffer_rx_ctl_w)
+            sniffer_rx_valid  = Signal(sniffer_rx_vld_w)
 
             # Sniffer Tap.
             # ------------
-            rx_data = Signal(sniffer_rx_data_w)
-            rx_ctl  = Signal(sniffer_rx_ctl_w)
+            rx_data  = Signal(sniffer_rx_data_w)
+            rx_ctl   = Signal(sniffer_rx_ctl_w)
+            rx_valid = Signal(sniffer_rx_vld_w, reset=(2**sniffer_rx_vld_w - 1))
             self.sync.pclk += rx_data.eq(rx_data + 1)
             self.sync.pclk += rx_ctl.eq(rx_ctl + 1)
             self.specials += Instance("sniffer_tap",
-                p_DATA_W      = sniffer_rx_data_w,
-                p_CTRL_W      = sniffer_rx_ctl_w,
-                i_rst_n_in    = 1,
-                i_clk_in      = ClockSignal("pclk"),
-                i_rx_data_in  = rx_data, # /!\ Fake, will be re-connected post-synthesis /!\.
-                i_rx_ctl_in   = rx_ctl,  # /!\ Fake, will be re-connected post-synthesis /!\.
+                p_DATA_W       = sniffer_rx_data_w,
+                p_CTRL_W       = sniffer_rx_ctl_w,
+                p_VALID_W      = sniffer_rx_vld_w,
+                i_rst_n_in     = 1,
+                i_clk_in       = ClockSignal("pclk"),
+                i_rx_data_in   = rx_data,  # /!\ Fake, will be re-connected post-synthesis /!\.
+                i_rx_ctl_in    = rx_ctl,   # /!\ Fake, will be re-connected post-synthesis /!\.
+                i_rx_valid_in  = rx_valid,
 
-                o_rst_n_out   = sniffer_rst_n,
-                o_clk_out     = sniffer_clk,
-                o_rx_data_out = sniffer_rx_data,
-                o_rx_ctl_out  = sniffer_rx_ctl,
+                o_rst_n_out    = sniffer_rst_n,
+                o_clk_out      = sniffer_clk,
+                o_rx_data_out  = sniffer_rx_data,
+                o_rx_ctl_out   = sniffer_rx_ctl,
+                o_rx_valid_out = sniffer_rx_valid,
             )
 
             # Sniffer.
             # --------
             self.pcie_ptm_sniffer = PCIePTMSniffer(
-                rx_rst_n = sniffer_rst_n,
-                rx_clk   = sniffer_clk,
-                rx_data  = sniffer_rx_data,
-                rx_ctrl  = sniffer_rx_ctl,
-                nlanes   = core_config["phy_lanes"],
+                rx_rst_n        = sniffer_rst_n,
+                rx_clk          = sniffer_clk,
+                rx_data         = sniffer_rx_data,
+                rx_ctrl         = sniffer_rx_ctl,
+                rx_valid        = sniffer_rx_valid,
+                lane_reverse    = self.pcie_phy.ptm_sniffer_lane_reversal,
+                nlanes          = core_config["phy_lanes"],
+                lane_data_width = self.pcie_phy.ptm_sniffer_lane_data_width,
             )
             self.pcie_ptm_sniffer.add_sources(platform)
 
@@ -461,14 +474,20 @@ class LitePCIeCore(SoCMini):
             pcie_ptm_sniffer_connections = []
             for n in range(sniffer_rx_ctl_w):
                 pcie_ptm_sniffer_connections.append((
-                    f"pcie_s7/inst/inst/gt_top_i/gt_rx_data_k_wire_filter[{n}]", # Src.
-                    f"pcie_ptm_sniffer_tap/rx_ctl_in[{n}]",                      # Dst.
+                    self.pcie_phy.ptm_sniffer_ctrl_pattern.format(n=n),         # Src.
+                    f"pcie_ptm_sniffer_tap/rx_ctl_in[{n}]",                    # Dst.
                 ))
             for n in range(sniffer_rx_data_w):
                 pcie_ptm_sniffer_connections.append((
-                    f"pcie_s7/inst/inst/gt_top_i/gt_rx_data_wire_filter[{n}]", # Src.
+                    self.pcie_phy.ptm_sniffer_data_pattern.format(n=n),         # Src.
                     f"pcie_ptm_sniffer_tap/rx_data_in[{n}]",                   # Dst.
                 ))
+            if self.pcie_phy.ptm_sniffer_valid_pattern is not None:
+                for n in range(sniffer_rx_vld_w):
+                    pcie_ptm_sniffer_connections.append((
+                        self.pcie_phy.ptm_sniffer_valid_pattern.format(n=n),    # Src.
+                        f"pcie_ptm_sniffer_tap/rx_valid_in[{n}]",              # Dst.
+                    ))
             for _from, _to in pcie_ptm_sniffer_connections:
                 platform.toolchain.pre_optimize_commands.append(f"set pin_driver [get_nets -of [get_pins {_to}]]")
                 platform.toolchain.pre_optimize_commands.append(f"disconnect_net -net $pin_driver -objects {_to}")

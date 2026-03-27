@@ -28,6 +28,7 @@ class USPCIEPHY(LiteXModule):
         # PCIe hardblock parameters.
         pcie_data_width = None,
         bar0_size       = 0x100000,
+        with_ptm        = False,
         mode            = "Endpoint",
     ):
         # Streams ----------------------------------------------------------------------------------
@@ -79,6 +80,12 @@ class USPCIEPHY(LiteXModule):
         self.platform         = platform
         self.data_width       = data_width
         self.pcie_data_width  = pcie_data_width
+        self.with_ptm         = with_ptm
+        self.ptm_sniffer_lane_data_width = 32
+        self.ptm_sniffer_data_pattern    = "pcie_us/inst/pipe_rx_data[{n}]"
+        self.ptm_sniffer_ctrl_pattern    = "pcie_us/inst/pipe_rx_char_is_k[{n}]"
+        self.ptm_sniffer_valid_pattern   = "pcie_us/inst/pipe_rx_data_valid[{n}]"
+        self.ptm_sniffer_lane_reversal   = Signal(reset=0)
 
         self.id               = Signal(16)
         self.bar0_size        = bar0_size
@@ -790,6 +797,9 @@ class USPCIEPHY(LiteXModule):
 
             if class_code is not None:
                 config["PF0_CLASS_CODE"] = class_code
+
+            if self.with_ptm:
+                config["EXTENDED_CFG_EXTEND_INTERFACE_ENABLE"] = True
 
             # User/Custom config.
             config.update(self.config)

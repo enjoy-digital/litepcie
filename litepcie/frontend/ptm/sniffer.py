@@ -540,27 +540,39 @@ class LinkStreamPacker(LiteXModule):
 
         self.sinks  = [stream.Endpoint([("data", 32), ("ctrl", 4)]) for _ in range(nlanes)]
         self.width  = max(64, 32*nlanes)
+        self.lane_reverse = Signal()
         self.source = stream.Endpoint([("data", self.width), ("ctrl", self.width//8)])
 
         # # #
 
-        beat_data  = Signal(32*nlanes)
-        beat_ctrl  = Signal(4*nlanes)
+        beat_data         = Signal(32*nlanes)
+        beat_ctrl         = Signal(4*nlanes)
+        beat_data_reverse = Signal(32*nlanes)
+        beat_ctrl_reverse = Signal(4*nlanes)
+        beat_data_muxed   = Signal(32*nlanes)
+        beat_ctrl_muxed   = Signal(4*nlanes)
         beat_valid = Signal()
 
         for lane, sink in enumerate(self.sinks):
             self.comb += sink.ready.eq(1)
             for symbol in range(4):
                 dst = symbol*nlanes + lane
+                reverse_dst = symbol*nlanes + (nlanes - 1 - lane)
                 self.comb += [
                     beat_data[8*dst:8*(dst + 1)].eq(sink.data[8*symbol:8*(symbol + 1)]),
                     beat_ctrl[dst].eq(sink.ctrl[symbol]),
+                    beat_data_reverse[8*reverse_dst:8*(reverse_dst + 1)].eq(sink.data[8*symbol:8*(symbol + 1)]),
+                    beat_ctrl_reverse[reverse_dst].eq(sink.ctrl[symbol]),
                 ]
 
         beat_valid_expr = 1
         for sink in self.sinks:
             beat_valid_expr = beat_valid_expr & sink.valid
         self.comb += beat_valid.eq(beat_valid_expr)
+        self.comb += [
+            beat_data_muxed.eq(Mux(self.lane_reverse, beat_data_reverse, beat_data)),
+            beat_ctrl_muxed.eq(Mux(self.lane_reverse, beat_ctrl_reverse, beat_ctrl)),
+        ]
 
         if self.width == 64 and nlanes == 1:
             lower_data  = Signal(32)
@@ -569,9 +581,9 @@ class LinkStreamPacker(LiteXModule):
 
             self.comb += [
                 self.source.data[ 0:32].eq(lower_data),
-                self.source.data[32:64].eq(beat_data),
+                self.source.data[32:64].eq(beat_data_muxed),
                 self.source.ctrl[0:4].eq(lower_ctrl),
-                self.source.ctrl[4:8].eq(beat_ctrl),
+                self.source.ctrl[4:8].eq(beat_ctrl_muxed),
             ]
 
             self.sync += [
@@ -583,8 +595,8 @@ class LinkStreamPacker(LiteXModule):
                         self.source.valid.eq(1),
                         lower_valid.eq(0)
                     ).Else(
-                        lower_data.eq(beat_data),
-                        lower_ctrl.eq(beat_ctrl),
+                        lower_data.eq(beat_data_muxed),
+                        lower_ctrl.eq(beat_ctrl_muxed),
                         lower_valid.eq(1)
                     )
                 )
@@ -592,8 +604,8 @@ class LinkStreamPacker(LiteXModule):
         else:
             self.comb += [
                 self.source.valid.eq(beat_valid),
-                self.source.data.eq(beat_data),
-                self.source.ctrl.eq(beat_ctrl),
+                self.source.data.eq(beat_data_muxed),
+                self.source.ctrl.eq(beat_ctrl_muxed),
             ]
 
 # PTM Packet Parser --------------------------------------------------------------------------------
@@ -735,13 +747,19 @@ class PTMPacketParser(LiteXModule):
 # PCIe PTM Sniffer ---------------------------------------------------------------------------------
 
 class PCIePTMSniffer(LiteXModule):
-    def __init__(self, rx_rst_n, rx_clk, rx_data, rx_ctrl, nlanes=1):
+    def __init__(self, rx_rst_n, rx_clk, rx_data, rx_ctrl, rx_valid=None, lane_reverse=0, nlanes=1, lane_data_width=32):
         self.source = source = stream.Endpoint([("message_code", 8), ("master_time", 64), ("link_delay", 32)])
         assert nlanes in [1, 2, 4, 8, 16]
-        assert len(rx_data) == 32*nlanes
-        assert len(rx_ctrl) == 4*nlanes
+        assert lane_data_width in [16, 32]
+        assert len(rx_data) == lane_data_width*nlanes
+        assert len(rx_ctrl) == 2*nlanes
+        if rx_valid is not None:
+            assert len(rx_valid) == nlanes
 
         # # #
+
+        if rx_valid is None:
+            rx_valid = Constant(2**nlanes - 1, nlanes)
 
         # Clocking.
         self.cd_sniffer = ClockDomain()
@@ -756,9 +774,9 @@ class PCIePTMSniffer(LiteXModule):
             self.submodules += datapath
             setattr(self, f"lane_datapath{lane}", datapath)
             self.comb += [
-                datapath.sink.valid.eq(1),
-                datapath.sink.data.eq(rx_data[32*lane:32*lane + 16]),
-                datapath.sink.ctrl.eq(rx_ctrl[ 4*lane: 4*lane + 2]),
+                datapath.sink.valid.eq(rx_valid[lane]),
+                datapath.sink.data.eq(rx_data[lane_data_width*lane:lane_data_width*lane + 16]),
+                datapath.sink.ctrl.eq(rx_ctrl[2*lane:2*lane + 2]),
             ]
 
         # Reconstruct the logical link byte stream and decode PTM packets directly from it.
@@ -767,7 +785,10 @@ class PCIePTMSniffer(LiteXModule):
         self.submodules += link_stream, ptm_parser
         for lane, datapath in enumerate(lane_datapaths):
             self.comb += datapath.source.connect(link_stream.sinks[lane])
-        self.comb += link_stream.source.connect(ptm_parser.sink)
+        self.comb += [
+            link_stream.lane_reverse.eq(lane_reverse),
+            link_stream.source.connect(ptm_parser.sink),
+        ]
 
         # PTM CDC.
         self.cdc = cdc = stream.ClockDomainCrossing(

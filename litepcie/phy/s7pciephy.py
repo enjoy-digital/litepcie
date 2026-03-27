@@ -80,6 +80,11 @@ class S7PCIEPHY(LiteXModule):
         self.refclk_freq      = refclk_freq
         self.msi_type         = msi_type
         self.with_ptm         = with_ptm
+        self.ptm_sniffer_lane_data_width = 32
+        self.ptm_sniffer_data_pattern    = "pcie_s7/inst/inst/gt_top_i/gt_rx_data_wire_filter[{n}]"
+        self.ptm_sniffer_ctrl_pattern    = "pcie_s7/inst/inst/gt_top_i/gt_rx_data_k_wire_filter[{n}]"
+        self.ptm_sniffer_valid_pattern   = None
+        self.ptm_sniffer_lane_reversal   = Signal()
 
         self.id               = Signal(16, reset_less=True)
         self.bar0_size        = bar0_size
@@ -441,7 +446,7 @@ class S7PCIEPHY(LiteXModule):
             o_pl_sel_lnk_rate                            = self.add_resync(self._link_status.fields.rate,  "sys"),
             o_pl_sel_lnk_width                           = self.add_resync(self._link_status.fields.width, "sys"),
             o_pl_ltssm_state                             = self.add_resync(self._link_status.fields.ltssm, "sys"),
-            o_pl_lane_reversal_mode                      = Open(),
+            o_pl_lane_reversal_mode                      = self.ptm_sniffer_lane_reversal,
             o_pl_phy_lnk_up                              = Open(),
             o_pl_tx_pm_state                             = Open(),
             o_pl_rx_pm_state                             = Open(),
