@@ -909,7 +909,7 @@ class LitePCIeDMAStatus(LiteXModule):
                 If(update,
                     *[NextValue(status_snapshot[i], status[i]) for i in range(len(status))],
                     NextValue(offset, 0),
-                    NextState("WORDS-WRITE")
+                    NextState("WORDS-DELAY")
                 )
             )
         )
@@ -924,7 +924,7 @@ class LitePCIeDMAStatus(LiteXModule):
         fsm.act("WORDS-DELAY",
             NextState("WORDS-WRITE")
         )
-        self.sync += [
+        self.comb += [
             port.source.channel.eq(port.channel),
             port.source.first.eq(1),
             port.source.last.eq(1),
@@ -937,7 +937,7 @@ class LitePCIeDMAStatus(LiteXModule):
             }[address_width]),
         ]
         for n in range(dwords):
-            self.sync += port.source.dat[32*n:32*(n+1)].eq(status_snapshot[offset + n])
+            self.comb += port.source.dat[32*n:32*(n+1)].eq(status_snapshot[offset + n])
 
         fsm.act("WORDS-WRITE",
             port.source.valid.eq(1),
