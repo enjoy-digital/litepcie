@@ -570,6 +570,16 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 ndwords    = 4
             )
 
+            # Register raw requests before arbitration to break the long
+            # request-header timing cone into the shared packetizer buffer.
+            tlp_raw_req_d   = stream.Endpoint(tlp_raw_layout(data_width))
+            tlp_raw_req_buf = stream.Buffer(tlp_raw_layout(data_width))
+            self.submodules += tlp_raw_req_buf
+            self.comb += [
+                tlp_raw_req.connect(tlp_raw_req_buf.sink),
+                tlp_raw_req_buf.source.connect(tlp_raw_req_d),
+            ]
+
         # Format and Encode TLP Completions --------------------------------------------------------
 
         if "COMPLETION" in capabilities:
@@ -752,7 +762,7 @@ class LitePCIeTLPPacketizer(LiteXModule):
 
         tlp_raws = []
         if "REQUEST" in capabilities:
-            tlp_raws.append(tlp_raw_req)
+            tlp_raws.append(tlp_raw_req_d)
         if "COMPLETION" in capabilities:
             tlp_raws.append(tlp_raw_cmp)
         if "CONFIGURATION" in capabilities:
