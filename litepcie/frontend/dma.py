@@ -489,9 +489,11 @@ class LitePCIeDMAWriter(LiteXModule):
 
         # FSM --------------------------------------------------------------------------------------
         req_count = Signal.like(splitter.source.length)
-        request_words = Signal(24)
+        request_words    = Signal(24)
+        request_words_m1 = Signal(24) # Registered (request_words - 1) to improve timing.
         self.fsm = fsm = FSM(reset_state="IDLE")
         self.comb += request_words.eq(dma_words_for_bytes(splitter.source.length, endpoint.phy.data_width))
+        self.sync += request_words_m1.eq(request_words - 1)
         fsm.act("IDLE",
             # Reset Request Count.
             NextValue(req_count, 0),
@@ -511,7 +513,7 @@ class LitePCIeDMAWriter(LiteXModule):
             port.source.channel.eq(port.channel),
             port.source.user_id.eq(splitter.source.user_id),
             port.source.first.eq(req_count == 0),
-            port.source.last.eq(req_count == (request_words - 1)),
+            port.source.last.eq(req_count == request_words_m1),
             port.source.we.eq(1),
             port.source.adr.eq(splitter.source.address),
             port.source.req_id.eq(endpoint.phy.id),
@@ -900,8 +902,14 @@ class LitePCIeDMAStatus(LiteXModule):
         port            = endpoint.crossbar.get_master_port(write_only=True)
         dwords          = len(port.source.dat)//32
         offset          = Signal(4)
+        address         = Signal(address_width) # Registered address to improve timing.
         status_snapshot = Array([Signal(32) for _ in range(len(status))])
         assert len(status)%dwords == 0
+
+        base_address = {
+            32: self.address_lsb.storage,
+            64: (self.address_msb.storage << 32) | self.address_lsb.storage,
+        }[address_width]
 
         self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
@@ -909,12 +917,14 @@ class LitePCIeDMAStatus(LiteXModule):
                 If(update,
                     *[NextValue(status_snapshot[i], status[i]) for i in range(len(status))],
                     NextValue(offset, 0),
+                    NextValue(address, base_address),
                     NextState("WORDS-DELAY")
                 )
             )
         )
         fsm.act("WORDS-UPDATE",
             NextValue(offset, offset + dwords),
+            NextValue(address, address + dwords * 4),
             If(offset == (len(status) - dwords),
                 NextState("IDLE")
             ).Else(
@@ -931,10 +941,7 @@ class LitePCIeDMAStatus(LiteXModule):
             port.source.req_id.eq(endpoint.phy.id),
             port.source.tag.eq(0),
             port.source.len.eq(dwords),
-            port.source.adr.eq({
-                32:              (0x0000_0000 << 32) + self.address_lsb.storage + (offset << 2),
-                64: (self.address_msb.storage << 32) + self.address_lsb.storage + (offset << 2),
-            }[address_width]),
+            port.source.adr.eq(address),
         ]
         for n in range(dwords):
             self.comb += port.source.dat[32*n:32*(n+1)].eq(status_snapshot[offset + n])
