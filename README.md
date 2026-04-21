@@ -58,7 +58,6 @@ LitePCIe is already used in commercial and open-source designs:
 - SDR MIMO 2x2 board: https://www.amarisoft.com/products-lte-ue-ots-sdr-pcie/#sdr
 - SDR MIMO 4x4 board: http://www.enjoy-digital.fr/experience/pcie_ad937x.jpg
 - SDR CPRI board: http://www.enjoy-digital.fr/experience/pcie_sfp.jpg
-- PCIe TLP sniffer/injector: https://ramtin-amin.fr/#nvmedma
 - and others commercial designs...
 
 [> Possible improvements
