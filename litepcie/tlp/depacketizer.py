@@ -120,6 +120,76 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
             )
         )
 
+# LitePCIeTLPHeaderExtracter32b --------------------------------------------------------------------
+
+class LitePCIeTLPHeaderExtracter32b(LiteXModule):
+    def __init__(self):
+        self.sink   = sink   = stream.Endpoint(phy_layout(32))
+        self.source = source = stream.Endpoint(tlp_raw_layout(32))
+
+        # # #
+
+        first = Signal()
+        fmt = Signal(2)
+
+        self.comb += [
+            source.first.eq(first),
+            source.dat.eq(sink.dat),
+            fmt.eq(source.header[29:31]),
+        ]
+
+        self.fsm = fsm = FSM(reset_state="HEADER_0")
+        fsm.act("HEADER_0",
+            NextValue(first, 1),
+            sink.ready.eq(1),
+            If(sink.valid,
+                NextValue(source.header[32*0:32*1], sink.dat),
+                NextState("HEADER_1"),
+            )
+        )
+        fsm.act("HEADER_1",
+            sink.ready.eq(1),
+            If(sink.valid,
+                NextValue(source.header[32*1:32*2], sink.dat),
+                NextState("HEADER_2"),
+            )
+        )
+        fsm.act("HEADER_2",
+            sink.ready.eq(1),
+            If(sink.valid,
+                NextValue(source.header[32*2:32*3], sink.dat),
+                NextState("HEADER_3"),
+                If(fmt == 0, NextState("NO_DATA")),
+                If(fmt == 2, NextState("DATA")),
+            )
+        )
+        fsm.act("HEADER_3",
+            sink.ready.eq(1),
+            If(sink.valid,
+                NextValue(source.header[32*3:32*4], sink.dat),
+                NextState("DATA"),
+                If(fmt == 1, NextState("NO_DATA")),
+            )
+        )
+        fsm.act("DATA",
+            sink.ready.eq(source.ready),
+            source.valid.eq(sink.valid),
+            source.last.eq(sink.last),
+            source.be.eq(sink.be),
+            If(source.valid & source.ready,
+                NextValue(first, 0),
+                If(source.last, NextState("HEADER_0")),
+            )
+        )
+        fsm.act("NO_DATA",
+            source.valid.eq(1),
+            source.last.eq(1),
+            source.be.eq(0),
+            If(source.ready,
+                NextState("HEADER_0"),
+            )
+        )
+
 # LitePCIeTLPHeaderExtracter64b --------------------------------------------------------------------
 
 class LitePCIeTLPHeaderExtracter64b(LiteXModule):
@@ -234,6 +304,7 @@ class LitePCIeTLPDepacketizer(LiteXModule):
         # Extract RAW Header from Sink -------------------------------------------------------------
 
         header_extracter_cls = {
+             32 : LitePCIeTLPHeaderExtracter32b,
              64 : LitePCIeTLPHeaderExtracter64b,
             128 : LitePCIeTLPHeaderExtracter128b,
             256 : LitePCIeTLPHeaderExtracter256b,

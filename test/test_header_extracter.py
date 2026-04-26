@@ -16,6 +16,7 @@ from litex.soc.interconnect import stream
 from litepcie.tlp.common import fmt_dict, tlp_raw_layout, phy_layout
 
 from litepcie.tlp.depacketizer import (
+    LitePCIeTLPHeaderExtracter32b,
     LitePCIeTLPHeaderExtracter64b,
     LitePCIeTLPHeaderExtracter128b,
     LitePCIeTLPHeaderExtracter256b,
@@ -56,15 +57,11 @@ def _fmt_for_header_dws(header_dws):
 def _model_phy_packet_beats(data_width, header_dws, header_4dws, payload_dws, payload_be_nibbles):
     """
     Build PHY beats that look like a packet *after* header insertion (what the extracter consumes).
-
-    The current RTL header extracters always capture 4 header DWs from the PHY stream.
-    So even when we conceptually test "3DW", PHY still carries a 4DW header with DW3=0.
     """
     n = _dws_per_beat(data_width)
 
-    # PHY always has 4 header DWs for the extracter.
-    hdr_stream = list(header_4dws[:header_dws]) + [0x00000000] * (4 - header_dws)
-    hdr_be     = [0xF] * 4
+    hdr_stream = list(header_4dws[:header_dws])
+    hdr_be     = [0xF] * header_dws
 
     in_dws = list(hdr_stream) + list(payload_dws)
     in_be  = list(hdr_be)     + list(payload_be_nibbles)
@@ -115,6 +112,27 @@ def _model_extracter_output_beats(data_width, phy_beats):
     """
     n = _dws_per_beat(data_width)
     out_beats = []
+
+    if data_width == 32:
+        header_dws = 4 if bool(phy_beats[0]["dws"][0] & (1 << 29)) else 3
+        if len(phy_beats) <= header_dws:
+            out_beats.append({
+                "first": 1,
+                "last" : 1,
+                "dws"  : [0],
+                "be"   : [0],
+            })
+            return out_beats
+
+        for i in range(header_dws, len(phy_beats)):
+            b0 = phy_beats[i]
+            out_beats.append({
+                "first": 1 if i == header_dws else 0,
+                "last" : b0["last"],
+                "dws"  : b0["dws"],
+                "be"   : b0["be"],
+            })
+        return out_beats
 
     if data_width == 64:
         if len(phy_beats) <= 1:
@@ -176,7 +194,10 @@ def _model_extracter_output_beats(data_width, phy_beats):
 
 def _model_extracter_header_value(data_width, phy_beats):
     # What RTL captures as header.
-    if data_width == 64:
+    if data_width == 32:
+        header_dws = 4 if bool(phy_beats[0]["dws"][0] & (1 << 29)) else 3
+        hdr = [phy_beats[i]["dws"][0] if i < header_dws else 0 for i in range(4)]
+    elif data_width == 64:
         b0 = phy_beats[0]["dws"]
         b1 = phy_beats[1]["dws"] if len(phy_beats) > 1 else [0, 0]
         hdr = [b0[0], b0[1], b1[0], b1[1]]
@@ -192,6 +213,7 @@ class _HeaderExtracterDUT(LiteXModule):
         self.source = stream.Endpoint(tlp_raw_layout(data_width))
 
         cls = {
+             32 : LitePCIeTLPHeaderExtracter32b,
              64 : LitePCIeTLPHeaderExtracter64b,
             128 : LitePCIeTLPHeaderExtracter128b,
             256 : LitePCIeTLPHeaderExtracter256b,
@@ -208,6 +230,16 @@ class _HeaderExtracterDUT(LiteXModule):
 
 class TestLitePCIeTLPHeaderExtracter(unittest.TestCase):
     def _run_case(self, data_width, header_dws, header_4dws, payload_dws, payload_be_nibbles):
+        # Ensure format bits in header are consistent with with header and payload sizes.
+        if header_dws == 4:
+            header_4dws[0] |= (1 << 29)
+        else:
+            header_4dws[0] &= ~(1 << 29)
+        if payload_dws:
+            header_4dws[0] |= (1 << 30)
+        else:
+            header_4dws[0] &= ~(1 << 30)
+
         dut = _HeaderExtracterDUT(data_width=data_width)
 
         # Build PHY input beats (header + payload).
@@ -284,7 +316,9 @@ class TestLitePCIeTLPHeaderExtracter(unittest.TestCase):
         for i, (got, exp) in enumerate(zip(got_beats, exp_out_beats)):
             self.assertEqual(got["first"], exp["first"], msg=f"beat {i}: first mismatch")
             self.assertEqual(got["last"],  exp["last"],  msg=f"beat {i}: last mismatch")
-            self.assertEqual(got["dws"],   exp["dws"],   msg=f"beat {i}: dat mismatch")
+            # Ignore data when be is all zero.
+            if any(exp["be"]):
+                self.assertEqual(got["dws"],   exp["dws"],   msg=f"beat {i}: dat mismatch")
             self.assertEqual(got["be"],    exp["be"],    msg=f"beat {i}: be mismatch")
 
         # last must occur exactly once.
@@ -364,6 +398,9 @@ class TestLitePCIeTLPHeaderExtracter(unittest.TestCase):
 
     # Individual tests -----------------------------------------------------------------------------
 
+    def test_32b_basic(self):
+        self._basic_vectors(32)
+
     def test_64b_basic(self):
         self._basic_vectors(64)
 
@@ -375,6 +412,10 @@ class TestLitePCIeTLPHeaderExtracter(unittest.TestCase):
 
     def test_512b_basic(self):
         self._basic_vectors(512)
+
+    def test_32b_random(self):
+        random.seed(0x32)
+        self._random_vectors(32, ntests=80)
 
     def test_64b_random(self):
         random.seed(0x64)

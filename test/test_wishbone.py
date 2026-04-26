@@ -91,6 +91,9 @@ class TestWishboneMaster(unittest.TestCase):
         # Verify Write/Read datas match.
         self.assertEqual(wr_datas, rd_datas)
 
+    def test_wishbone_32b(self):
+        self.wishbone_test(data_width=32)
+
     def test_wishbone_64b(self):
         self.wishbone_test(data_width=64)
 
@@ -184,6 +187,9 @@ class TestWishboneSlave(unittest.TestCase):
         }
         clocks = {"sys": 10}
         run_simulation(dut, generators, clocks, vcd_name="sim.vcd")
+
+    def test_wishbone_32b(self):
+        self.wishbone_test(32)
 
     def test_wishbone_64b(self):
         self.wishbone_test(64)

@@ -16,6 +16,10 @@ from litepcie.common import *
 # Helpers ------------------------------------------------------------------------------------------
 
 def map_wishbone_dat(address, data, wishbone_dat, qword_aligned=False):
+    # Exit early if data width is 32 bits to avoid a zero-width slice.
+    if len(data) == 32:
+        return [wishbone_dat.eq(data)]
+
     return [
         If(qword_aligned,
             If(address[2],
