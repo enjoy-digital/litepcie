@@ -16,6 +16,7 @@ from litex.soc.interconnect import stream
 
 from litepcie.tlp.common import fmt_dict, tlp_raw_layout, phy_layout
 from litepcie.tlp.packetizer import (
+    LitePCIeTLPHeaderInserter32b,
     LitePCIeTLPHeaderInserter64b,
     LitePCIeTLPHeaderInserter128b,
     LitePCIeTLPHeaderInserter256b,
@@ -172,6 +173,7 @@ class _HeaderInserterDUT(LiteXModule):
         self.comb += fmt_sig.eq(self.sink.fmt)
 
         cls = {
+             32 : LitePCIeTLPHeaderInserter32b,
              64 : LitePCIeTLPHeaderInserter64b,
             128 : LitePCIeTLPHeaderInserter128b,
             256 : LitePCIeTLPHeaderInserter256b,
@@ -388,6 +390,9 @@ class TestLitePCIeTLPHeaderInserter(unittest.TestCase):
 
     # Individual tests -----------------------------------------------------------------------------
 
+    def test_32b_basic(self):
+        self._basic_vectors(32)
+
     def test_64b_basic(self):
         self._basic_vectors(64)
 
@@ -399,6 +404,10 @@ class TestLitePCIeTLPHeaderInserter(unittest.TestCase):
 
     def test_512b_basic(self):
         self._basic_vectors(512)
+
+    def test_32b_random(self):
+        random.seed(0x32)
+        self._random_vectors(32, ntests=80)
 
     def test_64b_random(self):
         random.seed(0x64)
