@@ -39,6 +39,7 @@ class S7PCIEPHY(LiteXModule):
         mmcm_clk125_buf              = "bufg",
         mmcm_clk250_buf              = "bufg",
         mmcm_speedgrade              = -2,
+        pclk_mux_direct_from_mmcm    = False,
     ):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
@@ -185,6 +186,9 @@ class S7PCIEPHY(LiteXModule):
         self.cd_userclk1 = ClockDomain()
         self.cd_userclk2 = ClockDomain()
         self.cd_pclk     = ClockDomain()
+        if pclk_mux_direct_from_mmcm:
+            self.cd_pclk125 = ClockDomain()
+            self.cd_pclk250 = ClockDomain()
 
         # MMCM.
         userclk1_freq = {1:125e6, 2:125e6, 4:250e6, 8:500e6}[nlanes]
@@ -199,6 +203,11 @@ class S7PCIEPHY(LiteXModule):
         mmcm.create_clkout(self.cd_clk250,           250e6, margin=0, buf=mmcm_clk250_buf)
         mmcm.create_clkout(self.cd_userclk1, userclk1_freq, margin=0)
         mmcm.create_clkout(self.cd_userclk2, userclk2_freq, margin=0)
+        if pclk_mux_direct_from_mmcm:
+            # Drive the PIPE pclk mux directly from dedicated MMCM outputs while
+            # keeping clk125/clk250 available through normal buffers.
+            mmcm.create_clkout(self.cd_pclk125, 125e6, margin=0, buf=None, with_reset=False)
+            mmcm.create_clkout(self.cd_pclk250, 250e6, margin=0, buf=None, with_reset=False)
 
         # PClk Selection.
         pipe_pclk_sel_r = Signal(nlanes)
@@ -208,12 +217,14 @@ class S7PCIEPHY(LiteXModule):
             If(pipe_pclk_sel_r == (2**nlanes - 1), pclk_sel.eq(1)),
             If(pipe_pclk_sel_r ==               0, pclk_sel.eq(0)),
         ]
+        pclk_mux_i0 = ClockSignal("pclk125") if pclk_mux_direct_from_mmcm else ClockSignal("clk125")
+        pclk_mux_i1 = ClockSignal("pclk250") if pclk_mux_direct_from_mmcm else ClockSignal("clk250")
         self.specials += [
             Instance("BUFGCTRL",
                 i_CE0 = 0b1,
                 i_CE1 = 0b1,
-                i_I0  = ClockSignal("clk125"),
-                i_I1  = ClockSignal("clk250"),
+                i_I0  = pclk_mux_i0,
+                i_I1  = pclk_mux_i1,
                 i_S0  = (pclk_sel == 0),
                 i_S1  = (pclk_sel == 1),
                 o_O   = ClockSignal("pclk"),
