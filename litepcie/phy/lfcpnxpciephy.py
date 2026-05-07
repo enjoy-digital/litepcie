@@ -70,7 +70,7 @@ class LFCPNXPCIEPHY(LiteXModule):
         self.perst_n_i  = pads.perst
         self.data_width = data_width
         self.pcie_data_width = pcie_data_width
-        self.id         = Signal(16, reset_less=True) # FIXME: Todo
+        self.id         = Signal(16, reset_less=True)
         self.bar0_size  = bar0_size
         self.bar0_mask  = get_bar_mask(bar0_size)
 
@@ -79,11 +79,14 @@ class LFCPNXPCIEPHY(LiteXModule):
 
         # # #
 
+        completer_id = Signal(16)
         nlanes = len(pads.tx_p)
 
         assert data_width in [64, 128]
         assert pcie_data_width == 128
         assert nlanes in [4]
+
+        self.comb += self.id.eq(completer_id)
 
         # Clocking / Reset -------------------------------------------------------------------------
         self.cd_pcie = ClockDomain()
@@ -260,7 +263,7 @@ class LFCPNXPCIEPHY(LiteXModule):
             i_usr_lmmi_ready_i       = usr_lmmi.ready[0],
 
             # completer id for tx engine
-            o_completer_id_o         = Open(16),
+            o_completer_id_o         = completer_id,
             o_config_done            = Open(),
         )
 
