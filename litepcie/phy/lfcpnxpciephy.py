@@ -27,6 +27,7 @@ from litepcie.phy.common import *
 
 class LFCPNXPCIEPHY(LiteXModule):
     endianness = "big"
+    qword_aligned = False
     lmmi_layout = [
         ("request",      1),
         ("wr_rdn",       1),
@@ -37,7 +38,7 @@ class LFCPNXPCIEPHY(LiteXModule):
         ("ready",        5),
     ]
 
-    def __init__(self, platform, pads, data_width=128, cd="pcie", bar0_size=65536):
+    def __init__(self, platform, pads, data_width=128, pcie_data_width=128, cd="pcie", bar0_size=65536):
         # Streams ---------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
@@ -66,9 +67,9 @@ class LFCPNXPCIEPHY(LiteXModule):
 
         # Parameters/Locals ------------------------------------------------------------------------
         self.platform   = platform
-        pcie_data_width = data_width
         self.perst_n_i  = pads.perst
         self.data_width = data_width
+        self.pcie_data_width = pcie_data_width
         self.id         = Signal(16, reset_less=True) # FIXME: Todo
         self.bar0_size  = bar0_size
         self.bar0_mask  = get_bar_mask(bar0_size)
@@ -80,6 +81,8 @@ class LFCPNXPCIEPHY(LiteXModule):
 
         nlanes = len(pads.tx_p)
 
+        assert data_width in [64, 128]
+        assert pcie_data_width == 128
         assert nlanes in [4]
 
         # Clocking / Reset -------------------------------------------------------------------------
@@ -97,7 +100,7 @@ class LFCPNXPCIEPHY(LiteXModule):
         ]
 
         # TX (FPGA --> HOST) CDC / Data Width Conversion -------------------------------------------
-        tx_data_p = Signal(16)
+        tx_data_p = Signal(pcie_data_width//8)
         self.tx_datapath = PHYTXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
@@ -120,7 +123,7 @@ class LFCPNXPCIEPHY(LiteXModule):
         )
         self.s_axis_tx = s_axis_tx = self.tx_datapath.source
 
-        for i in range(16):
+        for i in range(pcie_data_width//8):
             self.comb += tx_data_p[i].eq(Reduce("XOR", self.s_axis_tx.dat[i*8:(i+1)*8]))
 
         # RX (HOST --> FPGA) CDC / Data Width Conversion -------------------------------------------
