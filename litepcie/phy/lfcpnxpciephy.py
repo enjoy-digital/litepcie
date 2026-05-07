@@ -191,34 +191,43 @@ class LFCPNXPCIEPHY(LiteXModule):
 
         # Lattice's raw TLP wrapper exposes MSI-X capability registers, but the
         # generated IP defaults do not match LitePCIe's standalone CSR map.
-        lmmi_fixup_index  = Signal(max=3)
+        lmmi_fixup_index  = Signal(max=4)
         lmmi_fixup_active = Signal()
+        lmmi_fixup_write  = Signal()
         lmmi_fixup_wdata  = Signal(32)
         lmmi_fixup_offset = Signal(15)
         self.comb += [
             lmmi_fixup_active.eq(lmmi_app_done & ~lmmi_fixup_done),
-            lmmi_fixup.wr_rdn.eq(1),
+            lmmi_fixup.wr_rdn.eq(lmmi_fixup_write),
             lmmi_fixup.wdata.eq(lmmi_fixup_wdata),
             lmmi_fixup.offset.eq(lmmi_fixup_offset),
             Case(lmmi_fixup_index, {
                 # Disable MSI capability since this raw TLP wrapper has no MSI request/ack pins.
                 0 : [
+                    lmmi_fixup_write.eq(1),
                     lmmi_fixup_offset.eq(0x040e8 >> 2),
                     lmmi_fixup_wdata.eq(0x0000_0001),
                 ],
                 # MSI-X Table and PBA offsets must match the LitePCIe standalone CSR map.
                 1 : [
+                    lmmi_fixup_write.eq(1),
                     lmmi_fixup_offset.eq(0x040f4 >> 2),
                     lmmi_fixup_wdata.eq(0x0000_2000),
                 ],
                 2 : [
+                    lmmi_fixup_write.eq(1),
                     lmmi_fixup_offset.eq(0x040f8 >> 2),
                     lmmi_fixup_wdata.eq(0x0000_1808),
+                ],
+                # Bus/Device/Function ID used as requester/completer ID.
+                3 : [
+                    lmmi_fixup_write.eq(0),
+                    lmmi_fixup_offset.eq(0x04034 >> 2),
                 ],
             })
         ]
         lmmi_fixup_state = Signal(2)
-        self.comb += lmmi_fixup.request.eq(lmmi_fixup_active & (lmmi_fixup_state != 0))
+        self.comb += lmmi_fixup.request.eq(lmmi_fixup_active & ((lmmi_fixup_state == 1) | (lmmi_fixup_state == 2)))
         self.sync.pcie += [
             If(~lmmi_app_done,
                 lmmi_fixup_index.eq(0),
@@ -229,12 +238,16 @@ class LFCPNXPCIEPHY(LiteXModule):
                     0 : lmmi_fixup_state.eq(1),
                     1 : lmmi_fixup_state.eq(2),
                     2 : If(lmmi_fixup.ready[0],
-                        If(lmmi_fixup_index == 2,
-                            lmmi_fixup_done.eq(1),
-                        ).Else(
+                        If(lmmi_fixup_write,
                             lmmi_fixup_index.eq(lmmi_fixup_index + 1),
                             lmmi_fixup_state.eq(0),
+                        ).Else(
+                            lmmi_fixup_state.eq(3),
                         )
+                    ),
+                    3 : If(lmmi_fixup.rdata_valid[0],
+                        completer_id.eq(lmmi_fixup.rdata[:16]),
+                        lmmi_fixup_done.eq(1),
                     ),
                 })
             )
@@ -345,7 +358,7 @@ class LFCPNXPCIEPHY(LiteXModule):
             i_usr_lmmi_ready_i       = lmmi_app.ready[0],
 
             # completer id for tx engine
-            o_completer_id_o         = completer_id,
+            o_completer_id_o         = Open(16),
             o_config_done            = lmmi_app_done,
         )
 
