@@ -23,8 +23,10 @@ from litepcie.phy.common import *
 
 class GW5APCIEPHY(LiteXModule):
     endianness = "big" # CHECKME.
+    qword_aligned = False
 
-    def __init__(self, platform, pads, nlanes=1, data_width=256, cd="sys", bar0_size=0x100000):
+    def __init__(self, platform, pads, nlanes=1, data_width=256, pcie_data_width=256, cd="sys",
+        bar0_size=0x100000):
         # Streams ---------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
@@ -70,20 +72,29 @@ class GW5APCIEPHY(LiteXModule):
 
         # Parameters/Locals ------------------------------------------------------------------------
         self.platform         = platform
-        pcie_data_width       = data_width
         self.data_width       = data_width
-        self.id               = Signal(16, reset_less=True) # FIXME: Todo
+        self.pcie_data_width  = pcie_data_width
+        self.id               = Signal(16, reset_less=True)
         self.bar0_size        = bar0_size
         self.bar0_mask        = get_bar_mask(bar0_size)
 
-        self.max_request_size = Signal(16, reset=256) # FIXME.
-        self.max_payload_size = Signal(16, reset=256) # FIXME.
+        # FIXME: Decode the negotiated Device Control MPS/MRRS through the Gowin config/DRP path.
+        self.max_request_size = Signal(16, reset=128)
+        self.max_payload_size = Signal(16, reset=128)
 
         # # #
 
         self.nlanes = nlanes
 
         assert nlanes in [1, 4]
+        assert data_width in [64, 128, 256]
+        assert pcie_data_width == 256
+
+        self.comb += self.id.eq(Cat(
+            Constant(0, 3),                  # Function number, single-function endpoint.
+            self._tl_cfg_busdev.status[:5],  # Device number.
+            self._tl_cfg_busdev.status[5:],  # Bus number.
+        ))
 
         # Clocking / Reset -------------------------------------------------------------------------
         self.cd_pcie = ClockDomain()

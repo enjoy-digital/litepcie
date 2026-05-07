@@ -526,6 +526,7 @@ def main():
     elif core_config["phy"] == "GW5APCIEPHY":
         from litex.build.gowin import GowinPlatform
         platform = GowinPlatform(core_config["phy_device"], io=[], toolchain="gowin")
+        core_config.setdefault("phy_pcie_data_width", 256)
         core_config["phy"] = GW5APCIEPHY
     elif core_config["phy"] == "S7PCIEPHY":
         from litex.build.xilinx import XilinxPlatform
