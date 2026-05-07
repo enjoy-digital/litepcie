@@ -135,7 +135,12 @@ class LFCPNXPCIEPHY(LiteXModule):
             pcie_data_width = pcie_data_width,
             clock_domain    = cd,
         )
+        rx_sop = Signal()
         self.m_axis_rx = m_axis_rx = self.rx_datapath.sink
+        self.comb += [
+            m_axis_rx.first.eq(rx_sop),
+            m_axis_rx.be.eq(2**len(m_axis_rx.be) - 1),
+        ]
         self.comb += self.rx_datapath.source.connect(self.source, omit={"dat", "be"})
         self.comb += dword_endianness_swap(
             src        = self.rx_datapath.source.dat,
@@ -151,7 +156,6 @@ class LFCPNXPCIEPHY(LiteXModule):
             endianness = "big",
             mode       = "be",
         )
-        self.comb += self.source.be.eq(2**len(self.source.be) - 1) # FIXME: Should be adapted.
 
         # LMMI (Configuration) ---------------------------------------------------------------------
         usr_lmmi         = Record(self.lmmi_layout)
@@ -197,7 +201,7 @@ class LFCPNXPCIEPHY(LiteXModule):
             o_link0_rx_valid_o                  = m_axis_rx.valid,
             o_link0_rx_sel_o                    = Open(2),
             o_link0_rx_cmd_data_o               = Open(13),
-            o_link0_rx_sop_o                    = Open(),
+            o_link0_rx_sop_o                    = rx_sop,
             o_link0_rx_data_o                   = m_axis_rx.dat,
             o_link0_rx_datap_o                  = Open(16),
             o_link0_rx_eop_o                    = m_axis_rx.last,
