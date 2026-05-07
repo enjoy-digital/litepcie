@@ -89,8 +89,10 @@ class LFCPNXPCIEPHY(LiteXModule):
         self.comb += self.id.eq(completer_id)
 
         # Clocking / Reset -------------------------------------------------------------------------
+        sys_clk  = platform.request("clkin125")
+        pcie_clk = Signal()
         self.cd_pcie = ClockDomain()
-        self.comb += self.cd_pcie.clk.eq(platform.request("clkin125"))
+        self.comb += self.cd_pcie.clk.eq(pcie_clk)
 
         # Link Status ------------------------------------------------------------------------------
         link_up          = Signal()
@@ -160,6 +162,7 @@ class LFCPNXPCIEPHY(LiteXModule):
         # LMMI (Configuration) ---------------------------------------------------------------------
         usr_lmmi         = Record(self.lmmi_layout)
         usr_lmmi_resetn  = Signal(1, reset_less=True)
+        config_done      = Signal()
         self.sync.pcie += If(~pads.perst, usr_lmmi_resetn.eq(0)).Else(usr_lmmi_resetn.eq(1))
 
         self.ip_params      = dict()
@@ -183,11 +186,11 @@ class LFCPNXPCIEPHY(LiteXModule):
 
             i_refret_i                          = pads.refret,
             i_rext_i                            = pads.rext,
-            i_sys_clk_i                         = ClockSignal("pcie"),
-            i_link0_aux_clk_i                   = ClockSignal("pcie"),
+            i_sys_clk_i                         = sys_clk,
+            i_link0_aux_clk_i                   = sys_clk,
             i_link0_perst_n_i                   = pads.perst,
-            i_link0_rst_usr_n_i                 = Constant(1, 1), # FIXME: bit of logic?
-            o_link0_clk_usr_o                   = Open(),         # FIXME: must be used as cd_pcie source
+            i_link0_rst_usr_n_i                 = config_done,
+            o_link0_clk_usr_o                   = pcie_clk,
             o_link0_pl_link_up_o                = link0_pl_link_up,
             o_link0_dl_link_up_o                = link0_dl_link_up,
             o_link0_tl_link_up_o                = link0_tl_link_up,
@@ -268,7 +271,7 @@ class LFCPNXPCIEPHY(LiteXModule):
 
             # completer id for tx engine
             o_completer_id_o         = completer_id,
-            o_config_done            = Open(),
+            o_config_done            = config_done,
         )
 
     # Finalize -------------------------------------------------------------------------------------
