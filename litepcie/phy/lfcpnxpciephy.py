@@ -161,9 +161,84 @@ class LFCPNXPCIEPHY(LiteXModule):
 
         # LMMI (Configuration) ---------------------------------------------------------------------
         usr_lmmi         = Record(self.lmmi_layout)
+        lmmi_app         = Record(self.lmmi_layout)
+        lmmi_fixup       = Record(self.lmmi_layout)
         usr_lmmi_resetn  = Signal(1, reset_less=True)
+        lmmi_app_done    = Signal()
+        lmmi_fixup_done  = Signal()
         config_done      = Signal()
         self.sync.pcie += If(~pads.perst, usr_lmmi_resetn.eq(0)).Else(usr_lmmi_resetn.eq(1))
+        self.comb += [
+            lmmi_app.rdata.eq(usr_lmmi.rdata),
+            lmmi_app.rdata_valid.eq(usr_lmmi.rdata_valid),
+            lmmi_app.ready.eq(usr_lmmi.ready),
+            lmmi_fixup.rdata.eq(usr_lmmi.rdata),
+            lmmi_fixup.rdata_valid.eq(usr_lmmi.rdata_valid),
+            lmmi_fixup.ready.eq(usr_lmmi.ready),
+            config_done.eq(lmmi_app_done & lmmi_fixup_done),
+            If(lmmi_app_done & ~lmmi_fixup_done,
+                usr_lmmi.request.eq(lmmi_fixup.request),
+                usr_lmmi.wr_rdn.eq( lmmi_fixup.wr_rdn),
+                usr_lmmi.wdata.eq(  lmmi_fixup.wdata),
+                usr_lmmi.offset.eq( lmmi_fixup.offset),
+            ).Else(
+                usr_lmmi.request.eq(lmmi_app.request),
+                usr_lmmi.wr_rdn.eq( lmmi_app.wr_rdn),
+                usr_lmmi.wdata.eq(  lmmi_app.wdata),
+                usr_lmmi.offset.eq( lmmi_app.offset),
+            )
+        ]
+
+        # Lattice's raw TLP wrapper exposes MSI-X capability registers, but the
+        # generated IP defaults do not match LitePCIe's standalone CSR map.
+        lmmi_fixup_index  = Signal(max=3)
+        lmmi_fixup_active = Signal()
+        lmmi_fixup_wdata  = Signal(32)
+        lmmi_fixup_offset = Signal(15)
+        self.comb += [
+            lmmi_fixup_active.eq(lmmi_app_done & ~lmmi_fixup_done),
+            lmmi_fixup.wr_rdn.eq(1),
+            lmmi_fixup.wdata.eq(lmmi_fixup_wdata),
+            lmmi_fixup.offset.eq(lmmi_fixup_offset),
+            Case(lmmi_fixup_index, {
+                # Disable MSI capability since this raw TLP wrapper has no MSI request/ack pins.
+                0 : [
+                    lmmi_fixup_offset.eq(0x040e8 >> 2),
+                    lmmi_fixup_wdata.eq(0x0000_0001),
+                ],
+                # MSI-X Table and PBA offsets must match the LitePCIe standalone CSR map.
+                1 : [
+                    lmmi_fixup_offset.eq(0x040f4 >> 2),
+                    lmmi_fixup_wdata.eq(0x0000_2000),
+                ],
+                2 : [
+                    lmmi_fixup_offset.eq(0x040f8 >> 2),
+                    lmmi_fixup_wdata.eq(0x0000_1808),
+                ],
+            })
+        ]
+        lmmi_fixup_state = Signal(2)
+        self.comb += lmmi_fixup.request.eq(lmmi_fixup_active & (lmmi_fixup_state != 0))
+        self.sync.pcie += [
+            If(~lmmi_app_done,
+                lmmi_fixup_index.eq(0),
+                lmmi_fixup_state.eq(0),
+                lmmi_fixup_done.eq(0),
+            ).Elif(~lmmi_fixup_done,
+                Case(lmmi_fixup_state, {
+                    0 : lmmi_fixup_state.eq(1),
+                    1 : lmmi_fixup_state.eq(2),
+                    2 : If(lmmi_fixup.ready[0],
+                        If(lmmi_fixup_index == 2,
+                            lmmi_fixup_done.eq(1),
+                        ).Else(
+                            lmmi_fixup_index.eq(lmmi_fixup_index + 1),
+                            lmmi_fixup_state.eq(0),
+                        )
+                    ),
+                })
+            )
+        ]
 
         self.ip_params      = dict()
         self.lmmi_ip_params = dict()
@@ -261,17 +336,17 @@ class LFCPNXPCIEPHY(LiteXModule):
             i_rst_n                  = usr_lmmi_resetn,
 
             # LMMI interface
-            o_usr_lmmi_request_o     = usr_lmmi.request,
-            o_usr_lmmi_wr_rdn_o      = usr_lmmi.wr_rdn,
-            o_usr_lmmi_wdata_o       = usr_lmmi.wdata,
-            o_usr_lmmi_offset_o      = usr_lmmi.offset,
-            i_usr_lmmi_rdata_i       = usr_lmmi.rdata[0:32],
-            i_usr_lmmi_rdata_valid_i = usr_lmmi.rdata_valid[0],
-            i_usr_lmmi_ready_i       = usr_lmmi.ready[0],
+            o_usr_lmmi_request_o     = lmmi_app.request,
+            o_usr_lmmi_wr_rdn_o      = lmmi_app.wr_rdn,
+            o_usr_lmmi_wdata_o       = lmmi_app.wdata,
+            o_usr_lmmi_offset_o      = lmmi_app.offset,
+            i_usr_lmmi_rdata_i       = lmmi_app.rdata[0:32],
+            i_usr_lmmi_rdata_valid_i = lmmi_app.rdata_valid[0],
+            i_usr_lmmi_ready_i       = lmmi_app.ready[0],
 
             # completer id for tx engine
             o_completer_id_o         = completer_id,
-            o_config_done            = config_done,
+            o_config_done            = lmmi_app_done,
         )
 
     # Finalize -------------------------------------------------------------------------------------

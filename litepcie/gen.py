@@ -523,6 +523,7 @@ def main():
         from litex.build.lattice import LatticePlatform
         platform = LatticePlatform(core_config["phy_device"], io=[], toolchain="radiant")
         core_config.setdefault("phy_pcie_data_width", 128)
+        core_config.setdefault("msi_x", True)
         core_config["phy"] = LFCPNXPCIEPHY
     elif core_config["phy"] == "GW5APCIEPHY":
         from litex.build.gowin import GowinPlatform
