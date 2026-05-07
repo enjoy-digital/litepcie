@@ -74,8 +74,8 @@ class LFCPNXPCIEPHY(LiteXModule):
         self.bar0_size  = bar0_size
         self.bar0_mask  = get_bar_mask(bar0_size)
 
-        self.max_request_size = Signal(16, reset=256) # FIXME.
-        self.max_payload_size = Signal(16, reset=256) # FIXME.
+        self.max_request_size = Signal(16, reset=128) # FIXME.
+        self.max_payload_size = Signal(16, reset=128) # FIXME.
 
         # # #
 
