@@ -38,4 +38,7 @@ jobs:
 
       # Test
       - name: Run Tests
-        run: python3 -m pytest -v
+        run: python3 -m pytest -v -m "not slow"
+
+      - name: Run Slow Tests
+        run: python3 -m pytest -v -m "slow"

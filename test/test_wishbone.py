@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import unittest
+import pytest
 
 from litex.gen import *
 
@@ -57,6 +58,8 @@ endpoint_id = 0x400
 # The test verifies that the Host model is able to access the wishbone SRAM correctly through the
 # LitePCIeEndpoint.
 
+@pytest.mark.sim
+@pytest.mark.slow
 class TestWishboneMaster(unittest.TestCase):
     def wishbone_test(self, data_width, nwords=64):
         wr_datas = [seed_to_data(i, True) for i in range(nwords)]
@@ -143,6 +146,8 @@ class TestWishboneMaster(unittest.TestCase):
 #
 # The test verifies that the LitePCIeWishboneSlave is able to access Host Memory.
 
+@pytest.mark.sim
+@pytest.mark.slow
 class TestWishboneSlave(unittest.TestCase):
     def wishbone_test(self, data_width, nwords=8):
         wr_datas = [seed_to_data(i, True) for i in range(nwords)]

@@ -6,9 +6,12 @@
 
 import unittest
 import os
+import pytest
 
 # Test Examples ------------------------------------------------------------------------------------
 
+@pytest.mark.examples
+@pytest.mark.slow
 class TestExamples(unittest.TestCase):
     def target_test(self, target):
         os.system("rm -rf bench/build")

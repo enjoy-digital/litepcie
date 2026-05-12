@@ -37,6 +37,7 @@
 # that the initial data and re-written data are identical.
 
 import unittest
+import pytest
 
 from litex.gen import *
 
@@ -137,6 +138,7 @@ class MSIHandler(LiteXModule):
 
 # Test DMA -----------------------------------------------------------------------------------------
 
+@pytest.mark.sim
 class TestDMA(unittest.TestCase):
     def test_dma_word_rounding(self):
         self.assertEqual(dma_words_for_bytes(124, 128), 8)
@@ -259,12 +261,15 @@ class TestDMA(unittest.TestCase):
         run_simulation(dut, generators, clocks, vcd_name="test_dma.vcd")
         self.assertEqual(host_data, loopback_data)
 
+    @pytest.mark.slow
     def test_dma_64b_data_width_32b_address_width(self):
         self.dma_test(data_width=64, address_width=32)
 
+    @pytest.mark.slow
     def test_dma_64b_data_width_64b_address_width(self):
         self.dma_test(data_width=64, address_width=64)
 
+    @pytest.mark.slow
     def test_dma_128b_data_width_32b_address_width_awkward_lengths(self):
         self.dma_test(
             data_width         = 128,
@@ -274,14 +279,18 @@ class TestDMA(unittest.TestCase):
             chipset_reordering = False,
         )
 
+    @pytest.mark.slow
     def test_dma_256b_data_width_32b_address_width(self):
         self.dma_test(data_width=256, address_width=32)
 
+    @pytest.mark.slow
     def test_dma_256b_data_width_64b_address_width(self):
         self.dma_test(data_width=256, address_width=64)
 
+    @pytest.mark.slow
     def test_dma_512b_data_width_32b_address_width(self):
         self.dma_test(data_width=512, address_width=32)
 
+    @pytest.mark.slow
     def test_dma_512b_data_width_64b_address_width(self):
         self.dma_test(data_width=512, address_width=64)
