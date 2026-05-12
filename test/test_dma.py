@@ -36,6 +36,7 @@
 # to the Writer and then re-written in another memory location of the Host. The test then checks
 # that the initial data and re-written data are identical.
 
+import os
 import unittest
 import pytest
 
@@ -53,6 +54,9 @@ from test.model.host import *
 
 root_id     = 0x100
 endpoint_id = 0x400
+
+def vcd_name(filename):
+    return filename if os.environ.get("LITEPCIE_TEST_VCD") else None
 
 # DMA Driver ---------------------------------------------------------------------------------------
 
@@ -258,7 +262,7 @@ class TestDMA(unittest.TestCase):
             ]
         }
         clocks = {"sys": 10}
-        run_simulation(dut, generators, clocks, vcd_name="test_dma.vcd")
+        run_simulation(dut, generators, clocks, vcd_name=vcd_name("test_dma.vcd"))
         self.assertEqual(host_data, loopback_data)
 
     @pytest.mark.slow

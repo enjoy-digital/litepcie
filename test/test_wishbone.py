@@ -4,6 +4,7 @@
 # Copyright (c) 2015-2024 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
+import os
 import unittest
 import pytest
 
@@ -21,6 +22,9 @@ from test.model.host import *
 
 root_id     = 0x100
 endpoint_id = 0x400
+
+def vcd_name(filename):
+    return filename if os.environ.get("LITEPCIE_TEST_VCD") else None
 
 # Test Wishbone Master -----------------------------------------------------------------------------
 
@@ -191,7 +195,7 @@ class TestWishboneSlave(unittest.TestCase):
             ]
         }
         clocks = {"sys": 10}
-        run_simulation(dut, generators, clocks, vcd_name="sim.vcd")
+        run_simulation(dut, generators, clocks, vcd_name=vcd_name("sim.vcd"))
 
     def test_wishbone_32b(self):
         self.wishbone_test(32)
