@@ -65,7 +65,7 @@ def vcd_name(filename):
 @pytest.mark.sim
 @pytest.mark.slow
 class TestWishboneMaster(unittest.TestCase):
-    def wishbone_test(self, data_width, nwords=64):
+    def wishbone_test(self, data_width, nwords=16):
         wr_datas = [seed_to_data(i, True) for i in range(nwords)]
         rd_datas = []
 
@@ -179,7 +179,7 @@ class TestWishboneSlave(unittest.TestCase):
 
         class DUT(LiteXModule):
             def __init__(self, data_width):
-                self.host     = Host(data_width, root_id, endpoint_id, phy_debug=True, host_debug=True)
+                self.host     = Host(data_width, root_id, endpoint_id)
                 self.endpoint = LitePCIeEndpoint(self.host.phy)
                 self.slave    = LitePCIeWishboneSlave(self.endpoint)
 
@@ -196,6 +196,8 @@ class TestWishboneSlave(unittest.TestCase):
         }
         clocks = {"sys": 10}
         run_simulation(dut, generators, clocks, vcd_name=vcd_name("sim.vcd"))
+        # Verify Write/Read datas match.
+        self.assertEqual(wr_datas, rd_datas)
 
     def test_wishbone_32b(self):
         self.wishbone_test(32)

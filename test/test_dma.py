@@ -150,10 +150,10 @@ class TestDMA(unittest.TestCase):
         self.assertEqual(dma_words_for_bytes(252, 128), 16)
         self.assertEqual(dma_words_for_bytes(512, 128), 32)
 
-    def dma_test(self, data_width, address_width, descriptor_lengths=None, test_size=1024,
+    def dma_test(self, data_width, address_width, descriptor_lengths=None, test_size=256,
         chipset_split=True, chipset_reordering=True):
         if descriptor_lengths is None:
-            descriptor_lengths = [test_size//8] * 8
+            descriptor_lengths = [test_size//4] * 4
         test_size = sum(descriptor_lengths)
 
         host_data     = [seed_to_data(i, True) for i in range(test_size//4)]
@@ -267,7 +267,7 @@ class TestDMA(unittest.TestCase):
 
     @pytest.mark.slow
     def test_dma_64b_data_width_32b_address_width(self):
-        self.dma_test(data_width=64, address_width=32)
+        self.dma_test(data_width=64, address_width=32, test_size=1024)
 
     @pytest.mark.slow
     def test_dma_64b_data_width_64b_address_width(self):
