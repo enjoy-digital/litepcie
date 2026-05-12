@@ -5,7 +5,10 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import unittest
-import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
 import pytest
 
 # Test Examples ------------------------------------------------------------------------------------
@@ -14,12 +17,16 @@ import pytest
 @pytest.mark.slow
 class TestExamples(unittest.TestCase):
     def target_test(self, target):
-        os.system("rm -rf bench/build")
-        os.system("cd bench && python3 {}.py".format(target))
-        self.assertEqual(os.path.isfile("bench/build/{}/gateware/{}.v".format(target, target)), True)
-        self.assertEqual(os.path.isfile("bench/build/{}/software/include/generated/csr.h".format(target)), True)
-        self.assertEqual(os.path.isfile("bench/build/{}/software/include/generated/soc.h".format(target)), True)
-        self.assertEqual(os.path.isfile("bench/build/{}/software/include/generated/mem.h".format(target)), True)
+        with tempfile.TemporaryDirectory(prefix=f"litepcie-{target}-") as tmpdir:
+            build_dir = Path(tmpdir) / "build"
+            subprocess.run(
+                [sys.executable, f"bench/{target}.py", "--output-dir", str(build_dir)],
+                check=True,
+            )
+            self.assertEqual((build_dir / "gateware" / f"{target}.v").is_file(), True)
+            self.assertEqual((build_dir / "software/include/generated/csr.h").is_file(), True)
+            self.assertEqual((build_dir / "software/include/generated/soc.h").is_file(), True)
+            self.assertEqual((build_dir / "software/include/generated/mem.h").is_file(), True)
 
     def test_kc705_target(self):
         self.target_test("kc705")
@@ -34,11 +41,13 @@ class TestExamples(unittest.TestCase):
         self.target_test("xcu1525")
 
     def gen_test(self, name):
-        os.system("rm -rf examples/build")
-        os.system("cd examples && python3 ../litepcie/gen.py {}.yml".format(name))
-        errors = not os.path.isfile("examples/build/gateware/litepcie_core.v")
-        os.system("rm -rf examples/build")
-        return errors
+        with tempfile.TemporaryDirectory(prefix=f"litepcie-{name}-") as tmpdir:
+            build_dir = Path(tmpdir) / "build"
+            subprocess.run(
+                [sys.executable, "litepcie/gen.py", f"examples/{name}.yml", "--output-dir", str(build_dir)],
+                check=True,
+            )
+            return not (build_dir / "gateware/litepcie_core.v").is_file()
 
     def test_ac701_gen(self):
         errors = self.gen_test("ac701")

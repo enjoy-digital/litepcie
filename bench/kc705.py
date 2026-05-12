@@ -113,11 +113,12 @@ def main():
     parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
     parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
     parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 1, 4 (default) or 8")
+    parser.add_argument("--output-dir", default="build/kc705", help="Build output directory")
     args = parser.parse_args()
 
     platform = xilinx_kc705.Platform()
     soc      = LitePCIeSoC(platform, nlanes=int(args.nlanes))
-    builder  = Builder(soc, output_dir="build/kc705", csr_csv="csr.csv")
+    builder  = Builder(soc, output_dir=args.output_dir, csr_csv="csr.csv")
     builder.build(build_name="kc705", run=args.build)
 
     if args.driver:

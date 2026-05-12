@@ -504,6 +504,7 @@ def main():
     parser = argparse.ArgumentParser(description="LitePCIe standalone core generator")
     parser.add_argument("config", help="YAML config file")
     parser.add_argument("--doc",  action="store_true", help="Build documentation")
+    parser.add_argument("--output-dir", default="build", help="Build output directory")
     args = parser.parse_args()
     core_config = yaml.load(open(args.config).read(), Loader=yaml.Loader)
 
@@ -545,7 +546,7 @@ def main():
     else:
         raise ValueError("Unsupported PCIe PHY: {}".format(core_config["phy"]))
     soc      = LitePCIeCore(platform, core_config)
-    builder  = Builder(soc, output_dir="build", compile_gateware=False)
+    builder  = Builder(soc, output_dir=args.output_dir, compile_gateware=False)
     builder.build(build_name="litepcie_core", regular_comb=True)
     generate_litepcie_software_headers(soc, "./")
 
