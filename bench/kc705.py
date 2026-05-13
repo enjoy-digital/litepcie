@@ -114,11 +114,12 @@ def main():
     parser.add_argument("--load",       action="store_true",   help="Load bitstream (to SRAM)")
     parser.add_argument("--nlanes",     default=4,             help="PCIe lanes: 1, 4 (default) or 8")
     parser.add_argument("--output-dir", default="build/kc705", help="Build output directory")
+    parser.add_argument("--csr-csv",    default="csr.csv",     help="CSR CSV output file")
     args = parser.parse_args()
 
     platform = xilinx_kc705.Platform()
     soc      = LitePCIeSoC(platform, nlanes=int(args.nlanes))
-    builder  = Builder(soc, output_dir=args.output_dir, csr_csv="csr.csv")
+    builder  = Builder(soc, output_dir=args.output_dir, csr_csv=args.csr_csv)
     builder.build(build_name="kc705", run=args.build)
 
     if args.driver:

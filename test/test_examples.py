@@ -20,12 +20,18 @@ class TestExamples(unittest.TestCase):
     def target_test(self, target):
         with tempfile.TemporaryDirectory(prefix=f"litepcie-{target}-") as tmpdir:
             build_dir = Path(tmpdir) / "build"
-            cmd       = [sys.executable, f"bench/{target}.py", "--output-dir", str(build_dir)]
+            csr_csv   = Path(tmpdir) / "csr.csv"
+            cmd       = [
+                sys.executable, f"bench/{target}.py",
+                "--output-dir", str(build_dir),
+                "--csr-csv", str(csr_csv),
+            ]
             subprocess.run(cmd, check=True)
             self.assertEqual((build_dir / "gateware" / f"{target}.v").is_file(), True)
             self.assertEqual((build_dir / "software/include/generated/csr.h").is_file(), True)
             self.assertEqual((build_dir / "software/include/generated/soc.h").is_file(), True)
             self.assertEqual((build_dir / "software/include/generated/mem.h").is_file(), True)
+            self.assertEqual(csr_csv.is_file(), True)
 
     def test_kc705_target(self):
         self.target_test("kc705")
@@ -41,10 +47,20 @@ class TestExamples(unittest.TestCase):
 
     def gen_test(self, name):
         with tempfile.TemporaryDirectory(prefix=f"litepcie-{name}-") as tmpdir:
-            build_dir = Path(tmpdir) / "build"
-            cmd       = [sys.executable, "litepcie/gen.py", f"examples/{name}.yml", "--output-dir", str(build_dir)]
+            build_dir  = Path(tmpdir) / "build"
+            header_dir = Path(tmpdir)
+            cmd        = [
+                sys.executable, "litepcie/gen.py", f"examples/{name}.yml",
+                "--output-dir", str(build_dir),
+                "--header-dir", str(header_dir),
+            ]
             subprocess.run(cmd, check=True)
-            return not (build_dir / "gateware/litepcie_core.v").is_file()
+            return not all([
+                (build_dir / "gateware/litepcie_core.v").is_file(),
+                (header_dir / "csr.h").is_file(),
+                (header_dir / "soc.h").is_file(),
+                (header_dir / "mem.h").is_file(),
+            ])
 
     def test_ac701_gen(self):
         errors = self.gen_test("ac701")

@@ -116,11 +116,12 @@ def main():
     parser.add_argument("--speed",      default="gen3",       help="PCIe speed: gen3")
     parser.add_argument("--nlanes",     default=4,            help="PCIe lanes: 4 (default), 8 or 16")
     parser.add_argument("--output-dir", default="build/fk33", help="Build output directory")
+    parser.add_argument("--csr-csv",    default="csr.csv",    help="CSR CSV output file")
     args = parser.parse_args()
 
     platform = sqrl_fk33.Platform()
     soc      = LitePCIeSoC(platform, speed=args.speed, nlanes=int(args.nlanes))
-    builder  = Builder(soc, output_dir=args.output_dir, csr_csv="csr.csv")
+    builder  = Builder(soc, output_dir=args.output_dir, csr_csv=args.csr_csv)
     builder.build(build_name="fk33", run=args.build)
 
     if args.driver:
