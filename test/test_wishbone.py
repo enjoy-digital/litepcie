@@ -6,6 +6,7 @@
 
 import os
 import unittest
+
 import pytest
 
 from litex.gen import *
@@ -23,7 +24,7 @@ from test.model.host import *
 root_id     = 0x100
 endpoint_id = 0x400
 
-def vcd_name(filename):
+def _vcd_name(filename):
     return filename if os.environ.get("LITEPCIE_TEST_VCD") else None
 
 # Test Wishbone Master -----------------------------------------------------------------------------
@@ -195,7 +196,7 @@ class TestWishboneSlave(unittest.TestCase):
             ]
         }
         clocks = {"sys": 10}
-        run_simulation(dut, generators, clocks, vcd_name=vcd_name("sim.vcd"))
+        run_simulation(dut, generators, clocks, vcd_name=_vcd_name("sim.vcd"))
         # Verify Write/Read datas match.
         self.assertEqual(wr_datas, rd_datas)
 

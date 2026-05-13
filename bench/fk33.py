@@ -110,11 +110,11 @@ class LitePCIeSoC(SoCMini):
 
 def main():
     parser = argparse.ArgumentParser(description="LitePCIe SoC on FK33")
-    parser.add_argument("--build",  action="store_true", help="Build bitstream")
-    parser.add_argument("--driver", action="store_true", help="Generate LitePCIe driver")
-    parser.add_argument("--load",   action="store_true", help="Load bitstream (to SRAM)")
-    parser.add_argument("--speed",  default="gen3",      help="PCIe speed: gen3")
-    parser.add_argument("--nlanes", default=4,           help="PCIe lanes: 4 (default), 8 or 16")
+    parser.add_argument("--build",      action="store_true",   help="Build bitstream")
+    parser.add_argument("--driver",     action="store_true",   help="Generate LitePCIe driver")
+    parser.add_argument("--load",       action="store_true",   help="Load bitstream (to SRAM)")
+    parser.add_argument("--speed",      default="gen3",       help="PCIe speed: gen3")
+    parser.add_argument("--nlanes",     default=4,            help="PCIe lanes: 4 (default), 8 or 16")
     parser.add_argument("--output-dir", default="build/fk33", help="Build output directory")
     args = parser.parse_args()
 

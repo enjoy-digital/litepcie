@@ -4,11 +4,12 @@
 # Copyright (c) 2019-2022 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
-import unittest
-import subprocess
 import sys
 import tempfile
+import unittest
+import subprocess
 from pathlib import Path
+
 import pytest
 
 # Test Examples ------------------------------------------------------------------------------------
@@ -19,10 +20,8 @@ class TestExamples(unittest.TestCase):
     def target_test(self, target):
         with tempfile.TemporaryDirectory(prefix=f"litepcie-{target}-") as tmpdir:
             build_dir = Path(tmpdir) / "build"
-            subprocess.run(
-                [sys.executable, f"bench/{target}.py", "--output-dir", str(build_dir)],
-                check=True,
-            )
+            cmd       = [sys.executable, f"bench/{target}.py", "--output-dir", str(build_dir)]
+            subprocess.run(cmd, check=True)
             self.assertEqual((build_dir / "gateware" / f"{target}.v").is_file(), True)
             self.assertEqual((build_dir / "software/include/generated/csr.h").is_file(), True)
             self.assertEqual((build_dir / "software/include/generated/soc.h").is_file(), True)
@@ -43,10 +42,8 @@ class TestExamples(unittest.TestCase):
     def gen_test(self, name):
         with tempfile.TemporaryDirectory(prefix=f"litepcie-{name}-") as tmpdir:
             build_dir = Path(tmpdir) / "build"
-            subprocess.run(
-                [sys.executable, "litepcie/gen.py", f"examples/{name}.yml", "--output-dir", str(build_dir)],
-                check=True,
-            )
+            cmd       = [sys.executable, "litepcie/gen.py", f"examples/{name}.yml", "--output-dir", str(build_dir)]
+            subprocess.run(cmd, check=True)
             return not (build_dir / "gateware/litepcie_core.v").is_file()
 
     def test_ac701_gen(self):

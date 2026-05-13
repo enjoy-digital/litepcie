@@ -502,9 +502,9 @@ class LitePCIeCore(SoCMini):
 
 def main():
     parser = argparse.ArgumentParser(description="LitePCIe standalone core generator")
-    parser.add_argument("config", help="YAML config file")
-    parser.add_argument("--doc",  action="store_true", help="Build documentation")
-    parser.add_argument("--output-dir", default="build", help="Build output directory")
+    parser.add_argument("config",       help="YAML config file")
+    parser.add_argument("--doc",        action="store_true", help="Build documentation")
+    parser.add_argument("--output-dir", default="build",     help="Build output directory")
     args = parser.parse_args()
     core_config = yaml.load(open(args.config).read(), Loader=yaml.Loader)
 
