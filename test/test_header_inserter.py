@@ -313,6 +313,54 @@ class TestLitePCIeTLPHeaderInserter(unittest.TestCase):
             msg="last asserted too early (before exp_len DWs could have been output)"
         )
 
+    def test_128b_4dw_does_not_consume_payload_in_header(self):
+        dut = _HeaderInserterDUT(data_width=128)
+        header_4dws = [0x11223344, 0x55667788, 0x99AABBCC, 0xDDEEFF00]
+        payload_dws = [0x0BADF00D, 0x12345678, 0xCAFECAFE, 0xFACEFACE]
+
+        ready_during_header = []
+
+        @passive
+        def monitor(dut):
+            while True:
+                yield dut.source.ready.eq(1)
+                if (yield dut.source.valid) and (yield dut.source.ready) and (yield dut.source.first):
+                    ready_during_header.append((yield dut.sink.ready))
+                yield
+
+        def stimulus(dut):
+            yield dut.sink.valid.eq(0)
+            yield dut.sink.first.eq(0)
+            yield dut.sink.last.eq(0)
+            yield dut.sink.dat.eq(0)
+            yield dut.sink.be.eq(0)
+            yield dut.sink.header.eq(_pack_dwords_to_dat(header_4dws))
+            yield dut.sink.fmt.eq(fmt_dict["mem_wr64"])
+            yield dut.source.ready.eq(1)
+            yield
+
+            yield dut.sink.valid.eq(1)
+            yield dut.sink.first.eq(1)
+            yield dut.sink.last.eq(1)
+            yield dut.sink.dat.eq(_pack_dwords_to_dat(payload_dws))
+            yield dut.sink.be.eq(_pack_be_nibbles_to_be([0xF, 0xF, 0xF, 0xF]))
+            yield
+
+            for _ in range(20):
+                if (yield dut.sink.ready):
+                    break
+                yield
+            else:
+                self.fail("128-bit 4DW inserter did not consume payload beat")
+
+            yield dut.sink.valid.eq(0)
+            for _ in range(10):
+                yield
+
+        run_simulation(dut, [stimulus(dut), monitor(dut)], vcd_name=None)
+
+        self.assertEqual(ready_during_header, [0])
+
     def _basic_vectors(self, data_width):
         # Fixed header pattern (4 DWs available).
         header_4dws = [0x11223344, 0x55667788, 0x99AABBCC, 0xDDEEFF00]

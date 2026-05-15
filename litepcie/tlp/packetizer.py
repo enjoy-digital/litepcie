@@ -94,10 +94,6 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
             )
         ]
 
-        # When the header ends exactly on a beat boundary (4DWs on 128-bit), the first payload beat
-        # must be replayed from the registered input in DATA.
-        replay_first = Signal(reset=0)
-
         # Helpers ----------------------------------------------------------------------------------
 
         def _dw(sig, i):
@@ -181,57 +177,55 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
 
         self.fsm = fsm = FSM(reset_state="HEADER")
 
-        fsm.act("HEADER",
-            sink.ready.eq(source.ready),
-            source.valid.eq(sink.valid),
-            source.first.eq(sink.first),
-
-            *_emit_header_plus_payload_1beat(),
-
-            source.last.eq(_header_last_condition(sink.be, sink.last)),
-
-            If(source.valid & source.ready,
-                If(~source.last & (spill_dws == 0),
-                    NextValue(replay_first, 1)
-                ),
-                If(~source.last,
-                    NextState("DATA")
-                )
-            )
-        )
-
         if spill_dws == 0:
-            fsm.act("DATA",
-                If(replay_first,
+            fsm.act("HEADER",
+                sink.ready.eq(0),
+                If(sink.valid & sink.first,
                     source.valid.eq(1),
-                    source.first.eq(0),
-                    source.last.eq(last_r),
-                    source.dat.eq(dat_r),
-                    source.be.eq(be_r),
+                    source.first.eq(1),
 
-                    sink.ready.eq(0),
+                    *_emit_header_plus_payload_1beat(),
 
-                    If(source.ready,
-                        NextValue(replay_first, 0),
-                        If(last_r,
-                            NextState("HEADER")
+                    source.last.eq(_header_last_condition(sink.be, sink.last)),
+
+                    If(source.valid & source.ready,
+                        If(source.last,
+                            sink.ready.eq(1),
+                        ).Else(
+                            NextState("DATA")
                         )
                     )
-                ).Else(
-                    source.valid.eq(sink.valid),
-                    source.first.eq(0),
-                    source.last.eq(sink.last),
-                    source.dat.eq(sink.dat),
-                    source.be.eq(sink.be),
+                )
+            )
+            fsm.act("DATA",
+                source.valid.eq(sink.valid),
+                source.first.eq(0),
+                source.last.eq(sink.last),
+                source.dat.eq(sink.dat),
+                source.be.eq(sink.be),
 
-                    sink.ready.eq(source.ready),
+                sink.ready.eq(source.ready),
 
-                    If(source.valid & source.ready & source.last,
-                        NextState("HEADER")
-                    )
+                If(source.valid & source.ready & source.last,
+                    NextState("HEADER")
                 )
             )
         else:
+            fsm.act("HEADER",
+                sink.ready.eq(source.ready),
+                source.valid.eq(sink.valid),
+                source.first.eq(sink.first),
+
+                *_emit_header_plus_payload_1beat(),
+
+                source.last.eq(_header_last_condition(sink.be, sink.last)),
+
+                If(source.valid & source.ready,
+                    If(~source.last,
+                        NextState("DATA")
+                    )
+                )
+            )
             fsm.act("DATA",
                 source.valid.eq(sink.valid | last_r),
                 source.first.eq(0),
