@@ -74,7 +74,8 @@ int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, ui
     if (dma->use_writer)
         dma->fds.events |= POLLIN;
 
-    dma->fds.fd = open(device_name, O_RDWR | O_CLOEXEC);
+    if (dma->shared_fd != 1)
+        dma->fds.fd = open(device_name, O_RDWR | O_CLOEXEC);
     if (dma->fds.fd < 0) {
         fprintf(stderr, "Could not open device\n");
         return -1;
@@ -139,16 +140,27 @@ void litepcie_dma_cleanup(struct litepcie_dma_ctrl *dma)
     litepcie_release_dma(dma->fds.fd, dma->use_reader, dma->use_writer);
 
     if (dma->zero_copy) {
-        if (dma->use_reader)
+        if (dma->use_reader) {
             munmap(dma->buf_wr, dma->mmap_dma_info.dma_tx_buf_size * dma->mmap_dma_info.dma_tx_buf_count);
-        if (dma->use_writer)
+            dma->buf_wr = NULL;
+        }
+        if (dma->use_writer) {
             munmap(dma->buf_rd, dma->mmap_dma_info.dma_tx_buf_size * dma->mmap_dma_info.dma_tx_buf_count);
+            dma->buf_rd = NULL;
+        }
     } else {
-        free(dma->buf_rd);
-        free(dma->buf_wr);
+        if (dma->use_reader) {
+            free(dma->buf_wr);
+            dma->buf_wr = NULL;
+        }
+        if (dma->use_writer) {
+            free(dma->buf_rd);
+            dma->buf_rd = NULL;
+        }
     }
 
-    close(dma->fds.fd);
+    if (dma->shared_fd != 1)
+        close(dma->fds.fd);
 }
 
 void litepcie_dma_process(struct litepcie_dma_ctrl *dma)

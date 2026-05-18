@@ -16,7 +16,7 @@
 #include "litepcie.h"
 
 struct litepcie_dma_ctrl {
-    uint8_t use_reader, use_writer, loopback, zero_copy;
+    uint8_t use_reader, use_writer, loopback, zero_copy, shared_fd;
     struct pollfd fds;
     char *buf_rd, *buf_wr;
     uint8_t reader_enable;
