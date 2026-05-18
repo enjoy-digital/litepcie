@@ -67,6 +67,7 @@ struct liteuart_port {
 	u32 id;
 	struct workqueue_struct *workqueue;
 	struct work_struct work;
+	bool tx_pending;
 };
 
 #define to_liteuart_port(port)	container_of(port, struct liteuart_port, port)
@@ -93,25 +94,39 @@ static struct uart_driver liteuart_driver = {
 #endif
 };
 
+static bool liteuart_tx_drain(struct uart_port *port);
+
 static void liteuart_work(struct work_struct *w)
 {
 	struct liteuart_port *uart = container_of(w, struct liteuart_port, work);
 	struct uart_port *port = &uart->port;
 	unsigned char __iomem *membase = port->membase;
-	unsigned int flg = TTY_NORMAL;
-	int ch;
-	unsigned long status;
+	unsigned char buf[256];
+	unsigned int buflen = 0;
 
-	while ((status = !litex_read8(membase + OFF_RXEMPTY)) == 1) {
-		ch = litex_read8(membase + OFF_RXTX);
+	while (!litex_read8(membase + OFF_RXEMPTY)) {
+		int ch = litex_read8(membase + OFF_RXTX);
 		port->icount.rx++;
 
 		/* no overflow bits in status */
-		if (!(uart_handle_sysrq_char(port, ch)))
-			uart_insert_char(port, status, 0, ch, flg);
+		if (uart_handle_sysrq_char(port, ch))
+			continue;
 
+		buf[buflen++] = (unsigned char)ch;
+		if (buflen == sizeof(buf)) {
+			tty_insert_flip_string(&port->state->port, buf, buflen);
+			tty_flip_buffer_push(&port->state->port);
+			buflen = 0;
+		}
+	}
+	if (buflen) {
+		tty_insert_flip_string(&port->state->port, buf, buflen);
 		tty_flip_buffer_push(&port->state->port);
 	}
+
+	/* Opportunistically drain TX without busy-waiting. */
+	if (uart->tx_pending)
+		uart->tx_pending = liteuart_tx_drain(port);
 }
 
 static void liteuart_timer(struct timer_list *t)
@@ -123,29 +138,78 @@ static void liteuart_timer(struct timer_list *t)
 #endif
 	struct uart_port *port = &uart->port;
 	unsigned char __iomem *membase = port->membase;
-	unsigned int flg = TTY_NORMAL;
-	int ch;
-	unsigned long status;
-	uint16_t length = 0;
+	unsigned char buf[256];
+	unsigned int buflen = 0;
 
-	while ((status = !litex_read8(membase + OFF_RXEMPTY)) == 1) {
-		/* stop blocking this callback: delegate to a workqueue */
-		if (length > 256) {
-			queue_work(uart->workqueue, &uart->work);
-			break;
-		}
-		length++;
-		ch = litex_read8(membase + OFF_RXTX);
+	while (!litex_read8(membase + OFF_RXEMPTY)) {
+		int ch = litex_read8(membase + OFF_RXTX);
 		port->icount.rx++;
 
 		/* no overflow bits in status */
-		if (!(uart_handle_sysrq_char(port, ch)))
-			uart_insert_char(port, status, 0, ch, flg);
+		if (uart_handle_sysrq_char(port, ch))
+			continue;
 
+		buf[buflen++] = (unsigned char)ch;
+		if (buflen == sizeof(buf)) {
+			tty_insert_flip_string(&port->state->port, buf, buflen);
+			tty_flip_buffer_push(&port->state->port);
+			buflen = 0;
+		}
+	}
+	if (buflen) {
+		tty_insert_flip_string(&port->state->port, buf, buflen);
 		tty_flip_buffer_push(&port->state->port);
 	}
 
+	/* TX: retry pending data without busy-waiting. */
+	if (uart->tx_pending)
+		uart->tx_pending = liteuart_tx_drain(port);
+
 	mod_timer(&uart->timer, jiffies + uart_poll_timeout(port));
+}
+
+static bool liteuart_tx_drain(struct uart_port *port)
+{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
+	struct circ_buf *xmit = &port->state->xmit;
+#else
+	struct tty_port *tport = &port->state->port;
+#endif
+	unsigned char ch;
+
+	while (!litex_read8(port->membase + OFF_TXFULL)) {
+		if (unlikely(port->x_char)) {
+			litex_write8(port->membase + OFF_RXTX, port->x_char);
+			port->icount.tx++;
+			port->x_char = 0;
+			continue;
+		}
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
+		if (uart_circ_empty(xmit))
+			goto out;
+		ch = xmit->buf[xmit->tail];
+		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
+		port->icount.tx++;
+#else
+		if (!uart_fifo_get(port, &ch))
+			goto out;
+#endif
+		litex_write8(port->membase + OFF_RXTX, ch);
+	}
+
+out:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
+	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
+#else
+	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
+#endif
+		uart_write_wakeup(port);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
+	return !uart_circ_empty(xmit) || port->x_char;
+#else
+	return !kfifo_is_empty(&tport->xmit_fifo) || port->x_char;
+#endif
 }
 
 static void liteuart_putchar(struct uart_port *port, int ch)
@@ -181,39 +245,9 @@ static void liteuart_stop_tx(struct uart_port *port)
 
 static void liteuart_start_tx(struct uart_port *port)
 {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
-	struct circ_buf *xmit = &port->state->xmit;
-#else
-	struct tty_port *tport = &port->state->port;
-#endif
-	unsigned char ch;
+	struct liteuart_port *uart = to_liteuart_port(port);
 
-	if (unlikely(port->x_char)) {
-		litex_write8(port->membase + OFF_RXTX, port->x_char);
-		port->icount.tx++;
-		port->x_char = 0;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
-	} else if (!uart_circ_empty(xmit)) {
-		while (xmit->head != xmit->tail) {
-			ch = xmit->buf[xmit->tail];
-			xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-			port->icount.tx++;
-#else
-	} else if (!kfifo_is_empty(&tport->xmit_fifo)) {
-		while(1) {
-			if (!uart_fifo_get(port, &ch))
-				break;
-#endif
-			liteuart_putchar(port, ch);
-		}
-	}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
-#else
-	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
-#endif
-		uart_write_wakeup(port);
+	uart->tx_pending = liteuart_tx_drain(port);
 }
 
 static void liteuart_stop_rx(struct uart_port *port)
@@ -240,6 +274,7 @@ static int liteuart_startup(struct uart_port *port)
 
 	/* disable events */
 	litex_write8(port->membase + OFF_EV_ENABLE, 0);
+	uart->tx_pending = false;
 
 	sprintf(b, "liteuart%d", uart->id);
 	uart->workqueue = create_freezable_workqueue(b);
@@ -278,7 +313,7 @@ static void liteuart_set_termios(struct uart_port *port, struct ktermios *new,
 	spin_lock_irqsave(&port->lock, flags);
 
 	/* update baudrate */
-	baud = uart_get_baud_rate(port, new, old, 0, 460800);
+	baud = uart_get_baud_rate(port, new, old, 0, 2000000);
 	uart_update_timeout(port, new->c_cflag, baud);
 
 	spin_unlock_irqrestore(&port->lock, flags);
@@ -446,6 +481,8 @@ static void liteuart_console_write(struct console *co, const char *s,
 	unsigned long flags;
 
 	uart = (struct liteuart_port *)xa_load(&liteuart_array, co->index);
+	if (!uart)
+		return;
 	port = &uart->port;
 
 	spin_lock_irqsave(&port->lock, flags);
