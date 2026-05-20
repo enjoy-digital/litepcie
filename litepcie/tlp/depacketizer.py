@@ -407,17 +407,20 @@ class LitePCIeTLPDepacketizer(LiteXModule):
             self.comb += dispatch_sources["COMPLETION"].connect(tlp_cmp)
             self.comb += tlp_completion_header.decode(header, tlp_cmp)
 
+            cmp_error = Signal()
             self.comb += [
+                cmp_error.eq(tlp_cmp.status != cpl_dict["sc"]),
                 cmp_source.valid.eq(tlp_cmp.valid),
                 tlp_cmp.ready.eq(cmp_source.ready),
                 cmp_source.first.eq(tlp_cmp.first),
                 cmp_source.last.eq(tlp_cmp.last),
                 cmp_source.len.eq(tlp_cmp.length),
-                cmp_source.end.eq(tlp_cmp.length == (tlp_cmp.byte_count[2:])),
+                cmp_source.end.eq(cmp_error | (tlp_cmp.length == (tlp_cmp.byte_count[2:]))),
                 cmp_source.adr.eq(tlp_cmp.lower_address),
                 cmp_source.req_id.eq(tlp_cmp.requester_id),
                 cmp_source.cmp_id.eq(tlp_cmp.completer_id),
-                cmp_source.err.eq(tlp_cmp.status != 0),
+                cmp_source.err.eq(cmp_error),
+                cmp_source.status.eq(tlp_cmp.status),
                 cmp_source.tag.eq(tlp_cmp.tag),
                 cmp_source.dat.eq(tlp_cmp.dat)
             ]

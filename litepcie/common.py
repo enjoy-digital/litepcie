@@ -98,6 +98,7 @@ def completion_layout(data_width, address_width=32):
         ("len",             10), # Completion length (In Dwords).
         ("end",              1), # Completion end (Current packet is the last).
         ("err",              1), # Completion error.
+        ("status",           3), # Completion status.
         ("tag",              8), # Completion tag.
 
         # Data Stream.

@@ -278,7 +278,21 @@ class LitePCIeDMAReader(LiteXModule):
         self.progress_bytes = Signal(64)
 
         # Control.
-        self._enable = CSRStorage(size=2, description="DMA Reader Control. Write ``1`` to enable DMA Reader.", reset=0 if with_table else 1)
+        self._enable = CSRStorage(fields=[
+            CSRField("enable",            offset= 0, size=1, reset=0 if with_table else 1,
+                description="DMA Reader Enable."),
+            CSRField("idle",              offset= 1, size=1, description="DMA Reader Idle."),
+            CSRField("error",             offset= 2, size=1,
+                description="Sticky PCIe completion error. Cleared when the DMA Reader is re-enabled."),
+            CSRField("completion_status", offset= 4, size=3,
+                description="Last PCIe completion status received with an error."),
+            CSRField("tag",               offset= 8, size=8,
+                description="Last errored PCIe completion tag."),
+            CSRField("user_id",           offset=16, size=8,
+                description="Last errored DMA Reader user identifier."),
+            CSRField("error_count",       offset=24, size=8,
+                description="Saturating count of PCIe completion errors."),
+        ], description="DMA Reader Control/Status.")
 
         # IRQ.
         self.irq = Signal()
@@ -287,10 +301,42 @@ class LitePCIeDMAReader(LiteXModule):
 
         # CSR/Parameters ---------------------------------------------------------------------------
         self.enable = enable = self._enable.storage[0]
+        self.error  = error  = Signal()
 
         max_words_per_request = max_request_size//(endpoint.phy.data_width//8)
         max_pending_words     = endpoint.max_pending_requests*max_words_per_request
         request_words         = Signal(24)
+        completion_error      = Signal()
+        error_count           = Signal(8)
+        error_status          = Signal(3)
+        error_tag             = Signal(8)
+        error_user_id         = Signal(8)
+        self.comb += [
+            completion_error.eq(port.sink.valid & port.sink.ready & port.sink.err),
+        ]
+        self.sync += [
+            self._enable.storage[2].eq(error),
+            self._enable.storage[4:7].eq(error_status),
+            self._enable.storage[8:16].eq(error_tag),
+            self._enable.storage[16:24].eq(error_user_id),
+            self._enable.storage[24:32].eq(error_count),
+            If(self._enable.re & enable,
+                error.eq(0),
+                error_count.eq(0),
+                error_status.eq(0),
+                error_tag.eq(0),
+                error_user_id.eq(0),
+            ).Elif(completion_error,
+                self._enable.storage[0].eq(0),
+                error.eq(1),
+                error_status.eq(port.sink.status),
+                error_tag.eq(port.sink.tag),
+                error_user_id.eq(port.sink.user_id),
+                If(error_count != 0xff,
+                    error_count.eq(error_count + 1)
+                )
+            )
+        ]
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
@@ -329,12 +375,13 @@ class LitePCIeDMAReader(LiteXModule):
         self.comb += [
             # Connect Data FIFO to Data Converter.
             data_fifo.source.connect(self.data_conv.sink),
+            data_fifo.sink.data.eq(port.sink.dat),
+            data_fifo.sink.first.eq(port.sink.first & (port.sink.user_id != last_user_id)),
             # When Enabled, connect Sink to Data FIFO.
             If(enable,
-                port.sink.connect(data_fifo.sink, keep={"valid", "ready"}),
-                data_fifo.sink.data.eq(port.sink.dat),
-                data_fifo.sink.first.eq(port.sink.first & (port.sink.user_id != last_user_id)),
-            # Else accept incoming Port Data.
+                data_fifo.sink.valid.eq(port.sink.valid & ~port.sink.err),
+                port.sink.ready.eq(port.sink.err | data_fifo.sink.ready),
+            # Else accept and discard incoming Port Data.
             ).Else(
                 port.sink.ready.eq(1)
             )
@@ -367,7 +414,9 @@ class LitePCIeDMAReader(LiteXModule):
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
             # Else wait for a Descriptor and to have enough Space to generate the Request.
-            ).Elif(splitter.source.valid & (pending_words < (data_fifo_depth - max_words_per_request)),
+            ).Elif(
+                ~completion_error & splitter.source.valid &
+                (pending_words < (data_fifo_depth - max_words_per_request)),
                 NextState("MEM-RD-REQ"),
             )
         )
@@ -386,20 +435,25 @@ class LitePCIeDMAReader(LiteXModule):
             port.source.dat.eq(0),
         ]
         fsm.act("MEM-RD-REQ",
-            # Request Control-Path.
-            port.source.valid.eq(1),
-            # When Request is accepted...
-            If(port.source.ready,
-                # Accept Descriptor.
-                splitter.source.ready.eq(1),
-                # Return to Idle.
-                NextState("IDLE"),
+            If(~enable,
+                NextState("IDLE")
+            ).Else(
+                # Request Control-Path.
+                port.source.valid.eq(1),
+                # When Request is accepted...
+                If(port.source.ready,
+                    # Accept Descriptor.
+                    splitter.source.ready.eq(1),
+                    # Return to Idle.
+                    NextState("IDLE"),
+                )
             )
         )
 
         # IRQ --------------------------------------------------------------------------------------
-        self.comb += If(splitter.source.valid & splitter.source.ready & splitter.source.last,
-            self.irq.eq(~splitter.source.irq_disable)
+        self.comb += self.irq.eq(
+            completion_error |
+            (splitter.source.valid & splitter.source.ready & splitter.source.last & ~splitter.source.irq_disable)
         )
 
         # Progress ---------------------------------------------------------------------------------

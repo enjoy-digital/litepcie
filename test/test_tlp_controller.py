@@ -47,17 +47,20 @@ class TestTLPController(unittest.TestCase):
         yield
 
     def _push_completion(self, controller, *, tag, channel, user_id, beats, accepted,
-        timeout=64, end_on_last=True):
+        timeout=64, end_on_last=True, err=0, status=0, length_dwords=None):
         sink = controller.master_out.source
+        if length_dwords is None:
+            length_dwords = beats * (controller.master_out.source.dat.nbits // 32)
         for beat_index in range(beats):
             waited = 0
             while True:
                 yield sink.valid.eq(1)
                 yield sink.first.eq(beat_index == 0)
                 yield sink.last.eq(beat_index == (beats - 1))
-                yield sink.len.eq(beats * (controller.master_out.source.dat.nbits // 32))
+                yield sink.len.eq(length_dwords)
                 yield sink.end.eq(1 if (end_on_last and beat_index == (beats - 1)) else 0)
-                yield sink.err.eq(0)
+                yield sink.err.eq(err)
+                yield sink.status.eq(status)
                 yield sink.tag.eq(tag)
                 yield sink.req_id.eq(0x1234)
                 yield sink.cmp_id.eq(0x5678)
@@ -324,3 +327,93 @@ class TestTLPController(unittest.TestCase):
             observed_requests[1],
         ])
         self.assertEqual([c["end"] for c in observed_completions], [0, 1, 1])
+
+    def test_error_completion_is_terminal_and_releases_tag(self):
+        controller = LitePCIeTLPController(
+            data_width           = 128,
+            address_width        = 32,
+            max_pending_requests = 2,
+            cmp_bufs_buffered    = True,
+        )
+
+        observed_requests = []
+        observed_completions = []
+
+        @passive
+        def monitor_requests():
+            source = controller.master_out.sink
+            while len(observed_requests) < 3:
+                yield source.ready.eq(1)
+                if (yield source.valid) and (yield source.ready):
+                    observed_requests.append({
+                        "tag":     (yield source.tag),
+                        "channel": (yield source.channel),
+                        "user_id": (yield source.user_id),
+                    })
+                yield
+
+        @passive
+        def monitor_completions():
+            source = controller.master_in.source
+            while len(observed_completions) < 1:
+                yield source.ready.eq(1)
+                if (yield source.valid) and (yield source.ready):
+                    observed_completions.append({
+                        "tag":     (yield source.tag),
+                        "channel": (yield source.channel),
+                        "user_id": (yield source.user_id),
+                        "err":     (yield source.err),
+                        "status":  (yield source.status),
+                        "end":     (yield source.end),
+                    })
+                yield
+
+        def stim():
+            yield
+            yield from self._issue_read_request(controller, index=0, channel=3, user_id=0x33)
+            yield from self._issue_read_request(controller, index=1, channel=4, user_id=0x44)
+
+            while len(observed_requests) < 2:
+                yield
+
+            accepted = []
+            yield from self._push_completion(
+                controller,
+                tag           = observed_requests[0]["tag"],
+                channel       = 0,
+                user_id       = 0,
+                beats         = 1,
+                accepted      = accepted,
+                err           = 1,
+                status        = 0b011,
+                length_dwords = 0,
+                end_on_last   = False,
+            )
+            self.assertEqual(accepted, [0])
+
+            timeout = 0
+            while len(observed_completions) < 1:
+                timeout += 1
+                if timeout > 32:
+                    self.fail("Timed out waiting for error completion")
+                yield
+
+            yield from self._issue_read_request(controller, index=2, channel=5, user_id=0x55)
+            timeout = 0
+            while len(observed_requests) < 3:
+                timeout += 1
+                if timeout > 32:
+                    self.fail("Timed out waiting for tag reuse after error completion")
+                yield
+
+        run_simulation(controller, [stim(), monitor_requests(), monitor_completions()], vcd_name=None)
+
+        self.assertEqual(observed_completions, [{
+            "tag":     observed_requests[0]["tag"],
+            "channel": 3,
+            "user_id": 0x33,
+            "err":     1,
+            "status":  0b011,
+            "end":     1,
+        }])
+        self.assertEqual(observed_requests[2]["tag"], observed_requests[0]["tag"])

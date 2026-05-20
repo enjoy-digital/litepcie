@@ -181,7 +181,7 @@ class LitePCIeWishboneSlave(LiteXModule):
                     qword_aligned = qword_aligned,
                 ),
                 self.bus.ack.eq(1),
-                self.bus.err.eq(timeout.done),
+                self.bus.err.eq(timeout.done | port.sink.err),
                 NextState("IDLE")
             )
         )

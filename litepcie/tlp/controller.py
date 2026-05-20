@@ -156,8 +156,14 @@ class LitePCIeTLPController(LiteXModule):
         fill_tag = Signal(tag_bits)
         self.sync += If(self.ctrl_rst, fill_tag.eq(0))
 
+        cmp_sink_end = Signal()
+
         # Connect Data-Path.
-        self.comb += cmp_sink.connect(cmp_reorder, omit={"valid", "ready"})
+        self.comb += [
+            cmp_sink_end.eq(cmp_sink.end | (cmp_sink.err & cmp_sink.last)),
+            cmp_sink.connect(cmp_reorder, omit={"valid", "ready", "end"}),
+            cmp_reorder.end.eq(cmp_sink_end),
+        ]
 
         # FSM
         self.cmp_fsm = cmp_fsm = ResetInserter()(FSM(reset_state="FILL-TAG-QUEUE"))
@@ -184,7 +190,7 @@ class LitePCIeTLPController(LiteXModule):
             cmp_sink.connect(cmp_reorder, keep={"valid", "ready"}),
             # Push incoming Tag to tag_queue when Cmp is fully received.
             If(cmp_sink.valid & cmp_sink.ready & cmp_sink.last,
-                If(cmp_sink.end,
+                If(cmp_sink_end,
                     tag_queue.sink.valid.eq(1),
                     tag_queue.sink.tag.eq(cmp_sink.tag)
                 ),

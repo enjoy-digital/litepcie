@@ -38,6 +38,7 @@
 
 import os
 import unittest
+from types import SimpleNamespace
 
 import pytest
 
@@ -45,8 +46,10 @@ from litex.gen import *
 
 from litepcie.common import *
 from litepcie.core import LitePCIeEndpoint
+from litepcie.core.common import LitePCIeMasterInternalPort, LitePCIeMasterPort
 from litepcie.core.msi import LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader, dma_words_for_bytes
+from litepcie.tlp.common import cpl_dict, max_payload_size, max_request_size
 
 from test.common import seed_to_data
 from test.model.host import *
@@ -150,6 +153,126 @@ class TestDMA(unittest.TestCase):
         self.assertEqual(dma_words_for_bytes(128, 128), 8)
         self.assertEqual(dma_words_for_bytes(252, 128), 16)
         self.assertEqual(dma_words_for_bytes(512, 128), 32)
+
+    def test_dma_reader_completion_error_status(self):
+        data_width = 128
+        captured_data = []
+
+        class DUT(LiteXModule):
+            def __init__(self):
+                endpoint = SimpleNamespace(
+                    phy = SimpleNamespace(
+                        data_width       = data_width,
+                        max_request_size = max_request_size,
+                        max_payload_size = max_payload_size,
+                        id               = endpoint_id,
+                    ),
+                    max_pending_requests = 2,
+                )
+                internal_port = LitePCIeMasterInternalPort(data_width, channel=0, read_only=True)
+                self.port    = LitePCIeMasterPort(internal_port)
+                self.reader  = LitePCIeDMAReader(endpoint, self.port, with_table=False)
+
+        dut = DUT()
+
+        @passive
+        def monitor_data():
+            source = dut.reader.source
+            while True:
+                yield source.ready.eq(1)
+                if (yield source.valid) and (yield source.ready):
+                    captured_data.append((yield source.data))
+                yield
+
+        def stim():
+            desc = dut.reader.desc_sink
+            req  = dut.port.source
+            cmp  = dut.port.sink
+
+            request_tag = None
+            timeout = 0
+            while request_tag is None:
+                yield req.ready.eq(1)
+                yield desc.valid.eq(1)
+                yield desc.first.eq(1)
+                yield desc.last.eq(1)
+                yield desc.address.eq(0)
+                yield desc.length.eq(64)
+                yield desc.irq_disable.eq(0)
+                yield desc.last_disable.eq(0)
+                if (yield req.valid) and (yield req.ready):
+                    request_tag = (yield req.tag)
+                timeout += 1
+                if timeout > 64:
+                    self.fail("Timed out waiting for DMA Reader request")
+                yield
+
+            yield desc.valid.eq(0)
+            yield req.ready.eq(0)
+
+            timeout = 0
+            while True:
+                yield cmp.valid.eq(1)
+                yield cmp.first.eq(1)
+                yield cmp.last.eq(1)
+                yield cmp.req_id.eq(endpoint_id)
+                yield cmp.cmp_id.eq(root_id)
+                yield cmp.adr.eq(0)
+                yield cmp.len.eq(0)
+                yield cmp.end.eq(1)
+                yield cmp.err.eq(1)
+                yield cmp.status.eq(cpl_dict["ca"])
+                yield cmp.tag.eq(request_tag)
+                yield
+                if (yield cmp.ready):
+                    break
+                timeout += 1
+                if timeout > 64:
+                    self.fail("Timed out waiting for DMA Reader to accept error completion")
+
+            yield cmp.valid.eq(0)
+            yield cmp.first.eq(0)
+            yield cmp.last.eq(0)
+            for _ in range(8):
+                yield
+
+            self.assertEqual((yield dut.reader.enable), 0)
+            self.assertEqual((yield dut.reader.error), 1)
+            self.assertEqual((yield dut.reader._enable.storage[2]), 1)
+            self.assertEqual((yield dut.reader._enable.storage[4:7]), cpl_dict["ca"])
+            self.assertEqual((yield dut.reader._enable.storage[24:32]), 1)
+            self.assertEqual(captured_data, [])
+
+            yield from dut.reader._enable.write(1)
+            for _ in range(4):
+                yield
+
+            self.assertEqual((yield dut.reader.enable), 1)
+            self.assertEqual((yield dut.reader.error), 0)
+            self.assertEqual((yield dut.reader._enable.storage[2]), 0)
+
+            request_tag = None
+            timeout = 0
+            while request_tag is None:
+                yield req.ready.eq(1)
+                yield desc.valid.eq(1)
+                yield desc.first.eq(1)
+                yield desc.last.eq(1)
+                yield desc.address.eq(128)
+                yield desc.length.eq(64)
+                yield desc.irq_disable.eq(0)
+                yield desc.last_disable.eq(0)
+                if (yield req.valid) and (yield req.ready):
+                    request_tag = (yield req.tag)
+                timeout += 1
+                if timeout > 64:
+                    self.fail("Timed out waiting for DMA Reader request after manual restart")
+                yield
+
+            yield desc.valid.eq(0)
+            yield req.ready.eq(0)
+
+        run_simulation(dut, [stim(), monitor_data()], vcd_name=None)
 
     def dma_test(self, data_width, address_width, descriptor_lengths=None, test_size=256,
         chipset_split=True, chipset_reordering=True):
