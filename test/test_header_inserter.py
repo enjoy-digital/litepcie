@@ -361,6 +361,74 @@ class TestLitePCIeTLPHeaderInserter(unittest.TestCase):
 
         self.assertEqual(ready_during_header, [0])
 
+    def test_128b_4dw_continuous_payload_ready_after_header(self):
+        dut = _HeaderInserterDUT(data_width=128)
+        header_4dws = [0x11223344, 0x55667788, 0x99AABBCC, 0xDDEEFF00]
+        payload_beats = [
+            [0x00000000, 0x00000001, 0x00000002, 0x00000003],
+            [0x10000000, 0x10000001, 0x10000002, 0x10000003],
+            [0x20000000, 0x20000001, 0x20000002, 0x20000003],
+        ]
+
+        header_cycles         = []
+        payload_accept_cycles = []
+
+        @passive
+        def monitor(dut):
+            cycle = 0
+            while True:
+                if (yield dut.source.valid) and (yield dut.source.ready) and (yield dut.source.first):
+                    header_cycles.append(cycle)
+                if (yield dut.sink.valid) and (yield dut.sink.ready):
+                    payload_accept_cycles.append(cycle)
+                yield
+                cycle += 1
+
+        def stimulus(dut):
+            yield dut.sink.valid.eq(0)
+            yield dut.sink.first.eq(0)
+            yield dut.sink.last.eq(0)
+            yield dut.sink.dat.eq(0)
+            yield dut.sink.be.eq(0)
+            yield dut.sink.header.eq(_pack_dwords_to_dat(header_4dws))
+            yield dut.sink.fmt.eq(fmt_dict["mem_wr64"])
+            yield dut.source.ready.eq(1)
+            yield
+
+            for i, payload_dws in enumerate(payload_beats):
+                yield dut.sink.valid.eq(1)
+                yield dut.sink.first.eq(i == 0)
+                yield dut.sink.last.eq(i == (len(payload_beats) - 1))
+                yield dut.sink.dat.eq(_pack_dwords_to_dat(payload_dws))
+                yield dut.sink.be.eq(_pack_be_nibbles_to_be([0xF, 0xF, 0xF, 0xF]))
+                yield
+
+                for _ in range(20):
+                    if (yield dut.sink.ready):
+                        break
+                    yield
+                else:
+                    self.fail(f"128-bit 4DW inserter did not consume payload beat {i}")
+
+            yield dut.sink.valid.eq(0)
+            for _ in range(10):
+                yield
+
+        run_simulation(dut, [stimulus(dut), monitor(dut)], vcd_name=None)
+
+        self.assertEqual(len(header_cycles), 1)
+        self.assertEqual(len(payload_accept_cycles), len(payload_beats))
+        self.assertGreater(
+            payload_accept_cycles[0],
+            header_cycles[0],
+            msg="first payload beat was consumed while the 4DW header beat was emitted"
+        )
+        self.assertEqual(
+            payload_accept_cycles,
+            list(range(payload_accept_cycles[0], payload_accept_cycles[0] + len(payload_beats))),
+            msg="payload input was stalled after the first accepted payload beat"
+        )
+
     def _basic_vectors(self, data_width):
         # Fixed header pattern (4 DWs available).
         header_4dws = [0x11223344, 0x55667788, 0x99AABBCC, 0xDDEEFF00]
