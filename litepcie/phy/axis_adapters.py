@@ -871,9 +871,12 @@ class SAxisRQAdapter(LiteXModule):
                 self.m_axis_tlast.eq(self.s_axis_tlast),
                 self.m_axis_tvalid.eq(self.s_axis_tvalid),
                 self.m_axis_tdata.eq(Mux(tfirst_ff,
-                    Cat(self.s_axis_tdata[96:128], self.s_axis_tdata[64:96], tdata_header, self.s_axis_tdata[128:256]),
+                    # Xilinx requester descriptor: DW0=addr-low, DW1=addr-high(0 for 32b), DW2-3=
+                    # header, DW4+=payload. Mirror the 128b/512b branches (addr-low FIRST). The
+                    # previous order put addr at DW1 -> all requests hit address/register 0 at 256b.
+                    Cat(self.s_axis_tdata[64:96], C(0, 32), tdata_header, self.s_axis_tdata[96:224]),
                     self.s_axis_tdata)),
-                self.m_axis_tkeep.eq(tkeep_or),
+                self.m_axis_tkeep.eq(Mux(tfirst_ff, Cat(C(1, 1), tkeep_or[0:7]), tkeep_or)),
                 self.m_axis_tuser.eq(Cat(
                     Mux(tfirst_ff, Cat(firstbe, lastbe), Cat(firstbe_l, lastbe_l)),
                     upper_user
