@@ -17,7 +17,7 @@ from litex_boards.platforms import xilinx_kc705
 
 from litex.soc.cores.clock import S7MMCM
 from litex.soc.interconnect.csr import *
-from litex.soc.integration.soc_core import *
+from litex.soc.integration.soc import *
 from litex.soc.integration.builder import *
 
 from litepcie.phy.s7pciephy import S7PCIEPHY
