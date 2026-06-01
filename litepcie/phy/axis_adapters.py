@@ -870,13 +870,24 @@ class SAxisRQAdapter(LiteXModule):
             self.comb += [
                 self.m_axis_tlast.eq(self.s_axis_tlast),
                 self.m_axis_tvalid.eq(self.s_axis_tvalid),
+                # Xilinx requester descriptor: DW0=addr-low, DW1=addr-high, DW2-3=header, DW4+=data.
+                # The litepcie raw beat carries the address differently for 3DW vs 4DW requests, and
+                # on US+ at 256/512b force_64b makes MEMORY requests 4DW while CONFIG stays 3DW:
+                #   3DW (cfg, 32b mem): raw DW2 = addr(register), no addr-high; payload from raw DW3.
+                #   4DW (mem, force_64b): raw DW2 = addr-high, raw DW3 = addr-low; payload from raw DW4.
+                # Select on fmt[0] (s_axis_tdata[29], the 4DW bit). Handling only 3DW (as before) put
+                # the 4DW addr-low into DW4 and addr-high(0) into DW0 -> MemRd to address 0 -> UR.
                 self.m_axis_tdata.eq(Mux(tfirst_ff,
-                    # Xilinx requester descriptor: DW0=addr-low, DW1=addr-high(0 for 32b), DW2-3=
-                    # header, DW4+=payload. Mirror the 128b/512b branches (addr-low FIRST). The
-                    # previous order put addr at DW1 -> all requests hit address/register 0 at 256b.
-                    Cat(self.s_axis_tdata[64:96], C(0, 32), tdata_header, self.s_axis_tdata[96:224]),
+                    Cat(
+                        Mux(self.s_axis_tdata[29], self.s_axis_tdata[96:128], self.s_axis_tdata[64:96]),  # DW0 addr-low
+                        Mux(self.s_axis_tdata[29], self.s_axis_tdata[64:96],  C(0, 32)),                  # DW1 addr-high
+                        tdata_header,                                                                     # DW2-3
+                        Mux(self.s_axis_tdata[29], self.s_axis_tdata[128:256], self.s_axis_tdata[96:224]),# DW4-7 data
+                    ),
                     self.s_axis_tdata)),
-                self.m_axis_tkeep.eq(Mux(tfirst_ff, Cat(C(1, 1), tkeep_or[0:7]), tkeep_or)),
+                self.m_axis_tkeep.eq(Mux(tfirst_ff,
+                    Mux(self.s_axis_tdata[29], tkeep_or, Cat(C(1, 1), tkeep_or[0:7])),
+                    tkeep_or)),
                 self.m_axis_tuser.eq(Cat(
                     Mux(tfirst_ff, Cat(firstbe, lastbe), Cat(firstbe_l, lastbe_l)),
                     upper_user
