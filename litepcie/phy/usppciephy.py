@@ -31,6 +31,7 @@ class USPPCIEPHY(LiteXModule):
         pcie_data_width = None,
         bar0_size       = 0x100000,
         mode            = "Endpoint",
+        with_cfg_mgmt   = False,
     ):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
@@ -93,6 +94,20 @@ class USPPCIEPHY(LiteXModule):
 
         self.config           = {}
         self.external_hard_ip = False
+
+        # Optional Configuration Management interface (hard-IP local config space access, e.g. to
+        # program the Root Port's own DevCtl.MPS). Signals live in the "pcie" clock domain. When
+        # disabled (default), the cfg_mgmt port stays tied off -> behavior is unchanged.
+        self.with_cfg_mgmt = with_cfg_mgmt
+        if with_cfg_mgmt:
+            self.cfg_mgmt_addr            = Signal(10)  # DWORD address into local config space.
+            self.cfg_mgmt_function_number = Signal(8)
+            self.cfg_mgmt_write           = Signal()
+            self.cfg_mgmt_write_data      = Signal(32)
+            self.cfg_mgmt_byte_enable     = Signal(4, reset=0b1111)
+            self.cfg_mgmt_read            = Signal()
+            self.cfg_mgmt_read_data       = Signal(32)
+            self.cfg_mgmt_read_write_done = Signal()
 
         # # #
 
@@ -614,6 +629,20 @@ class USPPCIEPHY(LiteXModule):
             i_cfg_interrupt_msi_pending_status_data_enable    = 0,
             i_cfg_interrupt_msi_function_number               = 0,
         )
+
+        # Route the Configuration Management interface out (else it stays tied off above).
+        if with_cfg_mgmt:
+            self.pcie_usp_phy_params.update(
+                i_cfg_mgmt_addr            = self.cfg_mgmt_addr,
+                i_cfg_mgmt_write           = self.cfg_mgmt_write,
+                i_cfg_mgmt_write_data      = self.cfg_mgmt_write_data,
+                i_cfg_mgmt_byte_enable     = self.cfg_mgmt_byte_enable,
+                i_cfg_mgmt_read            = self.cfg_mgmt_read,
+                o_cfg_mgmt_read_data       = self.cfg_mgmt_read_data,
+                o_cfg_mgmt_read_write_done = self.cfg_mgmt_read_write_done,
+                i_cfg_mgmt_function_number = self.cfg_mgmt_function_number,
+                i_cfg_mgmt_debug_access    = 0,
+            )
 
         self.m_axis_cq_adapt = m_axis_cq_adapt = ClockDomainsRenamer("pcie")(MAxisCQAdapter(pcie_data_width))
         self.comb += [
