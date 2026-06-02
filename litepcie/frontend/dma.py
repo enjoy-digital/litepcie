@@ -108,7 +108,7 @@ class LitePCIeDMAScatterGather(LiteXModule):
         table = stream.SyncFIFO(descriptor_layout(address_width=address_width), depth)
         table = ResetInserter()(table)
         self.submodules += table
-        self.comb += table.reset.eq(self.reset.storage & self.reset.re)
+        self.comb += table.reset.eq(self.reset.storage & self.reset.wr_stb)
         self.comb += self.level.status.eq(table.level)
 
         # Table Write logic ------------------------------------------------------------------------
@@ -129,7 +129,7 @@ class LitePCIeDMAScatterGather(LiteXModule):
                 table.sink.irq_disable.eq(self.value.fields.irq_disable),
                 table.sink.last_disable.eq(self.value.fields.last_disable),
                 table.sink.first.eq(table.level == 0),
-                table.sink.valid.eq(self.we.re),
+                table.sink.valid.eq(self.we.wr_stb),
             # In Loop mode, the Table is automatically refilled.
             ).Else(
                 table.source.connect(table.sink, omit={"valid", "ready"}),
@@ -750,7 +750,7 @@ class LitePCIeDMABuffering(LiteXModule):
             reader_fifo_level_min = Signal.like(reader_fifo.level)
             self.sync += If(reader_fifo.level < reader_fifo_level_min, reader_fifo_level_min.eq(reader_fifo.level))
             # Clear on Status write or when in Instantaneous mode.
-            reader_fifo_level_clr = (self.reader_fifo_status.re | (self.reader_fifo_control.fields.level_mode == 0))
+            reader_fifo_level_clr = (self.reader_fifo_status.wr_stb | (self.reader_fifo_control.fields.level_mode == 0))
             self.sync += If(reader_fifo_level_clr, reader_fifo_level_min.eq(2**len(reader_fifo_level_min)-1))
             # Return Reader FIFO level.
             self.comb += [
@@ -782,7 +782,7 @@ class LitePCIeDMABuffering(LiteXModule):
             writer_fifo_level_max = Signal.like(writer_fifo.level)
             self.sync += If(writer_fifo.level > writer_fifo_level_max, writer_fifo_level_max.eq(writer_fifo.level))
             # Clear on Status write or when in Instantaneous mode.
-            writer_fifo_level_clr = (self.writer_fifo_status.re | (self.writer_fifo_control.fields.level_mode == 0))
+            writer_fifo_level_clr = (self.writer_fifo_status.wr_stb | (self.writer_fifo_control.fields.level_mode == 0))
             self.sync += If(writer_fifo_level_clr, writer_fifo_level_max.eq(0))
             # Return Writer FIFO level.
             self.comb += [
@@ -893,7 +893,7 @@ class LitePCIeDMAStatus(LiteXModule):
             0b00: update.eq(self.external_update),
             0b01: update.eq(writer.irq),
             0b10: update.eq(reader.irq),
-            0b11: update.eq(self.control.re),
+            0b11: update.eq(self.control.wr_stb),
         }
         self.comb += Case(self.control.fields.update, update_cases)
 

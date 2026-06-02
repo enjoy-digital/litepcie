@@ -172,5 +172,5 @@ class LTSSMTracer(Module, AutoCSR):
             self._history.fields.old.eq(fifo.source.old),
             self._history.fields.ovfl.eq(fifo.source.ovfl),
             self._history.fields.valid.eq(fifo.source.valid),
-            fifo.source.ready.eq(self._history.we),
+            fifo.source.ready.eq(self._history.rd_stb),
         ]

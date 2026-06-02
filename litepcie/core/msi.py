@@ -34,7 +34,7 @@ class LitePCIeMSI(LiteXModule):
         vector = Signal(width)
 
         # Memorize and clear IRQ Vector ------------------------------------------------------------
-        self.comb += If(self.clear.re, clear.eq(self.clear.storage))
+        self.comb += If(self.clear.wr_stb, clear.eq(self.clear.storage))
         self.comb += enable.eq(self.enable.storage)
         self.comb += self.vector.status.eq(vector)
         self.sync += vector.eq(enable & ((vector & ~clear) | self.irqs))
