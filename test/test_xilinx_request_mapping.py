@@ -10,7 +10,7 @@ from litex.gen import *
 from litex.soc.interconnect import stream
 
 from litepcie.phy.axis_adapters import SAxisCCAdapter, SAxisRQAdapter
-from test.test_s_axis_rq_adapter import _rq_header
+from test.test_s_axis_rq_adapter import _rq_256_first_beat_data, _rq_256_first_beat_keep, _rq_header
 from test.test_s_axis_cc_adapter import _header_words
 
 
@@ -106,22 +106,22 @@ class TestXilinxRequestMapping(unittest.TestCase):
         return sum((((keep >> (4*i)) & 0x1) << i) for i in range(16))
 
     def test_direct_rq_mapping_256bit(self):
-        data = int("112233445566778899aabbccddeeff00" * 2, 16)
-        data &= ~0x3FF
-        data |= 0x055
-        be   = (1 << 32) - 1
-        dut  = _DirectRQDUT(256)
-        out  = _run_direct_request_once(dut, "s_axis_rq", data, be)
-        expected_data = ((data >> 128) << 128)
-        expected_data |= (_rq_header(data, 0) << 64)
-        expected_data |= ((data >> 64) & 0xFFFFFFFF) << 32
-        expected_data |= ((data >> 96) & 0xFFFFFFFF)
+        for is_4dw in [False, True]:
+            with self.subTest(is_4dw=is_4dw):
+                data = int("112233445566778899aabbccddeeff00" * 2, 16)
+                data &= ~0x3FF
+                data &= ~(1 << 29)
+                data |= 0x055
+                data |= int(is_4dw) << 29
+                be   = (1 << 32) - 1
+                dut  = _DirectRQDUT(256)
+                out  = _run_direct_request_once(dut, "s_axis_rq", data, be)
 
-        self.assertEqual(len(dut.s_axis_rq_tuser_raw), 60)
-        self.assertEqual(out["data"], expected_data)
-        self.assertEqual(out["keep"], 0xFF)
-        self.assertEqual(out["last"], 1)
-        self.assertEqual(out["valid"], 1)
+                self.assertEqual(len(dut.s_axis_rq_tuser_raw), 60)
+                self.assertEqual(out["data"], _rq_256_first_beat_data(data, 0))
+                self.assertEqual(out["keep"], _rq_256_first_beat_keep(data, be))
+                self.assertEqual(out["last"], 1)
+                self.assertEqual(out["valid"], 1)
 
     def test_direct_rq_mapping_512bit(self):
         data = int("00112233445566778899aabbccddeeff" * 4, 16)

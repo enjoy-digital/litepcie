@@ -55,6 +55,32 @@ def _rq_header(data, tuser):
     return header
 
 
+def _rq_256_first_beat_data(data, tuser):
+    is_4dw = (data >> 29) & 0x1
+    if is_4dw:
+        addr_low  = (data >> 96)  & 0xFFFFFFFF
+        addr_high = (data >> 64)  & 0xFFFFFFFF
+        payload   = (data >> 128) & ((1 << 128) - 1)
+    else:
+        addr_low  = (data >> 64) & 0xFFFFFFFF
+        addr_high = 0
+        payload   = (data >> 96) & ((1 << 128) - 1)
+
+    return (
+        (payload << 128) |
+        (_rq_header(data, tuser) << 64) |
+        (addr_high << 32) |
+        addr_low
+    )
+
+
+def _rq_256_first_beat_keep(data, keep):
+    tkeep_or = sum((((keep >> (4*i)) & 0x1) << i) for i in range(8))
+    if (data >> 29) & 0x1:
+        return tkeep_or
+    return 1 | ((tkeep_or & 0x7F) << 1)
+
+
 class TestSAxisRQAdapter(unittest.TestCase):
     def _run_poison_ecrc_matrix_case(self, data_width, poison_data, poison_user, ecrc_data, ecrc_user):
         dut = SAxisRQAdapter(data_width)
@@ -170,44 +196,45 @@ class TestSAxisRQAdapter(unittest.TestCase):
         self.assertEqual(beats[1], (0x1, 1))
 
     def test_256_first_beat_rewrite(self):
-        dut = SAxisRQAdapter(256)
-        data = int("112233445566778899aabbccddeeff00" * 2, 16)
-        data &= ~0x3FF
-        data |= 0x055
-        tuser = 0b1000
+        for is_4dw in [False, True]:
+            with self.subTest(is_4dw=is_4dw):
+                dut = SAxisRQAdapter(256)
+                data = int("112233445566778899aabbccddeeff00" * 2, 16)
+                data &= ~0x3FF
+                data &= ~(1 << 29)
+                data |= 0x055
+                data |= int(is_4dw) << 29
+                tuser = 0b1000
+                tkeep = (1 << 32) - 1
 
-        beats = []
+                beats = []
 
-        @passive
-        def monitor():
-            for _ in range(6):
-                if (yield dut.m_axis_tvalid):
-                    beats.append(((yield dut.m_axis_tdata), (yield dut.m_axis_tkeep), (yield dut.m_axis_tlast), (yield dut.m_axis_tuser)))
-                yield
+                @passive
+                def monitor():
+                    for _ in range(6):
+                        if (yield dut.m_axis_tvalid):
+                            beats.append(((yield dut.m_axis_tdata), (yield dut.m_axis_tkeep), (yield dut.m_axis_tlast), (yield dut.m_axis_tuser)))
+                        yield
 
-        def stim():
-            yield dut.m_axis_tready.eq(1)
-            yield
-            yield dut.s_axis_tvalid.eq(1)
-            yield dut.s_axis_tlast.eq(1)
-            yield dut.s_axis_tdata.eq(data)
-            yield dut.s_axis_tkeep.eq((1 << 32) - 1)
-            yield dut.s_axis_tuser.eq(tuser)
-            yield
-            yield dut.s_axis_tvalid.eq(0)
-            yield
+                def stim():
+                    yield dut.m_axis_tready.eq(1)
+                    yield
+                    yield dut.s_axis_tvalid.eq(1)
+                    yield dut.s_axis_tlast.eq(1)
+                    yield dut.s_axis_tdata.eq(data)
+                    yield dut.s_axis_tkeep.eq(tkeep)
+                    yield dut.s_axis_tuser.eq(tuser)
+                    yield
+                    yield dut.s_axis_tvalid.eq(0)
+                    yield
 
-        run_simulation(dut, [stim(), monitor()], vcd_name=None)
-        self.assertEqual(len(beats), 1)
-        out_data, out_keep, out_last, out_user = beats[0]
-        expected_data = ((data >> 128) << 128)
-        expected_data |= (_rq_header(data, tuser) << 64)
-        expected_data |= ((data >> 64) & 0xFFFFFFFF) << 32
-        expected_data |= ((data >> 96) & 0xFFFFFFFF)
-        self.assertEqual(out_data, expected_data)
-        self.assertEqual(out_keep, 0xFF)
-        self.assertEqual(out_last, 1)
-        self.assertEqual(out_user & 0xFF, (((data >> 36) & 0xF) << 4) | ((data >> 32) & 0xF))
+                run_simulation(dut, [stim(), monitor()], vcd_name=None)
+                self.assertEqual(len(beats), 1)
+                out_data, out_keep, out_last, out_user = beats[0]
+                self.assertEqual(out_data, _rq_256_first_beat_data(data, tuser))
+                self.assertEqual(out_keep, _rq_256_first_beat_keep(data, tkeep))
+                self.assertEqual(out_last, 1)
+                self.assertEqual(out_user & 0xFF, (((data >> 36) & 0xF) << 4) | ((data >> 32) & 0xF))
 
     def test_512_read_short_single_beat(self):
         dut = SAxisRQAdapter(512)
@@ -468,11 +495,11 @@ class TestSAxisRQAdapter(unittest.TestCase):
     def test_keep_be_fuzz_all_widths(self):
         rng = random.Random(0x5A1700)
 
-        def expected_keep(width, keep):
+        def expected_keep(width, data, keep):
             if width == 128:
                 return 0xF
             if width == 256:
-                return sum((((keep >> (4*i)) & 0x1) << i) for i in range(8))
+                return _rq_256_first_beat_keep(data, keep)
             return 1 | sum((((keep >> (4*i)) & 0x1) << (i + 1)) for i in range(15))
 
         for data_width in [128, 256, 512]:
@@ -519,7 +546,7 @@ class TestSAxisRQAdapter(unittest.TestCase):
                 run_simulation(dut, [stim(), monitor()], vcd_name=None)
                 self.assertEqual(len(beats), 1)
                 self.assertEqual(beats[0]["last"], 1)
-                self.assertEqual(beats[0]["keep"], expected_keep(data_width, keep))
+                self.assertEqual(beats[0]["keep"], expected_keep(data_width, data, keep))
                 if data_width in [128, 256]:
                     self.assertEqual(beats[0]["user"] & 0xFF, (lastbe << 4) | firstbe)
                 else:
