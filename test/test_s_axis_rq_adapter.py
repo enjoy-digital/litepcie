@@ -81,6 +81,36 @@ def _rq_256_first_beat_keep(data, keep):
     return 1 | ((tkeep_or & 0x7F) << 1)
 
 
+def _rq_512_first_beat_data(data, tuser):
+    is_4dw = (data >> 29) & 0x1
+    if is_4dw:
+        addr_low  = (data >> 96)  & 0xFFFFFFFF
+        addr_high = (data >> 64)  & 0xFFFFFFFF
+        payload   = (data >> 128) & ((1 << 384) - 1)
+    else:
+        addr_low  = (data >> 64) & 0xFFFFFFFF
+        addr_high = 0
+        payload   = (data >> 96) & ((1 << 384) - 1)
+
+    return (
+        (payload << 128) |
+        (_rq_header(data, tuser) << 64) |
+        (addr_high << 32) |
+        addr_low
+    )
+
+
+def _rq_512_keep_or(keep):
+    return sum((((keep >> (4*i)) & 0x1) << i) for i in range(16))
+
+
+def _rq_512_first_beat_keep(data, keep):
+    tkeep_or = _rq_512_keep_or(keep)
+    if (data >> 29) & 0x1:
+        return tkeep_or
+    return 1 | ((tkeep_or & 0x7FFF) << 1)
+
+
 class TestSAxisRQAdapter(unittest.TestCase):
     def _run_poison_ecrc_matrix_case(self, data_width, poison_data, poison_user, ecrc_data, ecrc_user):
         dut = SAxisRQAdapter(data_width)
@@ -236,41 +266,47 @@ class TestSAxisRQAdapter(unittest.TestCase):
                 self.assertEqual(out_last, 1)
                 self.assertEqual(out_user & 0xFF, (((data >> 36) & 0xF) << 4) | ((data >> 32) & 0xF))
 
-    def test_512_read_short_single_beat(self):
-        dut = SAxisRQAdapter(512)
-        data = int("00112233445566778899aabbccddeeff" * 4, 16)
-        data &= ~(0x3 << 30)  # read
-        data &= ~0x3FF
-        data |= 0x005         # < 13, should end on first beat
-        tkeep = (1 << 64) - 1
+    def test_512_first_beat_rewrite(self):
+        for is_4dw in [False, True]:
+            with self.subTest(is_4dw=is_4dw):
+                dut = SAxisRQAdapter(512)
+                data = int("00112233445566778899aabbccddeeff" * 4, 16)
+                data &= ~(0x3 << 30)  # read
+                data &= ~0x3FF
+                data |= 0x005         # < 13, should end on first beat
+                data &= ~(1 << 29)
+                data |= int(is_4dw) << 29
+                tuser = 0b1000
+                tkeep = (1 << 64) - 1
 
-        beats = []
+                beats = []
 
-        @passive
-        def monitor():
-            for _ in range(8):
-                if (yield dut.m_axis_tvalid):
-                    beats.append(((yield dut.m_axis_tkeep), (yield dut.m_axis_tlast), (yield dut.m_axis_tuser)))
-                yield
+                @passive
+                def monitor():
+                    for _ in range(8):
+                        if (yield dut.m_axis_tvalid):
+                            beats.append(((yield dut.m_axis_tdata), (yield dut.m_axis_tkeep), (yield dut.m_axis_tlast), (yield dut.m_axis_tuser)))
+                        yield
 
-        def stim():
-            yield dut.m_axis_tready.eq(1)
-            yield
-            yield dut.s_axis_tvalid.eq(1)
-            yield dut.s_axis_tlast.eq(1)
-            yield dut.s_axis_tdata.eq(data)
-            yield dut.s_axis_tkeep.eq(tkeep)
-            yield dut.s_axis_tuser.eq(0b1000)
-            yield
-            yield dut.s_axis_tvalid.eq(0)
-            yield
+                def stim():
+                    yield dut.m_axis_tready.eq(1)
+                    yield
+                    yield dut.s_axis_tvalid.eq(1)
+                    yield dut.s_axis_tlast.eq(1)
+                    yield dut.s_axis_tdata.eq(data)
+                    yield dut.s_axis_tkeep.eq(tkeep)
+                    yield dut.s_axis_tuser.eq(tuser)
+                    yield
+                    yield dut.s_axis_tvalid.eq(0)
+                    yield
 
-        run_simulation(dut, [stim(), monitor()], vcd_name=None)
-        self.assertEqual(len(beats), 1)
-        out_keep, out_last, out_user = beats[0]
-        self.assertEqual(out_last, 1)
-        self.assertEqual(out_keep, 0xFFFF)
-        self.assertEqual((out_user >> 36) & 0x1, 1)
+                run_simulation(dut, [stim(), monitor()], vcd_name=None)
+                self.assertEqual(len(beats), 1)
+                out_data, out_keep, out_last, out_user = beats[0]
+                self.assertEqual(out_data, _rq_512_first_beat_data(data, tuser))
+                self.assertEqual(out_keep, _rq_512_first_beat_keep(data, tkeep))
+                self.assertEqual(out_last, 1)
+                self.assertEqual((out_user >> 36) & 0x1, 1)
 
     def test_256_be_latched_on_second_beat(self):
         dut = SAxisRQAdapter(256)
@@ -314,6 +350,7 @@ class TestSAxisRQAdapter(unittest.TestCase):
         dut = SAxisRQAdapter(512)
         data = int("89abcdef01234567fedcba9876543210" * 4, 16)
         data |= (0x1 << 30)      # write
+        data &= ~(1 << 29)       # 3DW
         data &= ~0x3FF
         data |= 13               # dwlen == 13 triggers delayed-last path
 
@@ -343,6 +380,58 @@ class TestSAxisRQAdapter(unittest.TestCase):
         self.assertEqual(len(beats), 2)
         self.assertEqual(beats[0], (0xFFFF, 0))
         self.assertEqual(beats[1], (0x0001, 1))
+
+    def test_512_write_4dw_multi_beat(self):
+        dut = SAxisRQAdapter(512)
+        data0 = int("00112233445566778899aabbccddeeff" * 4, 16)
+        data1 = int("ffeeddccbbaa99887766554433221100" * 4, 16)
+        data0 &= ~(0x3 << 30)
+        data0 |= (0x1 << 30)     # write
+        data0 |= (1 << 29)       # 4DW
+        data0 &= ~0x3FF
+        data0 |= 32
+        keep0 = (1 << 64) - 1
+        keep1 = 0x0000ffff0000ffff
+        tuser = 0b1000
+
+        beats = []
+
+        @passive
+        def monitor():
+            for _ in range(16):
+                if (yield dut.m_axis_tvalid):
+                    beats.append((
+                        (yield dut.m_axis_tdata),
+                        (yield dut.m_axis_tkeep),
+                        (yield dut.m_axis_tlast),
+                        (yield dut.m_axis_tuser),
+                    ))
+                yield
+
+        def stim():
+            yield dut.m_axis_tready.eq(1)
+            yield
+            yield dut.s_axis_tvalid.eq(1)
+            yield dut.s_axis_tlast.eq(0)
+            yield dut.s_axis_tdata.eq(data0)
+            yield dut.s_axis_tkeep.eq(keep0)
+            yield dut.s_axis_tuser.eq(tuser)
+            yield
+            yield dut.s_axis_tlast.eq(1)
+            yield dut.s_axis_tdata.eq(data1)
+            yield dut.s_axis_tkeep.eq(keep1)
+            yield
+            yield dut.s_axis_tvalid.eq(0)
+            yield
+
+        run_simulation(dut, [stim(), monitor()], vcd_name=None)
+        self.assertEqual(len(beats), 2)
+        self.assertEqual(beats[0][0], _rq_512_first_beat_data(data0, tuser))
+        self.assertEqual(beats[0][1], _rq_512_first_beat_keep(data0, keep0))
+        self.assertEqual(beats[0][2], 0)
+        self.assertEqual(beats[1][0], data1)
+        self.assertEqual(beats[1][1], _rq_512_keep_or(keep1))
+        self.assertEqual(beats[1][2], 1)
 
     def test_256_backpressure_equivalence(self):
         beat0 = int("00112233445566778899aabbccddeeff" * 2, 16)
@@ -410,6 +499,7 @@ class TestSAxisRQAdapter(unittest.TestCase):
             d &= ~(0x3 << 30)
             if is_write:
                 d |= (0x1 << 30)
+            d &= ~(1 << 29)  # 3DW
             # DLen.
             d &= ~0x3FF
             d |= dwlen & 0x3FF
@@ -500,7 +590,7 @@ class TestSAxisRQAdapter(unittest.TestCase):
                 return 0xF
             if width == 256:
                 return _rq_256_first_beat_keep(data, keep)
-            return 1 | sum((((keep >> (4*i)) & 0x1) << (i + 1)) for i in range(15))
+            return _rq_512_first_beat_keep(data, keep)
 
         for data_width in [128, 256, 512]:
             keep_width = data_width // 8

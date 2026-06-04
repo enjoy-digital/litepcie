@@ -10,7 +10,8 @@ from litex.gen import *
 from litex.soc.interconnect import stream
 
 from litepcie.phy.axis_adapters import SAxisCCAdapter, SAxisRQAdapter
-from test.test_s_axis_rq_adapter import _rq_256_first_beat_data, _rq_256_first_beat_keep, _rq_header
+from test.test_s_axis_rq_adapter import _rq_256_first_beat_data, _rq_256_first_beat_keep
+from test.test_s_axis_rq_adapter import _rq_512_first_beat_data, _rq_512_first_beat_keep
 from test.test_s_axis_cc_adapter import _header_words
 
 
@@ -124,21 +125,25 @@ class TestXilinxRequestMapping(unittest.TestCase):
                 self.assertEqual(out["valid"], 1)
 
     def test_direct_rq_mapping_512bit(self):
-        data = int("00112233445566778899aabbccddeeff" * 4, 16)
-        data &= ~(0x3 << 30)
-        data &= ~0x3FF
-        data |= 0x005
-        be   = (1 << 64) - 1
-        dut  = _DirectRQDUT(512)
-        out  = _run_direct_request_once(dut, "s_axis_rq", data, be)
+        for is_4dw in [False, True]:
+            with self.subTest(is_4dw=is_4dw):
+                data = int("00112233445566778899aabbccddeeff" * 4, 16)
+                data &= ~(0x3 << 30)
+                data &= ~0x3FF
+                data |= 0x005
+                data &= ~(1 << 29)
+                data |= int(is_4dw) << 29
+                be   = (1 << 64) - 1
+                dut  = _DirectRQDUT(512)
+                out  = _run_direct_request_once(dut, "s_axis_rq", data, be)
 
-        self.assertEqual(len(dut.s_axis_rq_tuser_raw), 137)
-        self.assertEqual((out["data"] >> 64) & ((1 << 64) - 1), _rq_header(data, 0))
-        self.assertEqual(out["keep"], 0xFFFF)
-        self.assertEqual(out["last"], 1)
-        self.assertEqual(out["valid"], 1)
-        self.assertEqual(out["user"] & 0xF, (data >> 32) & 0xF)
-        self.assertEqual((out["user"] >> 8) & 0xF, (data >> 36) & 0xF)
+                self.assertEqual(len(dut.s_axis_rq_tuser_raw), 137)
+                self.assertEqual(out["data"], _rq_512_first_beat_data(data, 0))
+                self.assertEqual(out["keep"], _rq_512_first_beat_keep(data, be))
+                self.assertEqual(out["last"], 1)
+                self.assertEqual(out["valid"], 1)
+                self.assertEqual(out["user"] & 0xF, (data >> 32) & 0xF)
+                self.assertEqual((out["user"] >> 8) & 0xF, (data >> 36) & 0xF)
 
     def test_direct_cc_mapping_256bit(self):
         data = int("ffeeddccbbaa99887766554433221100" * 2, 16)

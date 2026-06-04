@@ -900,14 +900,19 @@ class SAxisRQAdapter(LiteXModule):
             firstbe_l    = Signal(4)
             lastbe_l     = Signal(4)
             tdata_l      = Signal(32)
+            is_4dw_l     = Signal()
 
             tfirst = Signal()
             read   = Signal()
             write  = Signal()
+            is_4dw = Signal()
+            use_4dw = Signal()
             self.comb += [
                 tfirst.eq((cnt == 0) & ~tlast_lat),
                 read.eq(self.s_axis_tdata[30:32] == 0),
                 write.eq(~read),
+                is_4dw.eq(self.s_axis_tdata[29]),
+                use_4dw.eq(Mux(tfirst, is_4dw, is_4dw_l)),
             ]
 
             ready_ff = Signal()
@@ -924,20 +929,27 @@ class SAxisRQAdapter(LiteXModule):
                         cnt.eq(cnt + 1)
                     )
                 ),
+                If(self.s_axis_tvalid & tfirst & ready_ff,
+                    is_4dw_l.eq(is_4dw)
+                ),
                 If(self.s_axis_tvalid & tfirst & write,
-                    tlast_dly_en.eq(self.s_axis_tdata[0:4] == 13)
+                    tlast_dly_en.eq(~is_4dw & (self.s_axis_tdata[0:4] == 13))
                 ),
                 If(tlast_lat & self.m_axis_tready,
                     tlast_lat.eq(0)
                 ).Elif(self.s_axis_tvalid & self.s_axis_tlast & self.m_axis_tready,
                     If(tfirst,
-                        If(write,
+                        If(write & ~is_4dw,
                             tlast_lat.eq(dwlen == 13)
                         ).Else(
                             tlast_lat.eq(0)
                         )
                     ).Else(
-                        tlast_lat.eq(tlast_dly_en)
+                        If(is_4dw_l,
+                            tlast_lat.eq(0)
+                        ).Else(
+                            tlast_lat.eq(tlast_dly_en)
+                        )
                     )
                 ),
                 If(self.s_axis_tvalid & tfirst,
@@ -950,16 +962,24 @@ class SAxisRQAdapter(LiteXModule):
             ]
 
             self.comb += [
-                self.m_axis_tlast.eq(Mux(tfirst,
-                    read | (dwlen < 13),
-                    Mux(tlast_dly_en, tlast_lat, self.s_axis_tlast))),
+                self.m_axis_tlast.eq(Mux(use_4dw,
+                    self.s_axis_tlast,
+                    Mux(tfirst,
+                        read | (dwlen < 13),
+                        Mux(tlast_dly_en, tlast_lat, self.s_axis_tlast)))),
                 self.m_axis_tvalid.eq(self.s_axis_tvalid | tlast_lat),
                 self.m_axis_tdata.eq(Mux(tfirst,
-                    Cat(self.s_axis_tdata[64:96], C(0, 32), tdata_header, self.s_axis_tdata[96:480]),
-                    Cat(tdata_l, self.s_axis_tdata[0:480]))),
-                self.m_axis_tkeep.eq(Mux(tlast_lat,
-                    C(0x0001, 16),
-                    Cat(C(1, 1), tkeep_or[0:15]))),
+                    Mux(is_4dw,
+                        Cat(self.s_axis_tdata[96:128], self.s_axis_tdata[64:96], tdata_header, self.s_axis_tdata[128:512]),
+                        Cat(self.s_axis_tdata[64:96], C(0, 32), tdata_header, self.s_axis_tdata[96:480])),
+                    Mux(is_4dw_l,
+                        self.s_axis_tdata,
+                        Cat(tdata_l, self.s_axis_tdata[0:480])))),
+                self.m_axis_tkeep.eq(Mux(use_4dw,
+                    tkeep_or,
+                    Mux(tlast_lat,
+                        C(0x0001, 16),
+                        Cat(C(1, 1), tkeep_or[0:15])))),
                 self.m_axis_tuser.eq(Cat(
                     firstbe,
                     C(0, 4),
