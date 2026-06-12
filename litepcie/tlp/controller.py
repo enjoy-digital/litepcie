@@ -145,7 +145,11 @@ class LitePCIeTLPController(LiteXModule):
             {i: cmp_bufs[i].source.connect(cmp_source) for i in range(len(cmp_bufs))})
         self.comb += [
             # Pop Req from req_queue when Req is fully received.
-            If(cmp_source.valid & cmp_source.last & cmp_source.end,
+            # Retire on a normal end-of-completion OR on an error completion (UR/CA):
+            # an error Cpl is zero-length so "end" (length == byte_count) never asserts,
+            # which would otherwise leave the request un-retired and leak its tag,
+            # deadlocking the DMA reader.
+            If(cmp_source.valid & cmp_source.last & (cmp_source.end | cmp_source.err),
                 req_queue.source.ready.eq(cmp_source.ready)
             ),
             req_queue.source.connect(cmp_source, keep={"channel", "user_id"}),
@@ -184,7 +188,10 @@ class LitePCIeTLPController(LiteXModule):
             cmp_sink.connect(cmp_reorder, keep={"valid", "ready"}),
             # Push incoming Tag to tag_queue when Cmp is fully received.
             If(cmp_sink.valid & cmp_sink.ready & cmp_sink.last,
-                If(cmp_sink.end,
+                # Free the tag on a normal end-of-completion OR on an error completion
+                # (UR/CA): an error Cpl is zero-length (end stays 0), so without this the
+                # tag is never returned and the controller starves/deadlocks.
+                If(cmp_sink.end | cmp_sink.err,
                     tag_queue.sink.valid.eq(1),
                     tag_queue.sink.tag.eq(cmp_sink.tag)
                 ),
