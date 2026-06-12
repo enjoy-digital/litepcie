@@ -319,7 +319,10 @@ class LitePCIeDMAReader(LiteXModule):
 
         # Data Converter ---------------------------------------------------------------------------
 
-        self.data_conv = stream.Converter(endpoint.phy.data_width, self.data_width)
+        # Reset with the DMA: a partial beat held across a disable would shift the next run's
+        # stream by a sub-beat word offset (visible as misaligned DMA headers on restart).
+        self.data_conv = ResetInserter()(stream.Converter(endpoint.phy.data_width, self.data_width))
+        self.comb += self.data_conv.reset.eq(~enable)
         self.comb += self.data_conv.source.connect(self.source)
 
         # Data FIFO --------------------------------------------------------------------------------
@@ -475,7 +478,10 @@ class LitePCIeDMAWriter(LiteXModule):
 
         # Data Converter ---------------------------------------------------------------------------
 
-        self.data_conv = stream.Converter(self.data_width, endpoint.phy.data_width)
+        # Reset with the DMA: a partial beat held across a disable would shift the next run's
+        # stream by a sub-beat word offset (visible as misaligned DMA headers on restart).
+        self.data_conv = ResetInserter()(stream.Converter(self.data_width, endpoint.phy.data_width))
+        self.comb += self.data_conv.reset.eq(~enable)
         self.comb += self.sink.connect(self.data_conv.sink)
 
         # Data FIFO --------------------------------------------------------------------------------
