@@ -548,7 +548,7 @@ def main():
         raise ValueError("Unsupported PCIe PHY: {}".format(core_config["phy"]))
     soc      = LitePCIeCore(platform, core_config)
     builder  = Builder(soc, output_dir=args.output_dir, compile_gateware=False)
-    builder.build(build_name="litepcie_core", regular_comb=True)
+    builder.build(build_name="litepcie_core")
     generate_litepcie_software_headers(soc, args.header_dir)
 
     if args.doc:
