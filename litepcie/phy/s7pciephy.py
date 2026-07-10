@@ -236,6 +236,9 @@ class S7PCIEPHY(LiteXModule):
         # Hard IP ----------------------------------------------------------------------------------
         m_axis_rx_tlast = Signal()
         m_axis_rx_tuser = Signal(32)
+        self.cfg_aer_ecrc_gen_en = cfg_aer_ecrc_gen_en = Signal()
+        self.s_axis_tx_tuser = s_axis_tx_tuser = Signal(4)
+        self.comb += s_axis_tx_tuser.eq(cfg_aer_ecrc_gen_en)
 
         if self.mode == "Endpoint":
             irq_ports = dict(
@@ -313,7 +316,7 @@ class S7PCIEPHY(LiteXModule):
             o_s_axis_tx_tready                           = s_axis_tx.ready,
             i_s_axis_tx_tdata                            = s_axis_tx.dat,
             i_s_axis_tx_tkeep                            = s_axis_tx.be,
-            i_s_axis_tx_tuser                            = 0,
+            i_s_axis_tx_tuser                            = s_axis_tx_tuser,
 
             # RX
             i_rx_np_ok                                   = 1,
@@ -370,7 +373,7 @@ class S7PCIEPHY(LiteXModule):
             i_cfg_aer_interrupt_msgnum                   = 0,
             o_cfg_err_aer_headerlog_set                  = Open(),
             o_cfg_aer_ecrc_check_en                      = Open(),
-            o_cfg_aer_ecrc_gen_en                        = Open(),
+            o_cfg_aer_ecrc_gen_en                        = cfg_aer_ecrc_gen_en,
 
             i_cfg_turnoff_ok                             = 0,
             i_cfg_trn_pending                            = 0,
