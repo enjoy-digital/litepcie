@@ -114,6 +114,30 @@ class TestWishboneMaster(unittest.TestCase):
     def test_wishbone_512b(self):
         self.wishbone_test(data_width=512)
 
+    def test_read_completion_preserves_traffic_class(self):
+        observed_tc = []
+
+        def main_generator(dut):
+            yield from dut.host.chipset.rd32(0, tc=0b101)
+            observed_tc.append(dut.host.chipset.rd_completion.tc)
+
+        class DUT(LiteXModule):
+            def __init__(self):
+                self.host     = Host(64, root_id, endpoint_id)
+                self.endpoint = LitePCIeEndpoint(self.host.phy)
+                self.master   = LitePCIeWishboneMaster(self.endpoint)
+                self.sram     = wishbone.SRAM(8, bus=self.master.wishbone)
+
+        dut = DUT()
+        generators = {"sys": [
+            main_generator(dut),
+            dut.host.chipset.phy.phy_sink.generator(),
+            dut.host.chipset.phy.phy_source.generator(),
+        ]}
+        run_simulation(dut, generators, {"sys": 10})
+
+        self.assertEqual(observed_tc, [0b101])
+
 
 # Test Wishbone Slave ------------------------------------------------------------------------------
 

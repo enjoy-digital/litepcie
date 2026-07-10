@@ -97,6 +97,7 @@ class LitePCIeWishboneMaster(LiteXModule):
             port.source.adr.eq(port.sink.adr),
             port.source.cmp_id.eq(endpoint.phy.id),
             port.source.req_id.eq(port.sink.req_id),
+            port.source.tc.eq(port.sink.tc),
             If(update_dat,
                 port.source.dat.eq(self.bus.dat_r)
             )

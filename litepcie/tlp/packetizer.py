@@ -708,7 +708,7 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 tlp_cmp.first.eq(cmp_sink.first),
                 tlp_cmp.last.eq(cmp_sink.last),
 
-                tlp_cmp.tc.eq(0),
+                tlp_cmp.tc.eq(cmp_sink.tc),
                 tlp_cmp.td.eq(0),
                 tlp_cmp.ep.eq(0),
                 tlp_cmp.attr.eq(0),

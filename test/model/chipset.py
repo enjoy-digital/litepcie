@@ -43,7 +43,8 @@ class Chipset(LiteXModule):
 
         # # #
 
-        self.rd_data   = []
+        self.rd_data       = []
+        self.rd_completion = None
         self.cmp_queue = []
         self.en = False
 
@@ -76,10 +77,11 @@ class Chipset(LiteXModule):
     def wr64(self, adr, data):
         return self.wr(wr_cls=WR64, adr=adr, data=data)
 
-    def rd(self, rd_cls, adr, length=1):
+    def rd(self, rd_cls, adr, length=1, tc=0):
         rd = rd_cls()
         rd.fmt          = 0b00 if isinstance(rd, RD32) else 0b01
         rd.type         = 0b00000
+        rd.tc           = tc
         rd.length       = length
         rd.first_be     = 0xf
         rd.address      = (adr << 2)
@@ -95,15 +97,16 @@ class Chipset(LiteXModule):
             yield
         cpld = CPLD(dwords)
         self.rd_data = cpld.data
+        self.rd_completion = cpld
         if self.debug:
             print_chipset("<<<<<<<<")
             print_chipset(cpld)
 
-    def rd32(self, adr, length=1):
-        return self.rd(rd_cls=RD32, adr=adr, length=length)
+    def rd32(self, adr, length=1, tc=0):
+        return self.rd(rd_cls=RD32, adr=adr, length=length, tc=tc)
 
-    def rd64(self, adr, length=1):
-        return self.rd(rd_cls=RD64, adr=adr, length=length)
+    def rd64(self, adr, length=1, tc=0):
+        return self.rd(rd_cls=RD64, adr=adr, length=length, tc=tc)
 
     def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0, with_split=False):
         if with_split:

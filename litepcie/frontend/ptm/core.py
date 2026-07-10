@@ -120,6 +120,7 @@ class PTMCapabilities(LiteXModule):
             comp_ep.adr.eq(0),
             comp_ep.cmp_id.eq(pcie_endpoint.phy.id),
             comp_ep.req_id.eq(conf_ep.req_id),
+            comp_ep.tc.eq(conf_ep.tc),
             comp_ep.dat.eq(dat),
             If(comp_ep.valid & comp_ep.ready,
                 conf_ep.ready.eq(1),
