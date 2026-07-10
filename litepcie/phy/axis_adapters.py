@@ -611,9 +611,11 @@ class SAxisCCAdapter(LiteXModule):
         self.comb += tkeep_or.eq(_pack_keep_cc(self.s_axis_tkeep, data_width))
 
         lowaddr     = Signal(7)
+        raw_bytecnt = Signal(12)
         bytecnt     = Signal(13)
         lockedrdcmp = Signal()
-        dwordcnt    = Signal(10)
+        raw_dwordcnt = Signal(10)
+        dwordcnt    = Signal(11)
         cmpstatus   = Signal(3)
         poison      = Signal()
         requesterid = Signal(16)
@@ -622,11 +624,12 @@ class SAxisCCAdapter(LiteXModule):
         tc          = Signal(3)
         attr        = Signal(3)
         td          = Signal()
+        has_data    = Signal()
         self.comb += [
             lowaddr.eq(self.s_axis_tdata[64:71]),
-            bytecnt.eq(Cat(self.s_axis_tdata[32:44], C(0, 1))),
+            raw_bytecnt.eq(self.s_axis_tdata[32:44]),
             lockedrdcmp.eq(self.s_axis_tdata[24:30] == 0b001011),
-            dwordcnt.eq(self.s_axis_tdata[0:10]),
+            raw_dwordcnt.eq(self.s_axis_tdata[0:10]),
             cmpstatus.eq(self.s_axis_tdata[45:48]),
             poison.eq(self.s_axis_tdata[14]),
             requesterid.eq(self.s_axis_tdata[80:96]),
@@ -635,6 +638,17 @@ class SAxisCCAdapter(LiteXModule):
             tc.eq(self.s_axis_tdata[20:23]),
             attr.eq(Cat(self.s_axis_tdata[12:14], C(0, 1))),
             td.eq(self.s_axis_tdata[15] | self.s_axis_tuser[0]),
+            has_data.eq(self.s_axis_tdata[29:31] == 0b10),
+            bytecnt.eq(raw_bytecnt),
+            dwordcnt.eq(raw_dwordcnt),
+            # The PCIe TLP header encodes 4096 bytes and 1024 Dwords as zero. The Xilinx CC
+            # descriptor uses explicit 13-bit and 11-bit values for these two maxima.
+            If(has_data & (cmpstatus == 0) & (raw_bytecnt == 0),
+                bytecnt.eq(4096),
+            ),
+            If(has_data & (raw_dwordcnt == 0),
+                dwordcnt.eq(1024),
+            ),
         ]
 
         header0 = Signal(64)
@@ -651,7 +665,7 @@ class SAxisCCAdapter(LiteXModule):
                 dwordcnt,
                 cmpstatus,
                 poison,
-                C(0, 2),
+                C(0, 1),
                 requesterid
             )),
             header1.eq(Cat(

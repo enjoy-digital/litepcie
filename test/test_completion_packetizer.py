@@ -10,11 +10,18 @@ import unittest
 from migen import *
 from migen.sim import run_simulation, passive
 
+from litex.gen import LiteXModule
+
+from litepcie.phy.axis_adapters import SAxisCCAdapter
 from litepcie.tlp.common     import cpl_dict, fmt_type_dict
 from litepcie.tlp.packetizer import LitePCIeTLPPacketizer
 
 
 class TestCompletionPacketizer(unittest.TestCase):
+    @staticmethod
+    def field(value, msb, lsb):
+        return (value >> lsb) & ((1 << (msb - lsb + 1)) - 1)
+
     def packetize(self, data_width, length, error=False):
         dut = LitePCIeTLPPacketizer(
             data_width   = data_width,
@@ -110,6 +117,95 @@ class TestCompletionPacketizer(unittest.TestCase):
                 self.assertEqual((dwords[1] >> 13) & 0x7, cpl_dict["ur"])
                 self.assertEqual(dwords[1] & 0xfff, 0)
                 self.assertEqual(dwords[2] & 0x7f, 0)
+
+    def packetize_to_xilinx_cc(self, data_width, error=False):
+        class DUT(LiteXModule):
+            def __init__(self):
+                self.packetizer = LitePCIeTLPPacketizer(
+                    data_width   = data_width,
+                    endianness   = "big",
+                    capabilities = ["COMPLETION"],
+                )
+                self.cc_adapter = SAxisCCAdapter(data_width)
+                self.comb += [
+                    self.cc_adapter.s_axis_tdata.eq(self.packetizer.source.dat),
+                    self.cc_adapter.s_axis_tkeep.eq(self.packetizer.source.be),
+                    self.cc_adapter.s_axis_tlast.eq(self.packetizer.source.last),
+                    self.cc_adapter.s_axis_tuser.eq(0),
+                    self.cc_adapter.s_axis_tvalid.eq(self.packetizer.source.valid),
+                    self.packetizer.source.ready.eq(self.cc_adapter.s_axis_tready),
+                ]
+
+        dut = DUT()
+        beats = []
+
+        @passive
+        def monitor():
+            while True:
+                yield dut.cc_adapter.m_axis_tready.eq(1)
+                if (yield dut.cc_adapter.m_axis_tvalid):
+                    beats.append({
+                        "dat"  : (yield dut.cc_adapter.m_axis_tdata),
+                        "keep" : (yield dut.cc_adapter.m_axis_tkeep),
+                        "last" : (yield dut.cc_adapter.m_axis_tlast),
+                    })
+                yield
+
+        def stimulus():
+            sink = dut.packetizer.cmp_sink
+            yield sink.valid.eq(0)
+            yield sink.first.eq(1)
+            yield sink.last.eq(1)
+            yield sink.len.eq(1)
+            yield sink.byte_count.eq(4)
+            yield sink.adr.eq(0x24)
+            yield sink.req_id.eq(0x1234)
+            yield sink.cmp_id.eq(0x0100)
+            yield sink.tc.eq(0b101)
+            yield sink.tag.eq(0xa5)
+            yield sink.err.eq(error)
+            yield sink.dat.eq(0x89abcdef)
+            yield sink.valid.eq(1)
+            yield
+            while not (yield sink.ready):
+                yield
+            yield sink.valid.eq(0)
+            for _ in range(30):
+                yield
+
+        run_simulation(dut, [stimulus(), monitor()])
+        return beats
+
+    def test_xilinx_cc_path_preserves_completion_metadata(self):
+        for data_width in [128, 256, 512]:
+            with self.subTest(data_width=data_width):
+                beats = self.packetize_to_xilinx_cc(data_width)
+                self.assertEqual(len(beats), 1)
+                descriptor = beats[0]["dat"]
+
+                self.assertEqual(self.field(descriptor,  6,  0), 0x24)
+                self.assertEqual(self.field(descriptor, 28, 16), 4)
+                self.assertEqual(self.field(descriptor, 42, 32), 1)
+                self.assertEqual(self.field(descriptor, 45, 43), cpl_dict["sc"])
+                self.assertEqual(self.field(descriptor, 63, 48), 0x1234)
+                self.assertEqual(self.field(descriptor, 71, 64), 0xa5)
+                self.assertEqual(self.field(descriptor, 87, 72), 0x0100)
+                self.assertEqual(self.field(descriptor, 91, 89), 0b101)
+                self.assertEqual(beats[0]["keep"], 0xf)
+                self.assertEqual(beats[0]["last"], 1)
+
+    def test_xilinx_cc_path_formats_error_completion(self):
+        for data_width in [128, 256, 512]:
+            with self.subTest(data_width=data_width):
+                beats = self.packetize_to_xilinx_cc(data_width, error=True)
+                self.assertEqual(len(beats), 1)
+                descriptor = beats[0]["dat"]
+
+                self.assertEqual(self.field(descriptor,  6,  0), 0)
+                self.assertEqual(self.field(descriptor, 28, 16), 0)
+                self.assertEqual(self.field(descriptor, 42, 32), 0)
+                self.assertEqual(self.field(descriptor, 45, 43), cpl_dict["ur"])
+                self.assertEqual(beats[0]["keep"], 0x7)
 
 
 if __name__ == "__main__":
