@@ -18,9 +18,9 @@ def _field(value, msb, lsb):
 
 def _header_words(data, tuser):
     lowaddr = _field(data, 70, 64)
-    bytecnt = _field(data, 43, 32)
+    raw_bytecnt = _field(data, 43, 32)
     lockedrdcmp = 1 if _field(data, 29, 24) == 0b001011 else 0
-    dwordcnt = _field(data, 9, 0)
+    raw_dwordcnt = _field(data, 9, 0)
     cmpstatus = _field(data, 47, 45)
     poison = _field(data, 14, 14)
     requesterid = _field(data, 95, 80)
@@ -29,14 +29,17 @@ def _header_words(data, tuser):
     tc = _field(data, 22, 20)
     attr = _field(data, 13, 12)
     td = _field(data, 15, 15) | (tuser & 0x1)
+    has_data = _field(data, 30, 29) == 0b10
+    bytecnt = 4096 if has_data and cmpstatus == 0 and raw_bytecnt == 0 else raw_bytecnt
+    dwordcnt = 1024 if has_data and raw_dwordcnt == 0 else raw_dwordcnt
 
     header0 = 0
     header0 |= lowaddr
     header0 |= bytecnt << 16
     header0 |= lockedrdcmp << 29
     header0 |= dwordcnt << 32
-    header0 |= cmpstatus << 42
-    header0 |= poison << 45
+    header0 |= cmpstatus << 43
+    header0 |= poison << 46
     header0 |= requesterid << 48
 
     header1 = 0
@@ -239,8 +242,41 @@ class TestSAxisCCAdapter(unittest.TestCase):
                         )
                         expected_poison = poison_data
                         expected_td = td_data | td_user
-                        self.assertEqual((out_data >> 45) & 0x1, expected_poison)
+                        self.assertEqual((out_data >> 46) & 0x1, expected_poison)
                         self.assertEqual((out_data >> 95) & 0x1, expected_td)
+
+    def test_maximum_tlp_counts_are_expanded_for_cc(self):
+        for data_width in [128, 256, 512]:
+            with self.subTest(data_width=data_width):
+                dut = SAxisCCAdapter(data_width)
+                beats = []
+
+                # Successful CplD with TLP Length=0 and Byte Count=0 represents 1024 Dwords and
+                # 4096 bytes. Xilinx CC expects both maxima explicitly in its descriptor.
+                data = (0b10 << 29) | (0b01010 << 24)
+
+                @passive
+                def monitor():
+                    for _ in range(8):
+                        if (yield dut.m_axis_tvalid):
+                            beats.append((yield dut.m_axis_tdata))
+                        yield
+
+                def stim():
+                    yield dut.m_axis_tready.eq(1)
+                    yield
+                    yield dut.s_axis_tvalid.eq(1)
+                    yield dut.s_axis_tlast.eq(1)
+                    yield dut.s_axis_tdata.eq(data)
+                    yield dut.s_axis_tkeep.eq((1 << (data_width // 8)) - 1)
+                    yield
+                    yield dut.s_axis_tvalid.eq(0)
+                    yield
+
+                run_simulation(dut, [stim(), monitor()], vcd_name=None)
+                self.assertEqual(len(beats), 1)
+                self.assertEqual(_field(beats[0], 28, 16), 4096)
+                self.assertEqual(_field(beats[0], 42, 32), 1024)
 
     def test_keep_fuzz_all_widths(self):
         rng = random.Random(0x5A17CC)

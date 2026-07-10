@@ -114,6 +114,79 @@ class TestWishboneMaster(unittest.TestCase):
     def test_wishbone_512b(self):
         self.wishbone_test(data_width=512)
 
+    def test_read_completion_preserves_traffic_class(self):
+        observed_tc = []
+
+        def main_generator(dut):
+            yield from dut.host.chipset.rd32(0, tc=0b101)
+            observed_tc.append(dut.host.chipset.rd_completion.tc)
+
+        class DUT(LiteXModule):
+            def __init__(self):
+                self.host     = Host(64, root_id, endpoint_id)
+                self.endpoint = LitePCIeEndpoint(self.host.phy)
+                self.master   = LitePCIeWishboneMaster(self.endpoint)
+                self.sram     = wishbone.SRAM(8, bus=self.master.wishbone)
+
+        dut = DUT()
+        generators = {"sys": [
+            main_generator(dut),
+            dut.host.chipset.phy.phy_sink.generator(),
+            dut.host.chipset.phy.phy_source.generator(),
+        ]}
+        run_simulation(dut, generators, {"sys": 10})
+
+        self.assertEqual(observed_tc, [0b101])
+
+    def test_split_read_completion_metadata(self):
+        full_metadata    = []
+        partial_metadata = []
+        zero_metadata    = []
+
+        def completion_metadata(completions):
+            return [(c.length, c.byte_count, c.lower_address) for c in completions]
+
+        def main_generator(dut):
+            for address, data in enumerate([0x11111111, 0x22222222, 0x33333333]):
+                yield from dut.host.chipset.wr32(address, [data])
+
+            yield from dut.host.chipset.rd32(0, length=3)
+            full_metadata.extend(completion_metadata(dut.host.chipset.rd_completions))
+
+            yield from dut.host.chipset.rd32(0, length=2, first_be=0b1100, last_be=0b0011)
+            partial_metadata.extend(completion_metadata(dut.host.chipset.rd_completions))
+
+            yield from dut.host.chipset.rd32(0, length=1, first_be=0)
+            zero_metadata.extend(completion_metadata(dut.host.chipset.rd_completions))
+
+        class DUT(LiteXModule):
+            def __init__(self):
+                self.host     = Host(64, root_id, endpoint_id)
+                self.endpoint = LitePCIeEndpoint(self.host.phy)
+                self.master   = LitePCIeWishboneMaster(self.endpoint)
+                self.sram     = wishbone.SRAM(16, bus=self.master.wishbone)
+
+        dut = DUT()
+        generators = {"sys": [
+            main_generator(dut),
+            dut.host.chipset.phy.phy_sink.generator(),
+            dut.host.chipset.phy.phy_source.generator(),
+        ]}
+        run_simulation(dut, generators, {"sys": 10})
+
+        self.assertEqual(full_metadata, [
+            (1, 12, 0x00),
+            (1,  8, 0x04),
+            (1,  4, 0x08),
+        ])
+        self.assertEqual(partial_metadata, [
+            (1, 4, 0x02),
+            (1, 2, 0x04),
+        ])
+        self.assertEqual(zero_metadata, [
+            (1, 1, 0x00),
+        ])
+
 
 # Test Wishbone Slave ------------------------------------------------------------------------------
 

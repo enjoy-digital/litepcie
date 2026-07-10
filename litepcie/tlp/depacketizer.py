@@ -388,7 +388,10 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 req_source.last.eq(tlp_req.last),
                 req_source.adr.eq(tlp_req.address & (~address_mask)),
                 req_source.len.eq(tlp_req.length),
+                req_source.first_be.eq(tlp_req.first_be),
+                req_source.last_be.eq(tlp_req.last_be),
                 req_source.req_id.eq(tlp_req.requester_id),
+                req_source.tc.eq(tlp_req.tc),
                 req_source.tag.eq(tlp_req.tag),
                 req_source.dat.eq(tlp_req.dat)
             ]
@@ -413,10 +416,12 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 cmp_source.first.eq(tlp_cmp.first),
                 cmp_source.last.eq(tlp_cmp.last),
                 cmp_source.len.eq(tlp_cmp.length),
+                cmp_source.byte_count.eq(tlp_cmp.byte_count),
                 cmp_source.end.eq(tlp_cmp.length == (tlp_cmp.byte_count[2:])),
                 cmp_source.adr.eq(tlp_cmp.lower_address),
                 cmp_source.req_id.eq(tlp_cmp.requester_id),
                 cmp_source.cmp_id.eq(tlp_cmp.completer_id),
+                cmp_source.tc.eq(tlp_cmp.tc),
                 cmp_source.err.eq(tlp_cmp.status != 0),
                 cmp_source.tag.eq(tlp_cmp.tag),
                 cmp_source.dat.eq(tlp_cmp.dat)
@@ -448,6 +453,7 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                     conf_source.we.eq(1)
                 ),
                 conf_source.req_id.eq(tlp_conf.requester_id),
+                conf_source.tc.eq(tlp_conf.tc),
                 conf_source.bus_number.eq(tlp_conf.bus_number),
                 conf_source.device_no.eq(tlp_conf.device_no),
                 conf_source.func.eq(tlp_conf.func),

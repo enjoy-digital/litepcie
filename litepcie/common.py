@@ -42,6 +42,7 @@ def configuration_layout(data_width, address_width=32):
     layout = [
         # Request Parameters.
         ("req_id",          16), # Requester ID.
+        ("tc",               3), # Traffic Class.
         ("we",               1), # Configuration type; 0 : Read / 1 : Write.
         ("bus_number",       8), # Configuration Bus number.
         ("device_no",        5), # Configuration Device number.
@@ -62,9 +63,12 @@ def request_layout(data_width, address_width=32, with_configuration=False):
     layout = [
         # Request Parameters.
         ("req_id",          16), # Requester ID.
+        ("tc",               3), # Traffic Class.
         ("we",               1), # Request type; 0 : Read / 1 : Write.
         ("adr",  address_width), # Request address (In Bytes).
         ("len",             10), # Request length (In Dwords).
+        ("first_be",         4), # First Dword Byte Enables.
+        ("last_be",          4), # Last Dword Byte Enables.
         ("tag",              8), # Request tag.
 
         # Data Stream.
@@ -94,8 +98,10 @@ def completion_layout(data_width, address_width=32):
         # Completion Parameters.
         ("req_id",          16), # Requester ID.
         ("cmp_id",          16), # Completion ID.
+        ("tc",               3), # Traffic Class.
         ("adr",  address_width), # Completion address (In Bytes).
         ("len",             10), # Completion length (In Dwords).
+        ("byte_count",      12), # Remaining Completion Byte Count.
         ("end",              1), # Completion end (Current packet is the last).
         ("err",              1), # Completion error.
         ("tag",              8), # Completion tag.

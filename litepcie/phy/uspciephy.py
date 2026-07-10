@@ -83,6 +83,7 @@ class USPCIEPHY(LiteXModule):
         self.id               = Signal(16)
         self.bar0_size        = bar0_size
         self.bar0_mask        = get_bar_mask(bar0_size)
+        self.bar0_scale, self.bar0_size_config = get_bar_size_config(bar0_size)
         self.max_request_size = Signal(16)
         self.max_payload_size = Signal(16)
 
@@ -745,8 +746,8 @@ class USPCIEPHY(LiteXModule):
                 class_code = 0x060400
 
             # BAR0.
-            bar0_scale = "Megabytes"
-            bar0_size  = max(self.bar0_size/MB, 1)
+            bar0_scale = self.bar0_scale
+            bar0_size  = self.bar0_size_config
 
             # AXI-S / interface.
             axisten_if_width       = f"{self.pcie_data_width}_bit"
