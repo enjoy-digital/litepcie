@@ -440,7 +440,7 @@ class LitePCIeTLPHeaderInserter64b3DWs(LiteXModule):
             source.dat[32*0:32*1].eq(dat[32*1:]),
             source.dat[32*1:32*2].eq(sink.dat[32*0:]),
 
-            source.be[4*0:4*1].eq(be[4*0:]),
+            source.be[4*0:4*1].eq(be[4*1:]),
             If(last,
                 source.be[4*1:4*2].eq(0x0)
             ).Else(
@@ -702,6 +702,20 @@ class LitePCIeTLPPacketizer(LiteXModule):
 
         if "COMPLETION" in capabilities:
             self.tlp_cmp = tlp_cmp = stream.Endpoint(tlp_completion_layout(data_width))
+
+            completion_be = Signal(data_width//8)
+            self.comb += completion_be.eq(2**(data_width//8)-1)
+            dwords_per_beat = data_width//32
+            if dwords_per_beat > 1:
+                remainder_bits = (dwords_per_beat - 1).bit_length()
+                remainder_cases = {
+                    n : completion_be.eq(2**(4*n)-1)
+                    for n in range(1, dwords_per_beat)
+                }
+                self.comb += If(cmp_sink.last,
+                    Case(cmp_sink.len[:remainder_bits], remainder_cases)
+                )
+
             self.comb += [
                 tlp_cmp.valid.eq(cmp_sink.valid),
                 cmp_sink.ready.eq(tlp_cmp.ready),
@@ -712,31 +726,31 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 tlp_cmp.td.eq(0),
                 tlp_cmp.ep.eq(0),
                 tlp_cmp.attr.eq(0),
-                tlp_cmp.length.eq(cmp_sink.len),
 
                 tlp_cmp.completer_id.eq(cmp_sink.cmp_id),
                 If(cmp_sink.err,
                     tlp_cmp.type.eq(type_dict["cpl"]),
                     tlp_cmp.fmt.eq( fmt_dict["cpl"]),
-                    tlp_cmp.status.eq(cpl_dict["ur"])
+                    tlp_cmp.status.eq(cpl_dict["ur"]),
+                    tlp_cmp.length.eq(0),
+                    tlp_cmp.byte_count.eq(0),
+                    tlp_cmp.lower_address.eq(0),
+                    tlp_cmp.be.eq(0),
                 ).Else(
                     tlp_cmp.type.eq(type_dict["cpld"]),
                     tlp_cmp.fmt.eq( fmt_dict["cpld"]),
-                    tlp_cmp.status.eq(cpl_dict["sc"])
+                    tlp_cmp.status.eq(cpl_dict["sc"]),
+                    tlp_cmp.length.eq(cmp_sink.len),
+                    tlp_cmp.byte_count.eq(cmp_sink.byte_count),
+                    tlp_cmp.lower_address.eq(cmp_sink.adr),
+                    tlp_cmp.be.eq(completion_be),
                 ),
                 tlp_cmp.bcm.eq(0),
-                tlp_cmp.byte_count.eq(cmp_sink.byte_count),
 
                 tlp_cmp.requester_id.eq(cmp_sink.req_id),
                 tlp_cmp.tag.eq(cmp_sink.tag),
-                tlp_cmp.lower_address.eq(cmp_sink.adr),
 
                 tlp_cmp.dat.eq(cmp_sink.dat),
-                If(cmp_sink.last & cmp_sink.first,
-                    tlp_cmp.be.eq(0xf)
-                ).Else(
-                    tlp_cmp.be.eq(2**(data_width//8)-1)
-                ),
             ]
 
             tlp_raw_cmp        = stream.Endpoint(tlp_raw_layout(data_width))
