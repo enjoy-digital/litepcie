@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 from migen import Signal
 
-from litepcie.phy.s7pciephy import S7PCIEPHY
+from litepcie.phy.s7pciephy import S7PCIEPHY, get_bar_size_config
 
 
 class DummyPlatform:
@@ -26,6 +26,17 @@ class DummyPlatform:
 
 
 class TestS7PCIEPHY(unittest.TestCase):
+    def test_bar_size_config_is_exact(self):
+        self.assertEqual(get_bar_size_config(        128), ("Bytes",      128))
+        self.assertEqual(get_bar_size_config(     4*1024), ("Kilobytes",   4))
+        self.assertEqual(get_bar_size_config(   256*1024), ("Kilobytes", 256))
+        self.assertEqual(get_bar_size_config(1*1024*1024), ("Megabytes",   1))
+
+        for invalid_size in [0, 64, 192, 3*1024, 4*1024*1024*1024]:
+            with self.subTest(invalid_size=invalid_size):
+                with self.assertRaises(ValueError):
+                    get_bar_size_config(invalid_size)
+
     def test_tx_ecrc_follows_aer_control(self):
         pads = SimpleNamespace(
             rst_n = Signal(),

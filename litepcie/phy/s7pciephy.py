@@ -17,6 +17,24 @@ from litex.soc.cores.clock import S7MMCM
 from litepcie.common import *
 from litepcie.phy.common import *
 
+# Helpers ------------------------------------------------------------------------------------------
+
+def get_bar_size_config(size):
+    if (size < 128) or (size > 2*GB) or (size & (size - 1)):
+        raise ValueError("32-bit PCIe BAR size must be a power of two between 128 bytes and 2 GiB")
+
+    values = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
+    for scale, unit in [
+        ("Gigabytes", GB),
+        ("Megabytes", MB),
+        ("Kilobytes", KB),
+        ("Bytes",       1),
+    ]:
+        if (size % unit) == 0 and (size // unit) in values:
+            return scale, size // unit
+
+    raise ValueError(f"PCIe BAR size 0x{size:x} cannot be represented by the 7-Series PCIe IP")
+
 # S7PCIEPHY ----------------------------------------------------------------------------------------
 
 class S7PCIEPHY(LiteXModule):
@@ -85,6 +103,7 @@ class S7PCIEPHY(LiteXModule):
         self.id               = Signal(16, reset_less=True)
         self.bar0_size        = bar0_size
         self.bar0_mask        = get_bar_mask(bar0_size)
+        self.bar0_scale, self.bar0_size_config = get_bar_size_config(bar0_size)
         self.max_request_size = Signal(16, reset_less=True)
         self.max_payload_size = Signal(16, reset_less=True)
 
@@ -580,8 +599,8 @@ class S7PCIEPHY(LiteXModule):
             max_payload     = "512_bytes" if self.nlanes != 8 else "256_bytes"
 
             # BAR0.
-            bar0_scale = "Megabytes"
-            bar0_size  = max(self.bar0_size/MB, 1)
+            bar0_scale = self.bar0_scale
+            bar0_size  = self.bar0_size_config
 
             # Target link speed.
             trgt_link_speed = "4'h2"
@@ -609,6 +628,10 @@ class S7PCIEPHY(LiteXModule):
                 "Trans_Buf_Pipeline" : None,
 
                 # BAR0.
+                "Bar0_Enabled"       : True,
+                "Bar0_Type"          : "Memory",
+                "Bar0_64bit"         : False,
+                "Bar0_Prefetchable"  : False,
                 "Bar0_Scale"         : bar0_scale,
                 "Bar0_Size"          : bar0_size,
             }
