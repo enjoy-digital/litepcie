@@ -16,7 +16,7 @@
 #include "litepcie.h"
 
 struct litepcie_dma_ctrl {
-    uint8_t use_reader, use_writer, loopback, zero_copy, shared_fd;
+    uint8_t use_reader, use_writer, loopback, zero_copy, shared_fd, gpu;
     struct pollfd fds;
     char *buf_rd, *buf_wr;
     uint8_t reader_enable;
@@ -35,8 +35,17 @@ void litepcie_dma_writer(int fd, uint8_t enable, int64_t *hw_count, int64_t *sw_
 
 uint8_t litepcie_request_dma(int fd, uint8_t reader, uint8_t writer);
 void litepcie_release_dma(int fd, uint8_t reader, uint8_t writer);
+int litepcie_dma_map_gpu(int fd, uint64_t gpu_addr, uint64_t gpu_size);
+int litepcie_dma_unmap_gpu(int fd);
 
 int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, uint8_t zero_copy);
+/*
+ * The GPU region contains the DMA reader source followed by the DMA writer
+ * destination. These are CUDA device pointers and must not be dereferenced by
+ * the CPU. The caller must enable CU_POINTER_ATTRIBUTE_SYNC_MEMOPS first.
+ */
+int litepcie_dma_init_gpu(struct litepcie_dma_ctrl *dma, const char *device_name,
+    uint64_t gpu_addr, uint64_t gpu_size);
 void litepcie_dma_cleanup(struct litepcie_dma_ctrl *dma);
 void litepcie_dma_process(struct litepcie_dma_ctrl *dma);
 char *litepcie_dma_next_read_buffer(struct litepcie_dma_ctrl *dma);

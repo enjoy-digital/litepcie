@@ -45,6 +45,10 @@
 #include "flags.h"
 #include "soc.h"
 
+#ifdef LITEPCIE_NVIDIA_P2P
+#include "nv-p2p.h"
+#endif
+
 //#define DEBUG_CSR
 //#define DEBUG_MSI
 //#define DEBUG_POLL
@@ -105,10 +109,28 @@ struct litepcie_device {
 	int channels;                                 /* Number of DMA channels */
 };
 
+#ifdef LITEPCIE_NVIDIA_P2P
+#define NVIDIA_GPU_PAGE_SHIFT 16
+#define NVIDIA_GPU_PAGE_SIZE  (1ULL << NVIDIA_GPU_PAGE_SHIFT)
+
+struct litepcie_gpu_mapping {
+	uint64_t virtual_address;
+	uint64_t mapped_size;
+	nvidia_p2p_page_table_t *page_table;
+	nvidia_p2p_dma_mapping_t *dma_mapping;
+	dma_addr_t reader_handle[DMA_BUFFER_COUNT];
+	dma_addr_t writer_handle[DMA_BUFFER_COUNT];
+};
+#endif
+
 struct litepcie_chan_priv {
 	struct litepcie_chan *chan;
 	bool reader;
 	bool writer;
+#ifdef LITEPCIE_NVIDIA_P2P
+	struct litepcie_gpu_mapping *gpu_mapping;
+	struct mutex gpu_lock;
+#endif
 };
 
 static int litepcie_major;
@@ -205,7 +227,168 @@ static int litepcie_dma_init(struct litepcie_device *s)
 	return 0;
 }
 
-static void litepcie_dma_writer_start(struct litepcie_device *s, int chan_num)
+#ifdef LITEPCIE_NVIDIA_P2P
+
+#ifndef NVIDIA_P2P_CAP_GET_PAGES_PERSISTENT_API
+#error "LitePCIe NVIDIA P2P support requires the persistent pages API"
+#endif
+
+static uint64_t litepcie_gpu_page_size(enum nvidia_p2p_page_size_type page_size_type)
+{
+	switch (page_size_type) {
+	case NVIDIA_P2P_PAGE_SIZE_4KB:
+		return 4 * 1024;
+	case NVIDIA_P2P_PAGE_SIZE_64KB:
+		return 64 * 1024;
+	case NVIDIA_P2P_PAGE_SIZE_128KB:
+		return 128 * 1024;
+	default:
+		return 0;
+	}
+}
+
+static int litepcie_gpu_dma_address(struct litepcie_gpu_mapping *mapping,
+	uint64_t offset, dma_addr_t *address)
+{
+	uint64_t page_size;
+	uint64_t page_offset;
+	uint64_t page;
+
+	page_size = litepcie_gpu_page_size(mapping->dma_mapping->page_size_type);
+	if (!page_size || DMA_BUFFER_SIZE > page_size)
+		return -EINVAL;
+
+	page = div64_u64_rem(offset, page_size, &page_offset);
+	if (page >= mapping->dma_mapping->entries ||
+	    page_offset + DMA_BUFFER_SIZE > page_size)
+		return -EINVAL;
+
+	*address = mapping->dma_mapping->dma_addresses[page] + page_offset;
+	return 0;
+}
+
+static int litepcie_dma_map_gpu(struct litepcie_chan_priv *chan_priv,
+	uint64_t gpu_addr, uint64_t gpu_size)
+{
+	struct litepcie_device *s = chan_priv->chan->litepcie_dev;
+	struct litepcie_gpu_mapping *mapping;
+	uint64_t required_size = 2ULL * DMA_BUFFER_TOTAL_SIZE;
+	uint64_t mapped_size = ALIGN(required_size, NVIDIA_GPU_PAGE_SIZE);
+	uint64_t page_size;
+	int i;
+	int ret;
+
+	if (chan_priv->gpu_mapping)
+		return -EBUSY;
+	if (!chan_priv->reader && !chan_priv->writer)
+		return -EACCES;
+	if ((chan_priv->reader && chan_priv->chan->dma.reader_enable) ||
+	    (chan_priv->writer && chan_priv->chan->dma.writer_enable))
+		return -EBUSY;
+	if ((gpu_addr & (NVIDIA_GPU_PAGE_SIZE - 1)) || gpu_size < mapped_size)
+		return -EINVAL;
+
+	mapping = kzalloc(sizeof(*mapping), GFP_KERNEL);
+	if (!mapping)
+		return -ENOMEM;
+	mapping->virtual_address = gpu_addr;
+	mapping->mapped_size = mapped_size;
+
+	ret = nvidia_p2p_get_pages_persistent(
+		mapping->virtual_address,
+		mapping->mapped_size,
+		&mapping->page_table,
+		NVIDIA_P2P_FLAGS_DEFAULT);
+	if (ret) {
+		dev_err(&s->dev->dev, "Failed to pin NVIDIA GPU pages: %d\n", ret);
+		goto fail_free;
+	}
+
+	if (!NVIDIA_P2P_PAGE_TABLE_VERSION_COMPATIBLE(mapping->page_table)) {
+		dev_err(&s->dev->dev, "Incompatible NVIDIA page table version: 0x%08x\n",
+			mapping->page_table->version);
+		ret = -EINVAL;
+		goto fail_put_pages;
+	}
+
+	ret = nvidia_p2p_dma_map_pages(s->dev, mapping->page_table,
+		&mapping->dma_mapping);
+	if (ret) {
+		dev_err(&s->dev->dev, "Failed to map NVIDIA GPU pages: %d\n", ret);
+		goto fail_put_pages;
+	}
+
+	page_size = litepcie_gpu_page_size(mapping->dma_mapping->page_size_type);
+	if (!NVIDIA_P2P_DMA_MAPPING_VERSION_COMPATIBLE(mapping->dma_mapping) ||
+	    !page_size || mapping->dma_mapping->entries <
+	    DIV_ROUND_UP_ULL(mapping->mapped_size, page_size)) {
+		dev_err(&s->dev->dev, "Incompatible NVIDIA DMA mapping\n");
+		ret = -EINVAL;
+		goto fail_unmap_pages;
+	}
+
+	for (i = 0; i < DMA_BUFFER_COUNT; i++) {
+		ret = litepcie_gpu_dma_address(mapping,
+			i * DMA_BUFFER_SIZE,
+			&mapping->reader_handle[i]);
+		if (ret)
+			goto fail_invalid_layout;
+
+		ret = litepcie_gpu_dma_address(mapping,
+			DMA_BUFFER_TOTAL_SIZE + i * DMA_BUFFER_SIZE,
+			&mapping->writer_handle[i]);
+		if (ret)
+			goto fail_invalid_layout;
+	}
+
+	chan_priv->gpu_mapping = mapping;
+	return 0;
+
+fail_invalid_layout:
+	dev_err(&s->dev->dev,
+		"NVIDIA GPU page layout cannot provide contiguous DMA buffers\n");
+fail_unmap_pages:
+	nvidia_p2p_dma_unmap_pages(s->dev, mapping->page_table,
+		mapping->dma_mapping);
+fail_put_pages:
+	nvidia_p2p_put_pages_persistent(mapping->virtual_address,
+		mapping->page_table, NVIDIA_P2P_FLAGS_DEFAULT);
+fail_free:
+	kfree(mapping);
+	return ret;
+}
+
+static int litepcie_dma_unmap_gpu(struct litepcie_chan_priv *chan_priv)
+{
+	struct litepcie_device *s = chan_priv->chan->litepcie_dev;
+	struct litepcie_gpu_mapping *mapping = chan_priv->gpu_mapping;
+	int put_ret;
+	int ret;
+
+	if (!mapping)
+		return -EINVAL;
+	if ((chan_priv->reader && chan_priv->chan->dma.reader_enable) ||
+	    (chan_priv->writer && chan_priv->chan->dma.writer_enable))
+		return -EBUSY;
+
+	ret = nvidia_p2p_dma_unmap_pages(s->dev, mapping->page_table,
+		mapping->dma_mapping);
+	put_ret = nvidia_p2p_put_pages_persistent(mapping->virtual_address,
+		mapping->page_table, NVIDIA_P2P_FLAGS_DEFAULT);
+	if (!ret)
+		ret = put_ret;
+	if (ret)
+		dev_err(&s->dev->dev, "Failed to release NVIDIA GPU mapping: %d\n", ret);
+
+	chan_priv->gpu_mapping = NULL;
+	kfree(mapping);
+	return ret;
+}
+
+#endif
+
+static void litepcie_dma_writer_start(struct litepcie_device *s, int chan_num,
+	const dma_addr_t *handles)
 {
 	struct litepcie_dma_chan *dmachan;
 	int i;
@@ -225,9 +408,9 @@ static void litepcie_dma_writer_start(struct litepcie_device *s, int chan_num)
 			(!(i%DMA_BUFFER_PER_IRQ == 0)) * DMA_IRQ_DISABLE | /* generate an msi */
 			DMA_BUFFER_SIZE);                                  /* every n buffers */
 		/* Fill 32-bit Address LSB. */
-		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET + 4, (dmachan->writer_handle[i] >>  0) & 0xffffffff);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_VALUE_OFFSET + 4, (handles[i] >>  0) & 0xffffffff);
 		/* Write descriptor (and fill 32-bit Address MSB for 64-bit mode). */
-		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_WE_OFFSET,        (dmachan->writer_handle[i] >> 32) & 0xffffffff);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_WE_OFFSET,        (handles[i] >> 32) & 0xffffffff);
 	}
 	litepcie_writel(s, dmachan->base + PCIE_DMA_WRITER_TABLE_LOOP_PROG_N_OFFSET, 1);
 
@@ -259,7 +442,8 @@ static void litepcie_dma_writer_stop(struct litepcie_device *s, int chan_num)
 	dmachan->writer_sw_count = 0;
 }
 
-static void litepcie_dma_reader_start(struct litepcie_device *s, int chan_num)
+static void litepcie_dma_reader_start(struct litepcie_device *s, int chan_num,
+	const dma_addr_t *handles)
 {
 	struct litepcie_dma_chan *dmachan;
 	int i;
@@ -279,9 +463,9 @@ static void litepcie_dma_reader_start(struct litepcie_device *s, int chan_num)
 			(!(i%DMA_BUFFER_PER_IRQ == 0)) * DMA_IRQ_DISABLE | /* generate an msi */
 			DMA_BUFFER_SIZE);                                  /* every n buffers */
 		/* Fill 32-bit Address LSB. */
-		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET + 4, (dmachan->reader_handle[i] >>  0) & 0xffffffff);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_VALUE_OFFSET + 4, (handles[i] >>  0) & 0xffffffff);
 		/* Write descriptor (and fill 32-bit Address MSB for 64-bit mode). */
-		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_WE_OFFSET, (dmachan->reader_handle[i] >> 32) & 0xffffffff);
+		litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_WE_OFFSET, (handles[i] >> 32) & 0xffffffff);
 	}
 	litepcie_writel(s, dmachan->base + PCIE_DMA_READER_TABLE_LOOP_PROG_N_OFFSET, 1);
 
@@ -407,6 +591,9 @@ static int litepcie_open(struct inode *inode, struct file *file)
 		return -ENOMEM;
 
 	chan_priv->chan = chan;
+#ifdef LITEPCIE_NVIDIA_P2P
+	mutex_init(&chan_priv->gpu_lock);
+#endif
 	file->private_data = chan_priv;
 
 	if (chan->dma.reader_enable == 0) { /* clear only if disabled */
@@ -447,6 +634,11 @@ static int litepcie_release(struct inode *inode, struct file *file)
 		chan->dma.writer_enable = 0;
 	}
 
+#ifdef LITEPCIE_NVIDIA_P2P
+	if (chan_priv->gpu_mapping)
+		litepcie_dma_unmap_gpu(chan_priv);
+#endif
+
 	kfree(chan_priv);
 
 	return 0;
@@ -461,6 +653,11 @@ static ssize_t litepcie_read(struct file *file, char __user *data, size_t size, 
 	struct litepcie_chan_priv *chan_priv = file->private_data;
 	struct litepcie_chan *chan = chan_priv->chan;
 	struct litepcie_device *s = chan->litepcie_dev;
+
+#ifdef LITEPCIE_NVIDIA_P2P
+	if (chan_priv->gpu_mapping)
+		return -EOPNOTSUPP;
+#endif
 
 	if (file->f_flags & O_NONBLOCK) {
 		if (chan->dma.writer_hw_count == chan->dma.writer_sw_count)
@@ -517,6 +714,11 @@ static ssize_t litepcie_write(struct file *file, const char __user *data, size_t
 	struct litepcie_chan *chan = chan_priv->chan;
 	struct litepcie_device *s = chan->litepcie_dev;
 
+#ifdef LITEPCIE_NVIDIA_P2P
+	if (chan_priv->gpu_mapping)
+		return -EOPNOTSUPP;
+#endif
+
 	if (file->f_flags & O_NONBLOCK) {
 		if (chan->dma.reader_hw_count == chan->dma.reader_sw_count)
 			ret = -EAGAIN;
@@ -572,6 +774,11 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
 	int ret;
 #endif
 	int is_tx, i;
+
+#ifdef LITEPCIE_NVIDIA_P2P
+	if (chan_priv->gpu_mapping)
+		return -EOPNOTSUPP;
+#endif
 
 	if (vma->vm_end - vma->vm_start != DMA_BUFFER_TOTAL_SIZE)
 		return -EINVAL;
@@ -751,6 +958,26 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 	}
 	break;
 #endif
+#ifdef LITEPCIE_NVIDIA_P2P
+	case LITEPCIE_IOCTL_DMA_MAP_GPU:
+	{
+		struct litepcie_ioctl_dma_map_gpu m;
+
+		if (copy_from_user(&m, (void *)arg, sizeof(m))) {
+			ret = -EFAULT;
+			break;
+		}
+		mutex_lock(&chan_priv->gpu_lock);
+		ret = litepcie_dma_map_gpu(chan_priv, m.gpu_addr, m.gpu_size);
+		mutex_unlock(&chan_priv->gpu_lock);
+	}
+	break;
+	case LITEPCIE_IOCTL_DMA_UNMAP_GPU:
+		mutex_lock(&chan_priv->gpu_lock);
+		ret = litepcie_dma_unmap_gpu(chan_priv);
+		mutex_unlock(&chan_priv->gpu_lock);
+		break;
+#endif
 	case LITEPCIE_IOCTL_DMA:
 	{
 		struct litepcie_ioctl_dma m;
@@ -767,16 +994,30 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 	case LITEPCIE_IOCTL_DMA_WRITER:
 	{
 		struct litepcie_ioctl_dma_writer m;
+		const dma_addr_t *handles = chan->dma.writer_handle;
 
 		if (copy_from_user(&m, (void *)arg, sizeof(m))) {
 			ret = -EFAULT;
 			break;
 		}
 
+#ifdef LITEPCIE_NVIDIA_P2P
+		mutex_lock(&chan_priv->gpu_lock);
+		if (chan_priv->gpu_mapping) {
+			if (m.enable && !chan_priv->writer) {
+				mutex_unlock(&chan_priv->gpu_lock);
+				ret = -EACCES;
+				break;
+			}
+			handles = chan_priv->gpu_mapping->writer_handle;
+		}
+#endif
+
 		if (m.enable != chan->dma.writer_enable) {
 			/* enable / disable DMA */
 			if (m.enable) {
-				litepcie_dma_writer_start(chan->litepcie_dev, chan->index);
+				litepcie_dma_writer_start(chan->litepcie_dev, chan->index,
+					handles);
 				litepcie_enable_interrupt(chan->litepcie_dev, chan->dma.writer_interrupt);
 			} else {
 				litepcie_disable_interrupt(chan->litepcie_dev, chan->dma.writer_interrupt);
@@ -790,6 +1031,10 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 		m.hw_count = chan->dma.writer_hw_count;
 		m.sw_count = chan->dma.writer_sw_count;
 
+#ifdef LITEPCIE_NVIDIA_P2P
+		mutex_unlock(&chan_priv->gpu_lock);
+#endif
+
 		if (copy_to_user((void *)arg, &m, sizeof(m))) {
 			ret = -EFAULT;
 			break;
@@ -800,16 +1045,30 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 	case LITEPCIE_IOCTL_DMA_READER:
 	{
 		struct litepcie_ioctl_dma_reader m;
+		const dma_addr_t *handles = chan->dma.reader_handle;
 
 		if (copy_from_user(&m, (void *)arg, sizeof(m))) {
 			ret = -EFAULT;
 			break;
 		}
 
+#ifdef LITEPCIE_NVIDIA_P2P
+		mutex_lock(&chan_priv->gpu_lock);
+		if (chan_priv->gpu_mapping) {
+			if (m.enable && !chan_priv->reader) {
+				mutex_unlock(&chan_priv->gpu_lock);
+				ret = -EACCES;
+				break;
+			}
+			handles = chan_priv->gpu_mapping->reader_handle;
+		}
+#endif
+
 		if (m.enable != chan->dma.reader_enable) {
 			/* enable / disable DMA */
 			if (m.enable) {
-				litepcie_dma_reader_start(chan->litepcie_dev, chan->index);
+				litepcie_dma_reader_start(chan->litepcie_dev, chan->index,
+					handles);
 				litepcie_enable_interrupt(chan->litepcie_dev, chan->dma.reader_interrupt);
 			} else {
 				litepcie_disable_interrupt(chan->litepcie_dev, chan->dma.reader_interrupt);
@@ -821,6 +1080,10 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 
 		m.hw_count = chan->dma.reader_hw_count;
 		m.sw_count = chan->dma.reader_sw_count;
+
+#ifdef LITEPCIE_NVIDIA_P2P
+		mutex_unlock(&chan_priv->gpu_lock);
+#endif
 
 		if (copy_to_user((void *)arg, &m, sizeof(m))) {
 			ret = -EFAULT;
