@@ -65,7 +65,10 @@ class LitePCIeWishboneMaster(LiteXModule):
             first_byte_count.eq(sum(port.sink.first_be[n] for n in range(4))),
             last_byte_count.eq(sum(port.sink.last_be[n] for n in range(4))),
             If(port.sink.len == 1,
-                request_byte_count.eq(first_byte_count),
+                # PCIe encodes a zero-length Memory Read as a one-Dword request with all First
+                # Byte Enables cleared. Its successful Completion still carries one Dword and a
+                # Byte Count of one.
+                request_byte_count.eq(Mux(first_byte_count == 0, 1, first_byte_count)),
             ).Else(
                 request_byte_count.eq(first_byte_count + last_byte_count + 4*(port.sink.len - 2)),
             ),
@@ -86,7 +89,9 @@ class LitePCIeWishboneMaster(LiteXModule):
         current_lower_offset = Signal(2)
         self.comb += [
             current_byte_count.eq(sum(current_be[n] for n in range(4))),
-            If(current_be[0],
+            If(current_be == 0,
+                current_lower_offset.eq(0),
+            ).Elif(current_be[0],
                 current_lower_offset.eq(0),
             ).Elif(current_be[1],
                 current_lower_offset.eq(1),

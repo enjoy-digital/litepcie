@@ -141,6 +141,7 @@ class TestWishboneMaster(unittest.TestCase):
     def test_split_read_completion_metadata(self):
         full_metadata    = []
         partial_metadata = []
+        zero_metadata    = []
 
         def completion_metadata(completions):
             return [(c.length, c.byte_count, c.lower_address) for c in completions]
@@ -154,6 +155,9 @@ class TestWishboneMaster(unittest.TestCase):
 
             yield from dut.host.chipset.rd32(0, length=2, first_be=0b1100, last_be=0b0011)
             partial_metadata.extend(completion_metadata(dut.host.chipset.rd_completions))
+
+            yield from dut.host.chipset.rd32(0, length=1, first_be=0)
+            zero_metadata.extend(completion_metadata(dut.host.chipset.rd_completions))
 
         class DUT(LiteXModule):
             def __init__(self):
@@ -178,6 +182,9 @@ class TestWishboneMaster(unittest.TestCase):
         self.assertEqual(partial_metadata, [
             (1, 4, 0x02),
             (1, 2, 0x04),
+        ])
+        self.assertEqual(zero_metadata, [
+            (1, 1, 0x00),
         ])
 
 
