@@ -17,24 +17,6 @@ from litex.soc.cores.clock import S7MMCM
 from litepcie.common import *
 from litepcie.phy.common import *
 
-# Helpers ------------------------------------------------------------------------------------------
-
-def get_bar_size_config(size):
-    if (size < 128) or (size > 2*GB) or (size & (size - 1)):
-        raise ValueError("32-bit PCIe BAR size must be a power of two between 128 bytes and 2 GiB")
-
-    values = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
-    for scale, unit in [
-        ("Gigabytes", GB),
-        ("Megabytes", MB),
-        ("Kilobytes", KB),
-        ("Bytes",       1),
-    ]:
-        if (size % unit) == 0 and (size // unit) in values:
-            return scale, size // unit
-
-    raise ValueError(f"PCIe BAR size 0x{size:x} cannot be represented by the 7-Series PCIe IP")
-
 # S7PCIEPHY ----------------------------------------------------------------------------------------
 
 class S7PCIEPHY(LiteXModule):

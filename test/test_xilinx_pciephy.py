@@ -9,14 +9,20 @@ from types import SimpleNamespace
 
 from migen import Signal
 
-from litepcie.phy.s7pciephy import S7PCIEPHY, get_bar_size_config
+from litepcie.phy.common     import get_bar_size_config
+from litepcie.phy.s7pciephy import S7PCIEPHY
+from litepcie.phy.uspciephy import USPCIEPHY
+from litepcie.phy.usppciephy import USPPCIEPHY
 
 
 class DummyPlatform:
     device = "xc7a35t"
 
     def __init__(self):
-        self.toolchain = SimpleNamespace(pre_placement_commands=[])
+        self.toolchain = SimpleNamespace(
+            pre_placement_commands = [],
+            pre_synthesis_commands = [],
+        )
 
     def add_period_constraint(self, *args, **kwargs):
         pass
@@ -25,7 +31,7 @@ class DummyPlatform:
         pass
 
 
-class TestS7PCIEPHY(unittest.TestCase):
+class TestXilinxPCIEPHY(unittest.TestCase):
     def test_bar_size_config_is_exact(self):
         self.assertEqual(get_bar_size_config(        128), ("Bytes",      128))
         self.assertEqual(get_bar_size_config(     4*1024), ("Kilobytes",   4))
@@ -36,6 +42,29 @@ class TestS7PCIEPHY(unittest.TestCase):
             with self.subTest(invalid_size=invalid_size):
                 with self.assertRaises(ValueError):
                     get_bar_size_config(invalid_size)
+
+    def test_ultrascale_bar_size_config_is_exact(self):
+        for phy_cls, extra in [
+            (USPCIEPHY,  {}),
+            (USPPCIEPHY, {"ip_name": "pcie4_uscale_plus"}),
+        ]:
+            with self.subTest(phy=phy_cls.__name__):
+                phy = SimpleNamespace(
+                    speed            = "gen3",
+                    nlanes           = 4,
+                    mode             = "Endpoint",
+                    pcie_data_width  = 256,
+                    bar0_scale       = "Kilobytes",
+                    bar0_size_config = 256,
+                    config           = {},
+                    **extra,
+                )
+                platform = DummyPlatform()
+                phy_cls.add_sources(phy, platform)
+                tcl = "\n".join(platform.toolchain.pre_synthesis_commands)
+
+                self.assertIn("CONFIG.pf0_bar0_scale {{Kilobytes}}", tcl)
+                self.assertIn("CONFIG.pf0_bar0_size {{256}}", tcl)
 
     def test_tx_ecrc_follows_aer_control(self):
         pads = SimpleNamespace(
