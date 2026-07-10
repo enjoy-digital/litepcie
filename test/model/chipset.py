@@ -45,6 +45,7 @@ class Chipset(LiteXModule):
 
         self.rd_data       = []
         self.rd_completion = None
+        self.rd_completions = []
         self.cmp_queue = []
         self.en = False
 
@@ -77,13 +78,14 @@ class Chipset(LiteXModule):
     def wr64(self, adr, data):
         return self.wr(wr_cls=WR64, adr=adr, data=data)
 
-    def rd(self, rd_cls, adr, length=1, tc=0):
+    def rd(self, rd_cls, adr, length=1, tc=0, first_be=0xf, last_be=None):
         rd = rd_cls()
         rd.fmt          = 0b00 if isinstance(rd, RD32) else 0b01
         rd.type         = 0b00000
         rd.tc           = tc
         rd.length       = length
-        rd.first_be     = 0xf
+        rd.first_be     = first_be
+        rd.last_be      = (0 if length == 1 else 0xf) if last_be is None else last_be
         rd.address      = (adr << 2)
         rd.requester_id = self.root_id
         dwords = rd.encode_dwords()
@@ -91,22 +93,31 @@ class Chipset(LiteXModule):
             print_chipset(">>>>>>>>")
             print_chipset(parse_dwords(dwords))
         yield from self.phy.send_blocking(dwords)
-        dwords = None
-        while dwords is None:
-            dwords = self.phy.receive()
-            yield
-        cpld = CPLD(dwords)
-        self.rd_data = cpld.data
-        self.rd_completion = cpld
-        if self.debug:
-            print_chipset("<<<<<<<<")
-            print_chipset(cpld)
+        self.rd_data        = []
+        self.rd_completions = []
+        while True:
+            dwords = None
+            while dwords is None:
+                dwords = self.phy.receive()
+                yield
+            cpld = CPLD(dwords)
+            self.rd_data += cpld.data
+            self.rd_completion = cpld
+            self.rd_completions.append(cpld)
+            if self.debug:
+                print_chipset("<<<<<<<<")
+                print_chipset(cpld)
+            completion_capacity = 4*len(cpld.data) - (cpld.lower_address & 0x3)
+            if cpld.byte_count <= completion_capacity:
+                break
 
-    def rd32(self, adr, length=1, tc=0):
-        return self.rd(rd_cls=RD32, adr=adr, length=length, tc=tc)
+    def rd32(self, adr, length=1, tc=0, first_be=0xf, last_be=None):
+        return self.rd(rd_cls=RD32, adr=adr, length=length, tc=tc,
+            first_be=first_be, last_be=last_be)
 
-    def rd64(self, adr, length=1, tc=0):
-        return self.rd(rd_cls=RD64, adr=adr, length=length, tc=tc)
+    def rd64(self, adr, length=1, tc=0, first_be=0xf, last_be=None):
+        return self.rd(rd_cls=RD64, adr=adr, length=length, tc=tc,
+            first_be=first_be, last_be=last_be)
 
     def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0, with_split=False):
         if with_split:

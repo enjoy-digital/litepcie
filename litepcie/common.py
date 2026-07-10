@@ -67,6 +67,8 @@ def request_layout(data_width, address_width=32, with_configuration=False):
         ("we",               1), # Request type; 0 : Read / 1 : Write.
         ("adr",  address_width), # Request address (In Bytes).
         ("len",             10), # Request length (In Dwords).
+        ("first_be",         4), # First Dword Byte Enables.
+        ("last_be",          4), # Last Dword Byte Enables.
         ("tag",              8), # Request tag.
 
         # Data Stream.
@@ -99,6 +101,7 @@ def completion_layout(data_width, address_width=32):
         ("tc",               3), # Traffic Class.
         ("adr",  address_width), # Completion address (In Bytes).
         ("len",             10), # Completion length (In Dwords).
+        ("byte_count",      12), # Remaining Completion Byte Count.
         ("end",              1), # Completion end (Current packet is the last).
         ("err",              1), # Completion error.
         ("tag",              8), # Completion tag.

@@ -115,6 +115,7 @@ class PTMCapabilities(LiteXModule):
             comp_ep.first.eq(1),
             comp_ep.last.eq(1),
             comp_ep.len.eq(1),
+            comp_ep.byte_count.eq(4),
             comp_ep.err.eq(0),
             comp_ep.tag.eq(conf_ep.tag),
             comp_ep.adr.eq(0),

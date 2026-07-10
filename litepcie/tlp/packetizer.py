@@ -725,7 +725,7 @@ class LitePCIeTLPPacketizer(LiteXModule):
                     tlp_cmp.status.eq(cpl_dict["sc"])
                 ),
                 tlp_cmp.bcm.eq(0),
-                tlp_cmp.byte_count.eq(cmp_sink.len*4),
+                tlp_cmp.byte_count.eq(cmp_sink.byte_count),
 
                 tlp_cmp.requester_id.eq(cmp_sink.req_id),
                 tlp_cmp.tag.eq(cmp_sink.tag),
