@@ -16,6 +16,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#ifdef LITEPCIE_NVIDIA_P2P
+#include <cuda.h>
+#endif
 #include "liblitepcie.h"
 
 /* Parameters */
@@ -35,6 +38,26 @@ sig_atomic_t keep_running = 1;
 void intHandler(int dummy) {
     keep_running = 0;
 }
+
+#ifdef LITEPCIE_NVIDIA_P2P
+
+#define NVIDIA_GPU_PAGE_SIZE (64 * 1024)
+
+static void cuda_check(CUresult result, const char *operation)
+{
+    const char *error_name = "unknown";
+    const char *error_string = "unknown error";
+
+    if (result == CUDA_SUCCESS)
+        return;
+
+    cuGetErrorName(result, &error_name);
+    cuGetErrorString(result, &error_string);
+    fprintf(stderr, "%s failed: %s (%s)\n", operation, error_name, error_string);
+    exit(1);
+}
+
+#endif
 
 /* Info */
 /*------*/
@@ -343,9 +366,19 @@ static int check_pn_data(const uint32_t *buf, int count, uint32_t *pseed, int da
 }
 #endif
 
-static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_width, int auto_rx_delay, int duration)
+static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_width,
+    int auto_rx_delay, int duration, int gpu_device)
 {
     static struct litepcie_dma_ctrl dma = {.use_reader = 1, .use_writer = 1};
+    int gpu_mode = gpu_device >= 0;
+#ifdef LITEPCIE_NVIDIA_P2P
+    CUcontext gpu_context;
+    CUdeviceptr gpu_allocation;
+    CUdeviceptr gpu_buffer;
+    size_t gpu_buffer_size = (2 * DMA_BUFFER_TOTAL_SIZE + NVIDIA_GPU_PAGE_SIZE - 1) &
+        ~(NVIDIA_GPU_PAGE_SIZE - 1);
+    unsigned int sync_memops = 1;
+#endif
     dma.loopback = external_loopback ? 0 : 1;
 
     if (data_width > 32 || data_width < 1) {
@@ -363,7 +396,7 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
 #ifdef DMA_CHECK_DATA
     uint32_t seed_wr = 0;
     uint32_t seed_rd = 0;
-    uint8_t  run = (auto_rx_delay == 0);
+    uint8_t  run = gpu_mode || (auto_rx_delay == 0);
 #else
     uint8_t run = 1;
 #endif
@@ -373,8 +406,31 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
     printf("\e[1m[> DMA loopback test:\e[0m\n");
     printf("---------------------\n");
 
-    if (litepcie_dma_init(&dma, litepcie_device, zero_copy))
+#ifdef LITEPCIE_NVIDIA_P2P
+    if (gpu_mode) {
+        CUdevice device;
+
+        cuda_check(cuInit(0), "cuInit");
+        cuda_check(cuDeviceGet(&device, gpu_device), "cuDeviceGet");
+        cuda_check(cuCtxCreate(&gpu_context, 0, device), "cuCtxCreate");
+        cuda_check(cuMemAlloc(&gpu_allocation,
+            gpu_buffer_size + NVIDIA_GPU_PAGE_SIZE - 1), "cuMemAlloc");
+        gpu_buffer = (gpu_allocation + NVIDIA_GPU_PAGE_SIZE - 1) &
+            ~(CUdeviceptr)(NVIDIA_GPU_PAGE_SIZE - 1);
+        cuda_check(cuPointerSetAttribute(&sync_memops,
+            CU_POINTER_ATTRIBUTE_SYNC_MEMOPS, gpu_buffer), "cuPointerSetAttribute");
+        cuda_check(cuMemsetD8(gpu_buffer, 0, gpu_buffer_size), "cuMemsetD8");
+        if (litepcie_dma_init_gpu(&dma, litepcie_device,
+            (uint64_t)gpu_buffer, gpu_buffer_size)) {
+            cuMemFree(gpu_allocation);
+            cuCtxDestroy(gpu_context);
+            exit(1);
+        }
+    } else
+#endif
+    if (litepcie_dma_init(&dma, litepcie_device, zero_copy)) {
         exit(1);
+    }
 
     dma.reader_enable = 1;
     dma.writer_enable = 1;
@@ -390,59 +446,66 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
         litepcie_dma_process(&dma);
 
 #ifdef DMA_CHECK_DATA
-        char *buf_wr;
-        char *buf_rd;
+        if (!gpu_mode) {
+            char *buf_wr;
+            char *buf_rd;
 
-        /* DMA-TX Write. */
-        while (1) {
-            /* Get Write buffer. */
-            buf_wr = litepcie_dma_next_write_buffer(&dma);
-            /* Break when no buffer available for Write. */
-            if (!buf_wr)
-                break;
-            /* Write data to buffer. */
-            write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_wr, data_width);
-        }
-
-        /* DMA-RX Read/Check */
-        while (1) {
-            /* Get Read buffer. */
-            buf_rd = litepcie_dma_next_read_buffer(&dma);
-            /* Break when no buffer available for Read. */
-            if (!buf_rd)
-                break;
-            /* Skip the first 128 DMA loops. */
-            if (dma.writer_hw_count < 128*DMA_BUFFER_COUNT)
-                break;
-            /* When running... */
-            if (run) {
-                /* Check data in Read buffer. */
-                errors += check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd, data_width);
-                /* Clear Read buffer */
-                memset(buf_rd, 0, DMA_BUFFER_SIZE);
-            } else {
-                /* Find initial Delay/Seed (Useful when loopback is introducing delay). */
-                uint32_t errors_min = 0xffffffff;
-                for (int delay = 0; delay < DMA_BUFFER_SIZE / sizeof(uint32_t); delay++) {
-                    seed_rd = delay;
-                    errors = check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd, data_width);
-                    //printf("delay: %d / errors: %d\n", delay, errors);
-                    if (errors < errors_min)
-                        errors_min = errors;
-                    if (errors < (DMA_BUFFER_SIZE / sizeof(uint32_t)) / 2) {
-                        printf("RX_DELAY: %d (errors: %d)\n", delay, errors);
-                        run = 1;
-                        break;
-                    }
-                }
-                if (!run) {
-                    printf("Unable to find DMA RX_DELAY (min errors: %d/%ld), exiting.\n",
-                        errors_min,
-                        DMA_BUFFER_SIZE / sizeof(uint32_t));
-                    goto end;
-                }
+            /* DMA-TX Write. */
+            while (1) {
+                /* Get Write buffer. */
+                buf_wr = litepcie_dma_next_write_buffer(&dma);
+                /* Break when no buffer available for Write. */
+                if (!buf_wr)
+                    break;
+                /* Write data to buffer. */
+                write_pn_data((uint32_t *) buf_wr, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_wr, data_width);
             }
 
+            /* DMA-RX Read/Check */
+            while (1) {
+                /* Get Read buffer. */
+                buf_rd = litepcie_dma_next_read_buffer(&dma);
+                /* Break when no buffer available for Read. */
+                if (!buf_rd)
+                    break;
+                /* Skip the first 128 DMA loops. */
+                if (dma.writer_hw_count < 128*DMA_BUFFER_COUNT)
+                    break;
+                /* When running... */
+                if (run) {
+                    /* Check data in Read buffer. */
+                    errors += check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd, data_width);
+                    /* Clear Read buffer */
+                    memset(buf_rd, 0, DMA_BUFFER_SIZE);
+                } else {
+                    /* Find initial Delay/Seed (Useful when loopback is introducing delay). */
+                    uint32_t errors_min = 0xffffffff;
+                    for (int delay = 0; delay < DMA_BUFFER_SIZE / sizeof(uint32_t); delay++) {
+                        seed_rd = delay;
+                        errors = check_pn_data((uint32_t *) buf_rd, DMA_BUFFER_SIZE / sizeof(uint32_t), &seed_rd, data_width);
+                        //printf("delay: %d / errors: %d\n", delay, errors);
+                        if (errors < errors_min)
+                            errors_min = errors;
+                        if (errors < (DMA_BUFFER_SIZE / sizeof(uint32_t)) / 2) {
+                            printf("RX_DELAY: %d (errors: %d)\n", delay, errors);
+                            run = 1;
+                            break;
+                        }
+                    }
+                    if (!run) {
+                        printf("Unable to find DMA RX_DELAY (min errors: %d/%ld), exiting.\n",
+                            errors_min,
+                            DMA_BUFFER_SIZE / sizeof(uint32_t));
+                        goto end;
+                    }
+                }
+
+            }
+        } else {
+            while (litepcie_dma_next_write_buffer(&dma))
+                ;
+            while (litepcie_dma_next_read_buffer(&dma))
+                ;
         }
 #endif
 
@@ -472,6 +535,12 @@ static void dma_test(uint8_t zero_copy, uint8_t external_loopback, int data_widt
 end:
 #endif
     litepcie_dma_cleanup(&dma);
+#ifdef LITEPCIE_NVIDIA_P2P
+    if (gpu_mode) {
+        cuda_check(cuMemFree(gpu_allocation), "cuMemFree");
+        cuda_check(cuCtxDestroy(gpu_context), "cuCtxDestroy");
+    }
+#endif
 }
 
 /* Help */
@@ -490,6 +559,9 @@ static void help(void)
            "-w data_width                     Width of data bus (default = 16).\n"
            "-a                                Automatic DMA RX-Delay calibration.\n"
            "-t duration                       Duration of the test in seconds (default = 0, infinite).\n"
+#ifdef LITEPCIE_NVIDIA_P2P
+           "-g device_num                     Use NVIDIA GPU memory for DMA.\n"
+#endif
            "\n"
            "available commands:\n"
            "info                              Get Board information.\n"
@@ -518,6 +590,7 @@ int main(int argc, char **argv)
     static int litepcie_data_width;
     static int litepcie_auto_rx_delay;
     static int test_duration = 0; /* Default to 0 for infinite duration.*/
+    static int gpu_device_num = -1;
 
     litepcie_device_num = 0;
     litepcie_data_width = 16;
@@ -527,7 +600,7 @@ int main(int argc, char **argv)
 
     /* Parameters. */
     for (;;) {
-        c = getopt(argc, argv, "hc:w:zeat:");
+        c = getopt(argc, argv, "hc:w:zeat:g:");
         if (c == -1)
             break;
         switch(c) {
@@ -551,6 +624,14 @@ int main(int argc, char **argv)
             break;
         case 't':
             test_duration = atoi(optarg);
+            break;
+        case 'g':
+#ifdef LITEPCIE_NVIDIA_P2P
+            gpu_device_num = atoi(optarg);
+#else
+            fprintf(stderr, "NVIDIA GPU DMA support is not enabled\n");
+            exit(1);
+#endif
             break;
         default:
             exit(1);
@@ -607,7 +688,8 @@ int main(int argc, char **argv)
             litepcie_device_external_loopback,
             litepcie_data_width,
             litepcie_auto_rx_delay,
-            test_duration);
+            test_duration,
+            gpu_device_num);
 
     /* Show help otherwise. */
     else
