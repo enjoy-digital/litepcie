@@ -138,6 +138,31 @@ class TestWishboneMaster(unittest.TestCase):
 
         self.assertEqual(observed_tc, [0b101])
 
+    def test_read_completion_preserves_attributes(self):
+        observed_attr = []
+
+        def main_generator(dut):
+            for attr in [0b01, 0b10, 0b11]:
+                yield from dut.host.chipset.rd32(0, attr=attr)
+                observed_attr.append(dut.host.chipset.rd_completion.attr)
+
+        class DUT(LiteXModule):
+            def __init__(self):
+                self.host     = Host(64, root_id, endpoint_id)
+                self.endpoint = LitePCIeEndpoint(self.host.phy)
+                self.master   = LitePCIeWishboneMaster(self.endpoint)
+                self.sram     = wishbone.SRAM(8, bus=self.master.wishbone)
+
+        dut = DUT()
+        generators = {"sys": [
+            main_generator(dut),
+            dut.host.chipset.phy.phy_sink.generator(),
+            dut.host.chipset.phy.phy_source.generator(),
+        ]}
+        run_simulation(dut, generators, {"sys": 10})
+
+        self.assertEqual(observed_attr, [0b01, 0b10, 0b11])
+
     def test_split_read_completion_metadata(self):
         full_metadata    = []
         partial_metadata = []

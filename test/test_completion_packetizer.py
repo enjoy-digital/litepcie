@@ -22,7 +22,7 @@ class TestCompletionPacketizer(unittest.TestCase):
     def field(value, msb, lsb):
         return (value >> lsb) & ((1 << (msb - lsb + 1)) - 1)
 
-    def packetize(self, data_width, length, error=False):
+    def packetize(self, data_width, length, error=False, attr=0):
         dut = LitePCIeTLPPacketizer(
             data_width   = data_width,
             endianness   = "big",
@@ -55,6 +55,7 @@ class TestCompletionPacketizer(unittest.TestCase):
             yield sink.req_id.eq(0x1234)
             yield sink.cmp_id.eq(0x0100)
             yield sink.tc.eq(0b101)
+            yield sink.attr.eq(attr)
             yield sink.tag.eq(0xa5)
             yield sink.err.eq(error)
             yield
@@ -118,6 +119,14 @@ class TestCompletionPacketizer(unittest.TestCase):
                 self.assertEqual(dwords[1] & 0xfff, 0)
                 self.assertEqual(dwords[2] & 0x7f, 0)
 
+    def test_completion_preserves_attributes(self):
+        for data_width in [32, 64, 128, 256, 512]:
+            for attr in [0b01, 0b10, 0b11]:
+                with self.subTest(data_width=data_width, attr=attr):
+                    beats = self.packetize(data_width, length=1, attr=attr)
+                    dwords = self.valid_dwords(data_width, beats)
+                    self.assertEqual((dwords[0] >> 12) & 0x3, attr)
+
     def packetize_to_xilinx_cc(self, data_width, error=False):
         class DUT(LiteXModule):
             def __init__(self):
@@ -162,6 +171,7 @@ class TestCompletionPacketizer(unittest.TestCase):
             yield sink.req_id.eq(0x1234)
             yield sink.cmp_id.eq(0x0100)
             yield sink.tc.eq(0b101)
+            yield sink.attr.eq(0b01)
             yield sink.tag.eq(0xa5)
             yield sink.err.eq(error)
             yield sink.dat.eq(0x89abcdef)
@@ -191,6 +201,7 @@ class TestCompletionPacketizer(unittest.TestCase):
                 self.assertEqual(self.field(descriptor, 71, 64), 0xa5)
                 self.assertEqual(self.field(descriptor, 87, 72), 0x0100)
                 self.assertEqual(self.field(descriptor, 91, 89), 0b101)
+                self.assertEqual(self.field(descriptor, 94, 92), 0b001)
                 self.assertEqual(beats[0]["keep"], 0xf)
                 self.assertEqual(beats[0]["last"], 1)
 

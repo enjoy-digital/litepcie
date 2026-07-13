@@ -53,6 +53,7 @@ class LitePCIeWishboneMaster(LiteXModule):
         request_last_be   = Signal(4)
         request_req_id    = Signal(16)
         request_tc        = Signal(3)
+        request_attr      = Signal(2)
         request_tag       = Signal(8)
         dword_index       = Signal(10)
         byte_count        = Signal(12)
@@ -115,6 +116,7 @@ class LitePCIeWishboneMaster(LiteXModule):
                     NextValue(request_last_be,  port.sink.last_be),
                     NextValue(request_req_id,   port.sink.req_id),
                     NextValue(request_tc,       port.sink.tc),
+                    NextValue(request_attr,     port.sink.attr),
                     NextValue(request_tag,      port.sink.tag),
                     NextValue(dword_index,      0),
                     NextValue(byte_count,       request_byte_count),
@@ -169,6 +171,7 @@ class LitePCIeWishboneMaster(LiteXModule):
             port.source.cmp_id.eq(endpoint.phy.id),
             port.source.req_id.eq(request_req_id),
             port.source.tc.eq(request_tc),
+            port.source.attr.eq(request_attr),
             port.source.dat.eq(read_dat),
         ]
         fsm.act("ISSUE-READ-COMPLETION",

@@ -64,6 +64,7 @@ def request_layout(data_width, address_width=32, with_configuration=False):
         # Request Parameters.
         ("req_id",          16), # Requester ID.
         ("tc",               3), # Traffic Class.
+        ("attr",             2), # Attributes (No Snoop / Relaxed Ordering).
         ("we",               1), # Request type; 0 : Read / 1 : Write.
         ("adr",  address_width), # Request address (In Bytes).
         ("len",             10), # Request length (In Dwords).
@@ -99,6 +100,7 @@ def completion_layout(data_width, address_width=32):
         ("req_id",          16), # Requester ID.
         ("cmp_id",          16), # Completion ID.
         ("tc",               3), # Traffic Class.
+        ("attr",             2), # Attributes (No Snoop / Relaxed Ordering).
         ("adr",  address_width), # Completion address (In Bytes).
         ("len",             10), # Completion length (In Dwords).
         ("byte_count",      12), # Remaining Completion Byte Count.

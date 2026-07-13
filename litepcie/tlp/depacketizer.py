@@ -392,6 +392,7 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 req_source.last_be.eq(tlp_req.last_be),
                 req_source.req_id.eq(tlp_req.requester_id),
                 req_source.tc.eq(tlp_req.tc),
+                req_source.attr.eq(tlp_req.attr),
                 req_source.tag.eq(tlp_req.tag),
                 req_source.dat.eq(tlp_req.dat)
             ]
@@ -422,6 +423,7 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 cmp_source.req_id.eq(tlp_cmp.requester_id),
                 cmp_source.cmp_id.eq(tlp_cmp.completer_id),
                 cmp_source.tc.eq(tlp_cmp.tc),
+                cmp_source.attr.eq(tlp_cmp.attr),
                 cmp_source.err.eq(tlp_cmp.status != 0),
                 cmp_source.tag.eq(tlp_cmp.tag),
                 cmp_source.dat.eq(tlp_cmp.dat)

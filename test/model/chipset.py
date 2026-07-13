@@ -78,11 +78,12 @@ class Chipset(LiteXModule):
     def wr64(self, adr, data):
         return self.wr(wr_cls=WR64, adr=adr, data=data)
 
-    def rd(self, rd_cls, adr, length=1, tc=0, first_be=0xf, last_be=None):
+    def rd(self, rd_cls, adr, length=1, tc=0, first_be=0xf, last_be=None, attr=0):
         rd = rd_cls()
         rd.fmt          = 0b00 if isinstance(rd, RD32) else 0b01
         rd.type         = 0b00000
         rd.tc           = tc
+        rd.attr         = attr
         rd.length       = length
         rd.first_be     = first_be
         rd.last_be      = (0 if length == 1 else 0xf) if last_be is None else last_be
@@ -111,12 +112,12 @@ class Chipset(LiteXModule):
             if cpld.byte_count <= completion_capacity:
                 break
 
-    def rd32(self, adr, length=1, tc=0, first_be=0xf, last_be=None):
-        return self.rd(rd_cls=RD32, adr=adr, length=length, tc=tc,
+    def rd32(self, adr, length=1, tc=0, first_be=0xf, last_be=None, attr=0):
+        return self.rd(rd_cls=RD32, adr=adr, length=length, tc=tc, attr=attr,
             first_be=first_be, last_be=last_be)
 
-    def rd64(self, adr, length=1, tc=0, first_be=0xf, last_be=None):
-        return self.rd(rd_cls=RD64, adr=adr, length=length, tc=tc,
+    def rd64(self, adr, length=1, tc=0, first_be=0xf, last_be=None, attr=0):
+        return self.rd(rd_cls=RD64, adr=adr, length=length, tc=tc, attr=attr,
             first_be=first_be, last_be=last_be)
 
     def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0, with_split=False):
