@@ -34,6 +34,10 @@ class LitePCIeEndpoint(LiteXModule):
         if with_ptm:
             optional_packetizer_capabilities   = ["PTM"]
             optional_depacketizer_capabilities = ["PTM", "CONFIGURATION"]
+        if with_configuration:
+            optional_packetizer_capabilities += ["CONFIGURATION"]
+            if "CONFIGURATION" not in optional_depacketizer_capabilities:
+                optional_depacketizer_capabilities += ["CONFIGURATION"]
         # Default to PHY BAR0 aperture mask for memory requests.
         if address_mask is None:
             address_mask = getattr(phy, "bar0_mask", 0)
