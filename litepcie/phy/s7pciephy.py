@@ -34,6 +34,7 @@ class S7PCIEPHY(LiteXModule):
         msi_type                     = "msi",
         with_ptm                     = False,
         mode                         = "Endpoint",
+        with_cfg_mgmt                = False,
         with_perst_refclk_gating     = False,
         # MMCM parameters.
         mmcm_clk125_buf              = "bufg",
@@ -81,6 +82,21 @@ class S7PCIEPHY(LiteXModule):
         self.refclk_freq      = refclk_freq
         self.msi_type         = msi_type
         self.with_ptm         = with_ptm
+
+        # Optional local Configuration Management interface (pcie clock domain), exposed with the
+        # same signal names as USPPCIEPHY so PHY-agnostic users (e.g. LiteNVMe's RootCfgMgmt) can
+        # drive the Root Port's own configuration space. When disabled (default), the cfg_mgmt
+        # port stays tied off -> behavior is unchanged.
+        self.with_cfg_mgmt = with_cfg_mgmt
+        if with_cfg_mgmt:
+            self.cfg_mgmt_addr            = Signal(10)  # DWORD address into local config space.
+            self.cfg_mgmt_function_number = Signal(8)   # Unused on 7-series (single function).
+            self.cfg_mgmt_write           = Signal()
+            self.cfg_mgmt_write_data      = Signal(32)
+            self.cfg_mgmt_byte_enable     = Signal(4, reset=0b1111)
+            self.cfg_mgmt_read            = Signal()
+            self.cfg_mgmt_read_data       = Signal(32)
+            self.cfg_mgmt_read_write_done = Signal()
 
         self.id               = Signal(16, reset_less=True)
         self.bar0_size        = bar0_size
@@ -339,13 +355,13 @@ class S7PCIEPHY(LiteXModule):
             i_fc_sel                                     = 0,
 
             # Management Interface -----------------------------------------------------------------
-            o_cfg_mgmt_do                                = Open(),
-            o_cfg_mgmt_rd_wr_done                        = Open(),
-            i_cfg_mgmt_di                                = 0,
-            i_cfg_mgmt_byte_en                           = 0,
-            i_cfg_mgmt_dwaddr                            = 0,
-            i_cfg_mgmt_wr_en                             = 0,
-            i_cfg_mgmt_rd_en                             = 0,
+            o_cfg_mgmt_do                                = self.cfg_mgmt_read_data       if with_cfg_mgmt else Open(),
+            o_cfg_mgmt_rd_wr_done                        = self.cfg_mgmt_read_write_done if with_cfg_mgmt else Open(),
+            i_cfg_mgmt_di                                = self.cfg_mgmt_write_data      if with_cfg_mgmt else 0,
+            i_cfg_mgmt_byte_en                           = self.cfg_mgmt_byte_enable     if with_cfg_mgmt else 0,
+            i_cfg_mgmt_dwaddr                            = self.cfg_mgmt_addr            if with_cfg_mgmt else 0,
+            i_cfg_mgmt_wr_en                             = self.cfg_mgmt_write           if with_cfg_mgmt else 0,
+            i_cfg_mgmt_rd_en                             = self.cfg_mgmt_read            if with_cfg_mgmt else 0,
             i_cfg_mgmt_wr_readonly                       = 0,
             i_cfg_mgmt_wr_rw1c_as_rw                     = 0,
 
