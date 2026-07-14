@@ -56,6 +56,15 @@ class LitePCIeTLPController(LiteXModule):
         # Connect Data-Path.
         self.comb += req_sink.connect(req_source, omit={"valid", "ready", "tag"})
 
+        # Posted requests (Memory Writes) complete on the link without a Completion TLP and can be
+        # sent directly. Non-Posted requests (Memory Reads, but also Configuration Writes) return
+        # a Completion and must allocate a tag/req_queue entry so it is steered back to the issuer.
+        req_posted = Signal()
+        if with_configuration:
+            self.comb += req_posted.eq(req_sink.we & ~req_sink.is_cfg)
+        else:
+            self.comb += req_posted.eq(req_sink.we)
+
         # FSM.
         self.req_fsm = req_fsm = ResetInserter()(FSM(reset_state="WAIT-REQ"))
         self.comb += [
@@ -66,10 +75,11 @@ class LitePCIeTLPController(LiteXModule):
         req_fsm.act("WAIT-REQ",
             # Wait for a TLP Request...
             If(req_sink.valid & req_sink.first,
-                # TLP Write: We can send the request directly.
-                If(req_sink.we,
+                # Posted TLP: We can send the request directly.
+                If(req_posted,
                    NextState("SEND-WRITE-REQ")
-                # TLP Read:  We can send the request when one tag available and space in req_queue.
+                # Non-Posted TLP: We can send the request when one tag available and space in
+                # req_queue.
                 ).Elif(tag_queue.source.valid & req_queue.sink.ready,
                    NextState("SEND-READ-REQ")
                 )

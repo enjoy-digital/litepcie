@@ -180,6 +180,164 @@ class TestTLPController(unittest.TestCase):
         self.assertEqual([c["last"] for c in observed_completions], [0, 1, 0, 1])
         self.assertEqual([c["end"] for c in observed_completions], [0, 1, 0, 1])
 
+    def _issue_request(self, controller, *, we, is_cfg=0, channel=0, user_id=0, length_dwords=1,
+        timeout=32):
+        sink = controller.master_in.sink
+        issued = False
+        for _ in range(timeout):
+            yield sink.valid.eq(1)
+            yield sink.first.eq(1)
+            yield sink.last.eq(1)
+            yield sink.we.eq(we)
+            if hasattr(sink, "is_cfg"):
+                yield sink.is_cfg.eq(is_cfg)
+            yield sink.req_id.eq(0x1234)
+            yield sink.len.eq(length_dwords)
+            yield sink.channel.eq(channel)
+            yield sink.user_id.eq(user_id)
+            yield
+            if (yield sink.ready):
+                issued = True
+                break
+        yield sink.valid.eq(0)
+        yield sink.first.eq(0)
+        yield sink.last.eq(0)
+        yield sink.we.eq(0)
+        if hasattr(sink, "is_cfg"):
+            yield sink.is_cfg.eq(0)
+        yield
+        return issued
+
+    def test_cfg_write_allocates_tag_and_completes(self):
+        # A Configuration Write is Non-Posted: it must be sent with a tag allocated from
+        # tag_queue (not the fixed posted-write tag) so its data-less completion is steered
+        # back to the issuing port, and the tag must be recycled afterwards.
+        controller = LitePCIeTLPController(
+            data_width           = 128,
+            address_width        = 32,
+            max_pending_requests = 4,
+            cmp_bufs_buffered    = True,
+            with_configuration   = True,
+        )
+
+        observed_requests    = []
+        observed_completions = []
+
+        @passive
+        def monitor_requests():
+            source = controller.master_out.sink
+            while True:
+                yield source.ready.eq(1)
+                if (yield source.valid) and (yield source.ready):
+                    observed_requests.append({
+                        "tag":    (yield source.tag),
+                        "we":     (yield source.we),
+                        "is_cfg": (yield source.is_cfg),
+                    })
+                yield
+
+        @passive
+        def monitor_completions():
+            source = controller.master_in.source
+            while True:
+                yield source.ready.eq(1)
+                if (yield source.valid) and (yield source.ready):
+                    observed_completions.append({
+                        "channel": (yield source.channel),
+                        "user_id": (yield source.user_id),
+                        "first":   (yield source.first),
+                        "last":    (yield source.last),
+                        "end":     (yield source.end),
+                    })
+                yield
+
+        def stim():
+            yield
+            self.assertTrue((yield from self._issue_request(
+                controller, we=1, is_cfg=1, channel=3, user_id=0x33)))
+
+            while len(observed_requests) < 1:
+                yield
+
+            # The request must carry an allocated (in-range) tag, not the posted-write tag.
+            self.assertEqual(observed_requests[0]["we"],     1)
+            self.assertEqual(observed_requests[0]["is_cfg"], 1)
+            self.assertLess(observed_requests[0]["tag"],     4)
+
+            # Return the data-less completion (end=1, single header-only beat).
+            accepted = []
+            yield from self._push_completion(
+                controller,
+                tag      = observed_requests[0]["tag"],
+                channel  = 9,
+                user_id  = 0x99,
+                beats    = 1,
+                accepted = accepted,
+            )
+            self.assertEqual(accepted, [0])
+
+            timeout = 0
+            while len(observed_completions) < 1:
+                timeout += 1
+                if timeout > 32:
+                    self.fail("Timed out waiting for the cfg write completion")
+                yield
+
+            # Delivered with the issuer's channel/user_id restored from req_queue.
+            self.assertEqual(observed_completions[0]["channel"], 3)
+            self.assertEqual(observed_completions[0]["user_id"], 0x33)
+            self.assertEqual(observed_completions[0]["first"],   1)
+            self.assertEqual(observed_completions[0]["last"],    1)
+            self.assertEqual(observed_completions[0]["end"],     1)
+
+            # All four tags must be allocatable again (the cfg write's tag was recycled).
+            for i in range(4):
+                self.assertTrue((yield from self._issue_request(controller, we=0)))
+            self.assertFalse((yield from self._issue_request(controller, we=0)))
+
+            tags = [r["tag"] for r in observed_requests[1:5]]
+            self.assertEqual(len(set(tags)), 4)
+
+        run_simulation(controller, [stim(), monitor_requests(), monitor_completions()],
+            vcd_name=None)
+
+    def test_memory_write_remains_posted(self):
+        # Memory Writes are Posted: they must be sent immediately with the fixed tag, even
+        # when every tag is held by in-flight Non-Posted requests.
+        controller = LitePCIeTLPController(
+            data_width           = 128,
+            address_width        = 32,
+            max_pending_requests = 4,
+            cmp_bufs_buffered    = True,
+            with_configuration   = True,
+        )
+
+        observed_requests = []
+
+        @passive
+        def monitor_requests():
+            source = controller.master_out.sink
+            while True:
+                yield source.ready.eq(1)
+                if (yield source.valid) and (yield source.ready):
+                    observed_requests.append({
+                        "tag": (yield source.tag),
+                        "we":  (yield source.we),
+                    })
+                yield
+
+        def stim():
+            yield
+            # Exhaust all tags with in-flight reads.
+            for _ in range(4):
+                self.assertTrue((yield from self._issue_request(controller, we=0)))
+            # A Memory Write must still go through, with the fixed posted tag.
+            self.assertTrue((yield from self._issue_request(controller, we=1, is_cfg=0)))
+            self.assertEqual(observed_requests[4]["we"],  1)
+            self.assertEqual(observed_requests[4]["tag"], 32)
+
+        run_simulation(controller, [stim(), monitor_requests()], vcd_name=None)
+
     def test_out_of_range_completion_tag_not_recycled(self):
         # A completion whose tag was never allocated from tag_queue (e.g. the fixed tag of a
         # posted write, or a spurious TLP) must not be recycled: pushing its truncated value
