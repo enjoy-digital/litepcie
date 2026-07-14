@@ -418,7 +418,16 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 cmp_source.last.eq(tlp_cmp.last),
                 cmp_source.len.eq(tlp_cmp.length),
                 cmp_source.byte_count.eq(tlp_cmp.byte_count),
-                cmp_source.end.eq(tlp_cmp.length == (tlp_cmp.byte_count[2:])),
+                cmp_source.end.eq(
+                    # CplD: the request is fully satisfied when this packet's Length covers the
+                    # remaining Byte Count (intermediate packets of a split read have Length <
+                    # Byte Count/4).
+                    (tlp_cmp.length == (tlp_cmp.byte_count[2:])) |
+                    # Cpl (without data, e.g. a Configuration Write completion): always terminal.
+                    # The Length field is reserved in data-less completions, so it cannot be
+                    # compared against Byte Count.
+                    (tlp_cmp.fmt == fmt_dict["cpl"])
+                ),
                 cmp_source.adr.eq(tlp_cmp.lower_address),
                 cmp_source.req_id.eq(tlp_cmp.requester_id),
                 cmp_source.cmp_id.eq(tlp_cmp.completer_id),
