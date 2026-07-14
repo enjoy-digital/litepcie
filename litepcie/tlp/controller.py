@@ -160,6 +160,16 @@ class LitePCIeTLPController(LiteXModule):
         fill_tag = Signal(tag_bits)
         self.sync += If(self.ctrl_rst, fill_tag.eq(0))
 
+        # Only recycle tags within the pending-request range: a completion whose tag was not
+        # allocated from tag_queue (e.g. the fixed tag of a posted write, or a spurious TLP) is
+        # dropped by the reordering demux and must not push a truncated tag back to tag_queue,
+        # which would duplicate a tag potentially still in flight.
+        cmp_tag_in_range = Signal()
+        if tag_bits < len(cmp_reorder.tag):
+            self.comb += cmp_tag_in_range.eq(cmp_sink.tag[tag_bits:] == 0)
+        else:
+            self.comb += cmp_tag_in_range.eq(1)
+
         # Connect Data-Path.
         self.comb += cmp_sink.connect(cmp_reorder, omit={"valid", "ready"})
 
@@ -192,7 +202,7 @@ class LitePCIeTLPController(LiteXModule):
                 # (UR/CA): an error Cpl is zero-length (end stays 0), so without this the
                 # tag is never returned and the controller starves/deadlocks.
                 If(cmp_sink.end | cmp_sink.err,
-                    tag_queue.sink.valid.eq(1),
+                    tag_queue.sink.valid.eq(cmp_tag_in_range),
                     tag_queue.sink.tag.eq(cmp_sink.tag)
                 ),
                 NextState("WAIT")

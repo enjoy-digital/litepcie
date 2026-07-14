@@ -180,6 +180,78 @@ class TestTLPController(unittest.TestCase):
         self.assertEqual([c["last"] for c in observed_completions], [0, 1, 0, 1])
         self.assertEqual([c["end"] for c in observed_completions], [0, 1, 0, 1])
 
+    def test_out_of_range_completion_tag_not_recycled(self):
+        # A completion whose tag was never allocated from tag_queue (e.g. the fixed tag of a
+        # posted write, or a spurious TLP) must not be recycled: pushing its truncated value
+        # into tag_queue would duplicate a tag potentially still in flight.
+        controller = LitePCIeTLPController(
+            data_width           = 128,
+            address_width        = 32,
+            max_pending_requests = 4,
+            cmp_bufs_buffered    = True,
+        )
+
+        observed_requests = []
+
+        @passive
+        def monitor_requests():
+            source = controller.master_out.sink
+            while True:
+                yield source.ready.eq(1)
+                if (yield source.valid) and (yield source.ready):
+                    observed_requests.append((yield source.tag))
+                yield
+
+        def try_issue_read(index, timeout=32):
+            sink = controller.master_in.sink
+            issued = False
+            for _ in range(timeout):
+                yield sink.valid.eq(1)
+                yield sink.first.eq(1)
+                yield sink.last.eq(1)
+                yield sink.we.eq(0)
+                yield sink.adr.eq(index * 64)
+                yield sink.len.eq(8)
+                yield
+                if (yield sink.ready):
+                    issued = True
+                    break
+            yield sink.valid.eq(0)
+            yield sink.first.eq(0)
+            yield sink.last.eq(0)
+            yield
+            return issued
+
+        def stim():
+            yield
+            # Consume one tag with an in-flight read.
+            self.assertTrue((yield from try_issue_read(0)))
+
+            # Push a completion with an out-of-range tag (32): its data is dropped by the
+            # reordering demux and its tag must not be recycled into tag_queue.
+            accepted = []
+            yield from self._push_completion(
+                controller,
+                tag      = 32,
+                channel  = 0,
+                user_id  = 0,
+                beats    = 1,
+                accepted = accepted,
+            )
+            self.assertEqual(accepted, [0])
+
+            # The three remaining tags can still be allocated...
+            for i in range(1, 4):
+                self.assertTrue((yield from try_issue_read(i)))
+            # ...but no fifth request may issue: all four tags are in flight, and the bogus
+            # completion must not have refilled the queue with a duplicate.
+            self.assertFalse((yield from try_issue_read(4)))
+
+            self.assertEqual(len(observed_requests), 4)
+            self.assertEqual(len(set(observed_requests)), 4)
+
+        run_simulation(controller, [stim(), monitor_requests()], vcd_name=None)
+
     def test_completion_buffer_depth_matches_request_footprint(self):
         data_width = 128
         beats_needed = _completion_beats_for(data_width)
