@@ -116,6 +116,7 @@ class S7PCIEPHY(LiteXModule):
         assert data_width      in [64, 128]
         assert pcie_data_width in [64, 128]
         assert refclk_freq     in [100e6, 125e6, 250e6]
+        self.user_clk_freq = max(125e6, nlanes*62.5e6*64/pcie_data_width)
 
         # Clocking / Reset -------------------------------------------------------------------------
         self.pcie_refclk = pcie_refclk = Signal()
@@ -209,7 +210,7 @@ class S7PCIEPHY(LiteXModule):
 
         # MMCM.
         userclk1_freq = {1:125e6, 2:125e6, 4:250e6, 8:500e6}[nlanes]
-        userclk2_freq = {1:125e6, 2:125e6, 4:125e6, 8:250e6}[nlanes]
+        userclk2_freq = self.user_clk_freq
         self.mmcm = mmcm = S7MMCM(speedgrade=mmcm_speedgrade)
         self.specials += Instance("BUFG",
             i_I = pipe_txoutclk,
@@ -590,7 +591,7 @@ class S7PCIEPHY(LiteXModule):
             link_speed         = "5.0_GT/s"
             maximum_link_width = f"X{self.nlanes}"
             ref_clk_freq       = f"{int(self.refclk_freq/1e6)}_MHz"
-            user_clk_freq      = 125 if self.nlanes != 8 else 250
+            user_clk_freq      = int(self.user_clk_freq/1e6)
 
             # Interface.
             interface_width = f"{self.pcie_data_width}_bit"
