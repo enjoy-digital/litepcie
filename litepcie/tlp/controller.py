@@ -155,10 +155,20 @@ class LitePCIeTLPController(LiteXModule):
             # which would otherwise leave the request un-retired and leak its tag,
             # deadlocking the DMA reader.
             If(cmp_source.valid & cmp_source.last & (cmp_source.end | cmp_source.err),
-                req_queue.source.ready.eq(cmp_source.ready)
+                req_queue.source.ready.eq(cmp_source.ready),
             ),
             req_queue.source.connect(cmp_source, keep={"channel", "user_id"}),
         ]
+
+        # A tag remains owned by its request until the buffered completion retires in request order.
+        # Recycling it when the completion merely arrives allows a younger request to reuse the tag
+        # while the previous completion still occupies the same reorder FIFO. If that FIFO fills, the
+        # younger completion can then block an older completion needed to make forward progress.
+        retire_tag = Signal()
+        self.comb += retire_tag.eq(
+            cmp_source.valid & cmp_source.ready & cmp_source.last &
+            (cmp_source.end | cmp_source.err)
+        )
 
         # Completions Management -------------------------------------------------------------------
 
@@ -181,6 +191,8 @@ class LitePCIeTLPController(LiteXModule):
             )
         )
         cmp_fsm.act("WAIT",
+            tag_queue.sink.valid.eq(retire_tag),
+            tag_queue.sink.tag.eq(req_queue.source.tag),
             # Wait for a TLP Completion...
             If(cmp_sink.valid & cmp_sink.first,
                 NextState("RUN")
@@ -189,17 +201,11 @@ class LitePCIeTLPController(LiteXModule):
             )
         )
         cmp_fsm.act("RUN",
+            tag_queue.sink.valid.eq(retire_tag),
+            tag_queue.sink.tag.eq(req_queue.source.tag),
             # Connect Control-Path.
             cmp_sink.connect(cmp_reorder, keep={"valid", "ready"}),
-            # Push incoming Tag to tag_queue when Cmp is fully received.
             If(cmp_sink.valid & cmp_sink.ready & cmp_sink.last,
-                # Free the tag on a normal end-of-completion OR on an error completion
-                # (UR/CA): an error Cpl is zero-length (end stays 0), so without this the
-                # tag is never returned and the controller starves/deadlocks.
-                If(cmp_sink.end | cmp_sink.err,
-                    tag_queue.sink.valid.eq(1),
-                    tag_queue.sink.tag.eq(cmp_sink.tag)
-                ),
                 NextState("WAIT")
             )
         )

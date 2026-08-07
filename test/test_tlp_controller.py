@@ -238,6 +238,76 @@ class TestTLPController(unittest.TestCase):
         self.assertEqual(accepted_beats(beats_needed), beats_needed)
         self.assertEqual(accepted_beats(beats_needed - 1), beats_needed - 1)
 
+    def test_tag_is_not_reused_before_buffered_completion_retires(self):
+        controller = LitePCIeTLPController(
+            data_width           = 128,
+            address_width        = 32,
+            max_pending_requests = 2,
+            cmp_bufs_buffered    = True,
+            cmp_buf_depth        = 2,
+        )
+
+        observed_requests = []
+
+        @passive
+        def monitor_requests():
+            source = controller.master_out.sink
+            while True:
+                yield source.ready.eq(1)
+                if (yield source.valid) and (yield source.ready):
+                    observed_requests.append((yield source.tag))
+                yield
+
+        def stim():
+            yield controller.master_in.source.ready.eq(1)
+            yield
+            yield from self._issue_read_request(controller, index=0)
+            yield from self._issue_read_request(controller, index=1)
+            while len(observed_requests) < 2:
+                yield
+
+            # Fill the younger request's reorder buffer while the older request is pending.
+            accepted = []
+            yield from self._push_completion(
+                controller,
+                tag      = observed_requests[1],
+                channel  = 0,
+                user_id  = 0,
+                beats    = 2,
+                accepted = accepted,
+            )
+            self.assertEqual(accepted, [0, 1])
+
+            # No tag is available yet: receiving a completion must not release its tag.
+            sink = controller.master_in.sink
+            for _ in range(8):
+                yield sink.valid.eq(1)
+                yield sink.first.eq(1)
+                yield sink.last.eq(1)
+                yield sink.we.eq(0)
+                yield sink.len.eq(8)
+                yield sink.adr.eq(0x1000)
+                yield
+                self.assertEqual(len(observed_requests), 2)
+            yield sink.valid.eq(0)
+
+            # Retiring the older request releases its tag and permits the third request.
+            accepted = []
+            yield from self._push_completion(
+                controller,
+                tag      = observed_requests[0],
+                channel  = 0,
+                user_id  = 0,
+                beats    = 2,
+                accepted = accepted,
+            )
+            yield from self._issue_read_request(controller, index=2)
+            while len(observed_requests) < 3:
+                yield
+            self.assertEqual(observed_requests[2], observed_requests[0])
+
+        run_simulation(controller, [stim(), monitor_requests()], vcd_name=None)
+
     def test_split_completion_packets_hold_request_order(self):
         controller = LitePCIeTLPController(
             data_width           = 128,
