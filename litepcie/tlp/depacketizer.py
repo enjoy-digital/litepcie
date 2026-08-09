@@ -426,7 +426,8 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 cmp_source.attr.eq(tlp_cmp.attr),
                 cmp_source.err.eq(tlp_cmp.status != 0),
                 cmp_source.tag.eq(tlp_cmp.tag),
-                cmp_source.dat.eq(tlp_cmp.dat)
+                cmp_source.dat.eq(tlp_cmp.dat),
+                cmp_source.be.eq(tlp_cmp.be),
             ]
 
         # Decode/Dispatch TLP Configurations -------------------------------------------------------

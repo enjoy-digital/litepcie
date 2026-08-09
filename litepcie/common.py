@@ -110,6 +110,7 @@ def completion_layout(data_width, address_width=32):
 
         # Data Stream.
         ("dat",     data_width),
+        ("be",      data_width//8), # Valid payload bytes on the current beat.
 
         # Internal LitePCIe Routing/Identification.
         ("channel", 8), # Crossbar's channel (Used for internal routing).

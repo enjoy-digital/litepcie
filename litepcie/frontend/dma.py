@@ -29,6 +29,71 @@ def dma_words_for_bytes(length, data_width):
     return (length + (data_width_bytes - 1)) >> log2_int(data_width_bytes)
 
 
+def dma_reader_layout(data_width):
+    return EndpointDescription([
+        ("data", data_width),
+        ("be",   data_width//8),
+    ])
+
+
+class LitePCIeDMAReaderDownConverter(LiteXModule):
+    """Downsize completion data while discarding invalid trailing subwords."""
+    def __init__(self, data_width_from, data_width_to):
+        assert data_width_from > data_width_to
+        assert (data_width_from % data_width_to) == 0
+
+        self.sink   = sink   = stream.Endpoint(dma_reader_layout(data_width_from))
+        self.source = source = stream.Endpoint(dma_layout(data_width_to))
+
+        ratio          = data_width_from//data_width_to
+        bytes_per_word = data_width_to//8
+        index           = Signal(max=ratio)
+        current_valid   = Signal()
+        later_valid     = Signal()
+
+        cases = {}
+        for i in range(ratio):
+            following = [sink.be[j*bytes_per_word:(j+1)*bytes_per_word] != 0
+                for j in range(i + 1, ratio)]
+            cases[i] = [
+                source.data.eq(sink.data[i*data_width_to:(i+1)*data_width_to]),
+                current_valid.eq(sink.be[i*bytes_per_word:(i+1)*bytes_per_word] != 0),
+                later_valid.eq(Reduce("OR", following) if following else 0),
+            ]
+
+        self.comb += [
+            current_valid.eq(0),
+            later_valid.eq(0),
+            Case(index, cases),
+            source.valid.eq(sink.valid & current_valid),
+            source.first.eq(sink.first & (index == 0)),
+            source.last.eq(sink.last & ~later_valid),
+            If(current_valid,
+                sink.ready.eq(source.ready & ~later_valid),
+            ).Else(
+                sink.ready.eq(~later_valid),
+            ),
+        ]
+
+        self.sync += If(sink.valid,
+            If(current_valid,
+                If(source.ready,
+                    If(later_valid,
+                        index.eq(index + 1),
+                    ).Else(
+                        index.eq(0),
+                    ),
+                ),
+            ).Else(
+                If(later_valid,
+                    index.eq(index + 1),
+                ).Else(
+                    index.eq(0),
+                ),
+            ),
+        )
+
+
 # LitePCIeDMAScatterGather --------------------------------------------------------------------------
 
 class LitePCIeDMAScatterGather(LiteXModule):
@@ -321,21 +386,28 @@ class LitePCIeDMAReader(LiteXModule):
 
         # Reset with the DMA: a partial beat held across a disable would shift the next run's
         # stream by a sub-beat word offset (visible as misaligned DMA headers on restart).
-        self.data_conv = ResetInserter()(stream.Converter(endpoint.phy.data_width, self.data_width))
+        if endpoint.phy.data_width > self.data_width:
+            data_conv = LitePCIeDMAReaderDownConverter(endpoint.phy.data_width, self.data_width)
+        else:
+            data_conv = stream.Converter(endpoint.phy.data_width, self.data_width)
+        self.data_conv = ResetInserter()(data_conv)
         self.comb += self.data_conv.reset.eq(~enable)
         self.comb += self.data_conv.source.connect(self.source)
 
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_pending_words
-        data_fifo = SyncFIFO(dma_layout(endpoint.phy.data_width), data_fifo_depth, buffered=True)
+        data_fifo = SyncFIFO(dma_reader_layout(endpoint.phy.data_width), data_fifo_depth, buffered=True)
         self.data_fifo = ResetInserter()(data_fifo)
+        if endpoint.phy.data_width > self.data_width:
+            self.comb += data_fifo.source.connect(self.data_conv.sink)
+        else:
+            self.comb += data_fifo.source.connect(self.data_conv.sink, omit={"be"})
         self.comb += [
-            # Connect Data FIFO to Data Converter.
-            data_fifo.source.connect(self.data_conv.sink),
             # When Enabled, connect Sink to Data FIFO.
             If(enable,
                 port.sink.connect(data_fifo.sink, keep={"valid", "ready"}),
                 data_fifo.sink.data.eq(port.sink.dat),
+                data_fifo.sink.be.eq(port.sink.be),
                 data_fifo.sink.first.eq(port.sink.first & (port.sink.user_id != last_user_id)),
             # Else accept incoming Port Data.
             ).Else(
