@@ -351,3 +351,14 @@ class TestDMA(unittest.TestCase):
             chipset_reordering = True,
             check_reader_stream = True,
         )
+
+    @pytest.mark.slow
+    def test_dma_512b_phy_256b_stream_64b_address_width_32byte_tails_loopback(self):
+        self.dma_test(
+            data_width         = 512,
+            dma_data_width     = 256,
+            address_width      = 64,
+            descriptor_lengths = [544, 544],
+            chipset_split      = True,
+            chipset_reordering = True,
+        )

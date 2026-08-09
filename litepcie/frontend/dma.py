@@ -376,6 +376,17 @@ class LitePCIeDMAReader(LiteXModule):
         else:
             self.comb += self.desc_sink.connect(splitter.sink)
 
+        # Request Metadata ------------------------------------------------------------------------
+        # Completion TLPs are retired in request order, but their ``last`` only delimits an
+        # individual completion packet. Keep one entry per split request so the data stream can
+        # delimit the original DMA descriptor on the final request's last completion.
+        request_metadata = SyncFIFO(
+            [("descriptor_last", 1), ("last_disable", 1)],
+            endpoint.max_pending_requests,
+            buffered=True,
+        )
+        self.request_metadata = ResetInserter()(request_metadata)
+
         # User ID ----------------------------------------------------------------------------------
         last_user_id = Signal(8, reset=255)
         self.sync += If(port.sink.valid & port.sink.first & port.sink.ready,
@@ -402,17 +413,27 @@ class LitePCIeDMAReader(LiteXModule):
             self.comb += data_fifo.source.connect(self.data_conv.sink)
         else:
             self.comb += data_fifo.source.connect(self.data_conv.sink, omit={"be"})
+        request_end = Signal()
         self.comb += [
+            request_end.eq(port.sink.last & (port.sink.end | port.sink.err)),
             # When Enabled, connect Sink to Data FIFO.
             If(enable,
                 port.sink.connect(data_fifo.sink, keep={"valid", "ready"}),
                 data_fifo.sink.data.eq(port.sink.dat),
                 data_fifo.sink.be.eq(port.sink.be),
                 data_fifo.sink.first.eq(port.sink.first & (port.sink.user_id != last_user_id)),
+                data_fifo.sink.last.eq(
+                    request_end & request_metadata.source.valid &
+                    request_metadata.source.descriptor_last &
+                    ~request_metadata.source.last_disable
+                ),
             # Else accept incoming Port Data.
             ).Else(
                 port.sink.ready.eq(1)
-            )
+            ),
+            request_metadata.source.ready.eq(
+                enable & port.sink.valid & port.sink.ready & request_end
+            ),
         ]
 
         # Pending words ----------------------------------------------------------------------------
@@ -436,11 +457,21 @@ class LitePCIeDMAReader(LiteXModule):
 
         # FSM --------------------------------------------------------------------------------------
         self.fsm = fsm = FSM(reset_state="IDLE")
+        request_can_issue = Signal()
+        self.comb += [
+            request_can_issue.eq(request_metadata.sink.ready),
+            request_metadata.sink.valid.eq(
+                fsm.ongoing("MEM-RD-REQ") & port.source.valid & port.source.ready
+            ),
+            request_metadata.sink.descriptor_last.eq(splitter.source.last),
+            request_metadata.sink.last_disable.eq(splitter.source.last_disable),
+        ]
         fsm.act("IDLE",
             # Reset Splitter/FIFO when disabled.
             If(~enable,
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
+                request_metadata.reset.eq(1),
             # Else wait for a Descriptor and to have enough Space to generate the Request.
             ).Elif(splitter.source.valid & (pending_words < (data_fifo_depth - max_words_per_request)),
                 NextState("MEM-RD-REQ"),
@@ -462,9 +493,9 @@ class LitePCIeDMAReader(LiteXModule):
         ]
         fsm.act("MEM-RD-REQ",
             # Request Control-Path.
-            port.source.valid.eq(1),
+            port.source.valid.eq(request_can_issue),
             # When Request is accepted...
-            If(port.source.ready,
+            If(port.source.ready & request_can_issue,
                 # Accept Descriptor.
                 splitter.source.ready.eq(1),
                 # Return to Idle.
