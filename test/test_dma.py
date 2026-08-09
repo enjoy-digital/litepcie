@@ -299,3 +299,13 @@ class TestDMA(unittest.TestCase):
     @pytest.mark.slow
     def test_dma_512b_data_width_64b_address_width(self):
         self.dma_test(data_width=512, address_width=64)
+
+    @pytest.mark.slow
+    def test_dma_512b_data_width_64b_address_width_32byte_tails(self):
+        self.dma_test(
+            data_width         = 512,
+            address_width      = 64,
+            descriptor_lengths = [544, 544],
+            chipset_split      = True,
+            chipset_reordering = True,
+        )
