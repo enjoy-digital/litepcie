@@ -11,6 +11,8 @@ Verified on a Microsoft Storey Peak (Azure X930613-001, Stratix V 5SGSMD5): the 
 as 1172:e001 and BAR0 MMIO completes against a Linux host. DMA is not exercised on hardware.
 Protocol details cite Intel doc 683093, Stratix V Avalon-ST Interface for PCIe Solutions User Guide.
 
+BAR0 answers 32-bit accesses only, so byte-granular reads abort and return 0xff.
+
 Quartus 25.1std ships no Platform Designer component for this hard IP, so the parameterised top
 level `altpcie_sv_hip_ast_hwtcl` is instantiated directly and its sources registered from the
 Quartus installation. No pre-generated IP directory is needed. The Transceiver Reconfiguration
@@ -550,7 +552,7 @@ class SVPCIEPHY(LiteXModule):
         bar0_size      = 0x100000,
         vendor_id      = 0x1172,   # Altera.
         device_id      = 0xe001,
-        revision_id    = 0x01,
+        revision_id    = 0x00,   # LitePCIe's kernel driver rejects any non-zero PCI revision.
         class_code     = 0xff0000, # Unassigned class.
         subsys_vendor_id = 0x1172,
         subsys_device_id = 0xe001,
