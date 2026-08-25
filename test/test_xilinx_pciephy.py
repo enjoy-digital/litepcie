@@ -31,6 +31,17 @@ class DummyPlatform:
         pass
 
 
+class DummyPads:
+    def __init__(self, nlanes):
+        self.rst_n = Signal()
+        self.clk_p = Signal()
+        self.clk_n = Signal()
+        self.tx_p  = Signal(nlanes)
+        self.tx_n  = Signal(nlanes)
+        self.rx_p  = Signal(nlanes)
+        self.rx_n  = Signal(nlanes)
+
+
 class TestXilinxPCIEPHY(unittest.TestCase):
     def test_bar_size_config_is_exact(self):
         self.assertEqual(get_bar_size_config(        128), ("Bytes",      128))
@@ -67,20 +78,44 @@ class TestXilinxPCIEPHY(unittest.TestCase):
                 self.assertIn("CONFIG.pf0_bar0_size {{256}}", tcl)
 
     def test_tx_ecrc_follows_aer_control(self):
-        pads = SimpleNamespace(
-            rst_n = Signal(),
-            clk_p = Signal(),
-            clk_n = Signal(),
-            tx_p  = Signal(2),
-            tx_n  = Signal(2),
-            rx_p  = Signal(2),
-            rx_n  = Signal(2),
-        )
-        phy = S7PCIEPHY(DummyPlatform(), pads, data_width=64, pcie_data_width=64)
+        phy = S7PCIEPHY(DummyPlatform(), DummyPads(2), data_width=64, pcie_data_width=64)
 
         self.assertIs(phy.pcie_phy_params["o_cfg_aer_ecrc_gen_en"], phy.cfg_aer_ecrc_gen_en)
         self.assertIs(phy.pcie_phy_params["i_s_axis_tx_tuser"],     phy.s_axis_tx_tuser)
         self.assertEqual(len(phy.s_axis_tx_tuser), 4)
+
+    def test_s7_user_clock_matches_link_width_and_datapath(self):
+        for nlanes, pcie_data_width, user_clk_freq in [
+            (1,  64, 125e6),
+            (1, 128, 125e6),
+            (2,  64, 125e6),
+            (2, 128, 125e6),
+            (4,  64, 250e6),
+            (4, 128, 125e6),
+            (8, 128, 250e6),
+        ]:
+            with self.subTest(nlanes=nlanes, pcie_data_width=pcie_data_width):
+                phy = S7PCIEPHY(
+                    DummyPlatform(),
+                    DummyPads(nlanes),
+                    data_width      = pcie_data_width,
+                    pcie_data_width = pcie_data_width,
+                )
+                self.assertEqual(phy.user_clk_freq, user_clk_freq)
+
+    def test_s7_generated_x4_64b_clock_configuration(self):
+        platform = DummyPlatform()
+        phy = S7PCIEPHY(platform, DummyPads(4), data_width=64, pcie_data_width=64)
+        phy.add_sources(platform, phy_path="")
+        tcl = "\n".join(platform.toolchain.pre_synthesis_commands)
+
+        self.assertIn("CONFIG.Maximum_Link_Width {{X4}}", tcl)
+        self.assertIn("CONFIG.Interface_Width {{64_bit}}", tcl)
+        self.assertIn("CONFIG.User_Clk_Freq {{250}}", tcl)
+
+    def test_s7_rejects_x8_64b_datapath(self):
+        with self.assertRaisesRegex(ValueError, "Gen2 x8.*64-bit"):
+            S7PCIEPHY(DummyPlatform(), DummyPads(8), data_width=64, pcie_data_width=64)
 
 
 if __name__ == "__main__":

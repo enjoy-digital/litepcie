@@ -116,7 +116,20 @@ class S7PCIEPHY(LiteXModule):
         assert data_width      in [64, 128]
         assert pcie_data_width in [64, 128]
         assert refclk_freq     in [100e6, 125e6, 250e6]
-        self.user_clk_freq = max(125e6, nlanes*62.5e6*64/pcie_data_width)
+        user_clk_freqs = {
+            (1,  64) : 125e6,
+            (1, 128) : 125e6,
+            (2,  64) : 125e6,
+            (2, 128) : 125e6,
+            (4,  64) : 250e6,
+            (4, 128) : 125e6,
+            (8, 128) : 250e6,
+        }
+        if (nlanes, pcie_data_width) not in user_clk_freqs:
+            raise ValueError(
+                f"S7PCIEPHY: Gen2 x{nlanes} does not support a {pcie_data_width}-bit PCIe "
+                "datapath.")
+        self.user_clk_freq = user_clk_freqs[nlanes, pcie_data_width]
 
         # Clocking / Reset -------------------------------------------------------------------------
         self.pcie_refclk = pcie_refclk = Signal()
