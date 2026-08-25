@@ -36,10 +36,10 @@ see https://github.com/ruurdk/sv_second_pcie_hip), `rx_st_be` (byte enables come
 and are qword-granular), `rx_st_mask`, TX parity, hard-IP reconfiguration, CvP, MSI-X and AER.
 """
 
+import hashlib
 import os
 import re
 import shutil
-import hashlib
 import subprocess
 
 from migen import *
@@ -51,7 +51,7 @@ from litex.soc.interconnect.avalon import Native2AvalonST, AvalonST2Native
 
 from litepcie.common import *
 
-# Quartus / Qsys discovery -------------------------------------------------------------------------
+# Quartus / Qsys Discovery -------------------------------------------------------------------------
 
 def _find_quartus_tool(name, quartus_bindir=None):
     """Locate a Quartus or Qsys binary.
@@ -103,11 +103,12 @@ def _find_quartus_ip_root(quartus_bindir=None):
         raise OSError(f"Quartus IP directory not found at {ip}.")
     return ip
 
-# Hard IP source files -----------------------------------------------------------------------------
+# Hard IP Sources ----------------------------------------------------------------------------------
 
 # Synthesis file list that the absent altera_pcie_sv_hip_ast_hw.tcl would have declared. The first
-# group is what `altpcie_sv_hip_ast_hwtcl` and `altpcie_hip_256_pipen1b` instantiate; the transceiver
-# groups come from Intel's `sv_xcvr_native_fileset.tcl` and `altera_xcvr_generic/ctrl/`.
+# group is what `altpcie_sv_hip_ast_hwtcl` and `altpcie_hip_256_pipen1b` instantiate; the
+# transceiver groups come from Intel's `sv_xcvr_native_fileset.tcl` and
+# `altera_xcvr_generic/ctrl/`.
 _HIP_SOURCES = {
     "altera_pcie/altera_pcie_sv_hip_ast" : [
         "altpcie_sv_hip_ast_hwtcl.v",
@@ -131,7 +132,8 @@ _HIP_SOURCES = {
     ],
     "altera_xcvr_generic/sv" : [
         "sv_pcs.sv", "sv_pcs_ch.sv", "sv_pma.sv",
-        "sv_reconfig_bundle_to_xcvr.sv", "sv_reconfig_bundle_to_ip.sv", "sv_reconfig_bundle_merger.sv",
+        "sv_reconfig_bundle_to_xcvr.sv", "sv_reconfig_bundle_to_ip.sv",
+        "sv_reconfig_bundle_merger.sv",
         "sv_rx_pma.sv", "sv_tx_pma.sv", "sv_tx_pma_ch.sv",
         "sv_xcvr_h.sv", "sv_xcvr_avmm_csr.sv", "sv_xcvr_avmm_dcd.sv", "sv_xcvr_avmm.sv",
         "sv_xcvr_data_adapter.sv", "sv_xcvr_native.sv", "sv_xcvr_plls.sv",
@@ -167,8 +169,8 @@ _HIP_SDCS = [
 def add_hip_sources(platform, quartus_bindir=None):
     ip_root = _find_quartus_ip_root(quartus_bindir)
     for subdir, files in _HIP_SOURCES.items():
-        for f in files:
-            path = os.path.join(ip_root, subdir, f)
+        for filename in files:
+            path = os.path.join(ip_root, subdir, filename)
             if not os.path.exists(path):
                 raise OSError(
                     f"Stratix V PCIe hard IP source missing: {path}\n"
@@ -178,7 +180,7 @@ def add_hip_sources(platform, quartus_bindir=None):
     for sdc in _HIP_SDCS:
         platform.add_ip(os.path.join(ip_root, sdc))
 
-# Transceiver Reconfiguration Controller generation ------------------------------------------------
+# Transceiver Reconfiguration Controller Generation ------------------------------------------------
 
 # Number of transceiver reconfiguration interfaces, per Intel's Stratix V PCIe example designs
 # (<quartus>/ip/altera/altera_pcie/altera_pcie_hip_ast_ed/example_design/sv/pcie_de_*.qsys):
@@ -234,8 +236,8 @@ def generate_xcvr_reconfig(name, device, family, ninterfaces, output_dir, quartu
     Cached on a hash of everything that affects the output, like litedram.phy.intel_uniphy.
     """
     tcl = _build_reconfig_qsys_tcl(name, device, family, ninterfaces)
-    _CACHE_VERSION = "1"
-    hash = hashlib.sha256((_CACHE_VERSION + tcl).encode()).hexdigest()[:16]
+    cache_version = "1"
+    digest = hashlib.sha256((cache_version + tcl).encode()).hexdigest()[:16]
 
     output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
@@ -244,8 +246,12 @@ def generate_xcvr_reconfig(name, device, family, ninterfaces, output_dir, quartu
     top        = os.path.join(output_dir, name, "synthesis", f"{name}.v")
 
     if not force and os.path.exists(qip) and os.path.exists(top) and os.path.exists(stampfile):
-        if open(stampfile).read().strip() == hash:
-            print(f"[SVPCIEPHY] Reusing cached transceiver reconfig IP in {output_dir} (hash {hash}).")
+        with open(stampfile) as f:
+            cached_digest = f.read().strip()
+        if cached_digest == digest:
+            print(
+                f"[SVPCIEPHY] Reusing cached transceiver reconfig IP in {output_dir} "
+                f"(hash {digest}).")
             return qip, top
 
     qsys_script   = _find_quartus_tool("qsys-script",   quartus_bindir)
@@ -261,10 +267,10 @@ def generate_xcvr_reconfig(name, device, family, ninterfaces, output_dir, quartu
         [qsys_generate, f"{name}.qsys", "--synthesis=VERILOG", f"--family={family}",
                         f"--part={device}"],
     ]:
-        r = subprocess.run(cmd, cwd=output_dir)
-        if r.returncode != 0:
+        result = subprocess.run(cmd, cwd=output_dir)
+        if result.returncode != 0:
             raise OSError(
-                f"[SVPCIEPHY] {os.path.basename(cmd[0])} failed (exit {r.returncode}).\n"
+                f"[SVPCIEPHY] {os.path.basename(cmd[0])} failed (exit {result.returncode}).\n"
                 f"  cmd: {' '.join(cmd)}\n  cwd: {output_dir}\n"
                 f"Rerun it by hand there to see the full Qsys log."
             )
@@ -272,7 +278,7 @@ def generate_xcvr_reconfig(name, device, family, ninterfaces, output_dir, quartu
         raise OSError(f"[SVPCIEPHY] generation reported success but {qip} is missing.")
 
     with open(stampfile, "w") as f:
-        f.write(hash)
+        f.write(digest)
     return qip, top
 
 def probe_reconfig_widths(top_verilog):
@@ -281,7 +287,9 @@ def probe_reconfig_widths(top_verilog):
     Read rather than recomputed, so a change in Intel's per-interface bus width cannot silently
     produce a mismatched instantiation.
     """
-    src = open(top_verilog).read()
+    with open(top_verilog) as f:
+        src = f.read()
+
     def width(port):
         m = re.search(r"\[\s*(\d+)\s*:\s*0\s*\]\s+" + port, src)
         if m is None:
@@ -306,7 +314,7 @@ def _int_params_to_32bit(params):
             params[k] = Constant(v, 32)
     return params
 
-# Qword alignment ----------------------------------------------------------------------------------
+# Qword Alignment ----------------------------------------------------------------------------------
 
 def _tlp_needs_pad(header_dw0, header_dw2, header_dw3):
     """Intel's qword-alignment rule, as a Migen expression.
@@ -546,32 +554,33 @@ class SVPCIEPHY(LiteXModule):
 
     def __init__(self, platform, pads, data_width=256, cd="sys",
         # Link configuration.
-        speed          = "gen2",   # "gen1" or "gen2".
-        nlanes         = 8,
-        # PCIe hard block parameters.
-        bar0_size      = 0x100000,
-        vendor_id      = 0x1172,   # Altera.
-        device_id      = 0xe001,
-        revision_id    = 0x00,   # LitePCIe's kernel driver rejects any non-zero PCI revision.
-        class_code     = 0xff0000, # Unassigned class.
+        speed            = "gen2",   # "gen1" or "gen2".
+        nlanes           = 8,
+        # PCIe hardblock parameters.
+        bar0_size        = 0x100000,
+        vendor_id        = 0x1172,   # Altera.
+        device_id        = 0xe001,
+        # LitePCIe's kernel driver rejects any non-zero PCI revision.
+        revision_id      = 0x00,
+        class_code       = 0xff0000, # Unassigned class.
         subsys_vendor_id = 0x1172,
         subsys_device_id = 0xe001,
         max_payload_size = 256,
         # Quartus release the IP is parameterised for. Only needs changing on a Quartus whose
         # Stratix V PCIe IP expects a different value; validated on 25.1std.
-        acds_version   = "25.1",
+        acds_version     = "25.1",
         # Clocking.
-        mgmt_clk       = None,     # Transceiver Reconfiguration Controller clock (see below).
-        mgmt_rst       = None,
-        mgmt_clk_name  = None,     # Its SDC clock name, if it is not `cd`'s (for timing cuts).
+        mgmt_clk         = None,     # Transceiver Reconfiguration Controller clock (see below).
+        mgmt_rst         = None,
+        mgmt_clk_name    = None,     # Its SDC clock name, if it is not `cd`'s (for timing cuts).
         # Toolchain.
-        device         = None,
-        family         = "Stratix V",
-        name           = "svpcie_xcvr_reconfig",
-        output_dir     = None,
-        quartus_bindir = None,
+        device           = None,
+        family           = "Stratix V",
+        name             = "svpcie_xcvr_reconfig",
+        output_dir       = None,
+        quartus_bindir   = None,
     ):
-        # Streams ---------------------------------------------------------------------------------
+        # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
         self.msi    = stream.Endpoint(msi_layout())
@@ -580,7 +589,6 @@ class SVPCIEPHY(LiteXModule):
         self.pads             = pads
         self.platform         = platform
         self.data_width       = data_width
-
         self.id               = Signal(16, reset_less=True)
         self.bar0_size        = bar0_size
         self.bar0_mask        = get_bar_mask(bar0_size)
@@ -624,7 +632,7 @@ class SVPCIEPHY(LiteXModule):
 
         # # #
 
-        # Clock domains ----------------------------------------------------------------------------
+        # Clocking / Reset -------------------------------------------------------------------------
         self.cd_pcie = ClockDomain()
 
         coreclkout_hip = Signal()
@@ -642,12 +650,12 @@ class SVPCIEPHY(LiteXModule):
         if mgmt_rst is None:
             mgmt_rst = ResetSignal(cd)
 
-        # Hard IP sources --------------------------------------------------------------------------
+        # Hard IP Sources --------------------------------------------------------------------------
         add_hip_sources(platform, quartus_bindir)
 
-        # Transceiver Reconfiguration Controller ----------------------------------------------------
+        # Transceiver Reconfiguration Controller ---------------------------------------------------
         ninterfaces = reconfig_interfaces(nlanes, speed)
-        qip, top    = generate_xcvr_reconfig(
+        qip, top     = generate_xcvr_reconfig(
             name           = name,
             device         = device,
             family         = family,
@@ -660,8 +668,8 @@ class SVPCIEPHY(LiteXModule):
         # package into the generated system's own Verilog library, where the driver (which sits in
         # the default library alongside the rest of the design) cannot see it. Add the package to
         # the default library as well; a package may be declared in more than one library.
-        platform.add_source(os.path.join(os.path.dirname(qip), "submodules",
-                                         "alt_xcvr_reconfig_h.sv"))
+        platform.add_source(os.path.join(
+            os.path.dirname(qip), "submodules", "alt_xcvr_reconfig_h.sv"))
         widths = probe_reconfig_widths(top)
 
         reconfig_to_xcvr   = Signal(widths["to"])
@@ -689,7 +697,7 @@ class SVPCIEPHY(LiteXModule):
             i_reconfig_mgmt_writedata               = reconfig_mgmt_writedata,
         )
 
-        # PCIe reconfig driver ----------------------------------------------------------------------
+        # PCIe Reconfiguration Driver --------------------------------------------------------------
         # Intel's own driver for the controller above; the hard IP's status signals it watches are
         # connected as in their example design.
         currentspeed = Signal(2)
@@ -720,20 +728,20 @@ class SVPCIEPHY(LiteXModule):
                                                "gen2": "Gen2 (5.0 Gbps)"}[speed],
             p_INTENDED_DEVICE_FAMILY        = family,
 
-            i_pld_clk                 = ClockSignal("pcie"),
-            i_reconfig_xcvr_rst       = mgmt_rst,
-            i_reconfig_xcvr_clk       = mgmt_clk,
-            i_reconfig_busy           = reconfig_busy,
-            o_cal_busy_in             = Signal(),
+            i_pld_clk                   = ClockSignal("pcie"),
+            i_reconfig_xcvr_rst         = mgmt_rst,
+            i_reconfig_xcvr_clk         = mgmt_clk,
+            i_reconfig_busy             = reconfig_busy,
+            o_cal_busy_in               = Signal(),
 
-            o_reconfig_mgmt_address   = reconfig_mgmt_address,
-            o_reconfig_mgmt_read      = reconfig_mgmt_read,
-            i_reconfig_mgmt_readdata  = reconfig_mgmt_readdata,
+            o_reconfig_mgmt_address     = reconfig_mgmt_address,
+            o_reconfig_mgmt_read        = reconfig_mgmt_read,
+            i_reconfig_mgmt_readdata    = reconfig_mgmt_readdata,
             i_reconfig_mgmt_waitrequest = reconfig_mgmt_waitrequest,
-            o_reconfig_mgmt_write     = reconfig_mgmt_write,
-            o_reconfig_mgmt_writedata = reconfig_mgmt_writedata,
+            o_reconfig_mgmt_write       = reconfig_mgmt_write,
+            o_reconfig_mgmt_writedata   = reconfig_mgmt_writedata,
 
-            i_currentspeed            = currentspeed,
+            i_currentspeed              = currentspeed,
             **{f"i_{k}_drv": v for k, v in hip_status.items()},
         )
 
@@ -777,7 +785,7 @@ class SVPCIEPHY(LiteXModule):
             self.comb += self.msi.connect(msi_cdc.sink)
             cfg_msi = msi_cdc.source
 
-        # Configuration space decode ----------------------------------------------------------------
+        # Configuration Space Decode ---------------------------------------------------------------
         # tl_cfg_ctl is a 32-bit window multiplexed over 16 addresses selected by tl_cfg_add. There
         # is no write strobe on Stratix V, so the address is watched for a change and the data
         # sampled mid-window (doc 683093 s5.13.1). Field mapping is Figure 55 of the same doc.
@@ -786,10 +794,8 @@ class SVPCIEPHY(LiteXModule):
 
         def convert_size(command, size):
             cases = {}
-            value = 128
-            for i in range(6):
-                cases[i] = size.eq(value)
-                value = value*2
+            for n in range(6):
+                cases[n] = size.eq(128 << n)
             return Case(command, cases)
 
         bus_number      = Signal(8)
@@ -845,17 +851,21 @@ class SVPCIEPHY(LiteXModule):
         # Only one function is enabled on the hard IP, so the function number is always 0.
         self.comb += function_number.eq(0)
 
-        # Qword alignment + native <-> Avalon-ST --------------------------------------------------
-        tx_align = ClockDomainsRenamer("pcie")(_TXQwordAligner(data_width))
-        rx_align = ClockDomainsRenamer("pcie")(_RXQwordDealigner(data_width))
+        # Qword Alignment + Native <-> Avalon-ST ---------------------------------------------------
+        tx_align = _TXQwordAligner(data_width)
+        tx_align = ClockDomainsRenamer("pcie")(tx_align)
+        rx_align = _RXQwordDealigner(data_width)
+        rx_align = ClockDomainsRenamer("pcie")(rx_align)
         self.submodules += tx_align, rx_align
 
         # Avalon-ST readyLatency, from the Stratix V Avalon-ST PCIe user guide (Intel doc 683093):
         # the RX interface "supports a readyLatency of 3 cycles" (raised from 2 in v18.0; older
         # copies of the guide say 2, and its own figures are inconsistent, so size for 3), while for
         # TX "Intel recommends a readyLatency of 2 cycles to facilitate timing closure".
-        tx_n2av = ClockDomainsRenamer("pcie")(Native2AvalonST(phy_layout(data_width), latency=2))
-        rx_av2n = ClockDomainsRenamer("pcie")(AvalonST2Native(phy_layout(data_width), latency=3))
+        tx_n2av = Native2AvalonST(phy_layout(data_width), latency=2)
+        tx_n2av = ClockDomainsRenamer("pcie")(tx_n2av)
+        rx_av2n = AvalonST2Native(phy_layout(data_width), latency=3)
+        rx_av2n = ClockDomainsRenamer("pcie")(rx_av2n)
         self.submodules += tx_n2av, rx_av2n
 
         self.comb += [
@@ -876,7 +886,8 @@ class SVPCIEPHY(LiteXModule):
         tx_empty   = Signal(max=max(nqwords, 2))
         qword_used = Signal(nqwords)
         self.comb += [
-            [qword_used[q].eq(tx_avst.be[8*q:8*(q+1)] != 0) for q in range(nqwords)],
+            qword_used[q].eq(tx_avst.be[8*q:8*(q+1)] != 0)
+            for q in range(nqwords)
         ]
         self.comb += Case(Cat(*[qword_used[q] for q in range(nqwords)]), {
             **{(1 << (q+1))-1 : tx_empty.eq(nqwords-1-q) for q in range(nqwords)},
@@ -884,9 +895,10 @@ class SVPCIEPHY(LiteXModule):
         })
 
         # Byte enables come from rx_st_empty, not rx_st_be: the latter is deprecated and "only
-        # applies to PCI Express Memory Write and I/O Write TLP payload fields", so it reads zero for
-        # completion payloads. rx_st_empty counts unused qwords and is valid only with rx_st_eop, so
-        # an odd trailing dword shows up as valid and is discarded downstream via the length field.
+        # applies to PCI Express Memory Write and I/O Write TLP payload fields", so it reads zero
+        # for completion payloads. rx_st_empty counts unused qwords and is valid only with
+        # rx_st_eop, so an odd trailing dword shows up as valid and is discarded downstream via the
+        # length field.
         rx_empty = Signal(2)
         self.comb += [
             rx_avst.be.eq(2**(data_width//8)-1),
@@ -896,14 +908,14 @@ class SVPCIEPHY(LiteXModule):
             ),
         ]
 
-        # Hard IP -----------------------------------------------------------------------------------
+        # Hard IP ----------------------------------------------------------------------------------
         pcie_refclk = Signal()
         self.comb += pcie_refclk.eq(pads.clk_p)
 
         serdes_pll_locked = Signal()
 
         self.hip_params = dict(
-            # Link.
+            # Link
             p_lane_mask_hwtcl             = f"x{nlanes}",
             p_gen123_lane_rate_mode_hwtcl = {"gen1": "Gen1 (2.5 Gbps)",
                                              "gen2": "Gen2 (5.0 Gbps)"}[speed],
@@ -911,25 +923,25 @@ class SVPCIEPHY(LiteXModule):
             p_pcie_spec_version_hwtcl     = "2.1",
             p_pll_refclk_freq_hwtcl       = "100 MHz",
 
-            # Avalon-ST.
+            # Avalon-ST
             p_ast_width_hwtcl             = f"Avalon-ST {data_width}-bit",
             p_port_width_data_hwtcl       = data_width,
             p_port_width_be_hwtcl         = data_width//8,
             p_multiple_packets_per_cycle_hwtcl = 0,
             p_use_ast_parity              = 0,
 
-            # Reconfiguration buses.
+            # Reconfiguration Buses
             p_reconfig_to_xcvr_width      = widths["to"],
             p_reconfig_from_xcvr_width    = widths["from"],
             p_hip_reconfig_hwtcl          = 0,
 
-            # BAR0 only, 64-bit, non-prefetchable.
+            # BAR0 Only, 64-bit, Non-Prefetchable
             p_bar0_io_space_hwtcl         = "Disabled",
             p_bar0_64bit_mem_space_hwtcl  = "Enabled",
             p_bar0_prefetchable_hwtcl     = "Disabled",
             p_bar0_size_mask_hwtcl        = log2_int(bar0_size),
 
-            # Identity.
+            # Identity
             p_vendor_id_hwtcl             = vendor_id,
             p_device_id_hwtcl             = device_id,
             p_revision_id_hwtcl           = revision_id,
@@ -938,7 +950,7 @@ class SVPCIEPHY(LiteXModule):
             p_subsystem_device_id_hwtcl   = subsys_device_id,
             p_max_payload_size_hwtcl      = max_payload_size,
 
-            # MSI: one vector, no MSI-X.
+            # MSI: One Vector, No MSI-X
             p_msi_support_hwtcl           = "true",
             p_msi_multi_message_capable_hwtcl = "count_1",
             p_msi_64bit_addressing_capable_hwtcl = "true",
@@ -952,12 +964,12 @@ class SVPCIEPHY(LiteXModule):
 
             p_ACDS_VERSION_HWTCL          = acds_version,
 
-            # Clocks.
+            # Clocks
             i_refclk                      = pcie_refclk,
             i_pld_clk                     = ClockSignal("pcie"),
             o_coreclkout_hip              = coreclkout_hip,
 
-            # Resets / status.
+            # Resets / Status
             i_npor                        = ~ResetSignal(cd) & pads.perst_n,
             i_pin_perst                   = pads.perst_n,
             o_reset_status                = reset_status,
@@ -975,22 +987,22 @@ class SVPCIEPHY(LiteXModule):
             i_sim_pipe_pclk_in            = 0,
             i_hpg_ctrler                  = 0,
 
-            # Transceiver reconfiguration.
+            # Transceiver Reconfiguration
             i_reconfig_to_xcvr            = reconfig_to_xcvr,
             o_reconfig_from_xcvr          = reconfig_from_xcvr,
 
-            # Config space.
+            # Configuration Space
             o_tl_cfg_add                  = tl_cfg_add,
             o_tl_cfg_ctl                  = tl_cfg_ctl,
 
-            # Status (to the reconfig driver).
+            # Status (to the Reconfiguration Driver)
             o_currentspeed                = currentspeed,
             **{f"o_{k}": v for k, v in hip_status.items()},
 
         )
 
         self.hip_params.update(
-            # RX Avalon-ST.
+            # RX Avalon-ST
             o_rx_st_valid                 = rx_avst.valid,
             o_rx_st_sop                   = rx_avst.first,
             o_rx_st_eop                   = rx_avst.last,
@@ -999,7 +1011,7 @@ class SVPCIEPHY(LiteXModule):
             o_rx_st_empty                 = rx_empty,
             i_rx_st_mask                  = 0,
 
-            # TX Avalon-ST.
+            # TX Avalon-ST
             i_tx_st_valid                 = tx_avst.valid,
             i_tx_st_sop                   = tx_avst.first,
             i_tx_st_eop                   = tx_avst.last,
@@ -1009,23 +1021,23 @@ class SVPCIEPHY(LiteXModule):
             i_tx_st_err                   = 0,
             i_tx_st_parity                = 0,
 
-            # Completion / error reporting: unused.
+            # Completion / Error Reporting: Unused
             i_cpl_err                     = 0,
             i_cpl_pending                 = 0,
 
-            # Local Management Interface: unused.
+            # Local Management Interface: Unused
             i_lmi_addr                    = 0,
             i_lmi_din                     = 0,
             i_lmi_rden                    = 0,
             i_lmi_wren                    = 0,
 
-            # Power management: unused.
+            # Power Management: Unused
             i_pm_auxpwr                   = 0,
             i_pm_data                     = 0,
             i_pme_to_cr                   = 0,
             i_pm_event                    = 0,
 
-            # MSI.
+            # MSI
             i_app_msi_req                 = cfg_msi.valid,
             o_app_msi_ack                 = cfg_msi.ready,
             i_app_msi_num                 = 0,
@@ -1034,10 +1046,10 @@ class SVPCIEPHY(LiteXModule):
             i_pex_msi_num                 = 0,
             i_app_int_sts                 = 0,
 
-            # Credit / config bypass: unused.
+            # Credit / Configuration Bypass: Unused
             i_tx_cons_cred_sel            = 0,
 
-            # Hard IP reconfiguration (DPRIO): unused.
+            # Hard IP Reconfiguration (DPRIO): Unused
             i_hip_reconfig_rst_n          = 0,
             i_hip_reconfig_clk            = 0,
             i_hip_reconfig_write          = 0,
@@ -1049,23 +1061,26 @@ class SVPCIEPHY(LiteXModule):
             i_interface_sel               = 0,
         )
 
-        # Serial lanes.
+        # Serial Lanes
         for i in range(nlanes):
             self.hip_params[f"i_rx_in{i}"]  = pads.rx_p[i]
             self.hip_params[f"o_tx_out{i}"] = pads.tx_p[i]
 
-        # Constraints -------------------------------------------------------------------------------
+        # Constraints ------------------------------------------------------------------------------
         # coreclkout_hip comes from the hard IP's own PLL and is unrelated to the SoC clocks; every
         # crossing here is through an async FIFO or a MultiReg. `derive_pll_clocks` names it after
         # its hierarchy position, so LiteX's `add_false_path_constraints()` emits
-        # `set_false_path -from [get_clocks {pcie_clk}]`, which matches nothing. Hence the wildcards.
+        # `set_false_path -from [get_clocks {pcie_clk}]`, which matches nothing. Hence the
+        # wildcards.
         # Only the application clock is cut: the transceiver reconfiguration bundle carries the
         # management clock into the transceivers' AVMM blocks and those transfers are synchronous.
         pcie_core_clk = "*|coreclkout_hip"
         for name in [f"{cd}_clk"] + ([mgmt_clk_name] if mgmt_clk_name is not None else []):
             platform.toolchain.additional_sdc_commands += [
-                f"set_false_path -from [get_clocks {{{name}}}] -to [get_clocks {{{pcie_core_clk}}}]",
-                f"set_false_path -from [get_clocks {{{pcie_core_clk}}}] -to [get_clocks {{{name}}}]",
+                f"set_false_path -from [get_clocks {{{name}}}] "
+                f"-to [get_clocks {{{pcie_core_clk}}}]",
+                f"set_false_path -from [get_clocks {{{pcie_core_clk}}}] "
+                f"-to [get_clocks {{{name}}}]",
             ]
 
         # The reconfiguration controller's own SDC ends with a loop that makes each transceiver
@@ -1084,8 +1099,9 @@ class SVPCIEPHY(LiteXModule):
 
         # Constrain the 100 MHz PCIe reference clock at the pin, otherwise the transceiver PLL has
         # no base clock and `coreclkout_hip` is unconstrained. Intel's example SDC uses
-        # `derive_pll_clocks -create_base_clocks`; LiteX emits `-use_net_name`, and derive_pll_clocks
-        # must only be applied once per project, so the base clock is declared here instead.
+        # `derive_pll_clocks -create_base_clocks`; LiteX emits `-use_net_name`, and
+        # derive_pll_clocks must only be applied once per project, so the base clock is declared
+        # here instead.
         platform.add_period_constraint(pads.clk_p, 1e9/100e6)
 
         # Timing analysis of transceiver-derived clocks is meaningless without this, and Quartus
@@ -1094,5 +1110,7 @@ class SVPCIEPHY(LiteXModule):
         if "derive_clock_uncertainty" not in platform.toolchain.additional_sdc_commands:
             platform.toolchain.additional_sdc_commands.append("derive_clock_uncertainty")
 
+    # Finalize -------------------------------------------------------------------------------------
     def do_finalize(self):
-        self.specials += Instance("altpcie_sv_hip_ast_hwtcl", **_int_params_to_32bit(self.hip_params))
+        self.specials += Instance(
+            "altpcie_sv_hip_ast_hwtcl", **_int_params_to_32bit(self.hip_params))

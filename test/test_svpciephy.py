@@ -19,7 +19,8 @@ for Avalon-ST 256-Bit Interface") and in Intel's own example-design RTL
 import random
 import unittest
 
-from migen import *
+from migen import Module
+from migen.sim import run_simulation
 
 from litepcie.phy.svpciephy import _TXQwordAligner, _RXQwordDealigner
 
@@ -40,8 +41,8 @@ def dwords_to_beats(dwords, dws_per_beat):
     beats = []
     for i in range(0, len(dwords), dws_per_beat):
         chunk = dwords[i:i+dws_per_beat]
-        dat = 0
-        be  = 0
+        dat   = 0
+        be    = 0
         for j, d in enumerate(chunk):
             dat |= (d & 0xffffffff) << (32*j)
             be  |= 0xf << (4*j)
@@ -137,8 +138,8 @@ class TestSVPCIEPHYAlignment(unittest.TestCase):
 
     def test_tx_aligner_matches_intel_layout(self):
         for data_width in [128, 256]:
-            dws = data_width//32
-            cases = self._packets(dws)
+            dws    = data_width//32
+            cases  = self._packets(dws)
             packed = [h + p for (h, p) in cases]
             dut    = _TXQwordAligner(data_width)
             beats  = stream_packets(dut, packed, dws)
