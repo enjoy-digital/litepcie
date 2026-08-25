@@ -9,7 +9,7 @@ import unittest
 from litex.gen import *
 
 from litepcie.tlp.common import max_request_size
-from litepcie.tlp.controller import LitePCIeTLPController, completion_buffer_depth
+from litepcie.tlp.controller import LitePCIeTLPController, get_completion_buffer_depth
 
 
 def _request_word(index):
@@ -26,11 +26,11 @@ def _completion_beats_for(data_width, request_size=max_request_size):
 
 class TestTLPController(unittest.TestCase):
     def test_completion_buffer_depth_formula(self):
-        self.assertEqual(completion_buffer_depth(64),  65)
-        self.assertEqual(completion_buffer_depth(128), 33)
-        self.assertEqual(completion_buffer_depth(256), 17)
-        self.assertEqual(completion_buffer_depth(512), 9)
-        self.assertEqual(completion_buffer_depth(128, max_request_size_bytes=124), 9)
+        self.assertEqual(get_completion_buffer_depth(64),  65)
+        self.assertEqual(get_completion_buffer_depth(128), 33)
+        self.assertEqual(get_completion_buffer_depth(256), 17)
+        self.assertEqual(get_completion_buffer_depth(512), 9)
+        self.assertEqual(get_completion_buffer_depth(128, max_request_size_bytes=124), 9)
 
     def _issue_read_request(self, controller, *, index, channel=0, user_id=0, length_dwords=8,
         address=None):
@@ -195,7 +195,7 @@ class TestTLPController(unittest.TestCase):
     def test_completion_buffer_depth_matches_request_footprint(self):
         data_width = 128
         request_beats = _completion_beats_for(data_width)
-        buffer_depth  = completion_buffer_depth(data_width)
+        buffer_depth  = get_completion_buffer_depth(data_width)
 
         def accepted_beats(cmp_buf_depth):
             controller = LitePCIeTLPController(
@@ -413,7 +413,7 @@ class TestTLPController(unittest.TestCase):
     def test_request_footprint_depth_accepts_legal_younger_completions(self):
         data_width = 128
         request_beats = _completion_beats_for(data_width)
-        buffer_depth  = completion_buffer_depth(data_width)
+        buffer_depth  = get_completion_buffer_depth(data_width)
         controller = LitePCIeTLPController(
             data_width           = data_width,
             address_width        = 32,
@@ -537,7 +537,7 @@ class TestTLPController(unittest.TestCase):
                 )
                 self.assertEqual(len(packet_accepted), packet_beats)
                 accepted.extend(packet_accepted)
-            self.assertEqual(len(accepted), completion_buffer_depth(data_width))
+            self.assertEqual(len(accepted), get_completion_buffer_depth(data_width))
 
             # Once the older request completes, both requests must retire in issue order.
             accepted = []

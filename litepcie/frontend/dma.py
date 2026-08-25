@@ -23,11 +23,9 @@ def descriptor_layout(address_width=32, with_user_id=False):
         layout += [("user_id", 8)]
     return EndpointDescription(layout)
 
-
 def dma_words_for_bytes(length, data_width):
     data_width_bytes = data_width//8
     return (length + (data_width_bytes - 1)) >> log2_int(data_width_bytes)
-
 
 def dma_reader_layout(data_width):
     return EndpointDescription([
@@ -35,9 +33,13 @@ def dma_reader_layout(data_width):
         ("be",   data_width//8),
     ])
 
+# LitePCIe DMA Reader Down-Converter ---------------------------------------------------------------
 
 class LitePCIeDMAReaderDownConverter(LiteXModule):
-    """Downsize completion data while discarding invalid trailing subwords."""
+    """LitePCIe DMA Reader Down-Converter.
+
+    Downsize Completion data while discarding invalid trailing words.
+    """
     def __init__(self, data_width_from, data_width_to):
         assert data_width_from > data_width_to
         assert (data_width_from % data_width_to) == 0
@@ -45,50 +47,50 @@ class LitePCIeDMAReaderDownConverter(LiteXModule):
         self.sink   = sink   = stream.Endpoint(dma_reader_layout(data_width_from))
         self.source = source = stream.Endpoint(dma_layout(data_width_to))
 
-        ratio          = data_width_from//data_width_to
-        bytes_per_word = data_width_to//8
-        index           = Signal(max=ratio)
-        current_valid   = Signal()
-        later_valid     = Signal()
+        ratio      = data_width_from//data_width_to
+        word_bytes = data_width_to//8
+        mux         = Signal(max=ratio)
+        word_valid  = Signal()
+        words_left  = Signal()
 
         cases = {}
         for i in range(ratio):
-            following = [sink.be[j*bytes_per_word:(j+1)*bytes_per_word] != 0
+            following = [sink.be[j*word_bytes:(j+1)*word_bytes] != 0
                 for j in range(i + 1, ratio)]
             cases[i] = [
                 source.data.eq(sink.data[i*data_width_to:(i+1)*data_width_to]),
-                current_valid.eq(sink.be[i*bytes_per_word:(i+1)*bytes_per_word] != 0),
-                later_valid.eq(Reduce("OR", following) if following else 0),
+                word_valid.eq(sink.be[i*word_bytes:(i+1)*word_bytes] != 0),
+                words_left.eq(Reduce("OR", following) if following else 0),
             ]
 
         self.comb += [
-            current_valid.eq(0),
-            later_valid.eq(0),
-            Case(index, cases),
-            source.valid.eq(sink.valid & current_valid),
-            source.first.eq(sink.first & (index == 0)),
-            source.last.eq(sink.last & ~later_valid),
-            If(current_valid,
-                sink.ready.eq(source.ready & ~later_valid),
+            word_valid.eq(0),
+            words_left.eq(0),
+            Case(mux, cases),
+            source.valid.eq(sink.valid & word_valid),
+            source.first.eq(sink.first & (mux == 0)),
+            source.last.eq(sink.last & ~words_left),
+            If(word_valid,
+                sink.ready.eq(source.ready & ~words_left),
             ).Else(
-                sink.ready.eq(~later_valid),
+                sink.ready.eq(~words_left),
             ),
         ]
 
         self.sync += If(sink.valid,
-            If(current_valid,
+            If(word_valid,
                 If(source.ready,
-                    If(later_valid,
-                        index.eq(index + 1),
+                    If(words_left,
+                        mux.eq(mux + 1),
                     ).Else(
-                        index.eq(0),
+                        mux.eq(0),
                     ),
                 ),
             ).Else(
-                If(later_valid,
-                    index.eq(index + 1),
+                If(words_left,
+                    mux.eq(mux + 1),
                 ).Else(
-                    index.eq(0),
+                    mux.eq(0),
                 ),
             ),
         )
@@ -376,16 +378,15 @@ class LitePCIeDMAReader(LiteXModule):
         else:
             self.comb += self.desc_sink.connect(splitter.sink)
 
-        # Request Metadata ------------------------------------------------------------------------
-        # Completion TLPs are retired in request order, but their ``last`` only delimits an
-        # individual completion packet. Keep one entry per split request so the data stream can
-        # delimit the original DMA descriptor on the final request's last completion.
-        request_metadata = SyncFIFO(
-            [("descriptor_last", 1), ("last_disable", 1)],
-            endpoint.max_pending_requests,
-            buffered=True,
-        )
-        self.request_metadata = ResetInserter()(request_metadata)
+        # Request Metadata -------------------------------------------------------------------------
+        # Completion TLPs are retired in request order, but last only delimits an individual
+        # Completion packet. Keep one entry per split request to delimit the original DMA
+        # descriptor on the final request's last Completion.
+        self.request_metadata = request_metadata = ResetInserter()(SyncFIFO(
+            layout   = [("descriptor_last", 1), ("last_disable", 1)],
+            depth    = endpoint.max_pending_requests,
+            buffered = True,
+        ))
 
         # User ID ----------------------------------------------------------------------------------
         last_user_id = Signal(8, reset=255)
@@ -401,21 +402,24 @@ class LitePCIeDMAReader(LiteXModule):
             data_conv = LitePCIeDMAReaderDownConverter(endpoint.phy.data_width, self.data_width)
         else:
             data_conv = stream.Converter(endpoint.phy.data_width, self.data_width)
-        self.data_conv = ResetInserter()(data_conv)
-        self.comb += self.data_conv.reset.eq(~enable)
-        self.comb += self.data_conv.source.connect(self.source)
+        self.data_conv = data_conv = ResetInserter()(data_conv)
+        self.comb += data_conv.reset.eq(~enable)
+        self.comb += data_conv.source.connect(self.source)
 
         # Data FIFO --------------------------------------------------------------------------------
         data_fifo_depth = 4*max_pending_words
-        data_fifo = SyncFIFO(dma_reader_layout(endpoint.phy.data_width), data_fifo_depth, buffered=True)
-        self.data_fifo = ResetInserter()(data_fifo)
+        self.data_fifo = data_fifo = ResetInserter()(SyncFIFO(
+            layout   = dma_reader_layout(endpoint.phy.data_width),
+            depth    = data_fifo_depth,
+            buffered = True,
+        ))
         if endpoint.phy.data_width > self.data_width:
-            self.comb += data_fifo.source.connect(self.data_conv.sink)
+            self.comb += data_fifo.source.connect(data_conv.sink)
         else:
-            self.comb += data_fifo.source.connect(self.data_conv.sink, omit={"be"})
-        request_end = Signal()
+            self.comb += data_fifo.source.connect(data_conv.sink, omit={"be"})
+        request_done = Signal()
         self.comb += [
-            request_end.eq(port.sink.last & (port.sink.end | port.sink.err)),
+            request_done.eq(port.sink.last & (port.sink.end | port.sink.err)),
             # When Enabled, connect Sink to Data FIFO.
             If(enable,
                 port.sink.connect(data_fifo.sink, keep={"valid", "ready"}),
@@ -423,7 +427,7 @@ class LitePCIeDMAReader(LiteXModule):
                 data_fifo.sink.be.eq(port.sink.be),
                 data_fifo.sink.first.eq(port.sink.first & (port.sink.user_id != last_user_id)),
                 data_fifo.sink.last.eq(
-                    request_end & request_metadata.source.valid &
+                    request_done & request_metadata.source.valid &
                     request_metadata.source.descriptor_last &
                     ~request_metadata.source.last_disable
                 ),
@@ -432,7 +436,7 @@ class LitePCIeDMAReader(LiteXModule):
                 port.sink.ready.eq(1)
             ),
             request_metadata.source.ready.eq(
-                enable & port.sink.valid & port.sink.ready & request_end
+                enable & port.sink.valid & port.sink.ready & request_done
             ),
         ]
 
@@ -457,9 +461,7 @@ class LitePCIeDMAReader(LiteXModule):
 
         # FSM --------------------------------------------------------------------------------------
         self.fsm = fsm = FSM(reset_state="IDLE")
-        request_can_issue = Signal()
         self.comb += [
-            request_can_issue.eq(request_metadata.sink.ready),
             request_metadata.sink.valid.eq(
                 fsm.ongoing("MEM-RD-REQ") & port.source.valid & port.source.ready
             ),
@@ -493,9 +495,9 @@ class LitePCIeDMAReader(LiteXModule):
         ]
         fsm.act("MEM-RD-REQ",
             # Request Control-Path.
-            port.source.valid.eq(request_can_issue),
+            port.source.valid.eq(request_metadata.sink.ready),
             # When Request is accepted...
-            If(port.source.ready & request_can_issue,
+            If(port.source.valid & port.source.ready,
                 # Accept Descriptor.
                 splitter.source.ready.eq(1),
                 # Return to Idle.

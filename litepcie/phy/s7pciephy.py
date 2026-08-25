@@ -20,8 +20,8 @@ from litepcie.phy.common import *
 # S7PCIEPHY ----------------------------------------------------------------------------------------
 
 class S7PCIEPHY(LiteXModule):
-    endianness    = "big"
-    qword_aligned = False
+    endianness      = "big"
+    qword_aligned   = False
     gt_channel_path = {
         "gtp": "gtp_channel.gtpe2_channel_i",
         "gtx": "gtx_channel.gtxe2_channel_i",
@@ -116,7 +116,7 @@ class S7PCIEPHY(LiteXModule):
         assert data_width      in [64, 128]
         assert pcie_data_width in [64, 128]
         assert refclk_freq     in [100e6, 125e6, 250e6]
-        user_clk_freqs = {
+        userclk_freqs = {
             (1,  64) : 125e6,
             (1, 128) : 125e6,
             (2,  64) : 125e6,
@@ -125,11 +125,11 @@ class S7PCIEPHY(LiteXModule):
             (4, 128) : 125e6,
             (8, 128) : 250e6,
         }
-        if (nlanes, pcie_data_width) not in user_clk_freqs:
+        if (nlanes, pcie_data_width) not in userclk_freqs:
             raise ValueError(
                 f"S7PCIEPHY: Gen2 x{nlanes} does not support a {pcie_data_width}-bit PCIe "
                 "datapath.")
-        self.user_clk_freq = user_clk_freqs[nlanes, pcie_data_width]
+        self.userclk_freq = userclk_freqs[nlanes, pcie_data_width]
 
         # Clocking / Reset -------------------------------------------------------------------------
         self.pcie_refclk = pcie_refclk = Signal()
@@ -223,7 +223,7 @@ class S7PCIEPHY(LiteXModule):
 
         # MMCM.
         userclk1_freq = {1:125e6, 2:125e6, 4:250e6, 8:500e6}[nlanes]
-        userclk2_freq = self.user_clk_freq
+        userclk2_freq = self.userclk_freq
         self.mmcm = mmcm = S7MMCM(speedgrade=mmcm_speedgrade)
         self.specials += Instance("BUFG",
             i_I = pipe_txoutclk,
@@ -604,7 +604,7 @@ class S7PCIEPHY(LiteXModule):
             link_speed         = "5.0_GT/s"
             maximum_link_width = f"X{self.nlanes}"
             ref_clk_freq       = f"{int(self.refclk_freq/1e6)}_MHz"
-            user_clk_freq      = int(self.user_clk_freq/1e6)
+            user_clk_freq      = int(self.userclk_freq/1e6)
 
             # Interface.
             interface_width = f"{self.pcie_data_width}_bit"

@@ -153,8 +153,8 @@ class TestDMA(unittest.TestCase):
         self.assertEqual(dma_words_for_bytes(512, 128), 32)
 
     def dma_test(self, data_width, address_width, descriptor_lengths=None, test_size=256,
-        chipset_split=True, chipset_reordering=True, dma_data_width=None, check_reader_stream=False,
-        reader_last_disable=False, timeout_cycles=20000):
+        chipset_split=True, chipset_reordering=True, dma_data_width=None,
+        check_reader_stream=False, reader_last_disable=False, timeout_cycles=20000):
         if descriptor_lengths is None:
             descriptor_lengths = [test_size//4] * 4
         test_size = sum(descriptor_lengths)
@@ -165,6 +165,9 @@ class TestDMA(unittest.TestCase):
         host_data     = [seed_to_data(i, True) for i in range(test_size//4)]
         loopback_data = []
         reader_data   = []
+        stream_width  = dma_data_width or data_width
+        reader_words  = sum(
+            dma_words_for_bytes(length, stream_width) for length in descriptor_lengths)
 
         @passive
         def reader_monitor(dut):
@@ -219,8 +222,10 @@ class TestDMA(unittest.TestCase):
                     write_offset += length
 
             # Enable MSI.
-            yield dut.msi.enable.storage.eq(
-                DMA_READER_IRQ | (0 if check_reader_stream else DMA_WRITER_IRQ))
+            msi_enable = DMA_READER_IRQ
+            if not check_reader_stream:
+                msi_enable |= DMA_WRITER_IRQ
+            yield dut.msi.enable.storage.eq(msi_enable)
 
             # Enable DMA Reader & Writer.
             yield from dma_reader_driver.enable()
@@ -229,17 +234,19 @@ class TestDMA(unittest.TestCase):
 
             # Wait for all reader words or writes.
             timeout = 0
-            stream_width = dma_data_width or data_width
-            expected_reader_words = sum(
-                dma_words_for_bytes(length, stream_width) for length in descriptor_lengths)
-            while ((len(reader_data) < expected_reader_words) if check_reader_stream else
-                   (dut.msi_handler.dma_writer_irq_count != len(descriptor_lengths))):
+            while True:
+                if check_reader_stream:
+                    done = (len(reader_data) >= reader_words)
+                else:
+                    done = (dut.msi_handler.dma_writer_irq_count == len(descriptor_lengths))
+                if done:
+                    break
                 timeout += 1
                 if timeout > timeout_cycles:
                     self.fail(
                         f"DMA loopback timed out (width={data_width}, address_width={address_width}, "
                         f"descriptors={descriptor_lengths}, writes={dut.msi_handler.dma_writer_irq_count}, "
-                        f"reader_words={len(reader_data)}/{expected_reader_words})"
+                        f"reader_words={len(reader_data)}/{reader_words})"
                     )
                 yield
 
@@ -306,11 +313,8 @@ class TestDMA(unittest.TestCase):
         run_simulation(dut, generators, clocks, vcd_name=_vcd_name("test_dma.vcd"))
         if not check_reader_stream:
             self.assertEqual(host_data, loopback_data)
-        if check_reader_stream:
-            stream_width = dma_data_width or data_width
-            expected_reader_words = sum(
-                dma_words_for_bytes(length, stream_width) for length in descriptor_lengths)
-            self.assertEqual(expected_reader_words, len(reader_data))
+        else:
+            self.assertEqual(reader_words, len(reader_data))
             expected_last_indices = []
             word_count = 0
             for length, last_disable in zip(descriptor_lengths, reader_last_disable):
@@ -383,26 +387,26 @@ class TestDMA(unittest.TestCase):
     @pytest.mark.slow
     def test_dma_512b_phy_256b_stream_64b_address_width_32byte_tails(self):
         self.dma_test(
-            data_width         = 512,
-            dma_data_width     = 256,
-            address_width      = 64,
-            descriptor_lengths = [544, 544],
-            chipset_split      = True,
-            chipset_reordering = True,
+            data_width          = 512,
+            dma_data_width      = 256,
+            address_width       = 64,
+            descriptor_lengths  = [544, 544],
+            chipset_split       = True,
+            chipset_reordering  = True,
             check_reader_stream = True,
         )
 
     @pytest.mark.slow
     def test_dma_reader_last_disable(self):
         self.dma_test(
-            data_width         = 512,
-            dma_data_width     = 256,
-            address_width      = 64,
-            descriptor_lengths = [544, 544],
-            chipset_split      = True,
-            chipset_reordering = True,
+            data_width          = 512,
+            dma_data_width      = 256,
+            address_width       = 64,
+            descriptor_lengths  = [544, 544],
+            chipset_split       = True,
+            chipset_reordering  = True,
             check_reader_stream = True,
-            reader_last_disable = [False, True],
+            reader_last_disable  = [False, True],
         )
 
     @pytest.mark.slow

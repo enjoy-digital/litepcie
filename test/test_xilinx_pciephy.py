@@ -110,7 +110,7 @@ class TestXilinxPCIEPHY(unittest.TestCase):
                     phy.add_sources(platform, phy_path="")
                     tcl = "\n".join(platform.toolchain.pre_synthesis_commands)
 
-                    self.assertEqual(phy.user_clk_freq, user_clk_freq)
+                    self.assertEqual(phy.userclk_freq, user_clk_freq)
                     self.assertEqual(phy.mmcm.clkouts[3].freq, user_clk_freq)
                     self.assertEqual(mmcm_config["clkout3_freq"], user_clk_freq)
                     self.assertIn(f"CONFIG.Maximum_Link_Width {{{{X{nlanes}}}}}", tcl)

@@ -12,19 +12,16 @@ from litepcie.common      import *
 from litepcie.core.common import *
 from litepcie.tlp.common  import *
 
-# LitePCIe TLP Controller --------------------------------------------------------------------------
+# Helpers ------------------------------------------------------------------------------------------
 
-def completion_buffer_depth(data_width, max_request_size_bytes=max_request_size):
-    """Return a safe per-tag completion buffer depth.
-
-    Completion payloads are repacked independently at each TLP boundary. A request that is not
-    aligned to the datapath can therefore occupy one more stream beat than its byte count alone
-    implies (partial first and last Completion TLPs cannot share a beat).
-    """
-    beat_bytes = data_width//8
+def get_completion_buffer_depth(data_width, max_request_size_bytes=max_request_size):
+    # Completion payloads are repacked independently at each TLP boundary. An unaligned request
+    # can use one additional stream beat since partial first/last Completion TLPs cannot share one.
+    beat_bytes    = data_width//8
     request_beats = (max_request_size_bytes + beat_bytes - 1)//beat_bytes
     return request_beats + 1
 
+# LitePCIe TLP Controller --------------------------------------------------------------------------
 
 class LitePCIeTLPController(LiteXModule):
     """LitePCIe TLP requests/completions controller.
@@ -140,7 +137,7 @@ class LitePCIeTLPController(LiteXModule):
 
         # Create Buffers.
         if cmp_buf_depth is None:
-            cmp_buf_depth = completion_buffer_depth(data_width)
+            cmp_buf_depth = get_completion_buffer_depth(data_width)
         for i in range(max_pending_requests):
             cmp_buf       = ResetInserter()(SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered))
             cmp_bufs.append(cmp_buf)
@@ -167,12 +164,9 @@ class LitePCIeTLPController(LiteXModule):
             req_queue.source.connect(cmp_source, keep={"channel", "user_id"}),
         ]
 
-        # A tag remains owned by its request until the buffered completion retires in request order.
-        # Recycling it when the completion merely arrives allows a younger request to reuse the tag
-        # while the previous completion still occupies the same reorder FIFO. If that FIFO fills, the
-        # younger completion can then block an older completion needed to make forward progress.
-        retire_tag = Signal()
-        self.comb += retire_tag.eq(
+        # Retire Tag once the buffered Completion has been consumed in request order.
+        tag_retire = Signal()
+        self.comb += tag_retire.eq(
             cmp_source.valid & cmp_source.ready & cmp_source.last &
             (cmp_source.end | cmp_source.err)
         )
@@ -198,7 +192,7 @@ class LitePCIeTLPController(LiteXModule):
             )
         )
         cmp_fsm.act("WAIT",
-            tag_queue.sink.valid.eq(retire_tag),
+            tag_queue.sink.valid.eq(tag_retire),
             tag_queue.sink.tag.eq(req_queue.source.tag),
             # Wait for a TLP Completion...
             If(cmp_sink.valid & cmp_sink.first,
@@ -208,7 +202,7 @@ class LitePCIeTLPController(LiteXModule):
             )
         )
         cmp_fsm.act("RUN",
-            tag_queue.sink.valid.eq(retire_tag),
+            tag_queue.sink.valid.eq(tag_retire),
             tag_queue.sink.tag.eq(req_queue.source.tag),
             # Connect Control-Path.
             cmp_sink.connect(cmp_reorder, keep={"valid", "ready"}),
