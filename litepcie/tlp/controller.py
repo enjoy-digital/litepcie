@@ -15,8 +15,15 @@ from litepcie.tlp.common  import *
 # LitePCIe TLP Controller --------------------------------------------------------------------------
 
 def completion_buffer_depth(data_width, max_request_size_bytes=max_request_size):
+    """Return a safe per-tag completion buffer depth.
+
+    Completion payloads are repacked independently at each TLP boundary. A request that is not
+    aligned to the datapath can therefore occupy one more stream beat than its byte count alone
+    implies (partial first and last Completion TLPs cannot share a beat).
+    """
     beat_bytes = data_width//8
-    return (max_request_size_bytes + beat_bytes - 1)//beat_bytes
+    request_beats = (max_request_size_bytes + beat_bytes - 1)//beat_bytes
+    return request_beats + 1
 
 
 class LitePCIeTLPController(LiteXModule):
