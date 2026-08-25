@@ -16,9 +16,8 @@ from litepcie.phy.usppciephy import USPPCIEPHY
 
 
 class DummyPlatform:
-    device = "xc7a35t"
-
-    def __init__(self):
+    def __init__(self, device="xc7a35t"):
+        self.device = device
         self.toolchain = SimpleNamespace(
             pre_placement_commands = [],
             pre_synthesis_commands = [],
@@ -84,7 +83,7 @@ class TestXilinxPCIEPHY(unittest.TestCase):
         self.assertIs(phy.pcie_phy_params["i_s_axis_tx_tuser"],     phy.s_axis_tx_tuser)
         self.assertEqual(len(phy.s_axis_tx_tuser), 4)
 
-    def test_s7_user_clock_matches_link_width_and_datapath(self):
+    def test_s7_clock_and_ip_config_match_link_width_and_datapath(self):
         for nlanes, pcie_data_width, user_clk_freq in [
             (1,  64, 125e6),
             (1, 128, 125e6),
@@ -94,24 +93,33 @@ class TestXilinxPCIEPHY(unittest.TestCase):
             (4, 128, 125e6),
             (8, 128, 250e6),
         ]:
-            with self.subTest(nlanes=nlanes, pcie_data_width=pcie_data_width):
-                phy = S7PCIEPHY(
-                    DummyPlatform(),
-                    DummyPads(nlanes),
-                    data_width      = pcie_data_width,
-                    pcie_data_width = pcie_data_width,
-                )
-                self.assertEqual(phy.user_clk_freq, user_clk_freq)
+            for data_width in [64, 128]:
+                with self.subTest(
+                    nlanes=nlanes,
+                    pcie_data_width=pcie_data_width,
+                    data_width=data_width,
+                ):
+                    platform = DummyPlatform(device="xc7k325t")
+                    phy = S7PCIEPHY(
+                        platform,
+                        DummyPads(nlanes),
+                        data_width      = data_width,
+                        pcie_data_width = pcie_data_width,
+                    )
+                    mmcm_config = phy.mmcm.compute_config()
+                    phy.add_sources(platform, phy_path="")
+                    tcl = "\n".join(platform.toolchain.pre_synthesis_commands)
 
-    def test_s7_generated_x4_64b_clock_configuration(self):
-        platform = DummyPlatform()
-        phy = S7PCIEPHY(platform, DummyPads(4), data_width=64, pcie_data_width=64)
-        phy.add_sources(platform, phy_path="")
-        tcl = "\n".join(platform.toolchain.pre_synthesis_commands)
-
-        self.assertIn("CONFIG.Maximum_Link_Width {{X4}}", tcl)
-        self.assertIn("CONFIG.Interface_Width {{64_bit}}", tcl)
-        self.assertIn("CONFIG.User_Clk_Freq {{250}}", tcl)
+                    self.assertEqual(phy.user_clk_freq, user_clk_freq)
+                    self.assertEqual(phy.mmcm.clkouts[3].freq, user_clk_freq)
+                    self.assertEqual(mmcm_config["clkout3_freq"], user_clk_freq)
+                    self.assertIn(f"CONFIG.Maximum_Link_Width {{{{X{nlanes}}}}}", tcl)
+                    self.assertIn(f"CONFIG.Interface_Width {{{{{pcie_data_width}_bit}}}}", tcl)
+                    self.assertIn(
+                        f"CONFIG.User_Clk_Freq {{{{{int(user_clk_freq/1e6)}}}}}",
+                        tcl,
+                    )
+                    self.assertEqual(tcl.count("synth_ip $obj"), 1)
 
     def test_s7_rejects_x8_64b_datapath(self):
         with self.assertRaisesRegex(ValueError, "Gen2 x8.*64-bit"):
