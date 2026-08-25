@@ -98,11 +98,10 @@ def _rand_payload_dws_and_be(max_dws, allow_empty=False):
 
 def _model_extracter_output_beats(data_width, phy_beats):
     """
-    Model the current RTL behavior in COPY.
+    Model the shifted COPY output, including a final beat when valid tail DWORDs remain.
 
     >=128b: COPY builds output beat i from prev + curr:
         out_dws = prev[3:] + curr[:3]
-      (For 128b, BE has a known RTL quirk, handled below.)
 
     64b: HEADER consumes 2 beats, then COPY is effectively:
         out = [prev.dw1] + [curr.dw0]
@@ -158,12 +157,20 @@ def _model_extracter_output_beats(data_width, phy_beats):
         for i in range(2, len(phy_beats)):
             prev = phy_beats[i-1]
             curr = phy_beats[i]
+            tail_valid = any(curr["be"][1:])
             out_beats.append({
                 "first": 1 if i == 2 else 0,
-                "last" : 1 if curr["last"] else 0,
+                "last" : 1 if curr["last"] and not tail_valid else 0,
                 "dws"  : [prev["dws"][1], curr["dws"][0]],
                 "be"   : [prev["be"][1],  curr["be"][0]],
             })
+            if curr["last"] and tail_valid:
+                out_beats.append({
+                    "first": 0,
+                    "last" : 1,
+                    "dws"  : [curr["dws"][1], 0],
+                    "be"   : [curr["be"][1],  0],
+                })
         return out_beats
 
     # >=128b data path is the same for 128/256/512.
@@ -179,12 +186,20 @@ def _model_extracter_output_beats(data_width, phy_beats):
             curr = phy_beats[i]
             out_dws = prev["dws"][cut:] + curr["dws"][:cut]
             out_be  = prev["be"][cut:]  + curr["be"][:cut]
+            tail_valid = any(curr["be"][cut:])
             out_beats.append({
                 "first": 1 if i == 1 else 0,
-                "last" : 1 if curr["last"] else 0,
+                "last" : 1 if curr["last"] and not tail_valid else 0,
                 "dws"  : out_dws,
                 "be"   : out_be,
             })
+            if curr["last"] and tail_valid:
+                out_beats.append({
+                    "first": 0,
+                    "last" : 1,
+                    "dws"  : curr["dws"][cut:] + [0] * cut,
+                    "be"   : curr["be"][cut:]  + [0] * cut,
+                })
 
     # Sanity.
     for b in out_beats:
@@ -254,8 +269,9 @@ class TestLitePCIeTLPHeaderExtracter(unittest.TestCase):
 
         @passive
         def monitor(dut):
+            cycle = 0
             while True:
-                yield dut.source.ready.eq(1)
+                yield dut.source.ready.eq((cycle % 4) != 0)
                 if (yield dut.source.valid) and (yield dut.source.ready):
                     ndws = _dws_per_beat(data_width)
                     got_beats.append({
@@ -265,6 +281,7 @@ class TestLitePCIeTLPHeaderExtracter(unittest.TestCase):
                         "be"   : _unpack_be_to_nibbles((yield dut.source.be),  ndws),
                     })
                     got_headers.append((yield dut.source.header))
+                cycle += 1
                 yield
 
         def stimulus(dut):
@@ -353,6 +370,16 @@ class TestLitePCIeTLPHeaderExtracter(unittest.TestCase):
             header_4dws        = header_4dws,
             payload_dws        = [0x00010203, 0x04050607, 0x08090A0B],
             payload_be_nibbles = [0xF, 0xF, 0x3],
+        )
+
+        # 3DW, payload requiring a final shifted-tail flush.
+        payload_dws = [0x10000000 + i for i in range(_dws_per_beat(data_width) + 1)]
+        self._run_case(
+            data_width         = data_width,
+            header_dws         = 3,
+            header_4dws        = header_4dws,
+            payload_dws        = payload_dws,
+            payload_be_nibbles = [0xF] * len(payload_dws),
         )
 
         # 4DW, no payload.

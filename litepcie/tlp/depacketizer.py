@@ -39,8 +39,10 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
             be_r.eq(sink.be),
         )
 
-        first = Signal()
-        last  = Signal()  # "flush pending"
+        first      = Signal()
+        last       = Signal()  # "flush pending"
+        tail_valid = Signal()
+        self.comb += tail_valid.eq(sink.be[4*shift_dws:] != 0)
 
         # Helpers ----------------------------------------------------------------------------------
 
@@ -107,15 +109,21 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
         fsm.act("COPY",
             source.valid.eq(sink.valid | last),
             source.first.eq(first),
-            source.last.eq(sink.last | last),
+            source.last.eq(last | (sink.last & ~tail_valid)),
 
             *_emit_shifted(dat_r, be_r, sink.dat, sink.be),
 
             If(source.valid & source.ready,
                 NextValue(first, 0),
                 sink.ready.eq(~last),  # already acked when last=1
-                If(source.last,
+                If(last,
                     NextState("IDLE")
+                ).Elif(sink.last,
+                    If(tail_valid,
+                        NextValue(last, 1),
+                    ).Else(
+                        NextState("IDLE")
+                    )
                 )
             )
         )
@@ -199,11 +207,13 @@ class LitePCIeTLPHeaderExtracter64b(LiteXModule):
 
         # # #
 
-        first = Signal()
-        last  = Signal()
-        count = Signal()
-        dat   = Signal(64,    reset_less=True)
-        be    = Signal(64//8, reset_less=True)
+        first      = Signal()
+        last       = Signal()
+        count      = Signal()
+        dat        = Signal(64,    reset_less=True)
+        be         = Signal(64//8, reset_less=True)
+        tail_valid = Signal()
+        self.comb += tail_valid.eq(sink.be[4*1:4*2] != 0)
         self.sync += \
             If(sink.valid & sink.ready,
                 dat.eq(sink.dat),
@@ -234,11 +244,19 @@ class LitePCIeTLPHeaderExtracter64b(LiteXModule):
         fsm.act("COPY",
             source.valid.eq(sink.valid | last),
             source.first.eq(first),
-            source.last.eq(sink.last | last),
+            source.last.eq(last | (sink.last & ~tail_valid)),
             If(source.valid & source.ready,
                 NextValue(first, 0),
-                sink.ready.eq(1 & ~last),
-                If(source.last, NextState("IDLE"))
+                sink.ready.eq(~last),
+                If(last,
+                    NextState("IDLE")
+                ).Elif(sink.last,
+                    If(tail_valid,
+                        NextValue(last, 1),
+                    ).Else(
+                        NextState("IDLE")
+                    )
+                )
             )
         )
         self.comb += [
