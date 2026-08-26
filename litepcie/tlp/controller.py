@@ -14,12 +14,13 @@ from litepcie.tlp.common  import *
 
 # Helpers ------------------------------------------------------------------------------------------
 
-def get_completion_buffer_depth(data_width, max_request_size_bytes=max_request_size):
+def get_completion_buffer_depth(data_width, max_request_size_bytes=max_request_size, buffered=False):
     # Completion payloads are repacked independently at each TLP boundary. An unaligned request
     # can use one additional stream beat since partial first/last Completion TLPs cannot share one.
     beat_bytes    = data_width//8
     request_beats = (max_request_size_bytes + beat_bytes - 1)//beat_bytes
-    return request_beats + 1
+    # A buffered SyncFIFO already provides the additional beat in its output register.
+    return request_beats + (0 if buffered else 1)
 
 # LitePCIe TLP Controller --------------------------------------------------------------------------
 
@@ -137,7 +138,7 @@ class LitePCIeTLPController(LiteXModule):
 
         # Create Buffers.
         if cmp_buf_depth is None:
-            cmp_buf_depth = get_completion_buffer_depth(data_width)
+            cmp_buf_depth = get_completion_buffer_depth(data_width, buffered=cmp_bufs_buffered)
         for i in range(max_pending_requests):
             cmp_buf       = ResetInserter()(SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered))
             cmp_bufs.append(cmp_buf)

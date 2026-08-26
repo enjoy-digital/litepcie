@@ -31,6 +31,12 @@ class TestTLPController(unittest.TestCase):
         self.assertEqual(get_completion_buffer_depth(256), 17)
         self.assertEqual(get_completion_buffer_depth(512), 9)
         self.assertEqual(get_completion_buffer_depth(128, max_request_size_bytes=124), 9)
+        self.assertEqual(get_completion_buffer_depth(64,  buffered=True), 64)
+        self.assertEqual(get_completion_buffer_depth(128, buffered=True), 32)
+        self.assertEqual(get_completion_buffer_depth(256, buffered=True), 16)
+        self.assertEqual(get_completion_buffer_depth(512, buffered=True), 8)
+        self.assertEqual(get_completion_buffer_depth(
+            128, max_request_size_bytes=124, buffered=True), 8)
 
     def _issue_read_request(self, controller, *, index, channel=0, user_id=0, length_dwords=8,
         address=None):
@@ -468,13 +474,13 @@ class TestTLPController(unittest.TestCase):
         run_simulation(controller, [stim(), monitor_requests()], vcd_name=None)
         self.assertEqual(len(accepted), 2 * request_beats)
 
-    def test_completion_buffer_accounts_for_packet_boundary_rounding(self):
+    def _check_completion_buffer_accounts_for_packet_boundary_rounding(self, cmp_bufs_buffered):
         data_width = 128
         controller = LitePCIeTLPController(
             data_width           = data_width,
             address_width        = 32,
             max_pending_requests = 2,
-            cmp_bufs_buffered    = False,
+            cmp_bufs_buffered    = cmp_bufs_buffered,
         )
 
         observed_requests = []
@@ -564,3 +570,11 @@ class TestTLPController(unittest.TestCase):
             vcd_name=None,
         )
         self.assertEqual(retired_tags, observed_requests)
+
+    def test_unbuffered_completion_buffer_accounts_for_packet_boundary_rounding(self):
+        self._check_completion_buffer_accounts_for_packet_boundary_rounding(
+            cmp_bufs_buffered=False)
+
+    def test_buffered_completion_buffer_accounts_for_packet_boundary_rounding(self):
+        self._check_completion_buffer_accounts_for_packet_boundary_rounding(
+            cmp_bufs_buffered=True)
