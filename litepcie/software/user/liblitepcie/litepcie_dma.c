@@ -43,12 +43,19 @@ void litepcie_dma_reader(int fd, uint8_t enable, int64_t *hw_count, int64_t *sw_
 
 uint8_t litepcie_request_dma(int fd, uint8_t reader, uint8_t writer) {
     struct litepcie_ioctl_lock m;
+    uint8_t status;
+
     m.dma_reader_request = reader > 0;
     m.dma_writer_request = writer > 0;
     m.dma_reader_release = 0;
     m.dma_writer_release = 0;
     checked_ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
-    return m.dma_reader_status;
+    status = (!reader || m.dma_reader_status) && (!writer || m.dma_writer_status);
+    if (!status)
+        litepcie_release_dma(fd,
+            reader && m.dma_reader_status,
+            writer && m.dma_writer_status);
+    return status;
 }
 
 void litepcie_release_dma(int fd, uint8_t reader, uint8_t writer) {
@@ -60,14 +67,29 @@ void litepcie_release_dma(int fd, uint8_t reader, uint8_t writer) {
     checked_ioctl(fd, LITEPCIE_IOCTL_LOCK, &m);
 }
 
-int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, uint8_t zero_copy)
+int litepcie_dma_map_gpu(int fd, uint64_t gpu_addr, uint64_t gpu_size) {
+    struct litepcie_ioctl_dma_map_gpu m = {
+        .gpu_addr = gpu_addr,
+        .gpu_size = gpu_size,
+    };
+    return ioctl(fd, LITEPCIE_IOCTL_DMA_MAP_GPU, &m);
+}
+
+int litepcie_dma_unmap_gpu(int fd) {
+    return ioctl(fd, LITEPCIE_IOCTL_DMA_UNMAP_GPU);
+}
+
+static int litepcie_dma_init_common(struct litepcie_dma_ctrl *dma,
+    const char *device_name, uint8_t zero_copy, uint64_t gpu_addr, uint64_t gpu_size)
 {
     dma->reader_hw_count = 0;
     dma->reader_sw_count = 0;
     dma->writer_hw_count = 0;
     dma->writer_sw_count = 0;
 
-    dma->zero_copy = zero_copy;
+    dma->gpu = gpu_size != 0;
+    dma->zero_copy = zero_copy || dma->gpu;
+    dma->fds.events = 0;
 
     if (dma->use_reader)
         dma->fds.events |= POLLOUT;
@@ -84,12 +106,24 @@ int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, ui
     /* request dma reader and writer */
     if ((litepcie_request_dma(dma->fds.fd, dma->use_reader, dma->use_writer) == 0)) {
         fprintf(stderr, "DMA not available\n");
+        if (dma->shared_fd != 1)
+            close(dma->fds.fd);
         return -1;
     }
 
     litepcie_dma_set_loopback(dma->fds.fd, dma->loopback);
 
-    if (dma->zero_copy) {
+    if (dma->gpu) {
+        if (litepcie_dma_map_gpu(dma->fds.fd, gpu_addr, gpu_size) < 0) {
+            perror("Could not map NVIDIA GPU memory");
+            litepcie_release_dma(dma->fds.fd, dma->use_reader, dma->use_writer);
+            if (dma->shared_fd != 1)
+                close(dma->fds.fd);
+            return -1;
+        }
+        dma->buf_wr = (char *)(uintptr_t)gpu_addr;
+        dma->buf_rd = dma->buf_wr + DMA_BUFFER_TOTAL_SIZE;
+    } else if (dma->zero_copy) {
         /* if mmap: get it from the kernel */
         checked_ioctl(dma->fds.fd, LITEPCIE_IOCTL_MMAP_DMA_INFO, &dma->mmap_dma_info);
         if (dma->use_writer) {
@@ -130,6 +164,17 @@ int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, ui
     return 0;
 }
 
+int litepcie_dma_init(struct litepcie_dma_ctrl *dma, const char *device_name, uint8_t zero_copy)
+{
+    return litepcie_dma_init_common(dma, device_name, zero_copy, 0, 0);
+}
+
+int litepcie_dma_init_gpu(struct litepcie_dma_ctrl *dma, const char *device_name,
+    uint64_t gpu_addr, uint64_t gpu_size)
+{
+    return litepcie_dma_init_common(dma, device_name, 1, gpu_addr, gpu_size);
+}
+
 void litepcie_dma_cleanup(struct litepcie_dma_ctrl *dma)
 {
     if (dma->use_reader)
@@ -137,9 +182,12 @@ void litepcie_dma_cleanup(struct litepcie_dma_ctrl *dma)
     if (dma->use_writer)
         litepcie_dma_writer(dma->fds.fd, 0, &dma->writer_hw_count, &dma->writer_sw_count);
 
-    litepcie_release_dma(dma->fds.fd, dma->use_reader, dma->use_writer);
-
-    if (dma->zero_copy) {
+    if (dma->gpu) {
+        if (litepcie_dma_unmap_gpu(dma->fds.fd) < 0)
+            perror("Could not unmap NVIDIA GPU memory");
+        dma->buf_wr = NULL;
+        dma->buf_rd = NULL;
+    } else if (dma->zero_copy) {
         if (dma->use_reader) {
             munmap(dma->buf_wr, dma->mmap_dma_info.dma_tx_buf_size * dma->mmap_dma_info.dma_tx_buf_count);
             dma->buf_wr = NULL;
@@ -158,6 +206,8 @@ void litepcie_dma_cleanup(struct litepcie_dma_ctrl *dma)
             dma->buf_rd = NULL;
         }
     }
+
+    litepcie_release_dma(dma->fds.fd, dma->use_reader, dma->use_writer);
 
     if (dma->shared_fd != 1)
         close(dma->fds.fd);

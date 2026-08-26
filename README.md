@@ -77,6 +77,33 @@ enjoy-digital.fr.
 2. Install LiteX and the cores by following the LiteX's wiki [installation guide](https://github.com/enjoy-digital/litex/wiki/Installation).
 3. You can find examples of integration of the core with LiteX in LiteX-Boards and in the examples directory.
 
+[> NVIDIA GPUDirect RDMA
+------------------------
+The Linux driver can optionally map its DMA buffers directly in NVIDIA GPU
+memory. This requires a recent NVIDIA driver exposing the persistent P2P pages
+API and a platform topology supported by NVIDIA GPUDirect RDMA.
+
+Build the kernel module against the NVIDIA kernel headers:
+```sh
+$ cd litepcie/software/kernel
+$ make NV_DMA=true NVIDIA_PATH=/usr/src/nvidia-<version>/nvidia
+```
+
+Build the utility against the CUDA driver API and run the DMA counter test on
+GPU 0:
+```sh
+$ cd litepcie/software/user
+$ make NV_DMA=true CUDA_PATH=/usr/local/cuda
+$ sudo ./litepcie_util -g 0 dma_test
+```
+
+Load the NVIDIA kernel module before `litepcie.ko`. The GPU allocation is
+64KiB-aligned by the utility and is mapped per open LitePCIe DMA channel. The
+normal CPU-backed DMA path remains the default.
+
+This support is based on the initial GPUDirect implementation proposed by
+Steve Kelly, Tim Besard and Elliot Saba in [PR #107](https://github.com/enjoy-digital/litepcie/pull/107).
+
 [> Tests
 --------
 Unit tests are available in ./test/.
