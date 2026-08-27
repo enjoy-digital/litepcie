@@ -39,8 +39,10 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
             be_r.eq(sink.be),
         )
 
-        first = Signal()
-        last  = Signal()  # "flush pending"
+        first      = Signal()
+        flush      = Signal()
+        tail_valid = Signal()
+        self.comb += tail_valid.eq(sink.be[4*shift_dws:] != 0)
 
         # Helpers ----------------------------------------------------------------------------------
 
@@ -68,7 +70,7 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
             for lane in range(left_lanes, dws_per_beat):
                 in_lane = lane - left_lanes
                 stmts += [
-                    If(last,
+                    If(flush,
                         _dw(source.dat, lane).eq(0),
                         _be(source.be,  lane).eq(0),
                     ).Else(
@@ -85,7 +87,7 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
 
         fsm.act("IDLE",
             NextValue(first, 1),
-            NextValue(last,  0),
+            NextValue(flush, 0),
             If(sink.valid,
                 NextState("HEADER")
             )
@@ -98,24 +100,30 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
                 NextValue(source.header[32*2:32*3], sink.dat[32*2:32*3]),
                 NextValue(source.header[32*3:32*4], sink.dat[32*3:32*4]),
                 If(sink.last,
-                    NextValue(last, 1)
+                    NextValue(flush, 1)
                 ),
                 NextState("COPY")
             )
         )
 
         fsm.act("COPY",
-            source.valid.eq(sink.valid | last),
+            source.valid.eq(sink.valid | flush),
             source.first.eq(first),
-            source.last.eq(sink.last | last),
+            source.last.eq(flush | (sink.last & ~tail_valid)),
 
             *_emit_shifted(dat_r, be_r, sink.dat, sink.be),
 
             If(source.valid & source.ready,
                 NextValue(first, 0),
-                sink.ready.eq(~last),  # already acked when last=1
-                If(source.last,
+                sink.ready.eq(~flush),
+                If(flush,
                     NextState("IDLE")
+                ).Elif(sink.last,
+                    If(tail_valid,
+                        NextValue(flush, 1),
+                    ).Else(
+                        NextState("IDLE")
+                    )
                 )
             )
         )
@@ -199,11 +207,13 @@ class LitePCIeTLPHeaderExtracter64b(LiteXModule):
 
         # # #
 
-        first = Signal()
-        last  = Signal()
-        count = Signal()
-        dat   = Signal(64,    reset_less=True)
-        be    = Signal(64//8, reset_less=True)
+        first      = Signal()
+        flush      = Signal()
+        count      = Signal()
+        dat        = Signal(64,    reset_less=True)
+        be         = Signal(64//8, reset_less=True)
+        tail_valid = Signal()
+        self.comb += tail_valid.eq(sink.be[4*1:4*2] != 0)
         self.sync += \
             If(sink.valid & sink.ready,
                 dat.eq(sink.dat),
@@ -213,7 +223,7 @@ class LitePCIeTLPHeaderExtracter64b(LiteXModule):
         self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             NextValue(first, 1),
-            NextValue(last,  0),
+            NextValue(flush, 0),
             NextValue(count, 0),
             If(sink.valid, NextState("HEADER"))
         )
@@ -226,30 +236,38 @@ class LitePCIeTLPHeaderExtracter64b(LiteXModule):
                 NextValue(source.header[32*2:32*3],      sink.dat[32*0:32*1]),
                 NextValue(source.header[32*3:32*4],      sink.dat[32*1:32*2]),
                 If(count,
-                    If(sink.last, NextValue(last, 1)),
+                    If(sink.last, NextValue(flush, 1)),
                     NextState("COPY")
                 )
             )
         )
         fsm.act("COPY",
-            source.valid.eq(sink.valid | last),
+            source.valid.eq(sink.valid | flush),
             source.first.eq(first),
-            source.last.eq(sink.last | last),
+            source.last.eq(flush | (sink.last & ~tail_valid)),
             If(source.valid & source.ready,
                 NextValue(first, 0),
-                sink.ready.eq(1 & ~last),
-                If(source.last, NextState("IDLE"))
+                sink.ready.eq(~flush),
+                If(flush,
+                    NextState("IDLE")
+                ).Elif(sink.last,
+                    If(tail_valid,
+                        NextValue(flush, 1),
+                    ).Else(
+                        NextState("IDLE")
+                    )
+                )
             )
         )
         self.comb += [
             source.dat[32*0:32*1].eq(     dat[32*1:32*2]),
-            If(last,
+            If(flush,
                 source.dat[32*1:32*2].eq(0),
             ).Else(
                 source.dat[32*1:32*2].eq(sink.dat[32*0:32*1]),
             ),
             source.be[  4*0: 4*1].eq(     be[4*1:4*2]),
-            If(last,
+            If(flush,
                 source.be[  4*1: 4*2].eq(0),
             ).Else(
                 source.be[  4*1: 4*2].eq(sink.be[4*0:4*1])
@@ -426,7 +444,8 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 cmp_source.attr.eq(tlp_cmp.attr),
                 cmp_source.err.eq(tlp_cmp.status != 0),
                 cmp_source.tag.eq(tlp_cmp.tag),
-                cmp_source.dat.eq(tlp_cmp.dat)
+                cmp_source.dat.eq(tlp_cmp.dat),
+                cmp_source.be.eq(tlp_cmp.be),
             ]
 
         # Decode/Dispatch TLP Configurations -------------------------------------------------------

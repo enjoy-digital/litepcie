@@ -12,6 +12,16 @@ from litepcie.common      import *
 from litepcie.core.common import *
 from litepcie.tlp.common  import *
 
+# Helpers ------------------------------------------------------------------------------------------
+
+def get_completion_buffer_depth(data_width, max_request_size_bytes=max_request_size, buffered=False):
+    # Completion payloads are repacked independently at each TLP boundary. An unaligned request
+    # can use one additional stream beat since partial first/last Completion TLPs cannot share one.
+    beat_bytes    = data_width//8
+    request_beats = (max_request_size_bytes + beat_bytes - 1)//beat_bytes
+    # A buffered SyncFIFO already provides the additional beat in its output register.
+    return request_beats + (0 if buffered else 1)
+
 # LitePCIe TLP Controller --------------------------------------------------------------------------
 
 class LitePCIeTLPController(LiteXModule):
@@ -128,7 +138,7 @@ class LitePCIeTLPController(LiteXModule):
 
         # Create Buffers.
         if cmp_buf_depth is None:
-            cmp_buf_depth = 4*max_request_size//(data_width//8)
+            cmp_buf_depth = get_completion_buffer_depth(data_width, buffered=cmp_bufs_buffered)
         for i in range(max_pending_requests):
             cmp_buf       = ResetInserter()(SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered))
             cmp_bufs.append(cmp_buf)
@@ -150,10 +160,17 @@ class LitePCIeTLPController(LiteXModule):
             # which would otherwise leave the request un-retired and leak its tag,
             # deadlocking the DMA reader.
             If(cmp_source.valid & cmp_source.last & (cmp_source.end | cmp_source.err),
-                req_queue.source.ready.eq(cmp_source.ready)
+                req_queue.source.ready.eq(cmp_source.ready),
             ),
             req_queue.source.connect(cmp_source, keep={"channel", "user_id"}),
         ]
+
+        # Retire Tag once the buffered Completion has been consumed in request order.
+        tag_retire = Signal()
+        self.comb += tag_retire.eq(
+            cmp_source.valid & cmp_source.ready & cmp_source.last &
+            (cmp_source.end | cmp_source.err)
+        )
 
         # Completions Management -------------------------------------------------------------------
 
@@ -176,6 +193,8 @@ class LitePCIeTLPController(LiteXModule):
             )
         )
         cmp_fsm.act("WAIT",
+            tag_queue.sink.valid.eq(tag_retire),
+            tag_queue.sink.tag.eq(req_queue.source.tag),
             # Wait for a TLP Completion...
             If(cmp_sink.valid & cmp_sink.first,
                 NextState("RUN")
@@ -184,17 +203,11 @@ class LitePCIeTLPController(LiteXModule):
             )
         )
         cmp_fsm.act("RUN",
+            tag_queue.sink.valid.eq(tag_retire),
+            tag_queue.sink.tag.eq(req_queue.source.tag),
             # Connect Control-Path.
             cmp_sink.connect(cmp_reorder, keep={"valid", "ready"}),
-            # Push incoming Tag to tag_queue when Cmp is fully received.
             If(cmp_sink.valid & cmp_sink.ready & cmp_sink.last,
-                # Free the tag on a normal end-of-completion OR on an error completion
-                # (UR/CA): an error Cpl is zero-length (end stays 0), so without this the
-                # tag is never returned and the controller starves/deadlocks.
-                If(cmp_sink.end | cmp_sink.err,
-                    tag_queue.sink.valid.eq(1),
-                    tag_queue.sink.tag.eq(cmp_sink.tag)
-                ),
                 NextState("WAIT")
             )
         )

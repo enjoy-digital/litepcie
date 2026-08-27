@@ -595,6 +595,20 @@ class LitePCIeTLPPacketizer(LiteXModule):
 
         if "REQUEST" in capabilities:
             self.tlp_req = tlp_req = stream.Endpoint(tlp_request_layout(data_width))
+
+            request_be = Signal(data_width//8)
+            self.comb += request_be.eq(2**(data_width//8)-1)
+            dwords_per_beat = data_width//32
+            if dwords_per_beat > 1:
+                remainder_bits = (dwords_per_beat - 1).bit_length()
+                remainder_cases = {
+                    n : request_be.eq(2**(4*n)-1)
+                    for n in range(1, dwords_per_beat)
+                }
+                self.comb += If(req_sink.last,
+                    Case(req_sink.len[:remainder_bits], remainder_cases)
+                )
+
             self.comb += [
                 If(~req_is_cfg,
                     tlp_req.valid.eq(req_sink.valid),
@@ -662,11 +676,7 @@ class LitePCIeTLPPacketizer(LiteXModule):
                 tlp_req.first_be.eq(0xf),
                 tlp_req.dat.eq(req_sink.dat),
                 If(req_sink.we,
-                    If(req_sink.len == 1,
-                        tlp_req.be.eq(0xf)
-                    ).Else(
-                        tlp_req.be.eq(2**(data_width//8)-1)
-                    )
+                    tlp_req.be.eq(request_be)
                 ).Else(
                     tlp_req.be.eq(0x00)
                 )

@@ -16,9 +16,8 @@ from litepcie.phy.usppciephy import USPPCIEPHY
 
 
 class DummyPlatform:
-    device = "xc7a35t"
-
-    def __init__(self):
+    def __init__(self, device="xc7a35t"):
+        self.device = device
         self.toolchain = SimpleNamespace(
             pre_placement_commands = [],
             pre_synthesis_commands = [],
@@ -29,6 +28,17 @@ class DummyPlatform:
 
     def add_platform_command(self, command):
         pass
+
+
+class DummyPads:
+    def __init__(self, nlanes):
+        self.rst_n = Signal()
+        self.clk_p = Signal()
+        self.clk_n = Signal()
+        self.tx_p  = Signal(nlanes)
+        self.tx_n  = Signal(nlanes)
+        self.rx_p  = Signal(nlanes)
+        self.rx_n  = Signal(nlanes)
 
 
 class TestXilinxPCIEPHY(unittest.TestCase):
@@ -67,20 +77,53 @@ class TestXilinxPCIEPHY(unittest.TestCase):
                 self.assertIn("CONFIG.pf0_bar0_size {{256}}", tcl)
 
     def test_tx_ecrc_follows_aer_control(self):
-        pads = SimpleNamespace(
-            rst_n = Signal(),
-            clk_p = Signal(),
-            clk_n = Signal(),
-            tx_p  = Signal(2),
-            tx_n  = Signal(2),
-            rx_p  = Signal(2),
-            rx_n  = Signal(2),
-        )
-        phy = S7PCIEPHY(DummyPlatform(), pads, data_width=64, pcie_data_width=64)
+        phy = S7PCIEPHY(DummyPlatform(), DummyPads(2), data_width=64, pcie_data_width=64)
 
         self.assertIs(phy.pcie_phy_params["o_cfg_aer_ecrc_gen_en"], phy.cfg_aer_ecrc_gen_en)
         self.assertIs(phy.pcie_phy_params["i_s_axis_tx_tuser"],     phy.s_axis_tx_tuser)
         self.assertEqual(len(phy.s_axis_tx_tuser), 4)
+
+    def test_s7_clock_and_ip_config_match_link_width_and_datapath(self):
+        for nlanes, pcie_data_width, user_clk_freq in [
+            (1,  64, 125e6),
+            (1, 128, 125e6),
+            (2,  64, 125e6),
+            (2, 128, 125e6),
+            (4,  64, 250e6),
+            (4, 128, 125e6),
+            (8, 128, 250e6),
+        ]:
+            for data_width in [64, 128]:
+                with self.subTest(
+                    nlanes=nlanes,
+                    pcie_data_width=pcie_data_width,
+                    data_width=data_width,
+                ):
+                    platform = DummyPlatform(device="xc7k325t")
+                    phy = S7PCIEPHY(
+                        platform,
+                        DummyPads(nlanes),
+                        data_width      = data_width,
+                        pcie_data_width = pcie_data_width,
+                    )
+                    mmcm_config = phy.mmcm.compute_config()
+                    phy.add_sources(platform, phy_path="")
+                    tcl = "\n".join(platform.toolchain.pre_synthesis_commands)
+
+                    self.assertEqual(phy.userclk_freq, user_clk_freq)
+                    self.assertEqual(phy.mmcm.clkouts[3].freq, user_clk_freq)
+                    self.assertEqual(mmcm_config["clkout3_freq"], user_clk_freq)
+                    self.assertIn(f"CONFIG.Maximum_Link_Width {{{{X{nlanes}}}}}", tcl)
+                    self.assertIn(f"CONFIG.Interface_Width {{{{{pcie_data_width}_bit}}}}", tcl)
+                    self.assertIn(
+                        f"CONFIG.User_Clk_Freq {{{{{int(user_clk_freq/1e6)}}}}}",
+                        tcl,
+                    )
+                    self.assertEqual(tcl.count("synth_ip $obj"), 1)
+
+    def test_s7_rejects_x8_64b_datapath(self):
+        with self.assertRaisesRegex(ValueError, "Gen2 x8.*64-bit"):
+            S7PCIEPHY(DummyPlatform(), DummyPads(8), data_width=64, pcie_data_width=64)
 
 
 if __name__ == "__main__":
