@@ -260,6 +260,12 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
         self.source = source = stream.Endpoint(descriptor_layout(address_width=address_width, with_user_id=True))
 
         self.terminate = Signal() # Early Termination.
+        # When asserted, the splitter parks in WAIT-DONE after issuing the final
+        # split request and only pops the descriptor (retiring it in the table,
+        # updating loop_status and generating the IRQ) once deasserted. The Reader
+        # connects this to (pending_words != 0) so that a descriptor is only retired
+        # once all its read data has been delivered.
+        self.block_retire = Signal()
 
         # # #
 
@@ -310,13 +316,20 @@ class LitePCIeDMADescriptorSplitter(LiteXModule):
                 ),
                 # On last or terminate...
                 If(source.last | self.terminate,
-                    # Accept Descriptor.
-                    sink.ready.eq(1),
-                    # Increment User-ID.
-                    NextValue(source.user_id, source.user_id + 1),
-                    # Return to IDLE..
-                    NextState("IDLE")
+                    # Park before retiring: only pop the descriptor when the
+                    # owner (Reader) confirms in-flight data has drained.
+                    NextState("WAIT-DONE")
                 )
+            )
+        )
+        fsm.act("WAIT-DONE",
+            If(~self.block_retire,
+                # Accept Descriptor.
+                sink.ready.eq(1),
+                # Increment User-ID.
+                NextValue(source.user_id, source.user_id + 1),
+                # Return to IDLE..
+                NextState("IDLE")
             )
         )
         self.comb += length_next.eq(length - max_size) # Outside of FSM for timings.
@@ -458,6 +471,11 @@ class LitePCIeDMAReader(LiteXModule):
         # Update Pending words.
         self.sync += pending_words.eq(pending_words + pending_words_queue - pending_words_dequeue)
         self.sync += If(~enable, pending_words.eq(0))
+        # Expose pending words for observability/testability.
+        self.pending_words = pending_words
+        # Retire a descriptor only when all its read data has been delivered: retire
+        # the descriptor in the table (loop_status/IRQ) once no data is pending.
+        self.comb += splitter.block_retire.eq(pending_words != 0)
 
         # FSM --------------------------------------------------------------------------------------
         self.fsm = fsm = FSM(reset_state="IDLE")
