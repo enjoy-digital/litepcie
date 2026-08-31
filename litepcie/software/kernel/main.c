@@ -705,6 +705,19 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 			ret = -EFAULT;
 			break;
 		}
+
+		/* m.addr is used unmodified as an offset into the BAR0 mapping, so it
+		 * has to be checked against it. Without this the ioctl reads and
+		 * writes up to 4 GiB past the end of a mapping that is typically a
+		 * few hundred KiB, which on a node that init.sh chmods to 0666 hands
+		 * every local user an arbitrary kernel read/write primitive.
+		 */
+		if ((m.addr & 3) || m.addr < CSR_BASE ||
+		    (u64)(m.addr - CSR_BASE) + sizeof(m.val) > dev->bar0_size) {
+			ret = -EINVAL;
+			break;
+		}
+
 		if (m.is_write)
 			litepcie_writel(dev, m.addr, m.val);
 		else
@@ -1043,6 +1056,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 		goto fail1;
 	}
 
+	litepcie_dev->bar0_size = pci_resource_len(dev, 0);
 	litepcie_dev->bar0_addr = pcim_iomap_table(dev)[0];
 	if (!litepcie_dev->bar0_addr) {
 		dev_err(&dev->dev, "Could not map BAR0\n");
