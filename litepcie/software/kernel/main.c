@@ -31,6 +31,9 @@
 #include <linux/log2.h>
 #include <linux/poll.h>
 #include <linux/cdev.h>
+#include <linux/kref.h>
+#include <linux/idr.h>
+#include <linux/rwsem.h>
 #include <linux/platform_device.h>
 #include <linux/version.h>
 #include <linux/dma-mapping.h>
@@ -89,6 +92,8 @@ struct litepcie_chan {
 
 	int index;
 	int minor;
+	struct device device;              /* chardev; its release() drops a kref */
+	struct address_space *mapping;     /* for unmap_mapping_range() on removal */
 };
 
 /* Structure to hold the LitePCIe device information */
@@ -101,8 +106,12 @@ struct litepcie_device {
 	struct litepcie_chan chan[DMA_CHANNEL_COUNT]; /* DMA channel information */
 	spinlock_t lock;                              /* Spinlock for synchronization */
 	int minor_base;                               /* Base minor number for the device */
+	int minor_idx;                                /* IDA allocated device index */
 	int irqs;                                     /* Number of IRQs */
 	int channels;                                 /* Number of DMA channels */
+	struct kref ref;                              /* Allocation lifetime */
+	struct rw_semaphore hw_lock;                  /* Hardware access gate */
+	bool disconnected;                            /* Guarded by hw_lock */
 };
 
 struct litepcie_chan_priv {
@@ -111,8 +120,54 @@ struct litepcie_chan_priv {
 	bool writer;
 };
 
+/*
+ * A PCI device can be unbound while userspace still holds a file descriptor
+ * open, so two things have to be kept apart: how long the allocation lives, and
+ * how long the hardware behind it is usable.
+ *
+ * Lifetime is handled structurally. The device struct is refcounted and each
+ * chardev holds one reference, dropped by its struct device release(). Since
+ * cdev_add() takes a reference on its parent kobject, an open file descriptor
+ * keeps that struct device -- and therefore this allocation -- alive on its
+ * own, which is why open() and release() do no refcounting themselves.
+ *
+ * Usability is handled by the gate below. Every file operation that touches the
+ * device runs between litepcie_enter() and litepcie_exit(); litepcie_pci_remove()
+ * takes the same lock for writing once, to set `disconnected`. When that write
+ * side returns, no file operation is in flight and none can start.
+ */
+static void litepcie_dev_free(struct kref *ref)
+{
+	kfree(container_of(ref, struct litepcie_device, ref));
+}
+
+static void litepcie_chan_device_release(struct device *dev)
+{
+	struct litepcie_chan *chan = container_of(dev, struct litepcie_chan, device);
+
+	kref_put(&chan->litepcie_dev->ref, litepcie_dev_free);
+}
+
+/* Returns false with no lock held if the device is gone; the caller must then
+ * fail with -ENODEV without touching anything device related.
+ */
+static bool litepcie_enter(struct litepcie_device *s)
+{
+	down_read(&s->hw_lock);
+	if (s->disconnected) {
+		up_read(&s->hw_lock);
+		return false;
+	}
+	return true;
+}
+
+static void litepcie_exit(struct litepcie_device *s)
+{
+	up_read(&s->hw_lock);
+}
+
 static int litepcie_major;
-static int litepcie_minor_idx;
+static DEFINE_IDA(litepcie_ida);
 static struct class *litepcie_class;
 static dev_t litepcie_dev_t;
 
@@ -401,13 +456,23 @@ static irqreturn_t litepcie_interrupt(int irq, void *data)
 static int litepcie_open(struct inode *inode, struct file *file)
 {
 	struct litepcie_chan *chan = container_of(inode->i_cdev, struct litepcie_chan, cdev);
-	struct litepcie_chan_priv *chan_priv = kzalloc(sizeof(*chan_priv), GFP_KERNEL);
+	struct litepcie_device *s = chan->litepcie_dev;
+	struct litepcie_chan_priv *chan_priv;
 
-	if (!chan_priv)
+	if (!litepcie_enter(s))
+		return -ENODEV;
+
+	chan_priv = kzalloc(sizeof(*chan_priv), GFP_KERNEL);
+	if (!chan_priv) {
+		litepcie_exit(s);
 		return -ENOMEM;
+	}
 
 	chan_priv->chan = chan;
 	file->private_data = chan_priv;
+
+	/* Remembered so that removal can revoke any mmap of the DMA buffers. */
+	chan->mapping = file->f_mapping;
 
 	if (chan->dma.reader_enable == 0) { /* clear only if disabled */
 		chan->dma.reader_hw_count = 0;
@@ -421,6 +486,8 @@ static int litepcie_open(struct inode *inode, struct file *file)
 		chan->dma.writer_sw_count = 0;
 	}
 
+	litepcie_exit(s);
+
 	return 0;
 }
 
@@ -428,6 +495,13 @@ static int litepcie_release(struct inode *inode, struct file *file)
 {
 	struct litepcie_chan_priv *chan_priv = file->private_data;
 	struct litepcie_chan *chan = chan_priv->chan;
+	struct litepcie_device *s = chan->litepcie_dev;
+
+	/* If the device is already gone there is nothing left to quiesce, and the
+	 * register writes below would touch an unmapped BAR.
+	 */
+	if (!litepcie_enter(s))
+		goto out;
 
 	if (chan_priv->reader) {
 		/* disable interrupt */
@@ -447,6 +521,8 @@ static int litepcie_release(struct inode *inode, struct file *file)
 		chan->dma.writer_enable = 0;
 	}
 
+	litepcie_exit(s);
+out:
 	kfree(chan_priv);
 
 	return 0;
@@ -468,12 +544,20 @@ static ssize_t litepcie_read(struct file *file, char __user *data, size_t size, 
 		else
 			ret = 0;
 	} else {
+		/* Sleeps outside the gate: holding it across an unbounded wait would
+		 * block removal. The condition tests disconnected so that the wake_up
+		 * from litepcie_pci_remove() reliably ends the wait.
+		 */
 		ret = wait_event_interruptible(chan->wait_rd,
-					       (chan->dma.writer_hw_count - chan->dma.writer_sw_count) > 0);
+					       (chan->dma.writer_hw_count - chan->dma.writer_sw_count) > 0 ||
+					       READ_ONCE(s->disconnected));
 	}
 
 	if (ret < 0)
 		return ret;
+
+	if (!litepcie_enter(s))
+		return -ENODEV;
 
 	i = 0;
 	overflows = 0;
@@ -486,8 +570,10 @@ static ssize_t litepcie_read(struct file *file, char __user *data, size_t size, 
 				ret = copy_to_user(data + (chan->block_size * i),
 						   chan->dma.writer_addr[chan->dma.writer_sw_count%DMA_BUFFER_COUNT],
 						   DMA_BUFFER_SIZE);
-				if (ret)
+				if (ret) {
+					litepcie_exit(s);
 					return -EFAULT;
+				}
 			}
 			len -= DMA_BUFFER_SIZE;
 			chan->dma.writer_sw_count += 1;
@@ -503,6 +589,8 @@ static ssize_t litepcie_read(struct file *file, char __user *data, size_t size, 
 #ifdef DEBUG_READ
 	dev_dbg(&s->dev->dev, "read: read %ld bytes out of %ld\n", size - len, size);
 #endif
+
+	litepcie_exit(s);
 
 	return size - len;
 }
@@ -523,12 +611,17 @@ static ssize_t litepcie_write(struct file *file, const char __user *data, size_t
 		else
 			ret = 0;
 	} else {
+		/* Sleeps outside the gate, as in litepcie_read(). */
 		ret = wait_event_interruptible(chan->wait_wr,
-					       (chan->dma.reader_sw_count - chan->dma.reader_hw_count) < DMA_BUFFER_COUNT/2);
+					       (chan->dma.reader_sw_count - chan->dma.reader_hw_count) < DMA_BUFFER_COUNT/2 ||
+					       READ_ONCE(s->disconnected));
 	}
 
 	if (ret < 0)
 		return ret;
+
+	if (!litepcie_enter(s))
+		return -ENODEV;
 
 	i = 0;
 	underflows = 0;
@@ -540,8 +633,10 @@ static ssize_t litepcie_write(struct file *file, const char __user *data, size_t
 			} else {
 				ret = copy_from_user(chan->dma.reader_addr[chan->dma.reader_sw_count%DMA_BUFFER_COUNT],
 						     data + (chan->block_size * i), DMA_BUFFER_SIZE);
-				if (ret)
+				if (ret) {
+					litepcie_exit(s);
 					return -EFAULT;
+				}
 			}
 			len -= DMA_BUFFER_SIZE;
 			chan->dma.reader_sw_count += 1;
@@ -557,6 +652,8 @@ static ssize_t litepcie_write(struct file *file, const char __user *data, size_t
 #ifdef DEBUG_WRITE
 	dev_dbg(&s->dev->dev, "write: write %ld bytes out of %ld\n", size - len, size);
 #endif
+
+	litepcie_exit(s);
 
 	return size - len;
 }
@@ -583,6 +680,9 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
 	else
 		return -EINVAL;
 
+	if (!litepcie_enter(s))
+		return -ENODEV;
+
 	for (i = 0; i < DMA_BUFFER_COUNT; i++) {
 #if defined(__arm__) || defined(__aarch64__)
 		void *va;
@@ -598,6 +698,7 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
 		if (remap_pfn_range(vma, vma->vm_start + i * DMA_BUFFER_SIZE, pfn,
 				    DMA_BUFFER_SIZE, vma->vm_page_prot)) {
 			dev_err(&s->dev->dev, "mmap remap_pfn_range failed\n");
+			litepcie_exit(s);
 			return -EAGAIN;
 		}
 #else
@@ -622,10 +723,13 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
 		if (ret) {
 			dev_err(&s->dev->dev,
 				"dma_mmap_coherent failed for buffer %d (ret=%d)\n", i, ret);
+			litepcie_exit(s);
 			return ret;
 		}
 #endif
 	}
+
+	litepcie_exit(s);
 
 	return 0;
 }
@@ -636,9 +740,10 @@ static unsigned int litepcie_poll(struct file *file, poll_table *wait)
 
 	struct litepcie_chan_priv *chan_priv = file->private_data;
 	struct litepcie_chan *chan = chan_priv->chan;
-#ifdef DEBUG_POLL
 	struct litepcie_device *s = chan->litepcie_dev;
-#endif
+
+	if (!litepcie_enter(s))
+		return POLLERR | POLLHUP;
 
 	poll_wait(file, &chan->wait_rd, wait);
 	poll_wait(file, &chan->wait_wr, wait);
@@ -655,6 +760,8 @@ static unsigned int litepcie_poll(struct file *file, poll_table *wait)
 
 	if ((chan->dma.reader_sw_count - chan->dma.reader_hw_count) < DMA_BUFFER_COUNT/2)
 		mask |= POLLOUT | POLLWRNORM;
+
+	litepcie_exit(s);
 
 	return mask;
 }
@@ -696,6 +803,9 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 	struct litepcie_chan *chan = chan_priv->chan;
 	struct litepcie_device *dev = chan->litepcie_dev;
 
+	if (!litepcie_enter(dev))
+		return -ENODEV;
+
 	switch (cmd) {
 	case LITEPCIE_IOCTL_REG:
 	{
@@ -705,6 +815,19 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 			ret = -EFAULT;
 			break;
 		}
+
+		/* m.addr is used unmodified as an offset into the BAR0 mapping, so it
+		 * has to be checked against it. Without this the ioctl reads and
+		 * writes up to 4 GiB past the end of a mapping that is typically a
+		 * few hundred KiB, which on a node that init.sh chmods to 0666 hands
+		 * every local user an arbitrary kernel read/write primitive.
+		 */
+		if ((m.addr & 3) || m.addr < CSR_BASE ||
+		    (u64)(m.addr - CSR_BASE) + sizeof(m.val) > dev->bar0_size) {
+			ret = -EINVAL;
+			break;
+		}
+
 		if (m.is_write)
 			litepcie_writel(dev, m.addr, m.val);
 		else
@@ -920,6 +1043,9 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 		ret = -ENOIOCTLCMD;
 		break;
 	}
+
+	litepcie_exit(dev);
+
 	return ret;
 }
 
@@ -934,59 +1060,94 @@ static const struct file_operations litepcie_fops = {
 	.mmap = litepcie_mmap,
 };
 
+/* Reserve this device's minor range. Kept separate from litepcie_alloc_chdev()
+ * so that the chardevs can be created at the end of probe.
+ */
+static int litepcie_reserve_minors(struct litepcie_device *s)
+{
+	int id = ida_alloc_max(&litepcie_ida,
+			       LITEPCIE_MINOR_COUNT / s->channels - 1, GFP_KERNEL);
+
+	if (id < 0)
+		return id;
+
+	s->minor_idx  = id;
+	s->minor_base = MINOR(litepcie_dev_t) + id * s->channels;
+
+	return 0;
+}
+
+static void litepcie_release_minors(struct litepcie_device *s)
+{
+	ida_free(&litepcie_ida, s->minor_idx);
+}
+
 static int litepcie_alloc_chdev(struct litepcie_device *s)
 {
-	int i, j;
-	int ret;
-	int index;
+	int i, j, ret;
 
-	index = litepcie_minor_idx;
-	s->minor_base = litepcie_minor_idx;
 	for (i = 0; i < s->channels; i++) {
-		cdev_init(&s->chan[i].cdev, &litepcie_fops);
-		ret = cdev_add(&s->chan[i].cdev, MKDEV(litepcie_major, index), 1);
-		if (ret < 0) {
-			dev_err(&s->dev->dev, "Failed to allocate cdev\n");
-			goto fail_alloc;
+		struct litepcie_chan *chan = &s->chan[i];
+
+		dev_info(&s->dev->dev, "Creating /dev/litepcie%d\n", chan->minor);
+
+		device_initialize(&chan->device);
+		chan->device.devt    = MKDEV(litepcie_major, chan->minor);
+		chan->device.class   = litepcie_class;
+		chan->device.parent  = &s->dev->dev;
+		chan->device.release = litepcie_chan_device_release;
+
+		/* The reference this chardev holds on the device struct. Taken before
+		 * anything can call put_device(), dropped by the release() above.
+		 */
+		kref_get(&s->ref);
+
+		ret = dev_set_name(&chan->device, "litepcie%d", chan->minor);
+		if (ret)
+			goto fail;
+
+		cdev_init(&chan->cdev, &litepcie_fops);
+		chan->cdev.owner = THIS_MODULE;
+
+		ret = cdev_device_add(&chan->cdev, &chan->device);
+		if (ret) {
+			dev_err(&s->dev->dev, "Failed to add chardev %d\n", chan->minor);
+			goto fail;
 		}
-		index++;
 	}
 
-	index = litepcie_minor_idx;
-	for (i = 0; i < s->channels; i++) {
-		dev_info(&s->dev->dev, "Creating /dev/litepcie%d\n", index);
-		if (!device_create(litepcie_class, NULL, MKDEV(litepcie_major, index), NULL, "litepcie%d", index)) {
-			ret = -EINVAL;
-			dev_err(&s->dev->dev, "Failed to create device\n");
-			goto fail_create;
-		}
-		index++;
-
-	}
-
-	litepcie_minor_idx = index;
 	return 0;
 
-fail_create:
-	index = litepcie_minor_idx;
-	for (j = 0; j < i; j++)
-		device_destroy(litepcie_class, MKDEV(litepcie_major, index++));
-
-fail_alloc:
-	for (i = 0; i < s->channels; i++)
-		cdev_del(&s->chan[i].cdev);
-
+fail:
+	put_device(&s->chan[i].device);
+	for (j = 0; j < i; j++) {
+		cdev_device_del(&s->chan[j].cdev, &s->chan[j].device);
+		put_device(&s->chan[j].device);
+	}
 	return ret;
 }
 
-static void litepcie_free_chdev(struct litepcie_device *s)
+/* Stop handing the device out. After this returns no new open() reaches the
+ * driver, but file descriptors that are already open still exist.
+ */
+static void litepcie_revoke_chdevs(struct litepcie_device *s)
 {
 	int i;
 
-	for (i = 0; i < s->channels; i++) {
-		device_destroy(litepcie_class, MKDEV(litepcie_major, s->minor_base + i));
-		cdev_del(&s->chan[i].cdev);
-	}
+	for (i = 0; i < s->channels; i++)
+		cdev_device_del(&s->chan[i].cdev, &s->chan[i].device);
+}
+
+/* Drop the chardevs' references. If a file descriptor is still open its
+ * reference on the cdev holds the struct device alive, so the release() -- and
+ * the kfree() behind it -- simply happens when that descriptor is closed.
+ */
+static void litepcie_release_chdevs(struct litepcie_device *s)
+{
+	int i;
+
+	for (i = 0; i < s->channels; i++)
+		put_device(&s->chan[i].device);
 }
 
 /* Function to probe the LitePCIe PCI device */
@@ -1005,11 +1166,16 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	dev_info(&dev->dev, "\e[1m[Probing device]\e[0m\n");
 
 	/* Allocate memory for the LitePCIe device structure */
-	litepcie_dev = devm_kzalloc(&dev->dev, sizeof(struct litepcie_device), GFP_KERNEL);
-	if (!litepcie_dev) {
-		ret = -ENOMEM;
-		goto fail1;
-	}
+	/* Not devm: this allocation holds the chardevs and has to outlive an
+	 * unbind that happens while a file descriptor is still open. It is freed
+	 * by the last kref_put().
+	 */
+	litepcie_dev = kzalloc(sizeof(struct litepcie_device), GFP_KERNEL);
+	if (!litepcie_dev)
+		return -ENOMEM;
+
+	kref_init(&litepcie_dev->ref);
+	init_rwsem(&litepcie_dev->hw_lock);
 
 	pci_set_drvdata(dev, litepcie_dev);
 	litepcie_dev->dev = dev;
@@ -1043,6 +1209,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 		goto fail1;
 	}
 
+	litepcie_dev->bar0_size = pci_resource_len(dev, 0);
 	litepcie_dev->bar0_addr = pcim_iomap_table(dev)[0];
 	if (!litepcie_dev->bar0_addr) {
 		dev_err(&dev->dev, "Could not map BAR0\n");
@@ -1111,10 +1278,9 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 
 	litepcie_dev->channels = DMA_CHANNELS;
 
-	/* create all chardev in /dev */
-	ret = litepcie_alloc_chdev(litepcie_dev);
-	if (ret) {
-		dev_err(&dev->dev, "Failed to allocate character device\n");
+	ret = litepcie_reserve_minors(litepcie_dev);
+	if (ret < 0) {
+		dev_err(&dev->dev, "Failed to allocate a minor range\n");
 		goto fail2;
 	}
 
@@ -1198,7 +1364,7 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 	ret = litepcie_dma_init(litepcie_dev);
 	if (ret) {
 		dev_err(&dev->dev, "Failed to allocate DMA\n");
-		goto fail3;
+		goto fail2;
 	}
 
 #ifdef CSR_UART_XOVER_RXTX_ADDR
@@ -1209,20 +1375,34 @@ static int litepcie_pci_probe(struct pci_dev *dev, const struct pci_device_id *i
 		(resource_size_t) litepcie_dev->bar0_addr +
 		CSR_UART_XOVER_RXTX_ADDR - CSR_BASE;
 	tty_res->flags = IORESOURCE_REG;
-	litepcie_dev->uart = platform_device_register_simple("liteuart", litepcie_minor_idx, tty_res, 1);
+	litepcie_dev->uart = platform_device_register_simple("liteuart", litepcie_dev->minor_idx, tty_res, 1);
 	if (IS_ERR(litepcie_dev->uart)) {
 		ret = PTR_ERR(litepcie_dev->uart);
-		goto fail3;
+		goto fail2;
 	}
 #endif
+
+	/* Create all chardev in /dev. This is the last step of probe: everything
+	 * they expose to userspace is initialised above.
+	 */
+	ret = litepcie_alloc_chdev(litepcie_dev);
+	if (ret) {
+		dev_err(&dev->dev, "Failed to allocate character device\n");
+		goto fail3;
+	}
 
 	return 0;
 
 fail3:
-	litepcie_free_chdev(litepcie_dev);
+#ifdef CSR_UART_XOVER_RXTX_ADDR
+	platform_device_unregister(litepcie_dev->uart);
+#endif
 fail2:
+	litepcie_release_minors(litepcie_dev);
 	pci_free_irq_vectors(dev);
 fail1:
+	/* The chardevs were never created, so this drops the last reference. */
+	kref_put(&litepcie_dev->ref, litepcie_dev_free);
 	return ret;
 }
 
@@ -1235,6 +1415,33 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 	litepcie_dev = pci_get_drvdata(dev);
 
 	dev_info(&dev->dev, "\e[1m[Removing device]\e[0m\n");
+
+	/* Stop handing the device out first: no new open() gets through here. */
+	litepcie_revoke_chdevs(litepcie_dev);
+
+	/* Then close the gate. Taking hw_lock for writing waits for the file
+	 * operations already between litepcie_enter() and litepcie_exit() to
+	 * finish and keeps new ones out, so the teardown below has the hardware
+	 * to itself.
+	 */
+	down_write(&litepcie_dev->hw_lock);
+	litepcie_dev->disconnected = true;
+	up_write(&litepcie_dev->hw_lock);
+
+	for (i = 0; i < litepcie_dev->channels; i++) {
+		/* read() and write() sleep outside the gate, so wake them up; their
+		 * wait conditions test disconnected and they return -ENODEV.
+		 */
+		wake_up_interruptible(&litepcie_dev->chan[i].wait_rd);
+		wake_up_interruptible(&litepcie_dev->chan[i].wait_wr);
+
+		/* Drop userspace mappings of the DMA buffers before devres frees
+		 * them, otherwise a process that mmap'd a ring keeps a read/write
+		 * window onto pages that go back to the page allocator.
+		 */
+		if (litepcie_dev->chan[i].mapping)
+			unmap_mapping_range(litepcie_dev->chan[i].mapping, 0, 0, 1);
+	}
 
 	/* Stop the DMAs */
 	litepcie_stop_dma(litepcie_dev);
@@ -1250,9 +1457,15 @@ static void litepcie_pci_remove(struct pci_dev *dev)
 
 	platform_device_unregister(litepcie_dev->uart);
 
-	litepcie_free_chdev(litepcie_dev);
-
 	pci_free_irq_vectors(dev);
+
+	/* Release the chardevs last. A file descriptor that is still open keeps
+	 * the allocation alive through its reference on the cdev; every file
+	 * operation it can still make is refused by the gate above.
+	 */
+	litepcie_release_chdevs(litepcie_dev);
+	litepcie_release_minors(litepcie_dev);
+	kref_put(&litepcie_dev->ref, litepcie_dev_free);
 }
 
 /* PCI device ID table */
@@ -1330,7 +1543,6 @@ static int __init litepcie_module_init(void)
 		goto fail_alloc_chrdev_region;
 	}
 	litepcie_major = MAJOR(litepcie_dev_t);
-	litepcie_minor_idx = MINOR(litepcie_dev_t);
 
 	ret = pci_register_driver(&litepcie_pci_driver);
 	if (ret < 0) {
@@ -1353,6 +1565,7 @@ static void __exit litepcie_module_exit(void)
 {
 	pci_unregister_driver(&litepcie_pci_driver);
 	unregister_chrdev_region(litepcie_dev_t, LITEPCIE_MINOR_COUNT);
+	ida_destroy(&litepcie_ida);
 	class_destroy(litepcie_class);
 }
 
