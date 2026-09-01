@@ -138,7 +138,7 @@ class LitePCIeDMAScatterGather(LiteXModule):
     potentially be lost, it's safer for the software to just use the hardware loop status than to
     maintain a software loop status based MSI IRQ reception).
     """
-    def __init__(self, depth, address_width=32):
+    def __init__(self, depth, address_width=32, with_external_retire=False):
         assert address_width in [32, 64]
         # Stream Endpoint.
         self.source = source = stream.Endpoint(descriptor_layout(address_width=address_width))
@@ -207,6 +207,19 @@ class LitePCIeDMAScatterGather(LiteXModule):
         # Table Read logic -------------------------------------------------------------------------
         self.comb += table.source.connect(source)
 
+        # Descriptor Retirement --------------------------------------------------------------------
+        # By default a descriptor retires when consumed from the table. The DMA Reader overrides
+        # this with its ordered completion path and the mode/loop marker captured at issue time, so
+        # software-visible status only advances once the corresponding Host read has completed.
+        if with_external_retire:
+            self.retire       = retire       = Signal()
+            self.retire_first = retire_first = Signal()
+            self.retire_loop  = retire_loop  = Signal()
+        else:
+            retire       = table.source.valid & table.source.ready
+            retire_first = table.source.first
+            retire_loop  = loop_mode
+
         # Loop Status (For Software Sychronization in Loop mode) -----------------------------------
         loop_first = Signal()
         loop_index = self.loop_status.fields.index
@@ -217,11 +230,11 @@ class LitePCIeDMAScatterGather(LiteXModule):
                 loop_first.eq(1),
                 loop_index.eq(0),
                 loop_count.eq(0),
-            # When a Descriptor is consumned...
-            ).Elif(table.source.valid & table.source.ready,
+            # When a Descriptor is retired...
+            ).Elif(retire,
                 # Update Loop Status with current Loop Index/Count.
                 # Loop Mode.
-                If(loop_mode & table.source.first,
+                If(retire_loop & retire_first,
                     # Reset Index.
                     loop_index.eq(0),
                     # Increment Count (except on first since we want (index, count) == (0,0)).
@@ -361,7 +374,10 @@ class LitePCIeDMAReader(LiteXModule):
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
-            self.table = LitePCIeDMAScatterGather(table_depth, address_width=address_width)
+            self.table = LitePCIeDMAScatterGather(table_depth,
+                address_width        = address_width,
+                with_external_retire = True,
+            )
         else:
             self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
 
@@ -380,10 +396,16 @@ class LitePCIeDMAReader(LiteXModule):
 
         # Request Metadata -------------------------------------------------------------------------
         # Completion TLPs are retired in request order, but last only delimits an individual
-        # Completion packet. Keep one entry per split request to delimit the original DMA
-        # descriptor on the final request's last Completion.
+        # Completion packet. Keep one entry per split request to delimit and retire the original
+        # DMA descriptor on the final request's last Completion.
         self.request_metadata = request_metadata = ResetInserter()(SyncFIFO(
-            layout   = [("descriptor_last", 1), ("last_disable", 1)],
+            layout   = [
+                ("descriptor_last", 1),
+                ("loop_first",      1),
+                ("loop_mode",       1),
+                ("irq_disable",     1),
+                ("last_disable",    1),
+            ],
             depth    = endpoint.max_pending_requests,
             buffered = True,
         ))
@@ -466,8 +488,13 @@ class LitePCIeDMAReader(LiteXModule):
                 fsm.ongoing("MEM-RD-REQ") & port.source.valid & port.source.ready
             ),
             request_metadata.sink.descriptor_last.eq(splitter.source.last),
+            request_metadata.sink.loop_first.eq(splitter.sink.first),
+            request_metadata.sink.irq_disable.eq(splitter.source.irq_disable),
             request_metadata.sink.last_disable.eq(splitter.source.last_disable),
         ]
+        self.comb += request_metadata.sink.loop_mode.eq(
+            self.table.loop_prog_n.storage if with_table else 0
+        )
         fsm.act("IDLE",
             # Reset Splitter/FIFO when disabled.
             If(~enable,
@@ -505,9 +532,24 @@ class LitePCIeDMAReader(LiteXModule):
             )
         )
 
-        # IRQ --------------------------------------------------------------------------------------
-        self.comb += If(splitter.source.valid & splitter.source.ready & splitter.source.last,
-            self.irq.eq(~splitter.source.irq_disable)
+        # Descriptor Retirement / IRQ ---------------------------------------------------------------
+        # Completions are delivered by the controller in request order. Retire the original DMA
+        # descriptor with its final split request, once the final Completion has been accepted into
+        # the Reader. At this point the Host buffer is safe for software to recycle, independently
+        # of any downstream backpressure on the Reader's output.
+        descriptor_retire = Signal()
+        self.comb += descriptor_retire.eq(
+            request_metadata.source.valid & request_metadata.source.ready &
+            request_metadata.source.descriptor_last
+        )
+        if with_table:
+            self.comb += [
+                self.table.retire.eq(descriptor_retire),
+                self.table.retire_first.eq(request_metadata.source.loop_first),
+                self.table.retire_loop.eq(request_metadata.source.loop_mode),
+            ]
+        self.comb += If(descriptor_retire,
+            self.irq.eq(~request_metadata.source.irq_disable)
         )
 
         # Progress ---------------------------------------------------------------------------------
