@@ -125,6 +125,56 @@ class TestXilinxPCIEPHY(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Gen2 x8.*64-bit"):
             S7PCIEPHY(DummyPlatform(), DummyPads(8), data_width=64, pcie_data_width=64)
 
+    def test_usp_debug_interfaces_are_disabled_by_default(self):
+        phy = USPPCIEPHY(
+            DummyPlatform(device="xcau15p"),
+            DummyPads(8),
+            speed="gen4",
+            data_width=512,
+            pcie_data_width=512,
+            ip_name="pcie4c_uscale_plus",
+        )
+
+        self.assertNotIn("en_ext_ch_gt_drp", phy.config)
+        self.assertNotIn("en_pcie_drp", phy.config)
+        self.assertNotIn("i_ext_ch_gt_drpaddr", phy.pcie_usp_phy_params)
+        self.assertNotIn("i_drp_addr", phy.pcie_usp_phy_params)
+        self.assertIs(phy.pcie_usp_phy_params["o_cfg_err_cor_out"], phy.cfg_err_cor)
+        self.assertIs(
+            phy.pcie_usp_phy_params["i_cfg_link_training_enable"],
+            phy.link_training_enable,
+        )
+
+    def test_usp_optional_debug_interfaces_match_hard_ip_ports(self):
+        platform = DummyPlatform(device="xcau15p")
+        phy = USPPCIEPHY(
+            platform,
+            DummyPads(8),
+            speed="gen4",
+            data_width=512,
+            pcie_data_width=512,
+            ip_name="pcie4c_uscale_plus",
+            with_ext_gt_drp=True,
+            with_pcie_drp=True,
+        )
+
+        self.assertTrue(phy.config["en_ext_ch_gt_drp"])
+        self.assertTrue(phy.config["en_pcie_drp"])
+        self.assertEqual(len(phy.ext_gt_drp_addr), 80)
+        self.assertEqual(len(phy.ext_gt_drp_di), 128)
+        self.assertEqual(len(phy.ext_gt_drp_en), 8)
+        self.assertEqual(len(phy.pcie_drp_addr), 10)
+        self.assertEqual(len(phy.pcie_drp_di), 16)
+        self.assertIs(
+            phy.pcie_usp_phy_params["o_ext_ch_gt_drpclk"],
+            phy.ext_gt_drp_clk,
+        )
+        self.assertIs(phy.pcie_usp_phy_params["o_drp_rdy"], phy.pcie_drp_rdy)
+        phy.add_sources(platform)
+        tcl = "\n".join(platform.toolchain.pre_synthesis_commands)
+        self.assertIn("CONFIG.en_ext_ch_gt_drp {{True}}", tcl)
+        self.assertIn("CONFIG.en_pcie_drp {{True}}", tcl)
+
 
 if __name__ == "__main__":
     unittest.main()
