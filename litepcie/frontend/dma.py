@@ -343,6 +343,8 @@ class LitePCIeDMAReader(LiteXModule):
         # Stream Endpoint.
         self.source = stream.Endpoint(dma_layout(self.data_width))
         self.progress_bytes = Signal(64)
+        # Admission only: a request already presented must complete even when paused.
+        self.request_enable = Signal(reset=1)
 
         # Control.
         self._enable = CSRStorage(size=2, description="DMA Reader Control. Write ``1`` to enable DMA Reader.", reset=0 if with_table else 1)
@@ -475,7 +477,7 @@ class LitePCIeDMAReader(LiteXModule):
                 data_fifo.reset.eq(1),
                 request_metadata.reset.eq(1),
             # Else wait for a Descriptor and to have enough Space to generate the Request.
-            ).Elif(splitter.source.valid & (pending_words < (data_fifo_depth - max_words_per_request)),
+            ).Elif(self.request_enable & splitter.source.valid & (pending_words < (data_fifo_depth - max_words_per_request)),
                 NextState("MEM-RD-REQ"),
             )
         )
@@ -548,6 +550,7 @@ class LitePCIeDMAWriter(LiteXModule):
         # Stream Endpoint.
         self.sink = stream.Endpoint(dma_layout(self.data_width))
         self.progress_bytes = Signal(64)
+        self.request_enable = Signal(reset=1)
 
         # Control.
         self._enable = CSRStorage(size=2, description="DMA Writer Control. Write ``1`` to enable DMA Writer.", reset=0 if with_table else 1)
@@ -613,7 +616,7 @@ class LitePCIeDMAWriter(LiteXModule):
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
             # Else wait for a Descriptor and to have enough Data to generate the Request.
-            ).Elif(splitter.source.valid & (data_fifo.level >= request_words),
+            ).Elif(self.request_enable & splitter.source.valid & (data_fifo.level >= request_words),
                 NextState("MEM-WR"),
             )
         )
