@@ -34,6 +34,7 @@ class USPPCIEPHY(LiteXModule):
         with_cfg_mgmt   = False,
         with_ext_gt_drp = False,
         with_pcie_drp   = False,
+        with_rq_buffer  = False,
     ):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
@@ -183,7 +184,8 @@ class USPPCIEPHY(LiteXModule):
         self.rq_datapath = PHYTXDatapath(
             core_data_width = data_width,
             pcie_data_width = pcie_data_width,
-            clock_domain    = cd)
+            clock_domain    = cd,
+            with_packet_buffer = with_rq_buffer)
         self.comb += self.req_sink.connect(self.rq_datapath.sink)
         s_axis_rq = self.rq_datapath.source
 
