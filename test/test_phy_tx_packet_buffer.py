@@ -8,6 +8,50 @@ from litepcie.phy.common import PHYTXDatapath
 
 
 class TestPHYTXPacketBuffer(unittest.TestCase):
+    def test_same_domain_path_still_waits_for_complete_packet(self):
+        dut = Module()
+        dut.clock_domains.cd_pcie = ClockDomain("pcie")
+        dut.submodules.path = path = PHYTXDatapath(512, 512, "pcie", with_packet_buffer=True)
+        self.assertFalse(any(isinstance(module, ClockDomainCrossing) for _, module in path._submodules))
+        received = []
+        expected = [(i, 0xffffffffffffffff if i != 8 else 0xffff, int(i == 0), int(i == 8))
+                    for i in range(9)]
+
+        def source():
+            for data, be, first, last in expected:
+                yield path.sink.valid.eq(0)
+                for _ in range(3):
+                    yield
+                yield path.sink.dat.eq(data)
+                yield path.sink.be.eq(be)
+                yield path.sink.first.eq(first)
+                yield path.sink.last.eq(last)
+                yield path.sink.valid.eq(1)
+                yield
+                while not (yield path.sink.ready):
+                    yield
+            yield path.sink.valid.eq(0)
+            for _ in range(30):
+                yield
+
+        @passive
+        def monitor():
+            active = False
+            yield path.source.ready.eq(1)
+            while True:
+                valid = (yield path.source.valid)
+                if active:
+                    self.assertTrue(valid)
+                if valid and (yield path.source.ready):
+                    word = ((yield path.source.dat), (yield path.source.be),
+                            (yield path.source.first), (yield path.source.last))
+                    received.append(word)
+                    active = not word[3]
+                yield
+
+        run_simulation(dut, {"pcie": [source(), monitor()]}, clocks={"pcie": 10})
+        self.assertEqual(received, expected)
+
     def test_complete_packets_cross_independent_clocks(self):
         for width in (128, 256, 512):
             for ready_always in (False, True):
