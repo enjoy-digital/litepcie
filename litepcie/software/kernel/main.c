@@ -761,7 +761,11 @@ static long litepcie_ioctl(struct file *file, unsigned int cmd,
 		}
 
 		/* loopback */
+#ifdef CSR_PCIE_DMA0_LOOPBACK_ENABLE_ADDR
 		litepcie_writel(chan->litepcie_dev, chan->dma.base + PCIE_DMA_LOOPBACK_ENABLE_OFFSET, m.loopback_enable);
+#else
+		ret = -EOPNOTSUPP;
+#endif
 	}
 	break;
 	case LITEPCIE_IOCTL_DMA_WRITER:
