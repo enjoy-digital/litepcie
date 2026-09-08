@@ -7,7 +7,10 @@
 from migen import *
 from migen.genlib.cdc import MultiReg
 
+from litex.soc.interconnect.packet import PacketFIFO
+
 from litepcie.common import *
+from litepcie.tlp.common import max_payload_size
 
 # Helpers ------------------------------------------------------------------------------------------
 
@@ -31,11 +34,22 @@ def get_bar_size_config(size):
 # TX Datapath --------------------------------------------------------------------------------------
 
 class PHYTXDatapath(Module):
-    def __init__(self, core_data_width, pcie_data_width, clock_domain):
+    def __init__(self, core_data_width, pcie_data_width, clock_domain, with_packet_buffer=False):
         self.sink   = sink   = stream.Endpoint(phy_layout(core_data_width))
         self.source = source = stream.Endpoint(phy_layout(pcie_data_width))
 
         # # #
+
+        if with_packet_buffer:
+            # Continuous input packets can acquire bubbles crossing independent
+            # clocks. Do not expose a TLP to the hard IP until its last beat has
+            # arrived in the PCIe domain (PG213 requester TVALID requirement).
+            packet_words = (max_payload_size + 16 + pcie_data_width//8 - 1)//(pcie_data_width//8)
+            self.submodules.packet_buffer = ClockDomainsRenamer("pcie")(PacketFIFO(
+                phy_layout(pcie_data_width), payload_depth=2*packet_words,
+                param_depth=4, buffered=True))
+            self.comb += self.packet_buffer.source.connect(source)
+            source = self.packet_buffer.sink
 
         if (clock_domain == "pcie") and (core_data_width == pcie_data_width):
             self.comb += sink.connect(source)
