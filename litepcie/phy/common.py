@@ -124,7 +124,7 @@ class PHYRXDatapath(Module):
         if (clock_domain == "pcie") and (core_data_width == pcie_data_width):
             self.comb += sink.connect(source)
         else:
-            pipe_ready = stream.PipeReady(phy_layout(core_data_width))
+            pipe_ready = stream.PipeReady(phy_layout(pcie_data_width))
             pipe_ready = ClockDomainsRenamer("pcie")(pipe_ready)
             converter  = stream.StrideConverter(phy_layout(pcie_data_width), phy_layout(core_data_width))
             converter  = ClockDomainsRenamer("pcie")(converter)
@@ -138,10 +138,29 @@ class PHYRXDatapath(Module):
             pipe_valid = stream.PipeValid(phy_layout(core_data_width))
             pipe_valid = ClockDomainsRenamer(clock_domain)(pipe_valid)
             self.submodules += pipe_ready, converter, cdc, pipe_valid
+            converted = converter.source
+            if core_data_width > pcie_data_width:
+                # StrideConverter retains unused upper slices on a partial up-conversion.
+                # Track the number of loaded slices so stale byte enables cannot revive them.
+                ratio = core_data_width // pcie_data_width
+                count = Signal(max=ratio)
+                valid_slices = Signal(max=ratio + 1)
+                self.sync.pcie += If(converter.sink.valid & converter.sink.ready,
+                    If(converter.sink.last | (count == ratio - 1),
+                        valid_slices.eq(count + 1),
+                        count.eq(0),
+                    ).Else(count.eq(count + 1))
+                )
+                converted = stream.Endpoint(phy_layout(core_data_width))
+                self.comb += converter.source.connect(converted, omit={"be"})
+                for i in range(ratio):
+                    low, high = i * (pcie_data_width // 8), (i + 1) * (pcie_data_width // 8)
+                    self.comb += converted.be[low:high].eq(
+                        Mux(valid_slices > i, converter.source.be[low:high], 0))
             self.comb += [
                 sink.connect(pipe_ready.sink),
                 pipe_ready.source.connect(converter.sink),
-                converter.source.connect(cdc.sink),
+                converted.connect(cdc.sink),
                 cdc.source.connect(pipe_valid.sink),
                 pipe_valid.source.connect(source),
             ]
