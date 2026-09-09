@@ -683,6 +683,13 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
 	if (!litepcie_enter(s))
 		return -ENODEV;
 
+	/* The ring is fixed-size device memory, not expandable or dumpable RAM. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+	vm_flags_set(vma, VM_DONTEXPAND | VM_DONTDUMP);
+#else
+	vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
+#endif
+
 	for (i = 0; i < DMA_BUFFER_COUNT; i++) {
 #if defined(__arm__) || defined(__aarch64__)
 		void *va;
@@ -720,6 +727,14 @@ static int litepcie_mmap(struct file *file, struct vm_area_struct *vma)
 
 		ret = dma_mmap_coherent(&s->dev->dev, &sub_vma,
 					cpu_addr, dma_handle, DMA_BUFFER_SIZE);
+		/* DMA backends add PFNMAP or MIXEDMAP and may change protection.
+		 * Retain that metadata on the real VMA, including partial failure. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+		vm_flags_set(vma, sub_vma.vm_flags);
+#else
+		vma->vm_flags |= sub_vma.vm_flags;
+#endif
+		vma->vm_page_prot = sub_vma.vm_page_prot;
 		if (ret) {
 			dev_err(&s->dev->dev,
 				"dma_mmap_coherent failed for buffer %d (ret=%d)\n", i, ret);
