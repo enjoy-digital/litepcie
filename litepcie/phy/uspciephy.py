@@ -198,7 +198,7 @@ class USPCIEPHY(LiteXModule):
             self.id.eq(Cat(function_number, device_number, bus_number))
         ]
         self.comb += [
-            self._bus_master_enable.status.eq(cfg_function_status),
+            self._bus_master_enable.status.eq(cfg_function_status[2]),
             self._max_request_size.status.eq(self.max_request_size),
             self._max_payload_size.status.eq(self.max_payload_size),
         ]

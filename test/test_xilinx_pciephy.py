@@ -7,7 +7,9 @@
 import unittest
 from types import SimpleNamespace
 
-from migen import Signal
+from migen import Module, Signal, run_simulation
+from migen.fhdl.structure import _Assign
+from migen.genlib.cdc import MultiReg
 
 from litepcie.phy.common     import get_bar_size_config
 from litepcie.phy.s7pciephy import S7PCIEPHY
@@ -42,6 +44,36 @@ class DummyPads:
 
 
 class TestXilinxPCIEPHY(unittest.TestCase):
+    def test_ultrascale_bus_master_status_uses_function_zero_bit_two(self):
+        for phy_cls, parameter_name in [
+            (USPCIEPHY, "pcie_phy_params"),
+            (USPPCIEPHY, "pcie_usp_phy_params"),
+        ]:
+            with self.subTest(phy=phy_cls.__name__):
+                phy = phy_cls(DummyPlatform(), DummyPads(4), data_width=128, pcie_data_width=128)
+                native = getattr(phy, parameter_name)["o_cfg_function_status"]
+                status = phy._bus_master_enable.status
+                # Simulate the production CSR/CDC path without vendor hard-IP primitives.
+                dut = Module()
+                assignments = [statement for statement in phy._fragment.comb
+                               if isinstance(statement, _Assign) and statement.l is status]
+                self.assertEqual(len(assignments), 1)
+                dut.comb += assignments
+                dut.specials += [special for special in phy._fragment.specials
+                                 if isinstance(special, MultiReg)]
+
+                def generator():
+                    values = [0, 1, 2, 4, 5, 7, 0xffff, 0xfffb, 0]
+                    values += [1 << bit for bit in range(16)]
+                    values += [0xffff ^ (1 << bit) for bit in range(16)]
+                    for value in values:
+                        yield native.eq(value)
+                        for _ in range(5):
+                            yield
+                        self.assertEqual((yield status), (value >> 2) & 1, hex(value))
+
+                run_simulation(dut, generator())
+
     def test_bar_size_config_is_exact(self):
         self.assertEqual(get_bar_size_config(        128), ("Bytes",      128))
         self.assertEqual(get_bar_size_config(     4*1024), ("Kilobytes",   4))
