@@ -140,7 +140,7 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
             for lane in range(left_lanes, dws_per_beat):
                 in_lane = lane - left_lanes
                 stmts += [
-                    _dw(source.dat, lane).eq(_dw(sink.dat, in_lane)),
+                    _dw(source.dat, lane).eq(Mux(last_r, 0, _dw(sink.dat, in_lane))),
                     If(last_r,
                         _be(source.be, lane).eq(0x0)
                     ).Else(
@@ -229,7 +229,8 @@ class _LitePCIeTLPHeaderInserterNDWs(LiteXModule):
             fsm.act("DATA",
                 source.valid.eq(sink.valid | last_r),
                 source.first.eq(0),
-                source.last.eq(last_r),
+                # No flush is needed when this final input fits beside the saved tail.
+                source.last.eq(last_r | _header_last_condition(sink.be, sink.last)),
 
                 *_emit_shifted_data(),
 
