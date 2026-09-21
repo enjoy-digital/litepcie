@@ -27,6 +27,11 @@ def test_wide_tap_checks_all_connections_before_mutation(family, lanes, missing)
         assert f'gt_rx_data_k_wire_filter[{4*(lanes-1)+1}]' in commands
     script = '''
 set changes 0
+proc get_clocks {args} {
+    if {[string match {*clk_out*} [lindex $args end]]} {return pipe_clk}
+    return sys_clk
+}
+proc set_clock_groups {args} {puts "ASYNC $args"}
 proc get_cells {args} {return hard}
 proc get_property {args} {return 1}
 proc set_property {args} {}
@@ -47,4 +52,33 @@ proc connect_net {args} {incr ::changes}
     script += 'set failed [catch {\n'+commands+'\n} message]\nputs "$failed $changes"\nputs $message\n'
     result = subprocess.run(['tclsh'], input=script, text=True, capture_output=True, check=True)
     assert not result.stderr
-    assert result.stdout.startswith('1 0\nPTM PIPE tap: missing' if missing else f'0 {changes}\n')
+    if missing:
+        assert result.stdout.startswith('1 0\nPTM PIPE tap: missing')
+    else:
+        assert result.stdout.startswith(f'ASYNC -asynchronous -group pipe_clk -group sys_clk\n0 {changes}\n')
+
+
+@pytest.mark.parametrize('receive,system,expected', [
+    ('pipe_clk', 'sys_clk', '0 1'),
+    ('sys_clk', 'sys_clk', '0 0'),
+    ('', 'sys_clk', '1 0'),
+    ('pipe_clk', '', '1 0'),
+    ('pipe_clk other', 'sys_clk', '1 0'),
+])
+def test_cdc_constraints_preserve_same_clock_paths(receive, system, expected):
+    from litepcie.frontend.ptm.pipe import add_ptm_cdc_constraints
+    platform = SimpleNamespace(toolchain=SimpleNamespace(pre_optimize_commands=[]))
+    add_ptm_cdc_constraints(platform)
+    commands = '\n'.join(c.format() for c in platform.toolchain.pre_optimize_commands)
+    script = f'set rx {{{receive}}}\nset sys {{{system}}}\n'
+    script += '''
+set cuts 0
+proc get_pins {args} {return rx}
+proc get_nets {args} {return sys}
+proc get_clocks {args} {return [set ::[lindex $args end]]}
+proc set_clock_groups {args} {incr ::cuts}
+'''
+    script += 'set failed [catch {\n'+commands+'\n} message]\nputs "$failed $cuts"\n'
+    result = subprocess.run(['tclsh'], input=script, text=True, capture_output=True, check=True)
+    assert not result.stderr
+    assert result.stdout.strip() == expected

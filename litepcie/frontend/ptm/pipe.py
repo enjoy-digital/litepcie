@@ -380,6 +380,20 @@ def add_checked_tap_connections(platform, connections):
         command.replace("{", "{{").replace("}", "}}") for command in commands]
 
 
+def add_ptm_cdc_constraints(platform):
+    # Resolve clocks only after the tap has been reconnected. In particular,
+    # the UltraScale+ PIPE clock is not the placeholder PCIe user clock.
+    # All sniffer/sys traffic uses the asynchronous response FIFO.
+    commands = [
+        'set ptm_rx_clock [get_clocks -of_objects [get_pins pcie_ptm_pipe_tap/clk_out]]',
+        'set ptm_sys_clock [get_clocks -of_objects [get_nets sys_clk]]',
+        'if {[llength $ptm_rx_clock] != 1 || [llength $ptm_sys_clock] != 1} {error {PTM PIPE tap: expected one receive and system clock}}',
+        'if {$ptm_rx_clock ne $ptm_sys_clock} {set_clock_groups -asynchronous -group $ptm_rx_clock -group $ptm_sys_clock}',
+    ]
+    platform.toolchain.pre_optimize_commands += [
+        command.replace("{", "{{").replace("}", "}}") for command in commands]
+
+
 class S7PCIePTMMultiLaneSniffer(LiteXModule):
     """Experimental multi-lane 7-series receive path; x1 keeps its old decoder."""
     def __init__(self, phy):
@@ -415,6 +429,7 @@ class S7PCIePTMMultiLaneSniffer(LiteXModule):
                 connections.append((f"pcie_s7/inst/inst/gt_top_i/{net}[{vendor_bit}]",
                     f"pcie_ptm_pipe_tap/rx_{field}_in[{bit}]"))
         add_checked_tap_connections(phy.platform, connections)
+        add_ptm_cdc_constraints(phy.platform)
 
         reversal = Signal(2)
         phy.pcie_phy_params["o_pl_lane_reversal_mode"] = reversal
@@ -507,6 +522,7 @@ class USPPCIePTMGen2Sniffer(LiteXModule):
             commands.append(f'litepcie_ptm_connect $ptm_net_{index} {{pcie_ptm_pipe_tap/{target}}}')
         phy.platform.toolchain.pre_optimize_commands += [
             command.replace("{", "{{").replace("}", "}}") for command in commands]
+        add_ptm_cdc_constraints(phy.platform)
         width, link_up, ltssm = Signal(3), Signal(), Signal(6)
         self.specials += [
             MultiReg(phy.pcie_usp_phy_params["o_cfg_negotiated_width"], width, "sniffer"),
