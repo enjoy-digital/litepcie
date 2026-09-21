@@ -33,6 +33,7 @@ class USPPCIEPHY(LiteXModule):
         mode            = "Endpoint",
         with_cfg_mgmt   = False,
         with_rq_buffer  = False,
+        with_ptm        = False,
     ):
         # Streams ----------------------------------------------------------------------------------
         self.req_sink   = stream.Endpoint(phy_layout(data_width))
@@ -79,6 +80,7 @@ class USPPCIEPHY(LiteXModule):
         # Parameters/Locals ------------------------------------------------------------------------
         assert mode in ["Endpoint", "RootPort"]
         self.mode = mode
+        self.with_ptm = with_ptm
 
         if pcie_data_width is None: pcie_data_width = data_width
         self.platform         = platform
@@ -120,6 +122,20 @@ class USPPCIEPHY(LiteXModule):
         assert nlanes          in [1, 2, 4, 8, 16]
         assert data_width      in [64, 128, 256, 512]
         assert pcie_data_width in [64, 128, 256, 512]
+
+        if with_ptm:
+            if mode != "Endpoint" or speed != "gen2" or nlanes > 8:
+                raise ValueError("Experimental UltraScale+ PTM requires Gen2 Endpoint x1/x2/x4/x8")
+            if pcie_data_width < 128:
+                raise ValueError("UltraScale+ PTM requires at least a 128-bit PCIe datapath")
+            self.ptm_cfg = Record([
+                ("read_received", 1), ("write_received", 1),
+                ("register_number", 10), ("function_number", 8),
+                ("write_data", 32), ("write_byte_enable", 4),
+                ("read_data", 32), ("read_data_valid", 1),
+            ])
+            self.ptm_cfg_base, self.ptm_cfg_limit = (
+                (0x3a0, 0x400) if ip_name == "pcie4c_uscale_plus" else (0x120, 0x140))
 
         # Clocking / Reset -------------------------------------------------------------------------
         self.pcie_refclk    = pcie_refclk    = Signal()
@@ -633,6 +649,11 @@ class USPPCIEPHY(LiteXModule):
             i_cfg_interrupt_msi_function_number               = 0,
         )
 
+        if with_ptm:
+            for name, _ in self.ptm_cfg.layout:
+                direction = "i" if name in ("read_data", "read_data_valid") else "o"
+                self.pcie_usp_phy_params[f"{direction}_cfg_ext_{name}"] = getattr(self.ptm_cfg, name)
+
         # Route the Configuration Management interface out (else it stays tied off above).
         if with_cfg_mgmt:
             self.pcie_usp_phy_params.update(
@@ -702,7 +723,7 @@ class USPPCIEPHY(LiteXModule):
             s_axis_cc_adapt.m_axis_tready.eq(s_axis_cc_tready_raw[0]),
         ]
 
-        self.s_axis_rq_adapt = s_axis_rq_adapt = ClockDomainsRenamer("pcie")(SAxisRQAdapter(pcie_data_width))
+        self.s_axis_rq_adapt = s_axis_rq_adapt = ClockDomainsRenamer("pcie")(SAxisRQAdapter(pcie_data_width, with_ptm=with_ptm))
         self.comb += [
             s_axis_rq_adapt.s_axis_tdata.eq(s_axis_rq.dat),
             s_axis_rq_adapt.s_axis_tkeep.eq(s_axis_rq.be),
@@ -718,6 +739,10 @@ class USPPCIEPHY(LiteXModule):
             s_axis_rq_tvalid_raw.eq(s_axis_rq_adapt.m_axis_tvalid),
             s_axis_rq_adapt.m_axis_tready.eq(s_axis_rq_tready_raw[0]),
         ]
+
+    def create_ptm_sniffer(self):
+        from litepcie.frontend.ptm.pipe import USPPCIePTMGen2Sniffer
+        return USPPCIePTMGen2Sniffer(self)
 
     # Resync Helper --------------------------------------------------------------------------------
     def add_resync(self, sig, clk="sys"):
@@ -766,7 +791,7 @@ class USPPCIEPHY(LiteXModule):
             aspm_support = "No_ASPM"
 
             # PLL selection.
-            plltype = "QPLL0"
+            plltype = "QPLL1" if self.speed == "gen2" else "QPLL0"
 
             config = {
                 # Core.
@@ -802,6 +827,17 @@ class USPPCIEPHY(LiteXModule):
 
             # User/Custom config.
             config.update(self.config)
+
+            if getattr(self, "with_ptm", False):
+                # The initial PIPE receiver supports 8b/10b and natural lane
+                # order only. Keep this explicit even if defaults change.
+                config.update({
+                    "ext_pcie_cfg_space_enabled": True,
+                    "cfg_ext_if": True,
+                    "PL_DISABLE_LANE_REVERSAL": True,
+                })
+                if config["PL_LINK_CAP_MAX_LINK_SPEED"] != "5.0_GT/s":
+                    raise ValueError("PTM PIPE decoding currently requires Gen2")
 
             # Tcl generation.
             ip_tcl  = []

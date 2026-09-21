@@ -706,7 +706,7 @@ class SAxisCCAdapter(LiteXModule):
 
 class SAxisRQAdapter(LiteXModule):
     """Adapt LitePCIe RQ stream format to Xilinx RQ AXIS (hard IP format)."""
-    def __init__(self, data_width):
+    def __init__(self, data_width, with_ptm=False):
         assert data_width in [128, 256, 512]
         keep_width = data_width // 8
         tuser_width = 137 if data_width == 512 else 60
@@ -1004,3 +1004,20 @@ class SAxisRQAdapter(LiteXModule):
                     C(0, 100)
                 )),
             ]
+
+        if with_ptm:
+            # A PTM Request is one 4-DWORD, no-data Msg beat. PG213's
+            # requester descriptor carries its message code and routing
+            # in bits 111:104 and 114:112 (not in the BE fields).
+            first = tfirst_ff if data_width == 256 else tfirst
+            self.comb += If(first & (self.s_axis_tdata[24:32] == 0x34) &
+                (self.s_axis_tdata[32:40] == 0x52),
+                self.m_axis_tdata.eq(Cat(
+                    C(0, 64), C(0, 11), C(0xc, 4), C(0, 1),
+                    self.s_axis_tdata[48:64], C(0, 8), C(0x52, 8),
+                    C(4, 3), C(0, 6), self.s_axis_tdata[20:23], C(0, 4))),
+                self.m_axis_tkeep.eq(0xf),
+                self.m_axis_tlast.eq(1),
+                self.m_axis_tuser.eq((1 << 20) | (1 << 26) | (3 << 28)
+                    if data_width == 512 else 0),
+            )

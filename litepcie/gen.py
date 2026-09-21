@@ -212,9 +212,11 @@ class LitePCIeCore(SoCMini):
 
         # PCIe PHY ---------------------------------------------------------------------------------
         phy_kwargs = {}
+        if "phy_speed" in core_config:
+            phy_kwargs["speed"] = core_config["phy_speed"]
         if core_config.get("ptm", False):
-            if core_config["phy"] is not S7PCIEPHY or core_config["phy_lanes"] != 1:
-                raise ValueError("PTM currently requires a 7-series PCIe x1 PHY")
+            if core_config["phy"] not in (S7PCIEPHY, USPPCIEPHY):
+                raise ValueError("PTM requires a 7-series or Gen2 UltraScale+ PCIe PHY")
             phy_kwargs["with_ptm"] = True
         self.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
             pcie_data_width = core_config.get("phy_pcie_data_width", 64),

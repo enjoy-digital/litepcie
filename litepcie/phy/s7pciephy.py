@@ -531,7 +531,10 @@ class S7PCIEPHY(LiteXModule):
     def create_ptm_sniffer(self):
         """Create a PTM receive sniffer to register in the endpoint's SoC."""
         from litepcie.frontend.ptm.sniffer import S7PCIePTMSniffer
-        return S7PCIePTMSniffer(self)
+        if self.nlanes == 1:
+            return S7PCIePTMSniffer(self)
+        from litepcie.frontend.ptm.pipe import S7PCIePTMMultiLaneSniffer
+        return S7PCIePTMMultiLaneSniffer(self)
 
     # Resync Helper --------------------------------------------------------------------------------
 
