@@ -142,16 +142,20 @@ class PCIePTMSymbolReceiver(LiteXModule):
         self.source = stream.Endpoint(PTM_RESPONSE_LAYOUT)
         self.overflow = Signal()
 
+        # Decode K symbols in parallel with input capture. Their registered
+        # positions then drive header/history bookkeeping in the next stage.
+        data, nbytes, valid = Signal.like(self.data), Signal.like(self.nbytes), Signal()
+        self.sync += [data.eq(self.data), nbytes.eq(self.nbytes), valid.eq(self.valid)]
         # Keep enough history for a complete response even when its start and
         # final payload byte fall at opposite ends of successive wide beats.
         history_bytes = 48
         history = Signal(8*history_bytes, reset_less=True)
         window = Signal(8*(history_bytes+max_bytes))
-        self.comb += window.eq(Cat(history, self.data))
+        self.comb += window.eq(Cat(history, data))
         # The shift amount is self-sized in Verilog: use explicit byte-to-bit
         # concatenation, not a multiplication that can truncate to operand width.
-        self.sync += If(self.valid,
-            history.eq(window >> Cat(C(0, 3), self.nbytes)),
+        self.sync += If(valid,
+            history.eq(window >> Cat(C(0, 3), nbytes)),
         )
         start = Signal()
         start_index = Signal(max=max_bytes)
@@ -168,6 +172,12 @@ class PCIePTMSymbolReceiver(LiteXModule):
         for byte in reversed(range(max_bytes)):
             self.comb += If((byte < self.nbytes) & self.ctrl[byte] &
                 (self.data[8*byte:8*(byte+1)] == END), end_index.eq(byte))
+        flags = []
+        for flag in (start, start_index, bad_end, good_end, end_index):
+            captured = Signal.like(flag)
+            self.sync += captured.eq(flag)
+            flags.append(captured)
+        start, start_index, bad_end, good_end, end_index = flags
         pending = Signal()
         age = Signal(max=history_bytes+max_bytes+1)
         offset = Signal(6, reset=history_bytes+3)
@@ -181,15 +191,15 @@ class PCIePTMSymbolReceiver(LiteXModule):
         self.comb += fifo.source.connect(self.source)
         valid_d, start_d, bad_end_d, good_end_d, complete_d = [Signal() for _ in range(5)]
         self.sync += [
-            valid_d.eq(self.valid), start_d.eq(start),
+            valid_d.eq(valid), start_d.eq(start),
             bad_end_d.eq(bad_end), good_end_d.eq(good_end),
-            complete_d.eq(pending & ((age + self.nbytes) >= 23) & ~bad_end &
+            complete_d.eq(pending & ((age + nbytes) >= 23) & ~bad_end &
                 (~good_end | ((age + end_index) >= 23))),
             packet.eq(aligned_packet),
         ]
         is_response = (((packet[:8] == 0x34) | (packet[:8] == 0x74)) & (packet[56:64] == 0x53) &
             (packet[16:18] == 0) & (packet[24:32] == Mux(packet[6], 1, 0)))
-        complete = self.valid & pending & ((age + self.nbytes) >= 23) & ~bad_end
+        complete = valid & pending & ((age + nbytes) >= 23) & ~bad_end
         candidate = Signal()
         master_time = Signal(64)
         link_delay = Signal(32)
@@ -206,12 +216,12 @@ class PCIePTMSymbolReceiver(LiteXModule):
             fifo.sink.link_delay.eq(Mux(candidate, link_delay, decoded_delay)),
             self.overflow.eq(fifo.sink.valid & ~fifo.sink.ready),
         ]
-        self.sync += If(self.valid,
-            If(pending, age.eq(age + self.nbytes), offset.eq(offset - self.nbytes)),
+        self.sync += If(valid,
+            If(pending, age.eq(age + nbytes), offset.eq(offset - nbytes)),
             If(complete | bad_end | good_end, pending.eq(0)),
             If(start,
-                pending.eq(1), age.eq(self.nbytes - start_index),
-                offset.eq(history_bytes + 3 - self.nbytes + start_index),
+                pending.eq(1), age.eq(nbytes - start_index),
+                offset.eq(history_bytes + 3 - nbytes + start_index),
             ),
         )
         self.sync += If(valid_d,
