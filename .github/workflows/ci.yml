@@ -13,7 +13,7 @@ jobs:
       # Install Tools
       - name: Install Tools
         run: |
-          sudo apt-get install wget build-essential tcl
+          sudo apt-get install wget build-essential tcl iverilog
 
       - name: Set up Python 3.9
         uses: actions/setup-python@v4

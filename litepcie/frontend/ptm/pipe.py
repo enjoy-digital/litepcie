@@ -126,11 +126,13 @@ class PCIePTMSymbolReceiver(LiteXModule):
         # Keep enough history for a complete response even when its start and
         # final payload byte fall at opposite ends of successive wide beats.
         history_bytes = 48
-        history = Signal(8*history_bytes)
+        history = Signal(8*history_bytes, reset_less=True)
         window = Signal(8*(history_bytes+max_bytes))
         self.comb += window.eq(Cat(history, self.data))
+        # The shift amount is self-sized in Verilog: use explicit byte-to-bit
+        # concatenation, not a multiplication that can truncate to operand width.
         self.sync += If(self.valid,
-            history.eq(window >> (8*self.nbytes)),
+            history.eq(window >> Cat(C(0, 3), self.nbytes)),
         )
         start = Signal()
         start_index = Signal(max=max_bytes)
@@ -150,11 +152,11 @@ class PCIePTMSymbolReceiver(LiteXModule):
         pending = Signal()
         age = Signal(max=history_bytes+max_bytes+1)
         offset = Signal(max=history_bytes+1)
-        packet = Signal(160)
+        packet = Signal(160, reset_less=True)
         aligned_packet = Signal(160)
         self.comb += [
             offset.eq(history_bytes - age + 3), # STP + two sequence-number bytes.
-            aligned_packet.eq(window >> (8*offset)),
+            aligned_packet.eq(window >> Cat(C(0, 3), offset)),
         ]
         fifo = stream.SyncFIFO(PTM_RESPONSE_LAYOUT, depth=8, buffered=True)
         self.fifo = fifo
