@@ -68,6 +68,12 @@ its PIPE clock, clock enable, per-lane RxValid, data and K pins. It requires
 the generated vendor core; custom/external hard-IP wrappers need separate
 qualification.
 
+After reconnecting the tap, the helper resolves the actual receive clock(s)
+and constrains the asynchronous response FIFO crossing to the system clock.
+This includes both clocks of the 7-series rate-select mux; on UltraScale+ the
+native PIPE clock differs from the PCIe user clock used during synthesis.
+Paths within each clock domain remain timed.
+
 The multi-lane receiver reacquires COM alignment after link training,
 width/reversal changes or elastic-buffer overflow. It compacts SKP symbols
 independently on each lane and pipelines reconstruction/header parsing.

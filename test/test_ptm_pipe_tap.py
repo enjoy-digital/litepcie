@@ -63,7 +63,8 @@ proc connect_net {args} {incr ::changes}
     ('sys_clk', 'sys_clk', '0 0'),
     ('', 'sys_clk', '1 0'),
     ('pipe_clk', '', '1 0'),
-    ('pipe_clk other', 'sys_clk', '1 0'),
+    ('pipe_clk other', 'sys_clk', '0 2'),
+    ('pipe_clk sys_clk', 'sys_clk', '0 1'),
 ])
 def test_cdc_constraints_preserve_same_clock_paths(receive, system, expected):
     from litepcie.frontend.ptm.pipe import add_ptm_cdc_constraints

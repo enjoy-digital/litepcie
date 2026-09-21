@@ -383,12 +383,13 @@ def add_checked_tap_connections(platform, connections):
 def add_ptm_cdc_constraints(platform):
     # Resolve clocks only after the tap has been reconnected. In particular,
     # the UltraScale+ PIPE clock is not the placeholder PCIe user clock.
-    # All sniffer/sys traffic uses the asynchronous response FIFO.
+    # All sniffer/sys traffic uses the asynchronous response FIFO. The
+    # 7-series rate-select mux can propagate more than one PIPE clock.
     commands = [
         'set ptm_rx_clock [get_clocks -of_objects [get_pins pcie_ptm_pipe_tap/clk_out]]',
         'set ptm_sys_clock [get_clocks -of_objects [get_nets sys_clk]]',
-        'if {[llength $ptm_rx_clock] != 1 || [llength $ptm_sys_clock] != 1} {error {PTM PIPE tap: expected one receive and system clock}}',
-        'if {$ptm_rx_clock ne $ptm_sys_clock} {set_clock_groups -asynchronous -group $ptm_rx_clock -group $ptm_sys_clock}',
+        'if {![llength $ptm_rx_clock] || ![llength $ptm_sys_clock]} {error {PTM PIPE tap: missing receive or system clock}}',
+        'foreach ptm_rx $ptm_rx_clock {foreach ptm_sys $ptm_sys_clock {if {$ptm_rx ne $ptm_sys} {set_clock_groups -asynchronous -group $ptm_rx -group $ptm_sys}}}',
     ]
     platform.toolchain.pre_optimize_commands += [
         command.replace("{", "{{").replace("}", "}}") for command in commands]
