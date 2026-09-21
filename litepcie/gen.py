@@ -57,7 +57,6 @@ from litepcie.core import LitePCIeEndpoint, LitePCIeMSI, LitePCIeMSIMultiVector,
 from litepcie.frontend.dma      import LitePCIeDMA
 from litepcie.frontend.wishbone import LitePCIeWishboneMaster, LitePCIeWishboneSlave
 from litepcie.frontend.axi      import LitePCIeAXISlave
-from litepcie.frontend.ptm      import PCIePTMSniffer
 from litepcie.frontend.ptm      import PTMCapabilities, PTMRequester
 
 from litepcie.software import generate_litepcie_software_headers
@@ -212,10 +211,16 @@ class LitePCIeCore(SoCMini):
             self.bus.add_master(name="ctrl", master=axi)
 
         # PCIe PHY ---------------------------------------------------------------------------------
+        phy_kwargs = {}
+        if core_config.get("ptm", False):
+            if core_config["phy"] is not S7PCIEPHY or core_config["phy_lanes"] != 1:
+                raise ValueError("PTM currently requires a 7-series PCIe x1 PHY")
+            phy_kwargs["with_ptm"] = True
         self.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
             pcie_data_width = core_config.get("phy_pcie_data_width", 64),
             data_width      = core_config["phy_data_width"],
-            bar0_size       = core_config["phy_bar0_size"])
+            bar0_size       = core_config["phy_bar0_size"],
+            **phy_kwargs)
 
         # PCIe Endpoint ----------------------------------------------------------------------------
         self.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
@@ -411,63 +416,8 @@ class LitePCIeCore(SoCMini):
         # PCIe PTM ---------------------------------------------------------------------------------
         if core_config.get("ptm", False):
 
-            # PCIe PTM Sniffer ---------------------------------------------------------------------
-
-            # Since Xilinx PHY does not allow redirecting PTM TLP Messages to the AXI inferface, we have
-            # to sniff the GTPE2 -> PCIE2 RX Data to re-generate PTM TLP Messages.
-
-            # Sniffer Signals.
-            # ----------------
-            sniffer_rst_n   = Signal()
-            sniffer_clk     = Signal()
-            sniffer_rx_data = Signal(16)
-            sniffer_rx_ctl  = Signal(2)
-
-            # Sniffer Tap.
-            # ------------
-            rx_data = Signal(16)
-            rx_ctl  = Signal(2)
-            self.sync.pclk += rx_data.eq(rx_data + 1)
-            self.sync.pclk += rx_ctl.eq(rx_ctl + 1)
-            self.specials += Instance("sniffer_tap",
-                i_rst_n_in    = 1,
-                i_clk_in     = ClockSignal("pclk"),
-                i_rx_data_in = rx_data, # /!\ Fake, will be re-connected post-synthesis /!\.
-                i_rx_ctl_in  = rx_ctl,  # /!\ Fake, will be re-connected post-synthesis /!\.
-
-                o_rst_n_out   = sniffer_rst_n,
-                o_clk_out     = sniffer_clk,
-                o_rx_data_out = sniffer_rx_data,
-                o_rx_ctl_out  = sniffer_rx_ctl,
-            )
-
-            # Sniffer.
-            # --------
-            self.pcie_ptm_sniffer = PCIePTMSniffer(
-                rx_rst_n = sniffer_rst_n,
-                rx_clk   = sniffer_clk,
-                rx_data  = sniffer_rx_data,
-                rx_ctrl  = sniffer_rx_ctl,
-            )
-            self.pcie_ptm_sniffer.add_sources(platform)
-
-            # Sniffer Post-Synthesis connections.
-            # -----------------------------------
-            pcie_ptm_sniffer_connections = []
-            for n in range(2):
-                pcie_ptm_sniffer_connections.append((
-                    f"pcie_s7/inst/inst/gt_top_i/gt_rx_data_k_wire_filter[{n}]", # Src.
-                    f"pcie_ptm_sniffer_tap/rx_ctl_in[{n}]",                      # Dst.
-                ))
-            for n in range(16):
-                pcie_ptm_sniffer_connections.append((
-                    f"pcie_s7/inst/inst/gt_top_i/gt_rx_data_wire_filter[{n}]", # Src.
-                    f"pcie_ptm_sniffer_tap/rx_data_in[{n}]",                   # Dst.
-                ))
-            for _from, _to in pcie_ptm_sniffer_connections:
-                platform.toolchain.pre_optimize_commands.append(f"set pin_driver [get_nets -of [get_pins {_to}]]")
-                platform.toolchain.pre_optimize_commands.append(f"disconnect_net -net $pin_driver -objects {_to}")
-                platform.toolchain.pre_optimize_commands.append(f"connect_net -hier -net {_from} -objects {_to}")
+            # The PHY owns its receive workaround and vendor hierarchy.
+            self.pcie_ptm_sniffer = self.pcie_phy.create_ptm_sniffer()
 
             # PTM IOs ------------------------------------------------------------------------------
             platform.add_extension(get_ptm_ios())

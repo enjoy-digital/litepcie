@@ -13,7 +13,7 @@ jobs:
       # Install Tools
       - name: Install Tools
         run: |
-          sudo apt-get install wget build-essential
+          sudo apt-get install wget build-essential tcl
 
       - name: Set up Python 3.9
         uses: actions/setup-python@v4

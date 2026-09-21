@@ -526,7 +526,15 @@ class S7PCIEPHY(LiteXModule):
                 m_axis_rx.last.eq(m_axis_rx_tlast),
             ]
 
+    # PTM Receive Sniffer --------------------------------------------------------------------------
+
+    def create_ptm_sniffer(self):
+        """Create a PTM receive sniffer to register in the endpoint's SoC."""
+        from litepcie.frontend.ptm.sniffer import S7PCIePTMSniffer
+        return S7PCIePTMSniffer(self)
+
     # Resync Helper --------------------------------------------------------------------------------
+
     def add_resync(self, sig, clk="sys"):
         _sig = Signal.like(sig)
         self.specials += MultiReg(_sig, sig, clk)

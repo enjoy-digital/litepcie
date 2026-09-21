@@ -564,3 +564,78 @@ class PCIePTMSniffer(LiteXModule):
     def add_sources(self, platform):
         cdir = os.path.abspath(os.path.dirname(__file__))
         platform.add_source(os.path.join(cdir, "sniffer_tap.v"))
+
+
+# 7-Series PTM Receive Tap --------------------------------------------------------------------------
+
+class S7PCIePTMSniffer(PCIePTMSniffer):
+    """Connect the Gen1/Gen2 x1 sniffer to the 7-series PCIe IP.
+
+    The hard IP filters PTM responses before its AXI receive interface. This
+    passive tap observes the transceiver data instead. Multi-lane links need
+    lane deskew and de-striping and cannot use this single-lane decoder.
+    """
+    def __init__(self, phy):
+        if not phy.with_ptm:
+            raise ValueError("PTM requires S7PCIEPHY(with_ptm=True)")
+        if phy.nlanes != 1:
+            raise ValueError("The 7-series PTM receive sniffer requires a PCIe x1 link")
+        if phy.mode != "Endpoint":
+            raise ValueError("The PTM requester requires Endpoint mode")
+
+        rx_rst_n = Signal()
+        rx_clk   = Signal()
+        rx_data  = Signal(16)
+        rx_ctrl  = Signal(2)
+        PCIePTMSniffer.__init__(self, rx_rst_n, rx_clk, rx_data, rx_ctrl)
+
+        # Preserve the established tap clock/reset and decoder pipeline. The
+        # placeholders keep the input pins alive until the post-synthesis tap
+        # connections are made, before optimization and implementation.
+        placeholder_data = Signal(16)
+        placeholder_ctrl = Signal(2)
+        self.sync.pclk += [
+            placeholder_data.eq(placeholder_data + 1),
+            placeholder_ctrl.eq(placeholder_ctrl + 1),
+        ]
+        self.specials += Instance("sniffer_tap", name="pcie_ptm_sniffer_tap",
+            i_rst_n_in   = 1,
+            i_clk_in     = ClockSignal("pclk"),
+            i_rx_data_in = placeholder_data,
+            i_rx_ctl_in  = placeholder_ctrl,
+            o_rst_n_out   = rx_rst_n,
+            o_clk_out     = rx_clk,
+            o_rx_data_out = rx_data,
+            o_rx_ctl_out  = rx_ctrl,
+        )
+        self.add_sources(phy.platform)
+
+        # Braces keep bus indices literal in Tcl. Check the complete tap before
+        # modifying any net: a changed vendor hierarchy must fail the build,
+        # never silently leave the sniffer connected to placeholder counters.
+        connections = []
+        for field, width, net in [
+            ("ctl",  2, "gt_rx_data_k_wire_filter"),
+            ("data", 16, "gt_rx_data_wire_filter"),
+        ]:
+            for bit in range(width):
+                connections.append((
+                    f"pcie_s7/inst/inst/gt_top_i/{net}[{bit}]",
+                    f"pcie_ptm_sniffer_tap/rx_{field}_in[{bit}]",
+                ))
+        commands = []
+        for net, pin in connections:
+            commands += [
+                f'if {{[llength [get_nets -quiet {{{net}}}]] != 1}} {{error {{PTM receive tap: missing net {net}}}}}',
+                f'if {{[llength [get_pins -quiet {{{pin}}}]] != 1}} {{error {{PTM receive tap: missing pin {pin}}}}}',
+            ]
+        for net, pin in connections:
+            commands += [
+                f"set ptm_tap_driver [get_nets -of_objects [get_pins {{{pin}}}]]",
+                f"disconnect_net -net $ptm_tap_driver -objects [get_pins {{{pin}}}]",
+                f"connect_net -hier -net [get_nets {{{net}}}] -objects [get_pins {{{pin}}}]",
+            ]
+        # LiteX formats toolchain commands with the build name.
+        phy.platform.toolchain.pre_optimize_commands += [
+            command.replace("{", "{{").replace("}", "}}") for command in commands
+        ]
