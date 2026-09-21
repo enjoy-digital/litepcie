@@ -82,7 +82,6 @@ class PCIeLaneSymbolBuffer(LiteXModule):
         self.level = Signal(max=depth+1)
         self.overflow = Signal()
 
-        memory = Array(Signal(9, reset_less=True) for _ in range(depth))
         write = Signal(max=depth)
         read = Signal(max=depth)
         write_next = Signal.like(write)
@@ -91,16 +90,36 @@ class PCIeLaneSymbolBuffer(LiteXModule):
         count = Signal(2)
         self.comb += [
             write_next.eq(write + 1), read_next.eq(read + 1),
-            self.head[0].eq(memory[read]), self.head[1].eq(memory[read_next]),
             *[keep[i].eq(self.valid & (~self.discard_first if i == 0 else 1) & ~(self.ctrl[i] & (self.data[8*i:8*(i+1)] == SKP)))
               for i in range(2)],
             count.eq(keep[0] + keep[1]),
-            self.overflow.eq((self.level + count) > depth),
+            self.overflow.eq(((self.level == depth) & (count != 0)) |
+                ((self.level == depth-1) & (count == 2))),
         ]
         symbols = [Cat(self.data[8*i:8*(i+1)], self.ctrl[i]) for i in range(2)]
+        # Consecutive symbols always occupy opposite parity banks. A single
+        # write port per bank lets synthesis use distributed RAM instead of
+        # a two-write register array and its large write-enable/read muxes.
+        first = Mux(keep[0], symbols[0], symbols[1])
+        reads = []
+        for parity in range(2):
+            memory = Memory(9, depth//2)
+            wr = memory.get_port(write_capable=True)
+            rd = memory.get_port(async_read=True)
+            self.specials += memory, wr, rd
+            starts_here = write[0] == parity
+            self.comb += [
+                wr.adr.eq(Mux(starts_here, write[1:], write_next[1:])),
+                wr.dat_w.eq(Mux(starts_here, first, symbols[1])),
+                wr.we.eq(~self.overflow & Mux(starts_here, count != 0, count == 2)),
+                rd.adr.eq(Mux(read[0] == parity, read[1:], read_next[1:])),
+            ]
+            reads.append(rd.dat_r)
+        self.comb += [
+            self.head[0].eq(Mux(read[0], reads[1], reads[0])),
+            self.head[1].eq(Mux(read[0], reads[0], reads[1])),
+        ]
         self.sync += If(~self.overflow,
-            If(keep[0], memory[write].eq(symbols[0])),
-            If(keep[1], memory[Mux(keep[0], write_next, write)].eq(symbols[1])),
             write.eq(write + count), read.eq(read + self.pop),
             self.level.eq(self.level + count - self.pop),
         )
@@ -231,6 +250,14 @@ class PCIePTM8b10bReceiver(LiteXModule):
             (self.lanes != previous_lanes) | (self.reverse != previous_reverse) | self.overflow)
         self.sync += [previous_lanes.eq(self.lanes), previous_reverse.eq(self.reverse)]
 
+        # Capture raw PIPE pins before descrambling: transceiver clock-to-out
+        # and routing otherwise consume the combinational decoder's budget.
+        input_data, input_ctrl = Signal.like(self.data), Signal.like(self.ctrl)
+        input_valid, input_lane_valid = Signal(), Signal.like(self.lane_valid)
+        self.sync += [
+            input_data.eq(self.data), input_ctrl.eq(self.ctrl),
+            input_valid.eq(self.valid), input_lane_valid.eq(self.lane_valid),
+        ]
         buffers = []
         for lane in range(nlanes):
             descrambler = PCIe8b10bLaneDescrambler()
@@ -240,7 +267,7 @@ class PCIePTM8b10bReceiver(LiteXModule):
             capturing, discard_first = Signal(), Signal()
             com0 = descrambler.ctrl[0] & (descrambler.data[:8] == COM)
             com1 = descrambler.ctrl[1] & (descrambler.data[8:] == COM)
-            lane_valid = self.valid & self.lane_valid[lane] & self.link_up & ~reset
+            lane_valid = input_valid & input_lane_valid[lane] & self.link_up & ~reset
             self.sync += [
                 decoded.eq(descrambler.decoded), control.eq(descrambler.ctrl),
                 valid.eq(lane_valid & (capturing | com0 | com1)),
@@ -248,9 +275,9 @@ class PCIePTM8b10bReceiver(LiteXModule):
                 If(reset, capturing.eq(0)).Elif(lane_valid & (com0 | com1), capturing.eq(1)),
             ]
             self.comb += [
-                descrambler.valid.eq(self.valid & self.lane_valid[lane]),
-                descrambler.data.eq(self.data[16*lane:16*(lane+1)]),
-                descrambler.ctrl.eq(self.ctrl[2*lane:2*(lane+1)]),
+                descrambler.valid.eq(input_valid & input_lane_valid[lane]),
+                descrambler.data.eq(input_data[16*lane:16*(lane+1)]),
+                descrambler.ctrl.eq(input_ctrl[2*lane:2*(lane+1)]),
                 buffer.valid.eq(valid & ~reset),
                 buffer.discard_first.eq(discard_first),
                 buffer.data.eq(decoded),
