@@ -151,13 +151,12 @@ class PCIePTMSymbolReceiver(LiteXModule):
                 (self.data[8*byte:8*(byte+1)] == END), end_index.eq(byte))
         pending = Signal()
         age = Signal(max=history_bytes+max_bytes+1)
-        offset = Signal(max=history_bytes+1)
+        offset = Signal(6, reset=history_bytes+3)
         packet = Signal(160, reset_less=True)
         aligned_packet = Signal(160)
-        self.comb += [
-            offset.eq(history_bytes - age + 3), # STP + two sequence-number bytes.
-            aligned_packet.eq(window >> Cat(C(0, 3), offset)),
-        ]
+        # Track the header offset alongside age, so the alignment shifter
+        # does not also carry an age-subtraction path in the same cycle.
+        self.comb += aligned_packet.eq(window >> Cat(C(0, 3), offset))
         fifo = stream.SyncFIFO(PTM_RESPONSE_LAYOUT, depth=8, buffered=True)
         self.fifo = fifo
         self.comb += fifo.source.connect(self.source)
@@ -189,10 +188,11 @@ class PCIePTMSymbolReceiver(LiteXModule):
             self.overflow.eq(fifo.sink.valid & ~fifo.sink.ready),
         ]
         self.sync += If(self.valid,
-            If(pending, age.eq(age + self.nbytes)),
+            If(pending, age.eq(age + self.nbytes), offset.eq(offset - self.nbytes)),
             If(complete | bad_end | good_end, pending.eq(0)),
             If(start,
                 pending.eq(1), age.eq(self.nbytes - start_index),
+                offset.eq(history_bytes + 3 - self.nbytes + start_index),
             ),
         )
         self.sync += If(valid_d,
@@ -260,6 +260,14 @@ class PCIePTM8b10bReceiver(LiteXModule):
             buffers.append(buffer)
         self.buffers = buffers
 
+        # Separate the buffer read mux from reversal and width conversion.
+        captured_heads = [[Signal(9, reset_less=True) for _ in range(nlanes)] for _ in range(2)]
+        captured_lanes = Signal.like(self.lanes)
+        captured_reverse, captured_valid = Signal(), Signal()
+        for symbol in range(2):
+            for lane in range(nlanes):
+                self.sync += captured_heads[symbol][lane].eq(buffers[lane].head[symbol])
+
         at_com = []
         ready = []
         heads = [[], []]
@@ -267,8 +275,9 @@ class PCIePTM8b10bReceiver(LiteXModule):
         for lane in range(nlanes):
             physical = Mux(self.reverse, nlanes-1-lane, lane)
             level = Array(buffer.level for buffer in buffers)[physical]
-            head0 = Array(buffer.head[0] for buffer in buffers)[physical]
-            head1 = Array(buffer.head[1] for buffer in buffers)[physical]
+            captured_physical = Mux(captured_reverse, nlanes-1-lane, lane)
+            head0 = Array(captured_heads[0])[captured_physical]
+            head1 = Array(captured_heads[1])[captured_physical]
             active = lane < self.lanes
             # Capture starts on COM in each lane, so a nonempty buffer is
             # aligned while acquiring lock. No read-pointer/COM feedback path.
@@ -299,8 +308,10 @@ class PCIePTM8b10bReceiver(LiteXModule):
         # in one 250 MHz timing path.
         beat_data, beat_ctrl = Signal(16*nlanes), Signal(2*nlanes)
         self.sync += [
-            receiver.valid.eq(self.locked & all_ready & ~reset),
-            receiver.nbytes.eq(2*self.lanes),
+            captured_valid.eq(self.locked & all_ready & ~reset),
+            captured_lanes.eq(self.lanes), captured_reverse.eq(self.reverse),
+            receiver.valid.eq(captured_valid & ~reset),
+            receiver.nbytes.eq(2*captured_lanes),
             receiver.data.eq(beat_data), receiver.ctrl.eq(beat_ctrl),
         ]
         self.comb += [receiver.reset.eq(reset), receiver.source.connect(self.source)]
@@ -308,7 +319,7 @@ class PCIePTM8b10bReceiver(LiteXModule):
         for width in (1, 2, 4, 8):
             if width <= nlanes:
                 order = [heads[symbol][lane] for symbol in range(2) for lane in range(width)]
-                self.comb += If(self.lanes == width,
+                self.comb += If(captured_lanes == width,
                     beat_data.eq(Cat(*(symbol[:8] for symbol in order))),
                     beat_ctrl.eq(Cat(*(symbol[8] for symbol in order))),
                 )
