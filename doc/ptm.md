@@ -1,23 +1,24 @@
 # PTM requester integration
 
 PTM remains opt-in. The established 7-series Gen1/Gen2 x1 path keeps its
-original decoder. An experimental receiver adds 7-series x2/x4/x8 and
-UltraScale+ Gen2 x1/x2/x4/x8 support.
+original decoder. Experimental receivers add 7-series x2/x4/x8 and
+UltraScale+ Gen2 x1/x2/x4/x8 and Gen3/Gen4 x4/x8 support.
 
 | PHY | Receive path | Restrictions |
 | --- | --- | --- |
 | 7-series x1 | Existing decoder | Gen1/Gen2 |
 | 7-series x2/x4/x8 | Per-lane descrambling, SKP removal, deskew and de-striping | Gen1/Gen2; negotiated-width fallback and full lane reversal |
-| UltraScale+ PCIE4/PCIE4C | Native PIPE tap and the multi-lane decoder | Explicit Gen2; lane reversal disabled; at least 128-bit AXI interface |
+| UltraScale+ PCIE4/PCIE4C Gen2 | Native PIPE tap and 8b/10b multi-lane decoder | x1/x2/x4/x8; lane reversal disabled; at least 128-bit AXI interface |
+| UltraScale+ PCIE4/PCIE4C Gen3/Gen4 | Native PIPE tap and 128b/130b block decoder | x4/x8 at the configured width; lane reversal disabled; at least 128-bit AXI interface |
 
-UltraScale, UltraScale+ Gen3/Gen4 and x16 are not implemented. Unsupported
+UltraScale, UltraScale+ Gen3/Gen4 x1/x2 and x16 are not implemented. Unsupported
 UltraScale+ PTM configurations fail during construction. Enabling PTM never
 silently reduces the requested link speed or width.
 
 ## Integration
 
 Instantiate `S7PCIEPHY(..., with_ptm=True)` or
-`USPPCIEPHY(..., speed="gen2", with_ptm=True)`, and enable PTM on the endpoint:
+`USPPCIEPHY(..., speed="gen2"/"gen3"/"gen4", with_ptm=True)`, and enable PTM on the endpoint:
 
 ```python
 self.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy, with_ptm=True)
@@ -34,7 +35,8 @@ latency differs from x1; the existing PHY delay estimates need hardware
 calibration before using timestamps for precise synchronization.
 
 The standalone generator accepts `ptm: true`. Use `phy_lanes: 1/2/4/8` for
-`S7PCIEPHY`. For `USPPCIEPHY`, also set `phy_speed: gen2` and
+`S7PCIEPHY`. For `USPPCIEPHY`, select `phy_speed: gen2`, `gen3` or `gen4` and
+use x4/x8 for Gen3/Gen4. Set
 `phy_pcie_data_width` to at least 128. Normal generator/PHY defaults remain
 unchanged when PTM is disabled.
 
@@ -64,7 +66,9 @@ a missing object stops the build instead of leaving a placeholder counter.
 The 7-series tap uses the generated `pcie_s7` hierarchy. Each physical lane
 occupies a 32-data-bit / 4-K-bit vendor slot, with the lower 16 / 2 bits used.
 The UltraScale+ tap finds exactly one PCIE40E4/PCIE4CE4 primitive, and connects
-its PIPE clock, clock enable, per-lane RxValid, data and K pins. It requires
+its PIPE clock, clock enable, per-lane RxValid and data pins. Gen2 also uses K
+pins; Gen3/Gen4 use DataValid, StartBlock and SyncHeader. At Gen4, native PIPE
+pins 08..15 carry the upper 32 bits of physical lanes 0..7. It requires
 the generated vendor core; custom/external hard-IP wrappers need separate
 qualification.
 
@@ -74,24 +78,34 @@ This includes both clocks of the 7-series rate-select mux; on UltraScale+ the
 native PIPE clock differs from the PCIe user clock used during synthesis.
 Paths within each clock domain remain timed.
 
-The multi-lane receiver reacquires COM alignment after link training,
+The Gen1/Gen2 multi-lane receiver reacquires COM alignment after link training,
 width/reversal changes or elastic-buffer overflow. It compacts SKP symbols
 independently on each lane and pipelines reconstruction/header parsing.
 A response is published only after END; EDB, truncated payloads and invalid
 TLP lengths discard it. Like the established
 x1 receive path, this passive parser does not independently validate LCRC.
 
+The Gen3/Gen4 receiver assembles 128-bit blocks, takes each lane's scrambler
+seed from an SOS, strips ordered sets and deskews data through per-lane FIFOs.
+It recognizes the two-byte STP token, PTM Response length and message header
+in a lane-striped byte stream, including responses crossing a block boundary.
+It accepts only the configured link width; a downshift must be built separately.
+The compact recognizer does not check LCRC and selects one response per block.
+
 Simulation covers the existing x1 scrambler as a reference, independent serial
 scrambling vectors, skew, SKP, width fallback, reversal, RxValid bubbles,
 retraining, packet alignment, non-PTM traffic and backpressure. Tcl tests check
-literal bus indices and failure before netlist mutation. A vendor-version or
+literal bus indices and failure before netlist mutation. Gen3/Gen4 tests cover
+both PIPE widths, scrambling, cross-block responses and endpoint generation.
+A vendor-version or
 hierarchy change still requires an actual Vivado build.
 
 ## Remaining work
 
-Gen3/Gen4 requires 128b/130b block framing, per-lane descrambling and block/SKP
-alignment; it cannot reuse the 8b/10b parser directly. x16 also requires a
-wider packet parser that can handle a complete response within one beat.
+Gen3/Gen4 x1/x2, width downshift and x16 require additional receive paths.
+Hardware testing should verify SOS seed extraction, the native Gen4 second-bank
+PIPE mapping, host/PTM interoperability, skew tolerance, LCRC/error rejection
+and offset/jitter calibration.
 
 [AMD PG213](https://www.xilinx.com/support/documents/ip_documentation/pcie4_uscale_plus/v1_3/pg213-pcie4-ultrascale-plus.pdf),
 table 59, has no PTM message-routing selector. Enabling vendor-defined-message

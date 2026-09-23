@@ -11,14 +11,12 @@ clock, before the filtered PTM messages cross into the system clock domain.
 """
 
 import os
-from operator import xor
-from functools import reduce
 
 from migen import *
 from migen.genlib.cdc import MultiReg
 from migen.genlib.resetsync import AsyncResetSynchronizer
 
-from litex.gen import LiteXModule
+from litex.gen import LiteXModule, Reduce
 from litex.soc.interconnect import stream
 
 COM, SKP, STP, END, EDB = 0xbc, 0x1c, 0xfb, 0xfd, 0xfe
@@ -41,7 +39,7 @@ def _lfsr8(state):
             bits[tap] ^= feedback
 
     def expression(mask):
-        return reduce(xor, [state[bit] for bit in range(16) if mask & (1 << bit)])
+        return Reduce("XOR", [state[bit] for bit in range(16) if mask & (1 << bit)])
 
     return Cat(*(expression(mask) for mask in bits)), Cat(*(expression(mask) for mask in output))
 
@@ -282,7 +280,7 @@ class PCIePTM8b10bReceiver(LiteXModule):
         previous_lanes = Signal.like(self.lanes)
         previous_reverse = Signal()
         reset = Signal(reset=1)
-        valid_width = reduce(lambda a, b: a | b, [self.lanes == n for n in (1, 2, 4, 8) if n <= nlanes])
+        valid_width = Reduce("OR", [self.lanes == n for n in (1, 2, 4, 8) if n <= nlanes])
         self.sync += reset.eq(~self.link_up | ~valid_width |
             (self.lanes != previous_lanes) | (self.reverse != previous_reverse) | self.overflow)
         self.sync += [previous_lanes.eq(self.lanes), previous_reverse.eq(self.reverse)]
@@ -350,12 +348,12 @@ class PCIePTM8b10bReceiver(LiteXModule):
             overflow.append(active & Array(buffer.overflow for buffer in buffers)[physical])
             heads[0].append(head0)
             heads[1].append(head1)
-        all_com = reduce(lambda a, b: a & b, at_com)
-        all_ready = reduce(lambda a, b: a & b, ready)
+        all_com = Reduce("AND", at_com)
+        all_ready = Reduce("AND", ready)
         # An overflowing lane suppresses its writes immediately. Register the
         # aggregate flush so FIFO occupancy does not drive every lane's reset
         # and read-pointer feedback in the same cycle.
-        self.sync += self.overflow.eq(reduce(lambda a, b: a | b, overflow))
+        self.sync += self.overflow.eq(Reduce("OR", overflow))
         self.sync += If(reset, self.locked.eq(0)).Elif(all_com, self.locked.eq(1))
         for physical, buffer in enumerate(buffers):
             logical = Mux(self.reverse, nlanes-1-physical, physical)
