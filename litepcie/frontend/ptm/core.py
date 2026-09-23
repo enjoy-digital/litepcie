@@ -6,6 +6,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
+from migen.genlib.cdc import MultiReg
 
 from litex.gen import *
 from litex.gen.genlib.misc import WaitTimer
@@ -43,6 +44,41 @@ PTM_CONTROL_EFFECTIVE_GRANULARITY_OFFSET = 8
 
 # PTM Capabilities ---------------------------------------------------------------------------------
 
+class PTMExtendedCapability(LiteXModule):
+    """Requester capability on the native UltraScale+ extended-config bus.
+
+    Addresses are DWORD offsets. PG213 reserves 0x480..0x4ff for PCIE4
+    application capabilities (0xe80..0xfff for PCIE4C). Respond to PF0
+    accesses in this window only, including zeros for unused registers.
+    """
+    def __init__(self, base=0x120, limit=0x140, clock_granularity=8):
+        self.bus = bus = Record([
+            ("read_received", 1), ("write_received", 1),
+            ("register_number", 10), ("function_number", 8),
+            ("write_data", 32), ("write_byte_enable", 4),
+            ("read_data", 32), ("read_data_valid", 1),
+        ])
+        self.control = control = Signal(32)
+        selected = Signal()
+        self.comb += selected.eq((bus.function_number == 0) &
+            (bus.register_number >= base) & (bus.register_number < limit))
+        self.sync += [
+            bus.read_data_valid.eq(bus.read_received & selected),
+            bus.read_data.eq(0),
+            If(bus.read_received & selected,
+                Case(bus.register_number, {
+                    base:     bus.read_data.eq(0x0001001f),
+                    base + 1: bus.read_data.eq(1 | (clock_granularity << 8)),
+                    base + 2: bus.read_data.eq(control),
+                }),
+            ),
+            If(bus.write_received & selected & (bus.register_number == base + 2),
+                If(bus.write_byte_enable[0], control[0].eq(bus.write_data[0])),
+                If(bus.write_byte_enable[1], control[8:16].eq(bus.write_data[8:16])),
+            ),
+        ]
+
+
 class PTMCapabilities(LiteXModule):
     def __init__(self, pcie_endpoint,
         requester_capable = True,
@@ -56,6 +92,24 @@ class PTMCapabilities(LiteXModule):
         self.ptm_effective_granularity = Signal(8)
 
         # # #
+
+        if hasattr(pcie_endpoint.phy, "ptm_cfg"):
+            if not requester_capable or responder_capable or root_capable:
+                raise ValueError("Native PTM capability supports requesters only")
+            phy = pcie_endpoint.phy
+            self.native = native = ClockDomainsRenamer("pcie")(PTMExtendedCapability(
+                base=phy.ptm_cfg_base, limit=phy.ptm_cfg_limit,
+                clock_granularity=int(clock_granularity*1e9)))
+            for name, _ in native.bus.layout:
+                if name in ("read_data", "read_data_valid"):
+                    self.comb += getattr(phy.ptm_cfg, name).eq(getattr(native.bus, name))
+                else:
+                    self.comb += getattr(native.bus, name).eq(getattr(phy.ptm_cfg, name))
+            self.specials += [
+                MultiReg(native.control[0], self.ptm_enable),
+                MultiReg(native.control[8:16], self.ptm_effective_granularity),
+            ]
+            return
 
         # Signals.
         reg  = Signal(10)
@@ -188,7 +242,9 @@ class PTMRequester(LiteXModule):
         )
 
         # PTM Request Endpoint.
-        self.req_ep = req_ep = pcie_endpoint.packetizer.ptm_sink
+        packetizer = (pcie_endpoint.packetizer if hasattr(pcie_endpoint, "packetizer")
+            else pcie_endpoint.req_packetizer)
+        self.req_ep = req_ep = packetizer.ptm_sink
 
         # PTM Response Endpoint.
         self.res_ep = res_ep = pcie_ptm_sniffer.source

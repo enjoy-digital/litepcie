@@ -67,8 +67,8 @@ class LitePCIeEndpoint(LiteXModule):
             req_sink   = packetizer.req_sink
             cmp_source = depacketizer.cmp_source
         else:
-            if with_ptm:
-                raise NotImplementedError
+            if with_ptm and not getattr(phy, "with_ptm", False):
+                raise ValueError("PTM requires a PHY with with_ptm=True")
             # Separate Request/Completion channels
             self.cmp_depacketizer = cmp_depacketizer = LitePCIeTLPDepacketizer(
                 data_width   = phy.data_width,
@@ -92,7 +92,7 @@ class LitePCIeEndpoint(LiteXModule):
                 data_width    = phy.data_width,
                 endianness    = endianness,
                 address_width = address_width,
-                capabilities  = ["REQUEST"] + (["CONFIGURATION"] if with_configuration else []),
+                capabilities  = ["REQUEST"] + optional_packetizer_capabilities,
             )
             self.comb += [
                 phy.cmp_source.connect(cmp_depacketizer.sink),

@@ -1,7 +1,7 @@
 #
 # This file is part of LitePCIe.
 #
-# Copyright (c) 2015-2023 Florent Kermarrec <florent@enjoy-digital.fr>
+# Copyright (c) 2015-2026 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
 from migen import *
@@ -48,8 +48,8 @@ class LitePCIeWishboneMaster(LiteXModule):
 
         # Read Request State.
         request_adr       = Signal(32)
-        request_len       = Signal(10)
-        request_first_be  = Signal(4)
+        dwords_remaining  = Signal(10)
+        read_word_adr     = Signal.like(self.bus.adr)
         request_last_be   = Signal(4)
         request_req_id    = Signal(16)
         request_tc        = Signal(3)
@@ -75,16 +75,10 @@ class LitePCIeWishboneMaster(LiteXModule):
             ),
         ]
 
+        # Register the active read address and byte enables before driving
+        # Wishbone. Burst-length/index arithmetic must not sit on the path
+        # through the bus decoder to every CSR write enable.
         current_be = Signal(4)
-        self.comb += If(request_len == 1,
-            current_be.eq(request_first_be),
-        ).Elif(dword_index == 0,
-            current_be.eq(request_first_be),
-        ).Elif(dword_index == (request_len - 1),
-            current_be.eq(request_last_be),
-        ).Else(
-            current_be.eq(0xf),
-        )
 
         current_byte_count = Signal(3)
         current_lower_offset = Signal(2)
@@ -111,8 +105,9 @@ class LitePCIeWishboneMaster(LiteXModule):
                     NextState("DO-WRITE")
                 ).Else(
                     NextValue(request_adr,      port.sink.adr),
-                    NextValue(request_len,      port.sink.len),
-                    NextValue(request_first_be, port.sink.first_be),
+                    NextValue(dwords_remaining, port.sink.len),
+                    NextValue(read_word_adr,    port.sink.adr[2:32] + (base_address >> 2)),
+                    NextValue(current_be,       port.sink.first_be),
                     NextValue(request_last_be,  port.sink.last_be),
                     NextValue(request_req_id,   port.sink.req_id),
                     NextValue(request_tc,       port.sink.tc),
@@ -129,7 +124,7 @@ class LitePCIeWishboneMaster(LiteXModule):
         self.comb += [
             self.bus.sel.eq(Mux(fsm.ongoing("DO-READ"), current_be, 0xf)),
             If(fsm.ongoing("DO-READ"),
-                self.bus.adr.eq(request_adr[2:] + dword_index + (base_address >> 2)),
+                self.bus.adr.eq(read_word_adr),
             ).Else(
                 self.bus.adr.eq(port.sink.adr[2:] + (base_address >> 2)),
             ),
@@ -177,11 +172,16 @@ class LitePCIeWishboneMaster(LiteXModule):
         fsm.act("ISSUE-READ-COMPLETION",
             port.source.valid.eq(1),
             If(port.source.ready,
-                If(dword_index == (request_len - 1),
+                If(dwords_remaining == 1,
                     port.sink.ready.eq(1),
                     NextState("IDLE"),
                 ).Else(
+                    # Zero is the PCIe encoding of 1024 DWORDs; decrementing
+                    # the 10-bit count naturally preserves that encoding.
+                    NextValue(dwords_remaining, dwords_remaining - 1),
                     NextValue(dword_index, dword_index + 1),
+                    NextValue(read_word_adr, read_word_adr + 1),
+                    NextValue(current_be, Mux(dwords_remaining == 2, request_last_be, 0xf)),
                     NextValue(byte_count, byte_count - current_byte_count),
                     NextState("DO-READ"),
                 )
