@@ -59,6 +59,9 @@ class PTMExtendedCapability(LiteXModule):
             ("read_data", 32), ("read_data_valid", 1),
         ])
         self.control = control = Signal(32)
+
+        # # #
+
         selected = Signal()
         self.comb += selected.eq((bus.function_number == 0) &
             (bus.register_number >= base) & (bus.register_number < limit))

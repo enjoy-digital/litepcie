@@ -9,15 +9,22 @@
 The original x1 decoder remains in sniffer.py. These modules work at the PIPE
 clock, before the filtered PTM messages cross into the system clock domain.
 """
-from functools import reduce
+
+import os
 from operator import xor
+from functools import reduce
 
 from migen import *
+from migen.genlib.cdc import MultiReg
+from migen.genlib.resetsync import AsyncResetSynchronizer
+
 from litex.gen import LiteXModule
 from litex.soc.interconnect import stream
 
 COM, SKP, STP, END, EDB = 0xbc, 0x1c, 0xfb, 0xfd, 0xfe
 PTM_RESPONSE_LAYOUT = [("message_code", 8), ("master_time", 64), ("link_delay", 32)]
+
+# Scrambler Helpers --------------------------------------------------------------------------------
 
 
 def _lfsr8(state):
@@ -35,7 +42,10 @@ def _lfsr8(state):
 
     def expression(mask):
         return reduce(xor, [state[bit] for bit in range(16) if mask & (1 << bit)])
+
     return Cat(*(expression(mask) for mask in bits)), Cat(*(expression(mask) for mask in output))
+
+# Lane Descrambler ---------------------------------------------------------------------------------
 
 
 class PCIe8b10bLaneDescrambler(LiteXModule):
@@ -46,11 +56,14 @@ class PCIe8b10bLaneDescrambler(LiteXModule):
     ``valid`` permits PIPE capture bubbles without advancing either symbol.
     """
     def __init__(self):
-        self.valid = Signal(reset=1)
-        self.data = Signal(16)
-        self.ctrl = Signal(2)
+        self.valid   = Signal(reset=1)
+        self.data    = Signal(16)
+        self.ctrl    = Signal(2)
         self.decoded = Signal(16)
-        self.state = Signal(16, reset=0xffff)
+        self.state   = Signal(16, reset=0xffff)
+
+        # # #
+
         current = self.state
         for byte in range(2):
             data, ctrl = self.data[8*byte:8*(byte+1)], self.ctrl[byte]
@@ -64,6 +77,8 @@ class PCIe8b10bLaneDescrambler(LiteXModule):
             current = after
         self.sync += If(self.valid, self.state.eq(current))
 
+# Lane Symbol Buffer -------------------------------------------------------------------------------
+
 
 class PCIeLaneSymbolBuffer(LiteXModule):
     """Small two-symbol elastic buffer; compact SKP independently per lane.
@@ -73,14 +88,16 @@ class PCIeLaneSymbolBuffer(LiteXModule):
     """
     def __init__(self, depth=16):
         assert depth >= 4 and depth & (depth - 1) == 0
-        self.valid = Signal()
-        self.data = Signal(16)
-        self.ctrl = Signal(2)
-        self.pop = Signal(2)
-        self.head = [Signal(9), Signal(9)]
+        self.valid         = Signal()
+        self.data          = Signal(16)
+        self.ctrl          = Signal(2)
+        self.pop           = Signal(2)
+        self.head          = [Signal(9), Signal(9)]
         self.discard_first = Signal()
-        self.level = Signal(max=depth+1)
-        self.overflow = Signal()
+        self.level         = Signal(max=depth+1)
+        self.overflow      = Signal()
+
+        # # #
 
         write = Signal(max=depth)
         read = Signal(max=depth)
@@ -90,7 +107,9 @@ class PCIeLaneSymbolBuffer(LiteXModule):
         count = Signal(2)
         self.comb += [
             write_next.eq(write + 1), read_next.eq(read + 1),
-            *[keep[i].eq(self.valid & (~self.discard_first if i == 0 else 1) & ~(self.ctrl[i] & (self.data[8*i:8*(i+1)] == SKP)))
+            *[keep[i].eq(
+                self.valid & (~self.discard_first if i == 0 else 1) &
+                ~(self.ctrl[i] & (self.data[8*i:8*(i+1)] == SKP)))
               for i in range(2)],
             count.eq(keep[0] + keep[1]),
             self.overflow.eq(((self.level == depth) & (count != 0)) |
@@ -124,6 +143,8 @@ class PCIeLaneSymbolBuffer(LiteXModule):
             self.level.eq(self.level + count - self.pop),
         )
 
+# PTM Symbol Receiver ------------------------------------------------------------------------------
+
 
 class PCIePTMSymbolReceiver(LiteXModule):
     """Extract PTM responses from a deskewed/de-striped Gen1/Gen2 symbol stream.
@@ -135,12 +156,14 @@ class PCIePTMSymbolReceiver(LiteXModule):
     """
     def __init__(self, max_bytes=16):
         assert max_bytes in (2, 4, 8, 16)
-        self.valid = Signal()
-        self.nbytes = Signal(max=max_bytes+1, reset=max_bytes)
-        self.data = Signal(8*max_bytes)
-        self.ctrl = Signal(max_bytes)
-        self.source = stream.Endpoint(PTM_RESPONSE_LAYOUT)
+        self.valid    = Signal()
+        self.nbytes   = Signal(max=max_bytes+1, reset=max_bytes)
+        self.data     = Signal(8*max_bytes)
+        self.ctrl     = Signal(max_bytes)
+        self.source   = stream.Endpoint(PTM_RESPONSE_LAYOUT)
         self.overflow = Signal()
+
+        # # #
 
         # Decode K symbols in parallel with input capture. Their registered
         # positions then drive header/history bookkeeping in the next stage.
@@ -230,6 +253,8 @@ class PCIePTMSymbolReceiver(LiteXModule):
             If(good_end_d | bad_end_d | start_d, candidate.eq(0)),
         )
 
+# Multi-Lane PTM Receiver --------------------------------------------------------------------------
+
 
 class PCIePTM8b10bReceiver(LiteXModule):
     """Passive multi-lane Gen1/Gen2 PTM receiver, two symbols/lane/clock.
@@ -241,16 +266,18 @@ class PCIePTM8b10bReceiver(LiteXModule):
     """
     def __init__(self, nlanes=4):
         assert nlanes in (1, 2, 4, 8)
-        self.valid = Signal(reset=1)
+        self.valid      = Signal(reset=1)
         self.lane_valid = Signal(nlanes, reset=(1 << nlanes) - 1)
-        self.link_up = Signal()
-        self.lanes = Signal(max=nlanes+1, reset=nlanes)
-        self.reverse = Signal()
-        self.data = Signal(16*nlanes)
-        self.ctrl = Signal(2*nlanes)
-        self.locked = Signal()
-        self.overflow = Signal()
-        self.source = stream.Endpoint(PTM_RESPONSE_LAYOUT)
+        self.link_up    = Signal()
+        self.lanes      = Signal(max=nlanes+1, reset=nlanes)
+        self.reverse    = Signal()
+        self.data       = Signal(16*nlanes)
+        self.ctrl       = Signal(2*nlanes)
+        self.locked     = Signal()
+        self.overflow   = Signal()
+        self.source     = stream.Endpoint(PTM_RESPONSE_LAYOUT)
+
+        # # #
 
         previous_lanes = Signal.like(self.lanes)
         previous_reverse = Signal()
@@ -362,6 +389,8 @@ class PCIePTM8b10bReceiver(LiteXModule):
                 )
 
 
+# PIPE Tap Helpers ---------------------------------------------------------------------------------
+
 def add_checked_tap_connections(platform, connections):
     """Check all vendor nets/tap pins before reconnecting any of them."""
     commands = []
@@ -388,25 +417,30 @@ def add_ptm_cdc_constraints(platform):
     commands = [
         'set ptm_rx_clock [get_clocks -of_objects [get_pins pcie_ptm_pipe_tap/clk_out]]',
         'set ptm_sys_clock [get_clocks -of_objects [get_nets sys_clk]]',
-        'if {![llength $ptm_rx_clock] || ![llength $ptm_sys_clock]} {error {PTM PIPE tap: missing receive or system clock}}',
-        'foreach ptm_rx $ptm_rx_clock {foreach ptm_sys $ptm_sys_clock {if {$ptm_rx ne $ptm_sys} {set_clock_groups -asynchronous -group $ptm_rx -group $ptm_sys}}}',
+        ('if {![llength $ptm_rx_clock] || ![llength $ptm_sys_clock]} '
+         '{error {PTM PIPE tap: missing receive or system clock}}'),
+        ('foreach ptm_rx $ptm_rx_clock {foreach ptm_sys $ptm_sys_clock '
+         '{if {$ptm_rx ne $ptm_sys} '
+         '{set_clock_groups -asynchronous -group $ptm_rx -group $ptm_sys}}}'),
     ]
     platform.toolchain.pre_optimize_commands += [
         command.replace("{", "{{").replace("}", "}}") for command in commands]
 
 
+# 7-Series PIPE Tap --------------------------------------------------------------------------------
+
 class S7PCIePTMMultiLaneSniffer(LiteXModule):
     """Experimental multi-lane 7-series receive path; x1 keeps its old decoder."""
     def __init__(self, phy):
-        import os
-        from migen.genlib.cdc import MultiReg
         if not phy.with_ptm or phy.mode != "Endpoint":
             raise ValueError("PTM requires an Endpoint PHY with with_ptm=True")
         nlanes = phy.nlanes
         assert nlanes in (2, 4, 8)
-        self.source = stream.Endpoint(PTM_RESPONSE_LAYOUT)
+        self.source     = stream.Endpoint(PTM_RESPONSE_LAYOUT)
         self.cd_sniffer = ClockDomain()
-        from migen.genlib.resetsync import AsyncResetSynchronizer
+
+        # # #
+
         self.specials += AsyncResetSynchronizer(self.cd_sniffer, ResetSignal("pcie"))
         raw_data, raw_ctrl = Signal(16*nlanes), Signal(2*nlanes)
         placeholder_data, placeholder_ctrl = Signal.like(raw_data), Signal.like(raw_ctrl)
@@ -449,12 +483,15 @@ class S7PCIePTMMultiLaneSniffer(LiteXModule):
         self.comb += [
             receiver.data.eq(raw_data), receiver.ctrl.eq(raw_ctrl),
             receiver.lanes.eq(1 << width), receiver.reverse.eq(reversed_lanes != 0),
-            receiver.link_up.eq(link_up & (ltssm == 0x10) & ((reversed_lanes == 0) | (reversed_lanes == full_reversal))),
+            receiver.link_up.eq(link_up & (ltssm == 0x10) &
+                ((reversed_lanes == 0) | (reversed_lanes == full_reversal))),
         ]
         self.cdc = cdc = stream.ClockDomainCrossing(PTM_RESPONSE_LAYOUT,
             cd_from="sniffer", cd_to="sys")
         self.comb += [receiver.source.connect(cdc.sink), cdc.source.connect(self.source)]
 
+
+# UltraScale+ PIPE Tap -----------------------------------------------------------------------------
 
 class USPPCIePTMGen2Sniffer(LiteXModule):
     """Experimental PCIE4/PCIE4C Gen2 PIPE tap, with lane reversal disabled.
@@ -463,14 +500,14 @@ class USPPCIePTMGen2Sniffer(LiteXModule):
     Gen3/4 128b/130b blocks are deliberately rejected by the PHY constructor.
     """
     def __init__(self, phy):
-        import os
-        from migen.genlib.cdc import MultiReg
-        from migen.genlib.resetsync import AsyncResetSynchronizer
         if not phy.with_ptm or phy.mode != "Endpoint" or phy.speed != "gen2":
             raise ValueError("PTM requires an enabled Gen2 Endpoint PHY")
         nlanes = phy.nlanes
-        self.source = stream.Endpoint(PTM_RESPONSE_LAYOUT)
+        self.source     = stream.Endpoint(PTM_RESPONSE_LAYOUT)
         self.cd_sniffer = ClockDomain()
+
+        # # #
+
         self.specials += AsyncResetSynchronizer(self.cd_sniffer, ResetSignal("pcie"))
         raw_data, raw_ctrl = Signal(16*nlanes), Signal(3*nlanes+1)
         placeholder_data, placeholder_ctrl = Signal.like(raw_data), Signal.like(raw_ctrl)

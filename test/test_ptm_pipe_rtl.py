@@ -1,11 +1,20 @@
+#
+# This file is part of LitePCIe.
+#
 # Copyright (c) 2026 Enjoy-Digital <enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
+
 """Exercise emitted Verilog, including self-sized shift operands, in Icarus."""
+
 import shutil
 import subprocess
+
 import pytest
-from migen import Module, ClockDomain
+
+from migen import ClockDomain, Module
+
 from litex.gen.fhdl import verilog
+
 from litepcie.frontend.ptm.pipe import PCIePTM8b10bReceiver, COM, END
 from test.test_ptm_pipe import scramble_symbols, response
 
