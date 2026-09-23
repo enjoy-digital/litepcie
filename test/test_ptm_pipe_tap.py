@@ -13,13 +13,18 @@ import pytest
 from migen import Signal
 
 from litepcie.frontend.ptm.pipe import S7PCIePTMMultiLaneSniffer, USPPCIePTMGen2Sniffer
+from litepcie.frontend.ptm.pipe_gen34 import USPPCIePTMGen34Sniffer
 
 
-@pytest.mark.parametrize('family,lanes', [('s7', 2), ('s7', 4), ('s7', 8), ('usp', 1), ('usp', 8)])
+@pytest.mark.parametrize('family,lanes', [
+    ('s7', 2), ('s7', 4), ('s7', 8), ('usp', 1), ('usp', 8),
+    ('usp3', 4), ('usp3', 8), ('usp4', 8),
+])
 @pytest.mark.parametrize('missing', ['', 'source', 'target'])
 def test_wide_tap_checks_all_connections_before_mutation(family, lanes, missing):
     platform = SimpleNamespace(toolchain=SimpleNamespace(pre_optimize_commands=[]), add_source=lambda _: None)
-    phy = SimpleNamespace(platform=platform, with_ptm=True, mode='Endpoint', nlanes=lanes, speed='gen2')
+    speed = {'usp3': 'gen3', 'usp4': 'gen4'}.get(family, 'gen2')
+    phy = SimpleNamespace(platform=platform, with_ptm=True, mode='Endpoint', nlanes=lanes, speed=speed)
     if family == 's7':
         phy.pcie_phy_params = {
             'o_pl_sel_lnk_width': Signal(2),
@@ -34,8 +39,12 @@ def test_wide_tap_checks_all_connections_before_mutation(family, lanes, missing)
             'o_cfg_ltssm_state': Signal(6),
             'o_user_lnk_up': Signal(),
         }
-        USPPCIePTMGen2Sniffer(phy)
-        changes = 2*(19*lanes+2)
+        if family == 'usp':
+            USPPCIePTMGen2Sniffer(phy)
+            changes = 2*(19*lanes+2)
+        else:
+            USPPCIePTMGen34Sniffer(phy)
+            changes = 2*((37 if speed == 'gen3' else 69)*lanes+2)
     commands = '\n'.join(command.format(build_name='endpoint') for command in platform.toolchain.pre_optimize_commands)
     if family == 's7':
         # Vendor buses reserve 32 data and 4 K bits per lane.

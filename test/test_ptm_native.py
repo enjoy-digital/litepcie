@@ -163,10 +163,14 @@ def test_standalone_wide_ptm_generator(tmp_path, phy, device, lanes):
         assert 'PIPERX07DATA[15]' in tcl
         import re
         assert re.search(r'\.cfg_ext_read_data\s*\(', rtl)
-        config['phy_speed'] = 'gen3'
-        config_path.write_text(json.dumps(config))
-        result = subprocess.run([sys.executable, '-m', 'litepcie.gen', str(config_path),
-            '--output-dir', str(tmp_path/'unsupported'), '--header-dir', str(tmp_path)],
-            cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
-        assert result.returncode != 0
-        assert 'requires Gen2 Endpoint' in result.stderr
+        for speed in ('gen3', 'gen4'):
+            config['phy_speed'] = speed
+            config_path.write_text(json.dumps(config))
+            result = subprocess.run([sys.executable, '-m', 'litepcie.gen', str(config_path),
+                '--output-dir', str(tmp_path/speed), '--header-dir', str(tmp_path)],
+                cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout + result.stderr
+            tcl = (tmp_path/speed/'gateware/litepcie_core.tcl').read_text()
+            assert 'PIPERX07DATA[31]' in tcl
+            if speed == 'gen4':
+                assert 'PIPERX15DATA[31]' in tcl

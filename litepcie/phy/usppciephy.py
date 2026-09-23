@@ -124,8 +124,8 @@ class USPPCIEPHY(LiteXModule):
         assert pcie_data_width in [64, 128, 256, 512]
 
         if with_ptm:
-            if mode != "Endpoint" or speed != "gen2" or nlanes > 8:
-                raise ValueError("Experimental UltraScale+ PTM requires Gen2 Endpoint x1/x2/x4/x8")
+            if mode != "Endpoint" or nlanes > 8 or (speed != "gen2" and nlanes < 4):
+                raise ValueError("UltraScale+ PTM requires a Gen2 x1/x2/x4/x8 or Gen3/Gen4 x4/x8 Endpoint")
             if pcie_data_width < 128:
                 raise ValueError("UltraScale+ PTM requires at least a 128-bit PCIe datapath")
             self.ptm_cfg = Record([
@@ -741,8 +741,12 @@ class USPPCIEPHY(LiteXModule):
         ]
 
     def create_ptm_sniffer(self):
-        from litepcie.frontend.ptm.pipe import USPPCIePTMGen2Sniffer
-        return USPPCIePTMGen2Sniffer(self)
+        if self.speed == "gen2":
+            from litepcie.frontend.ptm.pipe import USPPCIePTMGen2Sniffer
+            return USPPCIePTMGen2Sniffer(self)
+        else:
+            from litepcie.frontend.ptm.pipe_gen34 import USPPCIePTMGen34Sniffer
+            return USPPCIePTMGen34Sniffer(self)
 
     # Resync Helper --------------------------------------------------------------------------------
     def add_resync(self, sig, clk="sys"):
@@ -829,15 +833,12 @@ class USPPCIEPHY(LiteXModule):
             config.update(self.config)
 
             if getattr(self, "with_ptm", False):
-                # The initial PIPE receiver supports 8b/10b and natural lane
-                # order only. Keep this explicit even if defaults change.
+                # The passive PIPE receiver requires natural lane order.
                 config.update({
                     "ext_pcie_cfg_space_enabled": True,
                     "cfg_ext_if": True,
                     "PL_DISABLE_LANE_REVERSAL": True,
                 })
-                if config["PL_LINK_CAP_MAX_LINK_SPEED"] != "5.0_GT/s":
-                    raise ValueError("PTM PIPE decoding currently requires Gen2")
 
             # Tcl generation.
             ip_tcl  = []
