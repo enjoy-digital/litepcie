@@ -1,8 +1,20 @@
+#
+# This file is part of LitePCIe.
+#
 # Copyright (c) 2026 Enjoy-Digital <enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
+
+import sys
+import json
 import random
+import subprocess
+
+from pathlib import Path
+
 import pytest
+
 from migen import *
+
 from litepcie.frontend.ptm.core import PTMExtendedCapability
 from litepcie.phy.axis_adapters import SAxisRQAdapter
 
@@ -11,6 +23,7 @@ from litepcie.phy.axis_adapters import SAxisRQAdapter
 def test_native_capability(base, limit):
     dut = PTMExtendedCapability(base, limit)
     bus = dut.bus
+
     def access(address, *, write=None, be=15, function=0):
         yield bus.register_number.eq(address)
         yield bus.function_number.eq(function)
@@ -22,6 +35,7 @@ def test_native_capability(base, limit):
         yield bus.read_received.eq(0)
         yield bus.write_received.eq(0)
         yield
+
     def check_read(address, expected, function=0, valid=1):
         yield from access(address, function=function)
         assert (yield bus.read_data_valid) == valid
@@ -29,6 +43,7 @@ def test_native_capability(base, limit):
             assert (yield bus.read_data) == expected
         yield
         assert (yield bus.read_data_valid) == 0
+
     def run():
         yield from check_read(base, 0x1001f)
         yield from check_read(base+1, 0x801)
@@ -54,11 +69,13 @@ def test_native_capability(base, limit):
 def transmit(dut, beats, seed=41):
     outputs = []
     rng = random.Random(seed)
+
     @passive
     def ready():
         while True:
             yield dut.m_axis_tready.eq(rng.randrange(3) != 0)
             yield
+
     @passive
     def monitor():
         while True:
@@ -66,6 +83,7 @@ def transmit(dut, beats, seed=41):
                 outputs.append(((yield dut.m_axis_tdata), (yield dut.m_axis_tkeep),
                     (yield dut.m_axis_tlast), (yield dut.m_axis_tuser)))
             yield
+
     def drive():
         for data, keep, last in beats:
             yield dut.s_axis_tdata.eq(data)
@@ -119,10 +137,6 @@ def test_native_ptm_request_and_dma_interleave(width):
     ('USPPCIEPHY', 'xcau15p-ffvb676-2-i', 8),
 ])
 def test_standalone_wide_ptm_generator(tmp_path, phy, device, lanes):
-    import json
-    import subprocess
-    import sys
-    from pathlib import Path
     config = dict(phy=phy, phy_device=device, phy_lanes=lanes,
         phy_pcie_data_width=128 if phy == 'S7PCIEPHY' else 256,
         phy_data_width=128 if phy == 'S7PCIEPHY' else 256,

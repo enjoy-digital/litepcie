@@ -1,12 +1,21 @@
+#
+# This file is part of LitePCIe.
+#
 # Copyright (c) 2026 Enjoy-Digital <enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
+
 """Check compaction and parity-bank wraparound against an independent queue."""
+
 import random
 import shutil
 import subprocess
+
 import pytest
-from migen import Module, ClockDomain
+
+from migen import ClockDomain, Module
+
 from litex.gen.fhdl import verilog
+
 from litepcie.frontend.ptm.pipe import PCIeLaneSymbolBuffer, SKP
 
 
@@ -16,10 +25,12 @@ def test_lane_buffer_generated_verilog(tmp_path):
     dut = Module()
     dut.clock_domains.cd_sys = ClockDomain('sys')
     dut.submodules.buffer = buffer = PCIeLaneSymbolBuffer()
-    ports = dict(clk=dut.cd_sys.clk, rst=dut.cd_sys.rst, valid=buffer.valid,
-        data=buffer.data, ctrl=buffer.ctrl, pop=buffer.pop,
+    ports = dict(
+        clk=dut.cd_sys.clk, rst=dut.cd_sys.rst,
+        valid=buffer.valid, data=buffer.data, ctrl=buffer.ctrl, pop=buffer.pop,
         discard_first=buffer.discard_first, level=buffer.level,
-        overflow=buffer.overflow, head0=buffer.head[0], head1=buffer.head[1])
+        overflow=buffer.overflow, head0=buffer.head[0], head1=buffer.head[1],
+    )
     for name, signal in ports.items():
         signal.name_override = name
     verilog.convert(dut, ios=set(ports.values()), name='lane_buffer').write(str(tmp_path/'buffer.v'))
@@ -33,7 +44,8 @@ lane_buffer dut(.*);
 initial begin
 repeat(5) @(negedge clk); rst=0;
 '''
-    rng, queue = random.Random(155), []
+    rng   = random.Random(155)
+    queue = []
     for cycle in range(1500):
         symbols = [(rng.randrange(256), rng.randrange(2)) for _ in range(2)]
         for i in range(2):
@@ -46,7 +58,10 @@ repeat(5) @(negedge clk); rst=0;
         overflow = len(queue)+len(kept) > 16
         data = symbols[0][0] | (symbols[1][0] << 8)
         ctrl = symbols[0][1] | (symbols[1][1] << 1)
-        bench += f'@(negedge clk); valid={int(valid)}; discard_first={int(discard)}; pop={pop}; data=16\'h{data:x}; ctrl={ctrl}; #1;\n'
+        bench += (
+            f'@(negedge clk); valid={int(valid)}; discard_first={int(discard)}; '
+            f'pop={pop}; data=16\'h{data:x}; ctrl={ctrl}; #1;\n'
+        )
         bench += f'if(overflow !== 1\'b{int(overflow)}) $fatal(1, "overflow cycle {cycle}");\n'
         if not overflow:
             queue = queue[pop:]+kept
@@ -58,6 +73,6 @@ repeat(5) @(negedge clk); rst=0;
     (tmp_path/'tb.v').write_text(bench)
     result = subprocess.run(['iverilog', '-g2012', '-s', 'tb', '-o', 'sim', 'buffer.v', 'tb.v'],
         cwd=tmp_path, capture_output=True, text=True)
-    assert result.returncode == 0, result.stdout+result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(['vvp', 'sim'], cwd=tmp_path, capture_output=True, text=True, timeout=30)
-    assert result.returncode == 0 and 'PASS' in result.stdout, result.stdout+result.stderr
+    assert result.returncode == 0 and 'PASS' in result.stdout, result.stdout + result.stderr

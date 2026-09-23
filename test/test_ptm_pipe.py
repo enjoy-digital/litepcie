@@ -1,6 +1,13 @@
+#
+# This file is part of LitePCIe.
+#
+# Copyright (c) 2026 Enjoy-Digital <enjoy-digital.fr>
+# SPDX-License-Identifier: BSD-2-Clause
+
 import random
 
 import pytest
+
 from migen import Module, Signal, run_simulation
 
 from litepcie.frontend.ptm.pipe import (
@@ -79,7 +86,11 @@ def test_parallel_ptm_receiver_alignment_gaps_and_backpressure(width):
         for cycle in range(len(symbols)*3):
             yield dut.source.ready.eq(cycle % 7 != 0)
             if (yield dut.source.valid) and (yield dut.source.ready):
-                received.append(((yield dut.source.message_code), (yield dut.source.master_time), (yield dut.source.link_delay)))
+                received.append((
+                    (yield dut.source.message_code),
+                    (yield dut.source.master_time),
+                    (yield dut.source.link_delay),
+                ))
             assert not (yield dut.overflow)
             yield
 
