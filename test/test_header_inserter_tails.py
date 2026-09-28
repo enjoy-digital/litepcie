@@ -10,7 +10,7 @@ def pack(words):
     return sum(word << (32 * lane) for lane, word in enumerate(words))
 
 
-@pytest.mark.parametrize("width", [128, 256, 512])
+@pytest.mark.parametrize("width", [32, 64, 128, 256, 512])
 @pytest.mark.parametrize("header_dwords", [3, 4])
 def test_all_partial_tails(width, header_dwords):
     cls = {3: LitePCIeTLPHeaderInserter3DWs, 4: LitePCIeTLPHeaderInserter4DWs}[header_dwords]
