@@ -43,17 +43,34 @@ class LitePCIeTLPHeaderInserter3DWs4DWs(LiteXModule):
             fmt_dict[ "ptm_res"] : header_sel.eq(_4DWS_SEL),
         })
 
+        # Keep the selected inserter until its final output beat is accepted. The
+        # input can already carry the next packet's format while a tail is buffered.
+        header_sel_d = Signal()
+        ongoing      = Signal()
+        self.sync += [
+            If(source.valid & source.first & ~ongoing,
+                header_sel_d.eq(header_sel),
+                ongoing.eq(1),
+            ),
+            If(source.valid & source.ready & source.last, ongoing.eq(0)),
+        ]
+
         # Header Inserters Mux.
-        self.comb += Case(header_sel, {
-            _3DWS_SEL : [
-                sink.connect(header_inserter_3dws.sink),
-                header_inserter_3dws.source.connect(source),
-            ],
-            _4DWS_SEL : [
-                sink.connect(header_inserter_4dws.sink),
-                header_inserter_4dws.source.connect(source),
-            ],
-        })
+        # Keep forward and return paths separate to avoid procedural feedback
+        # between the mux and the inserters in event-driven RTL simulation.
+        selected = Signal()
+        self.comb += selected.eq(Mux(ongoing, header_sel_d, header_sel))
+        for i, inserter in enumerate([header_inserter_3dws, header_inserter_4dws]):
+            self.comb += [
+                sink.connect(inserter.sink, omit={"valid", "ready"}),
+                inserter.sink.valid.eq(sink.valid & (selected == i)),
+                inserter.source.ready.eq(source.ready & (selected == i)),
+            ]
+        self.comb += sink.ready.eq(Mux(selected, header_inserter_4dws.sink.ready, header_inserter_3dws.sink.ready))
+        for name in ["valid", "first", "last", "dat", "be"]:
+            self.comb += getattr(source, name).eq(Mux(selected,
+                getattr(header_inserter_4dws.source, name),
+                getattr(header_inserter_3dws.source, name)))
 
 
 # Generic TLP Header Inserter ---------------------------------------------------------------------
