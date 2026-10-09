@@ -3,17 +3,21 @@ KERNEL_VERSION:=$(shell uname -r)
 KERNEL_PATH?=/lib/modules/$(KERNEL_VERSION)/build
 ARCH?=$(shell uname -m)
 
-obj-m = litepcie.o liteuart.o
-litepcie-objs = main.o
+# Driver/device name: $(LITEPCIE_NAME).ko module, /dev/$(LITEPCIE_NAME)N devices.
+LITEPCIE_NAME?=litepcie
+
+obj-m = $(LITEPCIE_NAME).o liteuart.o
+$(LITEPCIE_NAME)-objs = main.o
 #liteuart-objs = liteuart.o
+ccflags-y += -DLITEPCIE_NAME=\"$(LITEPCIE_NAME)\"
 
 
-all: litepcie.ko liteuart.ko
+all: $(LITEPCIE_NAME).ko liteuart.ko
 
-litepcie.ko: main.c
+$(LITEPCIE_NAME).ko: main.c
 	make -C $(KERNEL_PATH) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(shell pwd) modules
 
-litepcie.ko: litepcie.h config.h flags.h csr.h soc.h
+$(LITEPCIE_NAME).ko: litepcie.h config.h flags.h csr.h soc.h
 
 liteuart.ko: liteuart.c
 	make -C $(KERNEL_PATH) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(shell pwd) modules

@@ -257,7 +257,7 @@ int main(int argc, char **argv)
         help();
 
     /* Select device. */
-    snprintf(litepcie_device, sizeof(litepcie_device), "/dev/litepcie%d", litepcie_device_num);
+    snprintf(litepcie_device, sizeof(litepcie_device), "/dev/" LITEPCIE_NAME "%d", litepcie_device_num);
 
     cmd = argv[optind++];
 

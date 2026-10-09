@@ -1,10 +1,13 @@
 #!/bin/sh
 # TODO: use udev instead
 
+# Driver/device name: $NAME.ko module, /dev/$NAMEN devices.
+NAME=${LITEPCIE_NAME:-litepcie}
+
 # Check if litepcie module is already installed.
-FOUND=$(lsmod | grep litepcie)
+FOUND=$(lsmod | grep "^$NAME ")
 if [ "$FOUND" != "" ] ; then
-    echo "litepcie module already installed."
+    echo "$NAME module already installed."
     exit 0
 fi
 
@@ -15,23 +18,23 @@ if [ "$FOUND" != "" ] ; then
 fi
 
 # Install litepcie module.
-INS=$(insmod litepcie.ko 2>&1)
+INS=$(insmod $NAME.ko 2>&1)
 if [ "$?" != "0" ] ; then
-    ERR=$(echo $INS | sed -s "s/.*litepcie.ko: //")
+    ERR=$(echo $INS | sed -s "s/.*$NAME.ko: //")
     case $ERR in
     'Invalid module format')
         set -e
         echo "Kernel may have changed, try to rebuild module"
         make -s clean
         make -s
-        insmod litepcie.ko
+        insmod $NAME.ko
         set +e
         ;;
     'No such file or directory')
         set -e
         echo "Module not compiled"
         make -s
-        insmod litepcie.ko
+        insmod $NAME.ko
         set +e
         ;;
     'Required key not available')
@@ -50,6 +53,6 @@ insmod liteuart.ko
 
 # Change permissions on litepcie created devices.
 for i in `seq 0 16` ; do
-    chmod 666 /dev/litepcie$i > /dev/null 2>&1
+    chmod 666 /dev/$NAME$i > /dev/null 2>&1
 done
 

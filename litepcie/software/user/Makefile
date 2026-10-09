@@ -1,4 +1,7 @@
-CFLAGS=-O2 -Wall -g -I../kernel -Iliblitepcie -MMD -fPIC
+# Driver/device name: /dev/$(LITEPCIE_NAME)N devices.
+LITEPCIE_NAME?=litepcie
+
+CFLAGS=-O2 -Wall -g -I../kernel -Iliblitepcie -MMD -fPIC -DLITEPCIE_NAME=\"$(LITEPCIE_NAME)\"
 LDFLAGS=-g
 CC=$(CROSS_COMPILE)gcc
 AR=ar

@@ -54,7 +54,6 @@
 //#define DEBUG_READ
 //#define DEBUG_WRITE
 
-#define LITEPCIE_NAME "litepcie"
 #define LITEPCIE_MINOR_COUNT 32
 
 #ifndef CSR_BASE
@@ -1104,7 +1103,7 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
 	for (i = 0; i < s->channels; i++) {
 		struct litepcie_chan *chan = &s->chan[i];
 
-		dev_info(&s->dev->dev, "Creating /dev/litepcie%d\n", chan->minor);
+		dev_info(&s->dev->dev, "Creating /dev/" LITEPCIE_NAME "%d\n", chan->minor);
 
 		device_initialize(&chan->device);
 		chan->device.devt    = MKDEV(litepcie_major, chan->minor);
@@ -1117,7 +1116,7 @@ static int litepcie_alloc_chdev(struct litepcie_device *s)
 		 */
 		kref_get(&s->ref);
 
-		ret = dev_set_name(&chan->device, "litepcie%d", chan->minor);
+		ret = dev_set_name(&chan->device, LITEPCIE_NAME "%d", chan->minor);
 		if (ret)
 			goto fail;
 
