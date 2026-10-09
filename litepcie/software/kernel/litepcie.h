@@ -16,6 +16,11 @@
 #include "csr.h"
 #include "config.h"
 
+/* Driver/device name: <name>.ko module, /dev/<name>N devices (set by the Makefiles). */
+#ifndef LITEPCIE_NAME
+#define LITEPCIE_NAME "litepcie"
+#endif
+
 struct litepcie_ioctl_reg {
 	uint32_t addr;
 	uint32_t val;
