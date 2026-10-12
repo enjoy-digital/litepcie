@@ -113,10 +113,24 @@ class LitePCIeMSIX(LiteXModule):
         msix_num            = Signal(max=width)
         msix_clear          = Signal(width)
         msix_clear_on_ready = Signal(width)
+        msix_skip           = Signal(width) # Pending IRQs found masked, skipped until next scan.
+        msix_skip_set       = Signal(width)
+        msix_pending        = Signal(width)
+
+        # Masked IRQs remain pending (PBA) and are skipped to avoid blocking the other IRQs. Once all
+        # pending IRQs have been skipped, re-scan them so IRQs unmasked by software are generated.
+        self.comb += msix_pending.eq(vector & ~msix_skip)
+        self.sync += [
+            If(msix_pending == 0,
+                msix_skip.eq(0)
+            ).Else(
+                msix_skip.eq((msix_skip | msix_skip_set) & vector)
+            )
+        ]
 
         for i in reversed(range(width)): # Priority given to lower indexes.
             self.comb += [
-                If(vector[i],
+                If(msix_pending[i],
                     msix_valid.eq(1),
                     msix_num.eq(i),
                     msix_clear.eq(1 << i),
@@ -129,9 +143,19 @@ class LitePCIeMSIX(LiteXModule):
         self.specials += table_port
 
         # Table decoding.
-        msix_adr  = table_port.dat_r[96:128] # Lower Address.
-        msix_dat  = table_port.dat_r[32:64]  # Message Data.
-        msix_mask = table_port.dat_r[0]      # Mask, when set to 1, MSI-X message is not generated.
+        msix_adr_lsb = table_port.dat_r[96:128] # Lower Address.
+        msix_adr_msb = table_port.dat_r[64:96]  # Upper Address.
+        msix_dat     = table_port.dat_r[32:64]  # Message Data.
+        msix_mask    = Signal()                 # When set to 1, MSI-X message is not generated (IRQ kept pending).
+        msix_adr     = Signal(len(port.source.adr))
+        self.comb += msix_mask.eq(table_port.dat_r[0])
+        if len(port.source.adr) >= 64:
+            self.comb += msix_adr.eq(Cat(msix_adr_lsb, msix_adr_msb))
+        else:
+            # Upper Address can't be expressed on a 32-bit Endpoint: Handle the IRQ as masked instead
+            # of writing to the truncated (wrong) address.
+            self.comb += msix_adr.eq(msix_adr_lsb)
+            self.comb += If(msix_adr_msb != 0, msix_mask.eq(1))
 
         # FSM.
         self.fsm = fsm = FSM(reset_state="IDLE")
@@ -154,10 +178,16 @@ class LitePCIeMSIX(LiteXModule):
             port.source.dat.eq(msix_dat),
         ]
         fsm.act("ISSUE-WRITE",
-            port.source.valid.eq(~msix_mask),
             port.source.we.eq(1),
-            If(port.source.ready | msix_mask,
-                clear.eq(msix_clear_on_ready),
+            If(msix_mask,
+                # Masked: Keep IRQ pending and skip it.
+                msix_skip_set.eq(msix_clear_on_ready),
                 NextState("IDLE")
+            ).Else(
+                port.source.valid.eq(1),
+                If(port.source.ready,
+                    clear.eq(msix_clear_on_ready),
+                    NextState("IDLE")
+                )
             )
         )
