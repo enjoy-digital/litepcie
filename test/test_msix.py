@@ -29,15 +29,16 @@ class MSIXTB(LiteXModule):
         )
         self.msix = msix = LitePCIeMSIX(endpoint, width=2, default_enable=1)
 
-        self.irqs      = Signal(2)
-        self.table_adr = Signal(1)
-        self.table_we  = Signal()
-        self.table_dw  = Signal(128)
+        self.irqs       = Signal(2)
+        self.table_adr  = Signal(1) # Vector.
+        self.table_word = Signal(2) # Word within the entry.
+        self.table_we   = Signal()
+        self.table_dw   = Signal(32)
         table_wp = msix.table.get_port(write_capable=True)
         self.specials += table_wp
         self.comb += [
             msix.irqs.eq(self.irqs),
-            table_wp.adr.eq(self.table_adr),
+            table_wp.adr.eq(Cat(self.table_word, self.table_adr)),
             table_wp.we.eq(self.table_we),
             table_wp.dat_w.eq(self.table_dw),
             port.source.ready.eq(1),
@@ -46,8 +47,8 @@ class MSIXTB(LiteXModule):
 # Test MSI-X ---------------------------------------------------------------------------------------
 
 def entry(lower=0xfee01000, upper=0, data=0x45, mask=0):
-    # Table entry (reversed DWORD order): Lower Address, Upper Address, Data, Control.
-    return (lower << 96) | (upper << 64) | (data << 32) | mask
+    # Table entry as the host writes it: Lower Address, Upper Address, Data, Control.
+    return [lower, upper, data, mask]
 
 class TestMSIX(unittest.TestCase):
     def run_msix(self, address_width, actions):
@@ -65,11 +66,13 @@ class TestMSIX(unittest.TestCase):
         def stimulus():
             for action, *args in actions:
                 if action == "table":
-                    adr, value = args
-                    yield dut.table_adr.eq(adr)
-                    yield dut.table_dw.eq(value)
-                    yield dut.table_we.eq(1)
-                    yield
+                    adr, words = args
+                    for word, value in enumerate(words):
+                        yield dut.table_adr.eq(adr)
+                        yield dut.table_word.eq(word)
+                        yield dut.table_dw.eq(value)
+                        yield dut.table_we.eq(1)
+                        yield
                     yield dut.table_we.eq(0)
                 elif action == "irq":
                     yield dut.irqs.eq(args[0])
