@@ -95,7 +95,13 @@ class LitePCIeMSIX(LiteXModule):
         self.pba            = CSRStatus(width, description="""MSI-X PBA Table.""")
         if width <= 32:
             self.reserved1 = CSRStorage() # For 64-bit alignment.
-        self.specials.table = Memory(4*32, width, init=[0b1 for _ in range(width)]) # MSI-X Table / Masked by default.
+        # MSI-X Table: 4 x 32-bit words per vector (Lower Address, Upper Address, Message Data, Vector
+        # Control), masked by default. A 32-bit wide Memory maps word for word on the CSR bus and lets
+        # the message generation read every bit column through its own port: with a 128-bit wide entry
+        # the Vector Control reserved bits (31:1) were only ever read back by the CSR port, and Vivado
+        # 2024.1 turned those dual-port LUTRAM columns into cells it could not place or route (DRC
+        # RTSTAT-4/RTSTAT-6, no bitstream).
+        self.specials.table = Memory(32, 4*width, init=[0, 0, 0, 0b1]*width)
 
         # # #
 
@@ -142,13 +148,17 @@ class LitePCIeMSIX(LiteXModule):
         self.table_port = table_port = self.table.get_port(has_re=True)
         self.specials += table_port
 
-        # Table decoding.
-        msix_adr_lsb = table_port.dat_r[96:128] # Lower Address.
-        msix_adr_msb = table_port.dat_r[64:96]  # Upper Address.
-        msix_dat     = table_port.dat_r[32:64]  # Message Data.
-        msix_mask    = Signal()                 # When set to 1, MSI-X message is not generated (IRQ kept pending).
+        # Table entry read: the 4 words of the vector are read one after the other.
+        msix_vector  = Signal(max=max(width, 2))
+        msix_word    = Signal(2)
+        msix_adr_lsb = Signal(32) # Lower Address.
+        msix_adr_msb = Signal(32) # Upper Address.
+        msix_dat     = Signal(32) # Message Data.
+        msix_ctrl    = Signal(32) # Vector Control.
+        msix_mask    = Signal()   # When set to 1, MSI-X message is not generated (IRQ kept pending).
         msix_adr     = Signal(len(port.source.adr))
-        self.comb += msix_mask.eq(table_port.dat_r[0])
+        self.comb += table_port.adr.eq(Cat(msix_word, msix_vector))
+        self.comb += msix_mask.eq(msix_ctrl[0])
         if len(port.source.adr) >= 64:
             self.comb += msix_adr.eq(Cat(msix_adr_lsb, msix_adr_msb))
         else:
@@ -160,11 +170,29 @@ class LitePCIeMSIX(LiteXModule):
         # FSM.
         self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
-            table_port.adr.eq(msix_num),
-            table_port.re.eq(1),
             If(msix_valid,
                 NextValue(msix_clear_on_ready, msix_clear),
+                NextValue(msix_vector, msix_num),
+                NextValue(msix_word, 0),
+                NextState("READ-TABLE")
+            )
+        )
+        fsm.act("READ-TABLE",
+            table_port.re.eq(1),
+            NextState("LOAD-TABLE")
+        )
+        fsm.act("LOAD-TABLE",
+            Case(msix_word, {
+                0 : NextValue(msix_adr_lsb, table_port.dat_r),
+                1 : NextValue(msix_adr_msb, table_port.dat_r),
+                2 : NextValue(msix_dat,     table_port.dat_r),
+                3 : NextValue(msix_ctrl,    table_port.dat_r),
+            }),
+            NextValue(msix_word, msix_word + 1),
+            If(msix_word == 3,
                 NextState("ISSUE-WRITE")
+            ).Else(
+                NextState("READ-TABLE")
             )
         )
         self.comb += [
