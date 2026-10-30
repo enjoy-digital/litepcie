@@ -289,5 +289,19 @@ class TestRX128bEOFByteEnables(unittest.TestCase):
         tlps.append((_wr32(payload, 0x6000), ("req", (1, payload, 1, 0x6000))))
         self._run([(dws, None) for dws, _ in tlps], [e for _, e in tlps], straddle=True, seed=4)
 
+    def test_straddled_packets_ending_in_the_upper_half_keep_their_tail(self):
+        # Odd-length completions (as returned for requests that are not a multiple of 16 bytes) end
+        # in DW0/DW1 and let the next TLP straddle; a straddled TLP whose last DW lands on DW2/DW3
+        # needs an extra aligned beat for its tail.
+        rng  = random.Random(5)
+        tlps = []
+        for tag, n in enumerate([15, 19, 13, 18, 17, 16, 127, 16]):
+            payload = [rng.getrandbits(32) for _ in range(n)]
+            tlps.append((_cpld(payload, tag=tag), ("cmp", (payload, tag))))
+            if n in (13, 17):
+                payload = [rng.getrandbits(32)]
+                tlps.append((_wr32(payload, 0x7000 + 4*tag), ("req", (1, payload, 1, 0x7000 + 4*tag))))
+        self._run([(dws, None) for dws, _ in tlps], [e for _, e in tlps], straddle=True, seed=6)
+
 if __name__ == "__main__":
     unittest.main()

@@ -157,16 +157,30 @@ class PHYRX128BAligner(Module):
             )
         )
         fsm.act("UNALIGNED",
-            sink.connect(source, omit={"first", "dat", "be"}),
+            sink.connect(source, omit={"first", "dat", "be", "last"}),
             source.dat.eq(Cat(dat_last, sink.dat)),
             # The byte enables follow the shift unchanged: the PHY provides exact byte enables on
             # the last beat, so the DWs of the lower half that belong to the packet stay valid.
             source.be.eq( Cat(be_last,  sink.be)),
-            # If "last" and not "first" on the same cycle, switch to ALIGNED.
-            If(sink.valid & sink.last & ~sink.first,
-                If(source.ready,
+            # A packet ending in the lower half of the beat ends with this output beat; one ending
+            # in the upper half still has two DWs to emit (TAIL). A new packet starting on DW2 of
+            # the same beat keeps the stream unaligned.
+            source.last.eq(sink.last & (sink.be[8:] == 0)),
+            If(sink.valid & sink.last & ~sink.first & source.ready,
+                If(sink.be[8:] == 0,
                     NextState("ALIGNED")
+                ).Else(
+                    NextState("TAIL")
                 )
+            )
+        )
+        fsm.act("TAIL",
+            source.valid.eq(1),
+            source.last.eq(1),
+            source.dat.eq(dat_last),
+            source.be.eq( be_last),
+            If(source.ready,
+                NextState("ALIGNED")
             )
         )
 
