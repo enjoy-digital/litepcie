@@ -9,6 +9,7 @@ import math
 from litex.gen import *
 
 from litepcie.common import *
+from litepcie.phy.common import PHYRX128BMarkerDecoder, PHYRXDatapath
 from litepcie.tlp.common import *
 
 # Helpers ------------------------------------------------------------------------------------------
@@ -24,6 +25,11 @@ class PHYPacket:
         self.be    = be
         self.start = 1
         self.done  = 0
+
+class PHYDwordsPacket:
+    def __init__(self, dwords):
+        self.dwords = list(dwords)
+        self.done   = 0
 
 # PHY Source model ---------------------------------------------------------------------------------
 
@@ -68,6 +74,82 @@ class PHYSource(LiteXModule):
                     yield self.source.valid.eq(0)
             yield
 
+# PHY Source model, 7-series 128-bit receive interface ---------------------------------------------
+
+class PHYSourceS7128b(LiteXModule):
+    """Present packets like the 128-bit receive interface of the 7-series hard IP.
+
+    Every beat carries 4 DWs with all-ones byte enables; packet boundaries are only given by the
+    is_sof/is_eof markers (bit 4: present, bits 3:0: byte offset). A packet starts at DW0 of a new
+    beat, or at DW2 of the beat where the previous packet ended in DW0/DW1 when another packet is
+    already queued (straddling), as the hard IP does.
+    """
+    def __init__(self, straddle=True):
+        self.source   = stream.Endpoint(phy_layout(128))
+        self.is_sof   = Signal(5)
+        self.is_eof   = Signal(5)
+        self.straddle = straddle
+
+        # # #
+
+        self.packets = []
+
+    def send(self, packet):
+        self.packets.append(packet)
+
+    def send_blocking(self, packet):
+        self.send(packet)
+        while packet.done == 0:
+            yield
+
+    @passive
+    def generator(self):
+        current   = None
+        remaining = []
+        in_flight = []
+        yield self.source.valid.eq(0)
+        while True:
+            # Hold the beat until it is accepted.
+            if (yield self.source.valid) and not (yield self.source.ready):
+                yield
+                continue
+            for packet in in_flight:
+                packet.done = 1
+            in_flight = []
+            if (current is None) and (len(self.packets) == 0):
+                yield self.source.valid.eq(0)
+                yield
+                continue
+            dws    = [0, 0, 0, 0]
+            is_sof = 0
+            is_eof = 0
+            pos    = 0
+            if current is None:
+                current   = self.packets.pop(0)
+                remaining = list(current.dwords)
+                is_sof    = 0b10000
+            while (pos < 4) and (current is not None):
+                dws[pos] = remaining.pop(0)
+                pos += 1
+                if len(remaining) == 0:
+                    is_eof = 0b10000 | (4*(pos - 1) + 3)
+                    in_flight.append(current)
+                    current = None
+                    if self.straddle and (pos <= 2) and len(self.packets):
+                        current   = self.packets.pop(0)
+                        remaining = list(current.dwords)
+                        pos       = 2
+                        is_sof    = 0b11000
+            dat = 0
+            for i, dw in enumerate(dws):
+                dat |= (dw & 0xffffffff) << (32*i)
+            yield self.source.dat.eq(dat)
+            yield self.source.be.eq(0xffff)
+            yield self.is_sof.eq(is_sof)
+            yield self.is_eof.eq(is_eof)
+            yield self.source.valid.eq(1)
+            yield
+
 # PHY Sink model -----------------------------------------------------------------------------------
 
 class PHYSink(Module):
@@ -106,8 +188,16 @@ class PHYSink(Module):
 # PHY Layer model ----------------------------------------------------------------------------------
 
 class PHY(LiteXModule):
-    def __init__(self, data_width, id, bar0_size, debug):
-        self.data_width = data_width
+    """PHY model.
+
+    ``rx_interface`` selects how host packets are presented to the core:
+    - ``"exact"``: beats carry exact byte enables and first/last (ideal PHY).
+    - ``"s7-128b"``: beats are shaped like the 7-series hard IP 128-bit receive interface (markers,
+      all-ones tkeep, straddling) and go through the PHY's marker decoder, aligner and RX datapath.
+    """
+    def __init__(self, data_width, id, bar0_size, debug, rx_interface="exact"):
+        self.data_width   = data_width
+        self.rx_interface = rx_interface
 
         self.id = id
 
@@ -117,11 +207,32 @@ class PHY(LiteXModule):
         self.max_request_size = Signal(10, reset=512)
         self.max_payload_size = Signal(8,  reset=128)
 
-        self.phy_source = PHYSource(data_width)
-        self.phy_sink   = PHYSink(data_width)
-
-        self.source = self.phy_source.source
-        self.sink   = self.phy_sink.sink
+        if rx_interface == "exact":
+            self.phy_source = PHYSource(data_width)
+            self.source     = self.phy_source.source
+        elif rx_interface == "s7-128b":
+            assert data_width == 128
+            self.phy_source  = PHYSourceS7128b()
+            self.rx_markers  = PHYRX128BMarkerDecoder()
+            # Single-clock form of the PHY RX datapath (aligner, no clock domain crossing), run in
+            # the simulation's sys domain.
+            self.rx_datapath = ClockDomainsRenamer({"pcie": "sys"})(
+                PHYRXDatapath(data_width, data_width, "pcie", with_aligner=True))
+            raw = self.phy_source.source
+            self.comb += [
+                self.rx_markers.is_sof.eq(self.phy_source.is_sof),
+                self.rx_markers.is_eof.eq(self.phy_source.is_eof),
+                raw.connect(self.rx_datapath.sink, omit={"first", "last", "be"}),
+                self.rx_datapath.sink.first.eq(self.rx_markers.first),
+                self.rx_datapath.sink.last.eq( self.rx_markers.last),
+                self.rx_datapath.sink.be.eq(   self.rx_markers.be),
+                self.rx_datapath.aligner.first_dword.eq(self.rx_markers.first_dword),
+            ]
+            self.source = self.rx_datapath.source
+        else:
+            raise ValueError(f"Unknown rx_interface {rx_interface}")
+        self.phy_sink = PHYSink(data_width)
+        self.sink     = self.phy_sink.sink
 
     def dwords2packet(self, dwords):
             ratio  = self.data_width//32
@@ -139,15 +250,17 @@ class PHY(LiteXModule):
                         pass
             return dat, be
 
+    def _packet(self, dwords):
+        if self.rx_interface == "exact":
+            dat, be = self.dwords2packet(dwords)
+            return PHYPacket(dat, be)
+        return PHYDwordsPacket(dwords)
+
     def send(self, dwords):
-        dat, be = self.dwords2packet(dwords)
-        packet  = PHYPacket(dat, be)
-        self.phy_source.send(packet)
+        self.phy_source.send(self._packet(dwords))
 
     def send_blocking(self, dwords):
-        dat, be = self.dwords2packet(dwords)
-        packet  = PHYPacket(dat, be)
-        yield from self.phy_source.send_blocking(packet)
+        yield from self.phy_source.send_blocking(self._packet(dwords))
 
     def packet2dwords(self, p_dat, p_be):
             ratio  = self.data_width//32

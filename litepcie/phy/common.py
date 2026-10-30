@@ -53,6 +53,34 @@ def rx_128b_byte_enable_from_eof(be, is_eof):
         )
     ]
 
+# RX 128-bit Marker Decoder ------------------------------------------------------------------------
+
+class PHYRX128BMarkerDecoder(Module):
+    """Decode the is_sof/is_eof markers of a 128-bit hard IP receive interface.
+
+    The 7-series hard IP reports packet boundaries on its 128-bit interface only through the markers
+    of ``m_axis_rx_tuser`` (``is_sof[4]``/``is_eof[4]``: a TLP starts/ends in the beat, ``is_sof[3:0]``/
+    ``is_eof[3:0]``: byte offset of its first/last byte); ``tlast`` is 0 and ``tkeep`` all-ones on
+    every beat. Turn the markers into the ``first``/``last``/``be`` of the PHY stream and report a TLP
+    starting on DW2 to the 128-bit aligner.
+    """
+    def __init__(self):
+        self.is_sof      = Signal(5)
+        self.is_eof      = Signal(5)
+        self.first       = Signal()
+        self.last        = Signal()
+        self.be          = Signal(16)
+        self.first_dword = Signal(2)
+
+        # # #
+
+        self.comb += [
+            self.first.eq(self.is_sof[4]),
+            self.last.eq(self.is_eof[4]),
+            If(self.is_sof == 0b11000, self.first_dword.eq(2)),
+        ]
+        self.comb += rx_128b_byte_enable_from_eof(self.be, self.is_eof)
+
 # TX Datapath --------------------------------------------------------------------------------------
 
 class PHYTXDatapath(Module):

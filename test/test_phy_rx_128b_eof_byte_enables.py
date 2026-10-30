@@ -20,7 +20,7 @@ from litex.gen import *
 from litex.soc.interconnect import stream
 
 from litepcie.common import phy_layout
-from litepcie.phy.common import PHYRX128BAligner, rx_128b_byte_enable_from_eof
+from litepcie.phy.common import PHYRX128BAligner, PHYRX128BMarkerDecoder, rx_128b_byte_enable_from_eof
 from litepcie.tlp.depacketizer import LitePCIeTLPDepacketizer
 
 from test.model.tlp import CPLD, WR32, RD32
@@ -118,21 +118,24 @@ class _RX128bDUT(LiteXModule):
 
         # # #
 
+        self.markers      = markers      = PHYRX128BMarkerDecoder()
         self.aligner      = aligner      = PHYRX128BAligner()
         self.depacketizer = depacketizer = LitePCIeTLPDepacketizer(128, "big")
 
         raw = stream.Endpoint(phy_layout(128))
         self.comb += [
+            markers.is_sof.eq(self.is_sof),
+            markers.is_eof.eq(self.is_eof),
             raw.valid.eq(self.valid),
             self.ready.eq(raw.ready),
             raw.dat.eq(self.dat),
-            raw.first.eq(self.is_sof[4]),
-            raw.last.eq(self.is_eof[4]),
-            If(self.is_sof == 0b11000, aligner.first_dword.eq(2)),
+            raw.first.eq(markers.first),
+            raw.last.eq(markers.last),
+            raw.be.eq(markers.be),
+            aligner.first_dword.eq(markers.first_dword),
             raw.connect(aligner.sink),
             aligner.source.connect(depacketizer.sink),
         ]
-        self.comb += rx_128b_byte_enable_from_eof(raw.be, self.is_eof)
 
 # Tests --------------------------------------------------------------------------------------------
 
