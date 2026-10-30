@@ -23,19 +23,22 @@ def print_host(s):
 
 class Host(LiteXModule):
     def __init__(self, data_width, root_id, endpoint_id,
-        bar0_size          = 1*MB,
-        phy_debug          = False,
-        chipset_debug      = False,
-        chipset_split      = False,
-        chipset_reordering = False,
-        host_debug         = False):
+        bar0_size           = 1*MB,
+        phy_debug           = False,
+        phy_rx_interface    = "exact",
+        chipset_debug       = False,
+        chipset_split       = False,
+        chipset_split_sizes = (64, 128, 256),
+        chipset_reordering  = False,
+        host_debug          = False):
         self.debug         = host_debug
         self.chipset_split = chipset_split
 
         # # #
 
-        self.phy     = PHY(data_width, endpoint_id, bar0_size, phy_debug)
-        self.chipset = Chipset(self.phy, root_id, chipset_debug, chipset_reordering)
+        self.phy     = PHY(data_width, endpoint_id, bar0_size, phy_debug, rx_interface=phy_rx_interface)
+        self.chipset = Chipset(self.phy, root_id, chipset_debug, chipset_reordering,
+            split_sizes = chipset_split_sizes)
         self.chipset.set_host_callback(self.callback)
 
         self.rd_queue = []
@@ -79,8 +82,9 @@ class Host(LiteXModule):
                 length  = msg.length*4
                 data    = self.read_mem(address, length)
                 self.chipset.cmp(msg.requester_id, data,
-                    byte_count = length,
-                    tag        = msg.tag,
-                    with_split = self.chipset_split
+                    byte_count    = length,
+                    lower_address = address & 0x7f,
+                    tag           = msg.tag,
+                    with_split    = self.chipset_split
                 )
             yield

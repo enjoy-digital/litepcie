@@ -517,14 +517,15 @@ class S7PCIEPHY(LiteXModule):
             # In 128-bit mode the hard IP does not drive m_axis_rx_tlast/tkeep (tlast is 0 and
             # tkeep is all-ones on every beat); packet boundaries come from the is_sof/is_eof
             # markers of m_axis_rx_tuser, so both last and the byte enables are derived from them.
-            rx_is_sof = m_axis_rx_tuser[10:15] # Start of a new packet header in m_axis_rx_tdata.
-            rx_is_eof = m_axis_rx_tuser[17:22] # End of a packet in m_axis_rx_tdata.
+            self.submodules.rx_markers = rx_markers = PHYRX128BMarkerDecoder()
             self.comb += [
-                m_axis_rx.first.eq(rx_is_sof[-1]),
-                m_axis_rx.last.eq( rx_is_eof[-1]),
-                If(rx_is_sof == 0b11000, self.rx_datapath.aligner.first_dword.eq(2)),
+                rx_markers.is_sof.eq(m_axis_rx_tuser[10:15]), # Start of a new packet header in m_axis_rx_tdata.
+                rx_markers.is_eof.eq(m_axis_rx_tuser[17:22]), # End of a packet in m_axis_rx_tdata.
+                m_axis_rx.first.eq(rx_markers.first),
+                m_axis_rx.last.eq( rx_markers.last),
+                m_axis_rx.be.eq(   rx_markers.be),
+                self.rx_datapath.aligner.first_dword.eq(rx_markers.first_dword),
             ]
-            self.comb += rx_128b_byte_enable_from_eof(m_axis_rx.be, rx_is_eof)
         else:
             self.comb += [
                 m_axis_rx.first.eq(0),

@@ -53,6 +53,34 @@ def rx_128b_byte_enable_from_eof(be, is_eof):
         )
     ]
 
+# RX 128-bit Marker Decoder ------------------------------------------------------------------------
+
+class PHYRX128BMarkerDecoder(Module):
+    """Decode the is_sof/is_eof markers of a 128-bit hard IP receive interface.
+
+    The 7-series hard IP reports packet boundaries on its 128-bit interface only through the markers
+    of ``m_axis_rx_tuser`` (``is_sof[4]``/``is_eof[4]``: a TLP starts/ends in the beat, ``is_sof[3:0]``/
+    ``is_eof[3:0]``: byte offset of its first/last byte); ``tlast`` is 0 and ``tkeep`` all-ones on
+    every beat. Turn the markers into the ``first``/``last``/``be`` of the PHY stream and report a TLP
+    starting on DW2 to the 128-bit aligner.
+    """
+    def __init__(self):
+        self.is_sof      = Signal(5)
+        self.is_eof      = Signal(5)
+        self.first       = Signal()
+        self.last        = Signal()
+        self.be          = Signal(16)
+        self.first_dword = Signal(2)
+
+        # # #
+
+        self.comb += [
+            self.first.eq(self.is_sof[4]),
+            self.last.eq(self.is_eof[4]),
+            If(self.is_sof == 0b11000, self.first_dword.eq(2)),
+        ]
+        self.comb += rx_128b_byte_enable_from_eof(self.be, self.is_eof)
+
 # TX Datapath --------------------------------------------------------------------------------------
 
 class PHYTXDatapath(Module):
@@ -129,16 +157,30 @@ class PHYRX128BAligner(Module):
             )
         )
         fsm.act("UNALIGNED",
-            sink.connect(source, omit={"first", "dat", "be"}),
+            sink.connect(source, omit={"first", "dat", "be", "last"}),
             source.dat.eq(Cat(dat_last, sink.dat)),
             # The byte enables follow the shift unchanged: the PHY provides exact byte enables on
             # the last beat, so the DWs of the lower half that belong to the packet stay valid.
             source.be.eq( Cat(be_last,  sink.be)),
-            # If "last" and not "first" on the same cycle, switch to ALIGNED.
-            If(sink.valid & sink.last & ~sink.first,
-                If(source.ready,
+            # A packet ending in the lower half of the beat ends with this output beat; one ending
+            # in the upper half still has two DWs to emit (TAIL). A new packet starting on DW2 of
+            # the same beat keeps the stream unaligned.
+            source.last.eq(sink.last & (sink.be[8:] == 0)),
+            If(sink.valid & sink.last & ~sink.first & source.ready,
+                If(sink.be[8:] == 0,
                     NextState("ALIGNED")
+                ).Else(
+                    NextState("TAIL")
                 )
+            )
+        )
+        fsm.act("TAIL",
+            source.valid.eq(1),
+            source.last.eq(1),
+            source.dat.eq(dat_last),
+            source.be.eq( be_last),
+            If(source.ready,
+                NextState("ALIGNED")
             )
         )
 

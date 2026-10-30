@@ -43,10 +43,13 @@ import pytest
 
 from litex.gen import *
 
+from litex.soc.interconnect import wishbone
+
 from litepcie.common import *
 from litepcie.core import LitePCIeEndpoint
 from litepcie.core.msi import LitePCIeMSI
 from litepcie.frontend.dma import LitePCIeDMAWriter, LitePCIeDMAReader, dma_words_for_bytes
+from litepcie.frontend.wishbone import LitePCIeWishboneBridge
 
 from test.common import seed_to_data
 from test.model.host import *
@@ -153,8 +156,17 @@ class TestDMA(unittest.TestCase):
         self.assertEqual(dma_words_for_bytes(512, 128), 32)
 
     def dma_test(self, data_width, address_width, descriptor_lengths=None, test_size=256,
-        chipset_split=True, chipset_reordering=True, dma_data_width=None,
-        check_reader_stream=False, reader_last_disable=False, timeout_cycles=20000):
+        chipset_split=True, chipset_reordering=True, chipset_split_sizes=(64, 128, 256),
+        dma_data_width=None, check_reader_stream=False, reader_last_disable=False,
+        timeout_cycles=20000, max_pending_requests=8, cmp_bufs_buffered=True,
+        phy_rx_interface="exact", host_traffic=False, host_traffic_period=256, host_read_timeout=4000):
+        """Run a DMA Reader -> Writer loopback through the Host model.
+
+        ``phy_rx_interface`` selects the PHY presentation of host packets (``"exact"`` or the
+        7-series 128-bit ``"s7-128b"`` one); ``host_traffic`` adds MMIO writes/reads through a
+        Wishbone bridge while the DMA runs, each read having to complete within
+        ``host_read_timeout`` cycles.
+        """
         if descriptor_lengths is None:
             descriptor_lengths = [test_size//4] * 4
         test_size = sum(descriptor_lengths)
@@ -194,6 +206,21 @@ class TestDMA(unittest.TestCase):
 
             # Fill initial Host's Memory.
             dut.host.write_mem(0x00000000, host_data)
+
+            # Host MMIO traffic through the Wishbone bridge, interleaved with the DMA: two 1-DW
+            # writes then a 2-DW read, each read having to complete in time.
+            host_rw = {"count": 0}
+            def host_write_read():
+                n      = host_rw["count"]
+                adr    = 2*(n % 8)
+                values = [seed_to_data(2*n, True), seed_to_data(2*n + 1, True)]
+                yield from dut.host.chipset.wr32(adr + 0, [values[0]])
+                yield from dut.host.chipset.wr32(adr + 1, [values[1]])
+                yield from dut.host.chipset.rd32(adr, length=2, timeout=host_read_timeout)
+                self.assertEqual(dut.host.chipset.rd_data, values)
+                host_rw["count"] += 1
+            if host_traffic:
+                yield from host_write_read()
 
             # DMA Reader/Writer control models.
             dma_reader_driver = DMADriver("dma_reader", dut)
@@ -235,6 +262,8 @@ class TestDMA(unittest.TestCase):
             # Wait for all reader words or writes.
             timeout = 0
             while True:
+                if host_traffic and ((timeout % host_traffic_period) == 0):
+                    yield from host_write_read()
                 if check_reader_stream:
                     done = (len(reader_data) >= reader_words)
                 else:
@@ -265,17 +294,25 @@ class TestDMA(unittest.TestCase):
 
                 # Host -----------------------------------------------------------------------------
                 self.host = Host(data_width, root_id, endpoint_id,
-                    phy_debug          = False,
-                    chipset_debug      = False,
-                    chipset_split      = chipset_split,
-                    chipset_reordering = chipset_reordering,
-                    host_debug         = False)
+                    phy_debug           = False,
+                    phy_rx_interface    = phy_rx_interface,
+                    chipset_debug       = False,
+                    chipset_split       = chipset_split,
+                    chipset_split_sizes = chipset_split_sizes,
+                    chipset_reordering  = chipset_reordering,
+                    host_debug          = False)
 
                 # Endpoint -------------------------------------------------------------------------
                 self.endpoint = LitePCIeEndpoint(self.host.phy,
                     address_width        = address_width,
-                    max_pending_requests = 8
+                    max_pending_requests = max_pending_requests,
+                    cmp_bufs_buffered    = cmp_bufs_buffered,
                 )
+
+                # Host MMIO path -------------------------------------------------------------------
+                if host_traffic:
+                    self.bridge = LitePCIeWishboneBridge(self.endpoint)
+                    self.sram   = wishbone.SRAM(64, bus=self.bridge.wishbone)
 
                 # DMA Reader/Writer ----------------------------------------------------------------
                 dma_reader_port = self.endpoint.crossbar.get_master_port(read_only=True)
@@ -357,6 +394,53 @@ class TestDMA(unittest.TestCase):
                     check_reader_stream = True,
                     timeout_cycles      = 1000,
                 )
+
+    @pytest.mark.slow
+    def test_dma_128b_s7_rx_interface(self):
+        # 7-series 128-bit receive presentation (markers, all-ones tkeep), 16 tags, 512-byte
+        # requests answered as reordered 64-byte completions: every completion must keep its
+        # length through the marker decoder, aligner and depacketizer.
+        self.dma_test(
+            data_width           = 128,
+            address_width        = 32,
+            descriptor_lengths   = [2048]*4,
+            max_pending_requests = 16,
+            phy_rx_interface     = "s7-128b",
+            chipset_split        = True,
+            chipset_split_sizes  = (64,),
+            chipset_reordering   = True,
+            timeout_cycles       = 40000,
+        )
+
+    @pytest.mark.slow
+    def test_dma_128b_s7_rx_interface_host_traffic(self):
+        # Same presentation with host MMIO writes/reads interleaved and descriptor lengths that end
+        # requests on partial beats (completions ending in DW0/DW1 let the next TLP straddle): the
+        # DMA must complete and every host read must be answered, i.e. the inbound path never blocks.
+        self.dma_test(
+            data_width           = 128,
+            address_width        = 32,
+            descriptor_lengths   = [2044, 2052, 2048, 2048],
+            max_pending_requests = 16,
+            phy_rx_interface     = "s7-128b",
+            chipset_split        = True,
+            chipset_reordering   = True,
+            host_traffic         = True,
+            timeout_cycles       = 40000,
+        )
+
+    @pytest.mark.slow
+    def test_dma_128b_exact_rx_interface_host_traffic(self):
+        self.dma_test(
+            data_width           = 128,
+            address_width        = 32,
+            descriptor_lengths   = [2048]*4,
+            max_pending_requests = 16,
+            chipset_split        = True,
+            chipset_reordering   = True,
+            host_traffic         = True,
+            timeout_cycles       = 40000,
+        )
 
     @pytest.mark.slow
     def test_dma_256b_data_width_32b_address_width(self):
