@@ -31,6 +31,28 @@ def get_bar_size_config(size):
 
     raise ValueError(f"PCIe BAR size 0x{size:x} cannot be represented by the Xilinx PCIe IP")
 
+def rx_128b_byte_enable_from_eof(be, is_eof):
+    """Rebuild the byte enables of a 128-bit RX beat from an EOF marker.
+
+    Some hard IPs do not report tkeep/tlast on their 128-bit receive interface and signal the
+    end of a TLP and the DW position of its last byte through a side-band marker instead
+    (``is_eof[4]``: EOF present, ``is_eof[3:0]``: byte offset of the last byte, 3/7/11/15).
+    The core relies on the byte enables of the last beat to tell valid DWs from padding, so
+    they have to be rebuilt from that marker: all bytes are valid on a beat without EOF, and
+    the bytes up to the marked position on a beat with EOF.
+    """
+    return [
+        be.eq(0xffff),
+        If(is_eof[4],
+            Case(is_eof[2:4], {
+                0 : be.eq(0x000f),
+                1 : be.eq(0x00ff),
+                2 : be.eq(0x0fff),
+                3 : be.eq(0xffff),
+            })
+        )
+    ]
+
 # TX Datapath --------------------------------------------------------------------------------------
 
 class PHYTXDatapath(Module):
@@ -109,10 +131,11 @@ class PHYRX128BAligner(Module):
         fsm.act("UNALIGNED",
             sink.connect(source, omit={"first", "dat", "be"}),
             source.dat.eq(Cat(dat_last, sink.dat)),
+            # The byte enables follow the shift unchanged: the PHY provides exact byte enables on
+            # the last beat, so the DWs of the lower half that belong to the packet stay valid.
             source.be.eq( Cat(be_last,  sink.be)),
             # If "last" and not "first" on the same cycle, switch to ALIGNED.
             If(sink.valid & sink.last & ~sink.first,
-                source.be[8:].eq(0),
                 If(source.ready,
                     NextState("ALIGNED")
                 )

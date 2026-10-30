@@ -266,6 +266,7 @@ class S7PCIEPHY(LiteXModule):
 
         # Hard IP ----------------------------------------------------------------------------------
         m_axis_rx_tlast = Signal()
+        m_axis_rx_tkeep = Signal(pcie_data_width//8)
         m_axis_rx_tuser = Signal(32)
         self.cfg_aer_ecrc_gen_en = cfg_aer_ecrc_gen_en = Signal()
         self.s_axis_tx_tuser = s_axis_tx_tuser = Signal(4)
@@ -356,7 +357,7 @@ class S7PCIEPHY(LiteXModule):
             o_m_axis_rx_tlast                            = m_axis_rx_tlast,
             i_m_axis_rx_tready                           = m_axis_rx.ready,
             o_m_axis_rx_tdata                            = m_axis_rx.dat,
-            o_m_axis_rx_tkeep                            = m_axis_rx.be,
+            o_m_axis_rx_tkeep                            = m_axis_rx_tkeep,
             o_m_axis_rx_tuser                            = m_axis_rx_tuser,
 
             # Flow Control
@@ -513,6 +514,9 @@ class S7PCIEPHY(LiteXModule):
         self.pcie_phy_params.update(cfg_msg_ports)
 
         if pcie_data_width == 128:
+            # In 128-bit mode the hard IP does not drive m_axis_rx_tlast/tkeep (tlast is 0 and
+            # tkeep is all-ones on every beat); packet boundaries come from the is_sof/is_eof
+            # markers of m_axis_rx_tuser, so both last and the byte enables are derived from them.
             rx_is_sof = m_axis_rx_tuser[10:15] # Start of a new packet header in m_axis_rx_tdata.
             rx_is_eof = m_axis_rx_tuser[17:22] # End of a packet in m_axis_rx_tdata.
             self.comb += [
@@ -520,10 +524,12 @@ class S7PCIEPHY(LiteXModule):
                 m_axis_rx.last.eq( rx_is_eof[-1]),
                 If(rx_is_sof == 0b11000, self.rx_datapath.aligner.first_dword.eq(2)),
             ]
+            self.comb += rx_128b_byte_enable_from_eof(m_axis_rx.be, rx_is_eof)
         else:
             self.comb += [
                 m_axis_rx.first.eq(0),
                 m_axis_rx.last.eq(m_axis_rx_tlast),
+                m_axis_rx.be.eq(m_axis_rx_tkeep),
             ]
 
     # PTM Receive Sniffer --------------------------------------------------------------------------
