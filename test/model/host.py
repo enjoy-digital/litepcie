@@ -82,8 +82,9 @@ class Host(LiteXModule):
                 length  = msg.length*4
                 data    = self.read_mem(address, length)
                 self.chipset.cmp(msg.requester_id, data,
-                    byte_count = length,
-                    tag        = msg.tag,
-                    with_split = self.chipset_split
+                    byte_count    = length,
+                    lower_address = address & 0x7f,
+                    tag           = msg.tag,
+                    with_split    = self.chipset_split
                 )
             yield

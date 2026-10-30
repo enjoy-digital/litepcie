@@ -145,15 +145,21 @@ class Chipset(LiteXModule):
 
     def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0, with_split=False):
         if with_split:
-            d = random.choice(self.split_sizes)
-            n = byte_count//d
-            if n == 0:
-                self.cmp(req_id, data, byte_count=byte_count, tag=tag)
-            else:
-                for i in range(n):
-                    cmp_data = data[i*byte_count//(4*n):(i+1)*byte_count//(4*n)]
-                    self.cmp(req_id, cmp_data,
-                        byte_count=byte_count-i*byte_count//n, tag=tag)
+            # Split the completion in packets of a Read Completion Boundary size (the last one
+            # carrying the remainder), each with the remaining byte count and the advancing lower
+            # address, as a Root Complex does.
+            d         = random.choice(self.split_sizes)
+            remaining = byte_count if byte_count is not None else 4*len(data)
+            offset    = 0
+            while remaining > 0:
+                n_bytes = min(d, remaining)
+                n_dws   = (n_bytes + 3)//4
+                self.cmp(req_id, data[offset:offset + n_dws],
+                    byte_count    = remaining,
+                    lower_address = (lower_address + 4*offset) & 0x7f,
+                    tag           = tag)
+                offset    += n_dws
+                remaining -= n_bytes
         else:
             if len(data) == 0:
                 fmt = 0b00
