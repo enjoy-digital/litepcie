@@ -17,11 +17,15 @@ for Avalon-ST 256-Bit Interface") and in Intel's own example-design RTL
 """
 
 import random
+import types
 import unittest
+from unittest import mock
 
-from migen import Module
-from migen.sim import run_simulation
+from migen import Module, Signal
+from migen.fhdl.specials import Instance
+from migen.sim import passive, run_simulation
 
+from litepcie.phy import svpciephy
 from litepcie.phy.svpciephy import _TXQwordAligner, _RXQwordDealigner
 
 # Helpers ------------------------------------------------------------------------------------------
@@ -184,6 +188,128 @@ class TestSVPCIEPHYAlignment(unittest.TestCase):
             self.assertEqual(len(got), len(cases), f"packet count, {data_width}-bit")
             for pkt_in, pkt_out in zip(packed, got):
                 self.assertEqual(beats_to_dwords(pkt_out, dws), pkt_in)
+
+
+# Hard IP RX Avalon-ST Interface -------------------------------------------------------------------
+
+class _NoInstance:
+    # The hard IP and its reconfiguration logic are vendor Instances; the test plays the hard IP.
+    @staticmethod
+    def lower(dr):
+        return Module()
+
+
+class _FakePlatform:
+    device = "5SGSMD5K2F40C2"
+
+    def __init__(self):
+        self.toolchain = types.SimpleNamespace(additional_sdc_commands=[])
+
+    def add_ip(self, *args, **kwargs):
+        pass
+
+    def add_source(self, *args, **kwargs):
+        pass
+
+    def add_period_constraint(self, *args, **kwargs):
+        pass
+
+
+def build_svpciephy(data_width=128):
+    """Elaborate the real SVPCIEPHY without Quartus, with its datapath in the pcie domain."""
+    pads = types.SimpleNamespace(
+        clk_p   = Signal(),
+        perst_n = Signal(reset=1),
+        rx_p    = Signal(8),
+        tx_p    = Signal(8),
+    )
+    ip = "/nonexistent/svpcie_xcvr_reconfig/synthesis/svpcie_xcvr_reconfig"
+    widths = {"to": 700, "from": 460}
+    with mock.patch.object(svpciephy, "add_hip_sources"), \
+         mock.patch.object(svpciephy, "generate_xcvr_reconfig", return_value=(ip + ".qip", ip + ".v")), \
+         mock.patch.object(svpciephy, "probe_reconfig_widths", return_value=widths):
+        return svpciephy.SVPCIEPHY(_FakePlatform(), pads,
+            data_width = data_width,
+            cd         = "pcie",
+            speed      = "gen1",
+            nlanes     = 8,
+        )
+
+
+class TestSVPCIEPHYRXReadyLatency(unittest.TestCase):
+    """rx_st is an Avalon-ST source with readyLatency 3 (pcie_sv_port.tcl: `rx_st readyLatency 3`):
+    the hard IP may assert rx_st_valid in cycle k whenever rx_st_ready was asserted in cycle k-3, so
+    up to 3 beats arrive after rx_st_ready deasserts. None of them may be lost."""
+
+    def run_rx(self, tlps, ready_pattern, ready_latency=3, data_width=128):
+        dws   = data_width//32
+        phy   = build_svpciephy(data_width)
+        p     = phy.hip_params
+        beats = []
+        for (header, payload) in tlps:
+            dwords = expected_altera_dwords(header, payload)
+            for i in range(0, len(dwords), dws):
+                chunk = dwords[i:i+dws]
+                data  = sum((d & 0xffffffff) << (32*j) for j, d in enumerate(chunk))
+                last  = i + dws >= len(dwords)
+                empty = (dws//2 - (len(chunk) + 1)//2) if last else 0
+                beats.append((data, i == 0, last, empty))
+        out = []
+
+        @passive
+        def hard_ip():
+            # Greedy source: a beat on every ready cycle while data is pending.
+            ready = {}
+            k = 0
+            while True:
+                if beats and ready.get(k - ready_latency, 0):
+                    data, sop, eop, empty = beats.pop(0)
+                    yield p["o_rx_st_valid"].eq(1)
+                    yield p["o_rx_st_data"].eq(data)
+                    yield p["o_rx_st_sop"].eq(sop)
+                    yield p["o_rx_st_eop"].eq(eop)
+                    yield p["o_rx_st_empty"].eq(empty)
+                else:
+                    yield p["o_rx_st_valid"].eq(0)
+                yield
+                ready[k] = (yield p["i_rx_st_ready"])
+                k += 1
+
+        def litepcie():
+            for r in ready_pattern:
+                yield phy.source.ready.eq(r)
+                yield
+                if (yield phy.source.valid) and (yield phy.source.ready):
+                    out.append((
+                        (yield phy.source.dat),
+                        (yield phy.source.be),
+                        (yield phy.source.first),
+                        (yield phy.source.last),
+                    ))
+
+        run_simulation(phy, {"pcie": [hard_ip(), litepcie()]}, clocks={"pcie": 10},
+            special_overrides={Instance: _NoInstance})
+        return out
+
+    def test_rx_backpressure_with_ready_latency_3(self):
+        # Completions with data, both alignments, back to back. LitePCIe stalls in bursts (what a
+        # full pcie->sys CDC FIFO does) while the hard IP keeps sending its in-flight beats.
+        rng  = random.Random(3)
+        tlps = []
+        for npayload in [24, 16, 32, 1, 8, 13, 20]:
+            for addr_bit2 in [0, 1]:
+                header  = make_header(0, 1, addr_bit2)
+                payload = [rng.getrandbits(32) for _ in range(npayload)]
+                tlps.append((header, payload))
+        pattern = [0]*2 + ([1]*4 + [0]*6)*30 + [1]*100
+        packets = split_packets(self.run_rx(tlps, pattern))
+        self.assertEqual(len(packets), len(tlps))
+        for (header, payload), pkt in zip(tlps, packets):
+            self.assertEqual([beat[2] for beat in pkt], [1] + [0]*(len(pkt) - 1))
+            # rx_st_empty is qword-granular: one trailing dword may be flagged but unused.
+            got = beats_to_dwords(pkt, 4)
+            self.assertEqual(got[:len(header) + len(payload)], header + payload)
+            self.assertIn(len(got) - len(header) - len(payload), [0, 1])
 
 
 if __name__ == "__main__":

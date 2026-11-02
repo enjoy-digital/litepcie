@@ -862,9 +862,15 @@ class SVPCIEPHY(LiteXModule):
         # the RX interface "supports a readyLatency of 3 cycles" (raised from 2 in v18.0; older
         # copies of the guide say 2, and its own figures are inconsistent, so size for 3), while for
         # TX "Intel recommends a readyLatency of 2 cycles to facilitate timing closure".
+        # On RX the hard IP may still present a beat on each of the readyLatency cycles after
+        # rx_st_ready deasserts. AvalonST2Native drives rx_st_ready straight from the downstream
+        # ready and sizes its FIFO to `latency` entries, but the beat accepted in the cycle before
+        # the deassertion is still in that FIFO (it cannot pass through combinatorially), so a
+        # readyLatency of 3 needs 4 entries: with 3, the third in-flight beat is dropped.
+        rx_ready_latency = 3
         tx_n2av = Native2AvalonST(phy_layout(data_width), latency=2)
         tx_n2av = ClockDomainsRenamer("pcie")(tx_n2av)
-        rx_av2n = AvalonST2Native(phy_layout(data_width), latency=3)
+        rx_av2n = AvalonST2Native(phy_layout(data_width), latency=rx_ready_latency + 1)
         rx_av2n = ClockDomainsRenamer("pcie")(rx_av2n)
         self.submodules += tx_n2av, rx_av2n
 
