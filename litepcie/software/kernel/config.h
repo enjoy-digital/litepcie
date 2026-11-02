@@ -17,6 +17,7 @@
 #define PCIE_XILINX_VENDOR_ID  0x10ee
 #define PCIE_LATTICE_VENDOR_ID 0x1204
 #define PCIE_GOWIN_VENDOR_ID   0x22c2
+#define PCIE_ALTERA_VENDOR_ID  0x1172
 
 /* PCIe PHY Device IDs */
 
@@ -66,6 +67,9 @@
 /* Gowin */
 
 #define PCIE_GOWIN_DEVICE_ID_GW5AT_GEN2_X4 0x1100
+
+/* Altera */
+#define PCIE_ALTERA_DEVICE_ID_SV           0xe001
 
 /* /!\ Keep in sync with csr.h  /!\ */
 
