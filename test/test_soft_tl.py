@@ -10,6 +10,11 @@ from migen import *
 
 from litepcie.phy.soft.tl.adapter      import TXAdapter, RXAdapter
 from litepcie.phy.soft.tl.config_space import PCIeConfigSpace
+from litepcie.phy.soft.tl.core         import SoftTransactionLayer
+
+MSI_CTRL   = 0x48
+MSI_ADR_LO = 0x4c
+MSI_DATA   = 0x54
 
 def swap(dw):
     return int.from_bytes(dw.to_bytes(4, "little"), "big")
@@ -144,3 +149,70 @@ class TestSoftTL(unittest.TestCase):
             self.assertEqual((yield dut.msi_address), 0x1fee00000)
             self.assertEqual((yield dut.msi_data), 0x1234)
         run_simulation(dut, generator())
+
+    def test_msi_not_starved(self):
+        # LitePCIe transmits back to back under DMA: an MSI waits for one TLP at most, and it can't be
+        # left to the gaps since DMA keeps running without the driver when it misses its interrupts.
+        dut = SoftTransactionLayer(bar0_mask=0xfff00000)
+        tx  = []
+        def cfg_write(reg, value):
+            # CfgWr0, 1 DW, First DW BE=0xf.
+            yield dut.sink.valid.eq(1)
+            for i, dw in enumerate([0x01000044, 0x0f000000, reg << 26, value]):
+                yield dut.sink.data.eq(dw)
+                yield dut.sink.last.eq(i == 3)
+                yield
+                while not (yield dut.sink.ready):
+                    yield
+            yield dut.sink.valid.eq(0)
+            yield dut.sink.last.eq(0)
+        @passive
+        def collect():
+            yield dut.source.ready.eq(1)
+            while True:
+                if (yield dut.source.valid):
+                    tx.append(((yield dut.source.data), (yield dut.source.first), (yield dut.source.last)))
+                yield
+        @passive
+        def ep():
+            # 4 DW TLPs without gaps.
+            yield dut.ep_sink.valid.eq(1)
+            index = 0
+            while True:
+                yield dut.ep_sink.data.eq(0x40000000 | index)
+                yield dut.ep_sink.first.eq(index == 0)
+                yield dut.ep_sink.last.eq(index == 3)
+                yield
+                if (yield dut.ep_sink.ready):
+                    index = (index + 1)%4
+        def generator():
+            yield from cfg_write(0x04 >> 2, 0x00000004) # Bus Master Enable.
+            yield from cfg_write(MSI_ADR_LO >> 2, 0xfee00000)
+            yield from cfg_write(MSI_DATA   >> 2, 0x00001234)
+            yield from cfg_write(MSI_CTRL   >> 2, 0x00010000)
+            for i in range(32):
+                yield
+            # Several interrupts, each one has to go through.
+            for i in range(4):
+                yield dut.msi.valid.eq(1)
+                for wait in range(16):
+                    yield
+                    if (yield dut.msi.ready):
+                        break
+                else:
+                    self.fail("MSI starved by the TLPs from LitePCIe")
+                yield dut.msi.valid.eq(0)
+                for j in range(64):
+                    yield
+            # LitePCIe isn't starved in return, and TLPs aren't mixed.
+            tlps, tlp = [], []
+            for data, first, last in tx:
+                tlp = [data] if first else tlp + [data]
+                if last:
+                    tlps.append(tlp)
+            msis = [t for t in tlps if t[-1] == 0x00001234]
+            eps  = [t for t in tlps if t[0] >> 16 == 0x4000]
+            self.assertEqual(len(msis), 4)
+            self.assertTrue(all(len(t) == 4 for t in msis + eps))
+            self.assertGreater(len(eps), 50)
+        run_simulation(dut, [generator(), collect(), ep()])
