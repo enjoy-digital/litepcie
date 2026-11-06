@@ -40,7 +40,7 @@ class LTSSMPair(Module):
             ]
             self.comb += a.tx_ts_done.eq(done)
             # Delivered to b with the fields latched at transmission.
-            fields = ["ts2", "link", "link_pad", "lane", "lane_pad", "n_fts", "rate", "ctrl"]
+            fields = ["ts2", "link", "link_pad", "lane", "lane_pad", "rate", "ctrl"]
             pipe = [done] + [getattr(a, "tx_ts2" if f == "ts2" else "tx_ts_" + f) for f in fields]
             for _ in range(latency):
                 stage = [Signal(len(s)) for s in pipe]
