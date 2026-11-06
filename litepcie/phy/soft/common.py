@@ -43,8 +43,9 @@ SKP = Symbol("SKP", K(28, 0), "Skip: clock compensation (SKP Ordered Set)")
 FTS = Symbol("FTS", K(28, 1), "Fast Training Sequence (FTS Ordered Set)")
 IDL = Symbol("IDL", K(28, 3), "Idle (Electrical Idle Ordered Set)")
 EIE = Symbol("EIE", K(28, 7), "Electrical Idle Exit (5.0 GT/s)")
+ERR = Symbol("ERR", K(28, 4), "Reserved K code, substituted to received 8b/10b errors")
 
-symbols = [COM, STP, SDP, END, EDB, PAD, SKP, FTS, IDL, EIE]
+symbols = [COM, STP, SDP, END, EDB, PAD, SKP, FTS, IDL, EIE, ERR]
 
 LOGICAL_IDLE = D(0, 0) # Logical Idle: D0.0 (scrambled) when nothing else is transmitted.
 

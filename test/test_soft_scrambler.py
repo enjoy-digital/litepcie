@@ -9,7 +9,7 @@ import unittest
 
 from migen import *
 
-from litepcie.phy.soft.common    import COM, SKP, STP, END, SKP_OS, TS1, TS2, LOGICAL_IDLE
+from litepcie.phy.soft.common    import COM, SKP, STP, END, SKP_OS, EIOS, TS1, TS2, LOGICAL_IDLE, training_sequence
 from litepcie.phy.soft.scrambler import Scrambler, Descrambler, LFSR_SEED, lfsr_shift, lfsr_value
 
 from test.model.soft.common import ScramblerModel, symbols_to_words, words_to_symbols, ordered_set_words
@@ -103,26 +103,41 @@ class TestSoftScrambler(unittest.TestCase):
         outs   = run_stream(Scrambler(), words)
         self.assertEqual(outs, ScramblerModel().process_words(words))
         self.assertEqual(outs[9][0], keystream_ref[0])
-        # COM in the middle of a word (x1 Ordered Sets at any Symbol position).
-        words  = [(0, 0)]*3 + [(COM.value << 16, 0b0100)] + [(0, 0)]*8
+        # SKP Ordered Set straddling two words (RX side: Ordered Sets at any Symbol position).
+        words  = [(0, 0)]*3 + [((COM.value << 16) | (SKP.value << 24), 0b1100)]
+        words += [(SKP.value | (SKP.value << 8), 0b0011)] + [(0, 0)]*8
         outs   = run_stream(Scrambler(), words)
         self.assertEqual(outs, ScramblerModel().process_words(words))
-        self.assertEqual(outs[3][0] >> 24, keystream_ref[0] & 0xff)
+        self.assertEqual((outs[4][0] >> 16) & 0xff, keystream_ref[0] & 0xff)
 
     def test_scrambler_training_sequences_not_scrambled(self):
-        # TS1/TS2 are sent with enable=0: not scrambled, the LFSR still advances and the COM
-        # initializes it; the Logical Idle after the last TS2 is scrambled accordingly.
-        ts_words   = ordered_set_words(TS1)*2 + ordered_set_words(TS2)*2
+        # TS1/TS2 (COM followed by a D Symbol or PAD) pass unscrambled, with and without PAD
+        # Link/Lane numbers, the LFSR still advances and the COM initializes it; the Logical Idle
+        # after the last TS2 is scrambled accordingly.
+        ts_words   = ordered_set_words(TS1)*2 + ordered_set_words(training_sequence(ts=2, link=3, lane=0))*2
         idle_words = [(0, 0)]*8
         words      = ts_words + idle_words
-        enables    = [0]*len(ts_words) + [1]*len(idle_words)
-        outs       = run_stream(Scrambler(), words, enables)
-        model      = ScramblerModel()
-        expected   = model.process_words(ts_words, enable=False) + model.process_words(idle_words)
-        self.assertEqual(outs, expected)
+        outs       = run_stream(Scrambler(), words)
+        self.assertEqual(outs, ScramblerModel().process_words(words))
         self.assertEqual(outs[:len(ts_words)], ts_words)
         # After COM + 15 Symbols, the LFSR is the seed advanced 15 Symbols.
         self.assertEqual(outs[len(ts_words)][0] & 0xff, lfsr_value(lfsr_shift(LFSR_SEED, 15*8)))
+        # Other Ordered Sets (COM followed by a K Symbol) don't start a bypass.
+        words = ordered_set_words(EIOS) + [(0x11223344, 0)]*4
+        outs  = run_stream(Scrambler(), words)
+        self.assertEqual(outs, ScramblerModel().process_words(words))
+        # The 3 IDL Symbols advanced the LFSR: keystream Symbols 3 to 6.
+        key = (keystream_ref[0] >> 24) | ((keystream_ref[1] & 0xffffff) << 8)
+        self.assertEqual(outs[1][0], 0x11223344 ^ key)
+
+    def test_scrambler_training_sequence_unaligned(self):
+        # Training Sequence at any Symbol position (RX side: the word phase is arbitrary).
+        for shift in range(4):
+            symbols = [(0, 0)]*shift + TS1.to_symbols() + [(0, 0)]*(4*4 - shift)
+            words   = symbols_to_words(symbols)
+            outs    = run_stream(Descrambler(), words)
+            self.assertEqual(outs, ScramblerModel().process_words(words))
+            self.assertEqual(words_to_symbols(outs)[shift:shift + 16], TS1.to_symbols())
 
     def test_scrambler_direct(self):
         # with_skp=False (direct LFSR states, with/without COM) == generic Scrambler on a stream
@@ -172,12 +187,9 @@ class TestSoftScrambler(unittest.TestCase):
         ts_words = ordered_set_words(TS1) + ordered_set_words(TS2)
         packet   = [(STP.value, 1)] + [(rng.getrandbits(8), 0) for _ in range(14)] + [(END.value, 1)]
         words    = ts_words + symbols_to_words(packet) + ordered_set_words(SKP_OS) + [(0, 0)]*4
-        enables  = [0]*len(ts_words) + [1]*(len(words) - len(ts_words))
+        enables  = [1]*len(words)
         outs     = run_stream(DUT(), words, enables, valid_rate=0.5, ready_rate=0.5, seed=6)
-        # The descrambler runs on everything: the unscrambled TS words come out meaningless (TS
-        # detection uses the raw Symbols), everything after them is recovered.
-        self.assertNotEqual(outs[:len(ts_words)], ts_words)
-        self.assertEqual(outs[len(ts_words):], words[len(ts_words):])
+        self.assertEqual(outs, words)
 
     def test_scrambler_disable_scrambling(self):
         # enable=0 everywhere (Disable Scrambling): data passes through.
