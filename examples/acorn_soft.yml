@@ -1,0 +1,42 @@
+#
+# This file is part of LitePCIe.
+#
+# Copyright (c) 2026 Florent Kermarrec <florent@enjoy-digital.fr>
+# SPDX-License-Identifier: BSD-2-Clause
+
+# Soft PCIe PHY (no hard IP) on an Artix-7 GTP: work in progress, see doc/softphy.md.
+{
+    # PHY ----------------------------------------------------------------------
+    "phy"                     : "SoftPCIEPHY", # Type of PCIe PHY
+    "phy_device"              : "xc7a200t-fbg484-2", # Device (GTP transceivers)
+    "phy_lanes"               : 1,           # Number of lanes
+    "phy_pcie_data_width"     : 64,          # Unused by the soft PHY
+    "phy_data_width"          : 64,          # Bus data_width
+    "phy_bar0_size"           : 0x40000,     # BAR0 size
+
+    # Clocking -----------------------------------------------------------------
+    "clk_freq"                : 125e6,        # User Clk Freq (AXI MMAP/DMA)
+    "clk_external"            : True,         # Use external User provided Clk
+
+    # Endpoint -----------------------------------------------------------------
+    "ep_max_pending_requests" : 4,
+    "ep_address_width"        : 32,
+
+    # Control ------------------------------------------------------------------
+    "ctrl"                    : False,
+
+    # MMAP Master --------------------------------------------------------------
+    "mmap"                    : True,
+    "mmap_base"               : 0x00020000,
+    "mmap_size"               : 0x00020000,
+
+    # DMA channels -------------------------------------------------------------
+    "dma_channels"            : 1,     # Number of DMA channels
+    "dma_buffering"           : 1024,  # Buffering for each channel (in bytes)
+    "dma_loopback"            : True,  # Enable DMA loopback capability
+    "dma_synchronizer"        : False, # Enable DMA synchronizer capability
+    "dma_monitor"             : True,  # Enable DMA monitoring capability
+
+    # MSI IRQs -----------------------------------------------------------------
+    "msi_irqs"                : 16,    # Number or MSI IRQs
+}

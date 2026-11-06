@@ -1,7 +1,7 @@
 # Soft PCIe PHY
 
-Status: work in progress, started November 2026. Nothing is hardware-validated yet; the status table
-below is updated with each pull request.
+Status: work in progress, started November 2026. Nothing is hardware-validated yet: everything below
+is simulated only. The status table is updated with each pull request.
 
 ## Why
 
@@ -102,7 +102,7 @@ Clock domains:
 | M2.5 | Passive RX of a host's TS1 on the Acorn (first hardware observation) | Not started |
 | M3 | LTSSM x1 Gen1, Physical Layer, two-PHY simulation, debug/tracer; L0 against a real host | Verilator link simulation (`bench/soft/sim.py`): training to L0, packets both ways, Recovery, with scaled and specification timers; LTSSM pair unit tests; Acorn bring-up bench (`bench/soft/acorn.py`), hardware pending |
 | M4 | Data Link Layer: framing, DLLPs, DLCMSM, flow control, retry buffer, Ack/Nak | Unit tests; Verilator link simulation: DL_Active, TLPs both ways, Recovery, lane corruption and lost DLLPs recovered with every TLP delivered once and in order. No hardware run, LCRC/DLLP byte order not yet checked against a real host |
-| M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Not started |
+| M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Verilator end-to-end simulation (`bench/soft/sim_endpoint.py`): configuration space, BAR0 accesses and byte order, Unsupported Requests, MSI, device reads/writes at 64 and 128 bits. Acorn bitstream with LitePCIe, MMAP, DMA and MSI built: about 8.5k LUTs, one reset-synchronizer path 25 ps over its 2 ns max-delay, other paths met. **Not run on hardware, DMA not simulated** |
 | M6 | Gen2 x1 (rate change) | Not started |
 | M7 | x2 (deskew, width negotiation) | Not started |
 | M8 | x4, 128-bit datapath, robustness, LiteX-Boards | Not started |
@@ -116,6 +116,8 @@ Clock domains:
   every Symbol position, two serdes models back-to-back (`serdes/model.py`), GTP adapter
   elaboration to Verilog.
 - The GTP adapter (`serdes/gtp_7series.py`) needs the LiteICLink `serdes/gtp-pcie-ports` options.
+- `python3 bench/soft/sim_endpoint.py [--data-width 64|128]`: a scripted root (soft Physical and Data
+  Link Layers, downstream role) against a LitePCIe endpoint on `SoftPCIEPHY`, wire TLPs compared.
 - `python3 bench/soft/sim.py --timer-scale 100` (or `--timer-scale 1` for the specification
   timers): Verilator simulation of an upstream and a downstream Physical Layer through two serdes
   models: LTSSM states displayed, L0, packets both ways checked, Link Retrain (Recovery), "SIM OK".
@@ -129,7 +131,18 @@ Clock domains:
 - Later milestones add ppm/SSC and lane skew in the Verilator simulation, and the hardware bring-up with the LTSSM tracer, LiteScope and the root port's
   `lspci -vv` link status.
 
+Known limitations of the Transaction Layer glue: no MSI-X, no BAR/Memory Space Enable decoding
+(LitePCIe masks the address), no PME_TO_Ack (a host waiting for it at shutdown times out), and an
+NP-starved request blocks the TLPs behind it (single transmit queue). The DLL timers are fixed
+values not yet checked against the specification tables. Receiver detection is stubbed (always
+present), Electrical Idle comes from the GTP detector.
+
 ## Bring-up on the Acorn (M2.5/M3)
+
+`--with-endpoint` builds the full endpoint (SoftPCIEPHY, LitePCIe MMAP, DMA, MSI, `--driver` for the
+kernel driver) with the same debug CSRs; once L0 and DL_Active are reached, Linux should enumerate
+it as a `10ee:7021` device.
+
 
 `bench/soft/acorn.py --build [--load] [--with-jtagbone] [--with-analyzer]` builds the soft
 Physical Layer alone (no Data Link Layer yet) on the SQRL Acorn CLE-215(+) / LiteX Acorn Baseboard

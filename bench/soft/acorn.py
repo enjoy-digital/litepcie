@@ -19,6 +19,7 @@ Control/status over UARTBone (serial on the Acorn P2 header / Baseboard) or JTAG
 python3 bench/soft/acorn.py --build [--load] [--with-jtagbone] [--with-analyzer]
 """
 
+import os
 import argparse
 
 from migen import *
@@ -37,6 +38,8 @@ from litex.build.generic_platform import *
 from litepcie.phy.soft.serdes.gtp_7series import A7PCIeSerDes
 from litepcie.phy.soft.pipe               import PCIePhysicalLayer
 from litepcie.phy.soft.debug              import SoftPHYDebug
+from litepcie.phy.soft                    import SoftPCIEPHY
+from litepcie.software                    import generate_litepcie_software
 
 # IOs ----------------------------------------------------------------------------------------------
 
@@ -76,7 +79,8 @@ class CRG(LiteXModule):
 # Soft PHY SoC -------------------------------------------------------------------------------------
 
 class SoftPHYSoC(SoCMini):
-    def __init__(self, platform, sys_clk_freq=int(100e6), lane=3, with_jtagbone=False, with_analyzer=False):
+    def __init__(self, platform, sys_clk_freq=int(125e6), lane=3, with_jtagbone=False, with_analyzer=False,
+        with_endpoint=False, ltssm_autostart=False):
         SoCMini.__init__(self, platform, sys_clk_freq, ident="LitePCIe soft PHY bring-up on Acorn", ident_version=True)
 
         # CRG --------------------------------------------------------------------------------------
@@ -91,12 +95,25 @@ class SoftPHYSoC(SoCMini):
         # Soft PHY ---------------------------------------------------------------------------------
         platform.add_extension(pcie_x1_io(lane))
         pads = platform.request("pcie_soft_x1")
-        self.serdes = serdes = A7PCIeSerDes(platform, pads, sys_clk_freq, speedgrade=-2)
-        self.phy    = phy    = PCIePhysicalLayer(serdes, 125e6, upstream=True)
-        serdes.add_timing_constraints(self.crg.cd_sys.clk)
-        self.pcie_phy = SoftPHYDebug(phy, serdes)
-        # No Data Link Layer yet: received Symbols dropped, nothing transmitted (Logical Idle).
-        self.comb += phy.source.ready.eq(1)
+        if with_endpoint:
+            # Full LitePCIe endpoint: driver, MMAP, DMA and MSI as with the hard-IP PHYs.
+            self.pcie_phy = pcie_phy = SoftPCIEPHY(platform, pads,
+                data_width   = 64,
+                bar0_size    = 0x20000,
+                sys_clk_freq = sys_clk_freq,
+                speedgrade   = -2,
+            )
+            pcie_phy.add_timing_constraints(self.crg.cd_sys.clk)
+            pcie_phy.add_debug(enable_reset=int(ltssm_autostart))
+            self.add_pcie(phy=pcie_phy, ndmas=1, dma_buffering_depth=1024, with_dma_loopback=True)
+            serdes, phy = pcie_phy.serdes, pcie_phy.phy_layer
+        else:
+            # Physical Layer alone: L0 against the host, received Symbols dropped.
+            self.serdes = serdes = A7PCIeSerDes(platform, pads, sys_clk_freq, speedgrade=-2)
+            self.phy    = phy    = PCIePhysicalLayer(serdes, 125e6, upstream=True)
+            serdes.add_timing_constraints(self.crg.cd_sys.clk)
+            self.pcie_phy = SoftPHYDebug(phy, serdes, enable_reset=int(ltssm_autostart))
+            self.comb += phy.source.ready.eq(1)
 
         # Leds -------------------------------------------------------------------------------------
         leds = platform.request_all("user_led")
@@ -137,6 +154,9 @@ def main():
     parser.add_argument("--lane",          default=3, type=int, help="PCIe lane of the x4 connector used as x1 (pcie_x4 pin order).")
     parser.add_argument("--with-jtagbone", action="store_true", help="JTAGBone instead of UARTBone.")
     parser.add_argument("--with-analyzer", action="store_true", help="LiteScope analyzer on the lane.")
+    parser.add_argument("--with-endpoint", action="store_true", help="Full LitePCIe endpoint (SoftPCIEPHY, MMAP, DMA, MSI).")
+    parser.add_argument("--ltssm-autostart", action="store_true", help="LTSSM enabled at reset (else through the debug CSR).")
+    parser.add_argument("--driver",        action="store_true", help="Generate the PCIe driver.")
     parser.add_argument("--output-dir",    default="build/soft_acorn", help="Build directory.")
     args = parser.parse_args()
 
@@ -145,9 +165,14 @@ def main():
         lane          = args.lane,
         with_jtagbone = args.with_jtagbone,
         with_analyzer = args.with_analyzer,
+        with_endpoint = args.with_endpoint,
+        ltssm_autostart = args.ltssm_autostart,
     )
     builder = Builder(soc, output_dir=args.output_dir, csr_csv="csr.csv")
     builder.build(run=args.build)
+
+    if args.driver:
+        generate_litepcie_software(soc, os.path.join(builder.output_dir, "driver"))
 
     if args.load:
         prog = soc.platform.create_programmer()
