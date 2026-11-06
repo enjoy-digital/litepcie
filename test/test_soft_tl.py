@@ -81,7 +81,6 @@ class TestSoftTL(unittest.TestCase):
 
     def test_config_space(self):
         dut = PCIeConfigSpace(bar0_mask=0xfff00000)
-        results = {}
         def read(adr):
             yield dut.adr.eq(adr//4)
             yield
