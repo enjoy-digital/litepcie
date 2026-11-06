@@ -38,7 +38,6 @@ LTSSM_PIPE_INTERFACE = [
     ("tx_ts_link_pad",    1, "o"), # ...or PAD.
     ("tx_ts_lane",        5, "o"), # Transmitted Lane Number...
     ("tx_ts_lane_pad",    1, "o"), # ...or PAD.
-    ("tx_ts_n_fts",       8, "o"),
     ("tx_ts_rate",        8, "o"),
     ("tx_ts_ctrl",        8, "o"),
     ("tx_ts_done",        1, "i"), # (Pulse) One Training Sequence transmitted.
@@ -55,7 +54,6 @@ LTSSM_PIPE_INTERFACE = [
     ("rx_ts_link_pad",    1, "i"),
     ("rx_ts_lane",        5, "i"),
     ("rx_ts_lane_pad",    1, "i"),
-    ("rx_ts_n_fts",       8, "i"),
     ("rx_ts_rate",        8, "i"),
     ("rx_ts_ctrl",        8, "i"),
     ("rx_ts_inverted",    1, "i"), # Received with inverted identifiers (lane polarity).
@@ -117,7 +115,6 @@ class PCIeLTSSM(LiteXModule):
         self.hot_reset_req = Signal()         # i (Level, downstream): Directed Hot Reset (through Recovery).
         self.link_error  = Signal()           # i (Pulse): Data Link Layer error requiring Recovery.
         self.link_number = Signal(8)          # i (downstream): Link Number proposed.
-        self.n_fts       = Signal(8, reset=0xff) # i: N_FTS advertised.
 
         # Status.
         self.state       = Signal(6)  # o: LTSSM state (LTSSM_STATES).
@@ -127,7 +124,6 @@ class PCIeLTSSM(LiteXModule):
         self.disabled    = Signal()   # o: In Disabled.
         self.link        = Signal(8)  # o: Negotiated Link Number.
         self.lane        = Signal(5)  # o: Our Lane Number.
-        self.rx_n_fts    = Signal(8)  # o: Partner N_FTS.
         self.rx_rate     = Signal(8)  # o: Partner Data Rate Identifier.
 
         # # #
@@ -218,12 +214,10 @@ class PCIeLTSSM(LiteXModule):
         # Partner parameters capture (Configuration.Complete, Recovery.RcvrCfg).
         capture = Signal()
         self.sync += If(self.rx_ts & capture,
-            self.rx_n_fts.eq(self.rx_ts_n_fts),
             self.rx_rate.eq(self.rx_ts_rate),
         )
         rx_params_ok = Signal()
-        self.comb += rx_params_ok.eq((rx_count == 0) |
-            ((self.rx_ts_n_fts == self.rx_n_fts) & (self.rx_ts_rate == self.rx_rate)))
+        self.comb += rx_params_ok.eq((rx_count == 0) | (self.rx_ts_rate == self.rx_rate))
 
         # RX polarity: inverted identifiers received (Polling.Active) toggle the polarity, held for
         # the inversion to take effect on the received stream.
@@ -240,7 +234,6 @@ class PCIeLTSSM(LiteXModule):
 
         # Common TX fields.
         self.comb += [
-            self.tx_ts_n_fts.eq(self.n_fts),
             self.tx_ts_rate.eq(RATE_2_5GT | (RATE_5_0GT if gen2_capable else 0)),
             self.scrambling_enable.eq(1),
             self.skp_enable.eq(1),

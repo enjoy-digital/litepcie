@@ -75,7 +75,7 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
                 speedgrade=phy_kwargs.pop("speedgrade", -1))
             self.serdes = serdes
         else:
-            self.serdes_ref = serdes
+            object.__setattr__(self, "serdes", serdes) # The caller's submodule: reference only.
         self.nlanes = nlanes = serdes.nlanes
         assert nlanes == 1 # x2/x4: later milestones.
         if device_id is None:
@@ -176,10 +176,12 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
 
     # Debug ----------------------------------------------------------------------------------------
     def add_debug(self, enable_reset=0):
-        """Bring-up CSRs (LTSSM enable/retrain, counters, LTSSM tracer), see doc/softphy.md."""
+        """Optional bring-up CSRs (LTSSM enable/retrain, status, counters), see doc/softphy.md. Without
+        them the LTSSM starts on its own; with them it waits for the enable CSR (enable_reset=0)."""
         from litepcie.phy.soft.debug import SoftPHYDebug
-        self.debug = SoftPHYDebug(self.phy_layer, self.serdes, enable_reset=enable_reset)
+        self.debug = SoftPHYDebug(self.phy_layer, self.serdes, with_tracer=False, enable_reset=enable_reset)
 
     # LTSSM Tracer ---------------------------------------------------------------------------------
     def add_ltssm_tracer(self):
+        """Optional LTSSM state history (128 entries), as the hard-IP PHYs."""
         self.ltssm_tracer = LTSSMTracer(self._link_status.fields.ltssm)

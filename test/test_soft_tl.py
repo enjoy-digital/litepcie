@@ -118,6 +118,15 @@ class TestSoftTL(unittest.TestCase):
             yield from write(0x68, 0x00001030)
             self.assertEqual((yield dut.mps), 1)
             self.assertEqual((yield dut.mrrs), 1)
+            # No power feature to enable: Aux Power PM (Device Control), ASPM Control and Clock PM (Link
+            # Control) hardwired to 0, no ASPM or L0s/L1 latencies in Link Capabilities, no PME in PMC.
+            yield from write(0x68, 0x00000700, be=0x2)
+            self.assertEqual((yield from read(0x68)) & 0x0700, 0)
+            yield from write(0x70, 0x00000103, be=0x3)
+            self.assertEqual((yield from read(0x70)) & 0x0103, 0)
+            self.assertEqual((yield from read(0x6c)) & 0x0003fc00, 0)
+            self.assertEqual((yield from read(0x40)) >> 27, 0)
+            yield from write(0x68, 0x00001030)
             # Unsupported Request Detected: set, write 1 to clear.
             yield dut.ur_detected.eq(1)
             yield

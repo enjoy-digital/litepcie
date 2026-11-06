@@ -128,7 +128,6 @@ class A7PCIeSerDes(PCIeSerDes):
                 p_RXBUF_EIDLE_HI_CNT      = 0b0100,
                 p_RXBUF_EIDLE_LO_CNT      = 0b0000,
                 p_RXBUF_RESET_ON_EIDLE    = "TRUE",
-                p_PD_TRANS_TIME_NONE_P2   = 0x09,
                 p_TX_EIDLE_ASSERT_DELAY   = 0b100,
                 p_TX_EIDLE_DEASSERT_DELAY = 0b010,
                 p_TXOOB_CFG               = 0b1, # Filter stale TX data when exiting Electrical Idle.

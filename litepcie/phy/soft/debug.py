@@ -48,7 +48,6 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
         self._rx_overflows = CSRStatus(16, description="Elastic buffer overflows.")
         self._rx_dllp      = CSRStatus(32, description="DLLP starts (SDP) received in L0.")
         self._rx_tlp       = CSRStatus(32, description="TLP starts (STP) received in L0.")
-        self._rx_n_fts     = CSRStatus(8,  description="Partner N_FTS.")
         self._rx_rate      = CSRStatus(8,  description="Partner Data Rate Identifier.")
 
         # # #
@@ -100,11 +99,10 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             (lane.rx_overflows,  self._rx_overflows.status),
             (rx_dllp,            self._rx_dllp.status),
             (rx_tlp,             self._rx_tlp.status),
-            (ltssm.rx_n_fts,     self._rx_n_fts.status),
             (ltssm.rx_rate,      self._rx_rate.status),
         ]:
             self.specials += MultiReg(src, dst, "sys")
 
         # LTSSM tracer.
         if with_tracer:
-            self.tracer = LTSSMTracer(ltssm.state)
+            self.tracer = LTSSMTracer(self._status.fields.ltssm)

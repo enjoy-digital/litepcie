@@ -66,7 +66,7 @@ class PCIePhysicalLayer(LiteXModule):
         # LTSSM levels in the lane clock domain.
         levels = {}
         for name in ["tx_elecidle", "tx_ts_enable", "tx_ts2", "tx_ts_link", "tx_ts_link_pad",
-                     "tx_ts_lane", "tx_ts_lane_pad", "tx_ts_n_fts", "tx_ts_rate", "tx_ts_ctrl",
+                     "tx_ts_lane", "tx_ts_lane_pad", "tx_ts_rate", "tx_ts_ctrl",
                      "tx_data_enable", "rx_data_enable", "idle_hs", "rx_polarity", "rx_reset",
                      "scrambling_enable", "skp_enable"]:
             level = Signal(len(getattr(ltssm, name)), name="pipe_" + name)
@@ -107,7 +107,7 @@ class PCIePhysicalLayer(LiteXModule):
             ts_gen.ts.link_pad.eq(levels["tx_ts_link_pad"]),
             ts_gen.ts.lane.eq(levels["tx_ts_lane"]),
             ts_gen.ts.lane_pad.eq(levels["tx_ts_lane_pad"]),
-            ts_gen.ts.n_fts.eq(levels["tx_ts_n_fts"]),
+            ts_gen.ts.n_fts.eq(0xff), # L0s not supported: fixed value, the partner's one is ignored.
             ts_gen.ts.rate.eq(levels["tx_ts_rate"]),
             ts_gen.ts.ctrl.eq(levels["tx_ts_ctrl"]),
         ]
@@ -169,8 +169,9 @@ class PCIePhysicalLayer(LiteXModule):
         ]
 
         # Received Training Sequences to the LTSSM.
+        rx_ts_layout = [field for field in ts_layout if field[0] != "n_fts"]
         self.ts_fifo = ts_fifo = ClockDomainsRenamer({"write": "pcie_pipe", "read": "pcie_link"})(
-            stream.AsyncFIFO(ts_layout + [("inverted", 1)], 4, buffered=True))
+            stream.AsyncFIFO(rx_ts_layout + [("inverted", 1)], 4, buffered=True))
         self.comb += [
             ts_fifo.sink.valid.eq(ts_chk.detected),
             ts_fifo.sink.inverted.eq(ts_chk.inverted),
@@ -178,7 +179,7 @@ class PCIePhysicalLayer(LiteXModule):
             ltssm.rx_ts.eq(ts_fifo.source.valid),
             ltssm.rx_ts_inverted.eq(ts_fifo.source.inverted),
         ]
-        for name, width in ts_layout:
+        for name, width in rx_ts_layout:
             self.comb += [
                 getattr(ts_fifo.sink, name).eq(getattr(ts_chk.ts, name)),
                 getattr(ltssm, "rx_ts_" + name).eq(getattr(ts_fifo.source, name)),

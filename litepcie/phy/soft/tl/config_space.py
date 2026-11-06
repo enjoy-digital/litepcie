@@ -96,8 +96,9 @@ class PCIeConfigSpace(LiteXModule):
         add(PCIE_CAP + 0x00, ro=(0x0002 << 16) | 0x10)
         # Device Capabilities: 512-byte Max Payload Size, Role-Based Error Reporting.
         add(PCIE_CAP + 0x04, ro=0x00008002)
-        # Device Control (reset: Relaxed Ordering, No Snoop, 512-byte MRRS), Device Status: Unsupported
-        # Request Detected (bit 19, write 1 to clear).
+        # Device Control (reset: Relaxed Ordering, No Snoop, 512-byte MRRS; Extended Tag, Phantom Functions
+        # and Aux Power PM hardwired to 0), Device Status: Unsupported Request Detected (bit 19, write 1
+        # to clear).
         ur = Signal()
         self.sync += [
             If(self.we & self.be[2] & (self.adr == (PCIE_CAP + 0x08)//4) & self.dat_w[19],
@@ -107,8 +108,8 @@ class PCIeConfigSpace(LiteXModule):
                 ur.eq(1)
             )
         ]
-        devctl = add(PCIE_CAP + 0x08, ro=Cat(Constant(0, 19), ur), reset=0x00002810, mask=0x00007fff)
-        # Link Capabilities: speeds, width, no ASPM.
+        devctl = add(PCIE_CAP + 0x08, ro=Cat(Constant(0, 19), ur), reset=0x00002810, mask=0x000078ff)
+        # Link Capabilities: speeds, width, no ASPM (Link Control's ASPM Control is hardwired to 0).
         add(PCIE_CAP + 0x0c, ro=((2 if gen2_capable else 1) | (nlanes << 4)))
         # Link Control (Read Completion Boundary, Common Clock, Extended Sync), Link Status: Slot Clock.
         add(PCIE_CAP + 0x10, ro=Cat(Constant(0, 16), self.link_speed, self.link_width, Constant(0, 2), Constant(1, 1)),
