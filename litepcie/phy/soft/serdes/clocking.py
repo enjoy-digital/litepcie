@@ -57,7 +57,7 @@ class S7PCIeClocking(LiteXModule):
         self.mmcm = mmcm = S7MMCM(speedgrade=speedgrade)
         self.comb += mmcm.reset.eq(reset)
         mmcm.register_clkin(refclk_div2_bufg, refclk_freq/2)
-        mmcm.create_clkout(self.cd_pcie_link,      125e6)
+        mmcm.create_clkout(self.cd_pcie_link,      125e6, with_reset=False)
         mmcm.create_clkout(self.cd_pcie_oob,        50e6)
         mmcm.create_clkout(self.cd_pcie_pipe_gen1, 62.5e6, buf=None, with_reset=False)
         mmcm.create_clkout(self.cd_pcie_pipe_gen2,  125e6, buf=None, with_reset=False)
@@ -88,5 +88,20 @@ class S7PCIeClocking(LiteXModule):
                 i_IGNORE1 = 0,
                 o_O       = self.cd_pcie_pipe.clk,
             ),
-            AsyncResetSynchronizer(self.cd_pcie_pipe, ~mmcm.locked | switching),
         ]
+
+        # Resets: synchronizer then a register driving the domain's large fanout, so that the
+        # synchronizer's flip-flops stay together (metastability resolution, 2 ns maximum delay).
+        def add_reset(cd, name, rst):
+            cd_rst = ClockDomain(name)
+            setattr(self, "cd_" + name, cd_rst)
+            rst_r  = Signal(reset=1)
+            self.comb += [
+                cd_rst.clk.eq(cd.clk),
+                cd.rst.eq(rst_r),
+            ]
+            self.specials += AsyncResetSynchronizer(cd_rst, rst)
+            sync = getattr(self.sync, name)
+            sync += rst_r.eq(0)
+        add_reset(self.cd_pcie_link, "pcie_link_rst", ~mmcm.locked)
+        add_reset(self.cd_pcie_pipe, "pcie_pipe_rst", ~mmcm.locked | switching)

@@ -141,22 +141,19 @@ design, so the difference between the soft and hard columns is the PHY cost. One
 
 | | Soft | Soft + tracer | Soft + debug | Soft + both | Hard IP (5 GT/s) |
 |---|---:|---:|---:|---:|---:|
-| Slice LUTs (placed) | 9211 | 8867 | 8948 | 9038 | 4538 |
-| Slice LUTs (synthesis) | 9534 | 9478 | 9595 | 9535 | not measured |
-| Slice Registers | 6976 | 6999 | 7595 | 7588 | 3650 |
+| Slice LUTs (placed) | 8463 | 8488 | 8394 | 8764 | 4538 |
+| Slice LUTs (synthesis) | 9091 | 9015 | 9091 | 9283 | not measured |
+| Slice Registers | 6395 | 6389 | 6985 | 7022 | 3650 |
 | Block RAM tiles | 28 | 28 | 28 | 28 | 32.5 |
 | `PCIE_2_1` | 0 | 0 | 0 | 0 | 1 |
 | `GTPE2_CHANNEL` | 1 | 1 | 1 | 1 | 1 |
-| Setup WNS | **-0.244 ns** | 0.007 ns | 0.002 ns | **-0.425 ns** | 0.667 ns |
-| Estimated power | 0.668 W | 0.660 W | 0.670 W | 0.686 W | 0.804 W |
+| Setup WNS | 0.083 ns | 0.179 ns | 0.096 ns | 0.167 ns | 0.667 ns |
+| Estimated power | 0.648 W | 0.655 W | 0.650 W | 0.679 W | 0.804 W |
 
-- The debug CSRs cost about 620 registers and the LTSSM tracer about 25. Their LUT cost is below the
-  build-to-build spread (about 120 LUTs after synthesis, 340 after placement), so the LUT gap to the
-  hard IP is the PHY itself.
-- **Timing is not reliably met on `pcie_link`**: slack goes from -0.425 to 0.007 ns across these
-  builds, unrelated to the options. The failing paths are in the Data Link Layer: RX framer state to
-  its repacker (10-11 logic levels), replay descriptor memory to its output registers (8), replay
-  descriptors to the transmit credit counters (15). To fix before relying on a build.
+- The debug CSRs cost about 600 registers. The LTSSM tracer is too small to separate from the
+  build-to-build spread, as is the LUT cost of both, so the LUT gap to the hard IP is the PHY itself.
+- Timing is met on all four soft builds. The soft and full builds also meet timing with `pcie_link`
+  constrained to 7.5 ns (133 MHz), about 0.5 ns of margin at 125 MHz.
 - The soft PHY has half the line rate of the hard IP here until the Gen2 milestone.
 
 ## Options and power management

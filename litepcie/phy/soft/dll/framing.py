@@ -63,6 +63,10 @@ class RXFramer(LiteXModule):
         prev_data  = Signal(32)
         prev_ctrl  = Signal(4)
         process    = Signal()
+        # K Symbols decoded on capture (timing): the state machine below chains 4 Symbols per cycle.
+        def decode(data, ctrl):
+            return [ctrl & (data == s.value) for s in [STP, SDP, END, EDB]]
+        prev_flags = [[Signal() for _ in range(4)] for _ in range(4)]
         self.comb += [
             process.eq(prev_valid & sink.valid),
             sink.ready.eq(~prev_valid | process),
@@ -72,11 +76,14 @@ class RXFramer(LiteXModule):
                 prev_valid.eq(1),
                 prev_data.eq(sink.data),
                 prev_ctrl.eq(sink.ctrl),
+                *[f.eq(d) for i in range(4)
+                    for f, d in zip(prev_flags[i], decode(sink.data[8*i:8*(i+1)], sink.ctrl[i]))],
             ).Elif(process,
                 prev_valid.eq(0)
             )
         ]
         syms  = [(prev_data[8*i:8*(i+1)], prev_ctrl[i]) for i in range(4)] + [(sink.data[0:8], sink.ctrl[0])]
+        flags = prev_flags + [decode(sink.data[0:8], sink.ctrl[0])]
 
         # Kept bytes to DW words.
         self.repacker = repacker = WordRepacker()
@@ -100,8 +107,9 @@ class RXFramer(LiteXModule):
         state_c, dllp_i_c, started_c, dllp_c = state, dllp_i, started, dllp
         for i in range(4):
             sym, k   = syms[i]
-            nsym, nk = syms[i + 1]
-            is_end    = nk & ((nsym == END.value) | (nsym == EDB.value)) # Next Symbol ends the packet.
+            is_stp, is_sdp, is_end_sym, is_edb_sym = flags[i]
+            _, _, n_end, n_edb = flags[i + 1]
+            is_end    = n_end | n_edb # Next Symbol ends the packet.
             state_n   = Signal(3)
             dllp_i_n  = Signal(3)
             started_n = Signal()
@@ -113,10 +121,10 @@ class RXFramer(LiteXModule):
                 dllp_n.eq(dllp_c),
                 Case(state_c, {
                     IDLE: [
-                        If(k & (sym == STP.value),
+                        If(is_stp,
                             state_n.eq(SEQ_HI),
                             started_n.eq(0),
-                        ).Elif(k & (sym == SDP.value),
+                        ).Elif(is_sdp,
                             state_n.eq(DLLP),
                             dllp_i_n.eq(0),
                         )
@@ -131,7 +139,7 @@ class RXFramer(LiteXModule):
                         If(k,
                             # END/EDB consumed (the last byte was flagged with the previous Symbol),
                             # any other K Symbol is a framing error.
-                            If((sym == END.value) | (sym == EDB.value),
+                            If(is_end_sym | is_edb_sym,
                                 state_n.eq(IDLE)
                             ).Else(
                                 error.eq(1),
@@ -144,7 +152,7 @@ class RXFramer(LiteXModule):
                             started_n.eq(1),
                             If(is_end,
                                 end.eq(1),
-                                end_edb.eq(nsym == EDB.value),
+                                end_edb.eq(n_edb),
                             ),
                         )
                     ],
@@ -159,7 +167,7 @@ class RXFramer(LiteXModule):
                         )
                     ],
                     DLLP_END: [
-                        If(k & (sym == END.value),
+                        If(is_end_sym,
                             dllp_done.eq(1),
                             dllp_done_value.eq(dllp_c),
                         ).Else(
@@ -185,19 +193,27 @@ class RXFramer(LiteXModule):
                 If(dllp_done, self.dllp.eq(dllp_done_value)),
             ),
             self.dllp_valid.eq(process & dllp_done),
-            self.error.eq((process & error) | repacker.length_error),
-            self.tlp_abort.eq(process & abort),
         ]
 
-        self.comb += [
+        # Repacker input stage (timing). error/tlp_abort are delayed with it to stay aligned with the
+        # output words. Sequence Number not delayed: the next one comes long after a TLP's first word.
+        error_r = Signal()
+        abort_r = Signal()
+        edb_r   = Signal()
+        self.sync += [
             repacker.sink.valid.eq(process),
             repacker.sink.data.eq(prev_data),
             repacker.sink.keep.eq(keep),
             repacker.sink.start.eq(start),
             repacker.sink.end.eq(end),
-            repacker.sink.abort.eq(abort),
-            repacker.source.ready.eq(1),
+            repacker.sink.abort.eq(process & abort),
+            edb_r.eq(end_edb),
+            error_r.eq(process & error),
+            abort_r.eq(process & abort),
+            self.error.eq(error_r | repacker.length_error),
+            self.tlp_abort.eq(abort_r),
         ]
+        self.comb += repacker.source.ready.eq(1)
         # Registered output (timing): no back-pressure on the received words.
         self.sync += [
             tlp.valid.eq(repacker.source.valid),
@@ -205,7 +221,7 @@ class RXFramer(LiteXModule):
             tlp.last.eq(repacker.source.last),
             tlp.data.eq(repacker.source.data),
             tlp.seq.eq(seq),
-            tlp.edb.eq(end_edb),
+            tlp.edb.eq(edb_r),
         ]
 
 # Word Repacker ------------------------------------------------------------------------------------

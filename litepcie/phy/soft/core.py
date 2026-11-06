@@ -84,9 +84,12 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         # Physical Layer / Data Link Layer ---------------------------------------------------------
         self.phy_layer = phy = PCIePhysicalLayer(serdes, link_freq, upstream=True, **phy_kwargs)
         self.dll       = dll = ClockDomainsRenamer("pcie_link")(DataLinkLayer(link_freq))
-        self.comb += [
+        self.sync.pcie_link += [
+            # Registered (timing): decoded from the LTSSM state, gate the DLL transmit path.
             dll.link_up.eq(phy.ltssm.link_up),
             dll.l0.eq(phy.ltssm.l0),
+        ]
+        self.comb += [
             phy.link_error.eq(dll.link_error),
             dll.phy_sink.connect(phy.sink),
             phy.source.connect(dll.phy_source),
