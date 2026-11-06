@@ -950,6 +950,25 @@ class SVPCIEPHY(LiteXModule):
             p_subsystem_device_id_hwtcl   = subsys_device_id,
             p_max_payload_size_hwtcl      = max_payload_size,
 
+            # Receive buffer credits as Intel's generator derives them for the default "balanced"
+            # allocation (pcie_sv_parameters_common.tcl, the same at every max payload size). An
+            # endpoint must advertise infinite completion credits; the space actually reserved for
+            # completions is reported on ko_cpl_spc_*. The bare Verilog defaults advertise finite
+            # completion credits, and the hard IP then occasionally drops the second completion of
+            # a split read without reporting any error.
+            p_vc0_rx_flow_ctrl_posted_header_hwtcl    = 50,
+            p_vc0_rx_flow_ctrl_posted_data_hwtcl      = 333,
+            p_vc0_rx_flow_ctrl_nonposted_header_hwtcl = 56,
+            p_vc0_rx_flow_ctrl_nonposted_data_hwtcl   = 0,
+            p_vc0_rx_flow_ctrl_compl_header_hwtcl     = 0,
+            p_vc0_rx_flow_ctrl_compl_data_hwtcl       = 0,
+            p_cpl_spc_header_hwtcl                    = 112,
+            p_cpl_spc_data_hwtcl                      = 420,
+
+            # The hard IP's timers count pld_clk cycles per millisecond. Of the widths supported
+            # here, pld_clk runs at 250 MHz only at Gen2 x8 with 128 bits (pcie_sv_parameters.tcl).
+            p_millisecond_cycle_count_hwtcl = 248500 if (speed, nlanes, data_width) == ("gen2", 8, 128) else 124250,
+
             # MSI: One Vector, No MSI-X
             p_msi_support_hwtcl           = "true",
             p_msi_multi_message_capable_hwtcl = "count_1",
