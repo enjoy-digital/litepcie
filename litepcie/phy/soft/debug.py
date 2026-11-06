@@ -24,12 +24,12 @@ from litepcie.phy.soft.common import STP, SDP
 # Soft PHY Debug -----------------------------------------------------------------------------------
 
 class SoftPHYDebug(LiteXModule, AutoCSR):
-    def __init__(self, phy, serdes, with_tracer=True):
+    def __init__(self, phy, serdes, with_tracer=True, enable_reset=0):
         lane  = serdes.lanes[0]
         ltssm = phy.ltssm
 
         self._control = CSRStorage(fields=[
-            CSRField("enable",  size=1, offset=0, description="LTSSM enable (keep disabled until the host has booted during bring-up)."),
+            CSRField("enable",  size=1, offset=0, reset=enable_reset, description="LTSSM enable (keep disabled until the host has booted during bring-up)."),
             CSRField("retrain", size=1, offset=1, pulse=True, description="Link Retrain (Recovery)."),
         ])
         self._status = CSRStatus(fields=[

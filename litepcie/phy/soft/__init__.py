@@ -7,6 +7,6 @@
 """Soft PCIe PHY: PCIe Gen1/Gen2 Physical and Data Link Layers on FPGA transceivers (LiteICLink),
 without the vendor's hard PCIe IP. See doc/softphy.md for the architecture, status and bring-up.
 
-The public PHY (SoftPCIEPHY, same contract as the hard-IP PHYs) comes with the Transaction Layer
-glue; the modules of this package are built and tested bottom-up.
 """
+
+from litepcie.phy.soft.core import SoftPCIEPHY
