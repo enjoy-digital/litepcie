@@ -1523,6 +1523,9 @@ static const struct pci_device_id litepcie_pci_ids[] = {
 	/* Gowin */
 	{ PCI_DEVICE(PCIE_GOWIN_VENDOR_ID, PCIE_GOWIN_DEVICE_ID_GW5AT_GEN2_X4),  },
 
+	/* Altera */
+	{ PCI_DEVICE(PCIE_ALTERA_VENDOR_ID, PCIE_ALTERA_DEVICE_ID_SV), },
+
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, litepcie_pci_ids);
