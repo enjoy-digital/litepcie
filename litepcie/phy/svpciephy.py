@@ -547,6 +547,35 @@ class _RXQwordDealigner(LiteXModule):
             )
         ]
 
+# MSI Request --------------------------------------------------------------------------------------
+
+class _MSIRequest(LiteXModule):
+    """MSI stream -> the hard IP's app_msi_req/app_msi_ack handshake.
+
+    The hard IP sends one MSI per rising edge of app_msi_req and acknowledges it with a single cycle
+    of app_msi_ack. Driving the request from the stream's valid holds it high from one queued MSI to
+    the next, so the second never gets an edge: it is neither sent nor acknowledged, and every MSI
+    after it waits behind it. Here the request falls on each acknowledge, so it is low for at least
+    one cycle between two MSIs, and the stream entry is taken on the acknowledge.
+    """
+    def __init__(self):
+        self.sink = sink = stream.Endpoint(msi_layout())
+        self.req  = req  = Signal()
+        self.ack  = ack  = Signal()
+
+        # # #
+
+        self.sync += [
+            If(req,
+                If(ack,
+                    req.eq(0)
+                )
+            ).Elif(sink.valid,
+                req.eq(1)
+            )
+        ]
+        self.comb += sink.ready.eq(req & ack)
+
 # SVPCIEPHY ----------------------------------------------------------------------------------------
 
 class SVPCIEPHY(LiteXModule):
@@ -811,6 +840,12 @@ class SVPCIEPHY(LiteXModule):
             self.submodules += msi_cdc
             self.comb += self.msi.connect(msi_cdc.sink)
             cfg_msi = msi_cdc.source
+
+        # MSI Request ------------------------------------------------------------------------------
+        msi_req = _MSIRequest()
+        msi_req = ClockDomainsRenamer("pcie")(msi_req)
+        self.submodules += msi_req
+        self.comb += cfg_msi.connect(msi_req.sink)
 
         # Configuration Space Decode ---------------------------------------------------------------
         # tl_cfg_ctl is a 32-bit window multiplexed over 16 addresses selected by tl_cfg_add. There
@@ -1125,8 +1160,8 @@ class SVPCIEPHY(LiteXModule):
             i_pm_event                    = 0,
 
             # MSI
-            i_app_msi_req                 = cfg_msi.valid,
-            o_app_msi_ack                 = cfg_msi.ready,
+            i_app_msi_req                 = msi_req.req,
+            o_app_msi_ack                 = msi_req.ack,
             i_app_msi_num                 = 0,
             i_app_msi_tc                  = 0,
             i_aer_msi_num                 = 0,
