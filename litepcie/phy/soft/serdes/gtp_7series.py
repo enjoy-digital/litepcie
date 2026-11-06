@@ -72,22 +72,48 @@ class A7PCIeSerDes(PCIeSerDes):
             tx_cd = f"pcie_tx{i}" # Lane clock (external tx_clk), transceiver's own reset.
             rx_cd = f"pcie_rx{i}" # Recovered clock.
             gtp = GTP(qpll, tx_pads, rx_pads, sys_clk_freq,
-                qpll_reset         = (i == 0),
-                tx_clk             = ClockSignal("pcie_pipe"),
-                data_width         = 40,
-                tx_buffer_enable   = True,
-                rx_buffer_enable   = True,
-                clock_aligner      = False,
-                align_comma_word   = 1,
-                rxcdr_cfg          = rxcdr_cfg,
-                tx_drive_mode      = "PIPE",
-                pcs_pcie_en        = pcs_pcie_en,
-                rx_elecidle_detect = True,
-                rx_elecidle_clk    = ClockSignal("pcie_oob"),
+                qpll_reset       = (i == 0),
+                tx_clk           = ClockSignal("pcie_pipe"),
+                data_width       = 40,
+                tx_buffer_enable = True,
+                rx_buffer_enable = True,
+                clock_aligner    = False,
             )
             gtp.add_stream_endpoints()
+            # Comma alignment on any byte: Ordered Sets at any Symbol position (word phase kept).
+            gtp.gtp_params.update(p_ALIGN_COMMA_WORD=1)
+            # PIPE drive mode: TX_DEEMPH0/1 are the -6/-3.5 dB de-emphasis selected by TXDEEMPH.
+            gtp.gtp_params.update(
+                p_TX_DRIVE_MODE    = "PIPE",
+                p_TX_DEEMPH0       = 0b10100,
+                p_TX_DEEMPH1       = 0b01011,
+                p_TX_MARGIN_FULL_0 = 0b1001111,
+                p_TX_MARGIN_FULL_1 = 0b1001110,
+                p_TX_MARGIN_FULL_2 = 0b1001101,
+                p_TX_MARGIN_FULL_3 = 0b1001100,
+                p_TX_MARGIN_FULL_4 = 0b1000011,
+                p_TX_MARGIN_LOW_0  = 0b1000101,
+                p_TX_MARGIN_LOW_1  = 0b1000110,
+                p_TX_MARGIN_LOW_2  = 0b1000011,
+                p_TX_MARGIN_LOW_3  = 0b1000010,
+                p_TX_MARGIN_LOW_4  = 0b1000000,
+                i_TXDEEMPH         = lane.tx_deemph,
+                i_TXDIFFCTRL       = 0b1100, # 850 mV.
+            )
+            # Electrical Idle: TX, and RX detection with a fabric clock.
+            rx_elecidle = Signal()
+            gtp.gtp_params.update(
+                p_PCS_RSVD_ATTR  = 0x000000000100, # OOB/Electrical Idle detection power-up.
+                p_RXOOB_CLK_CFG  = "FABRIC",
+                i_SIGVALIDCLK    = ClockSignal("pcie_oob"),
+                i_RXELECIDLEMODE = 0b00,
+                o_RXELECIDLE     = rx_elecidle,
+                i_TXELECIDLE     = lane.tx_elecidle,
+            )
             # PCIe attributes (Xilinx 7-Series PCIe GTP wrapper).
             gtp.gtp_params.update(
+                p_PCS_PCIE_EN             = "TRUE" if pcs_pcie_en else "FALSE",
+                p_RXCDR_CFG               = rxcdr_cfg,
                 p_RXCDR_HOLD_DURING_EIDLE = 0b1,
                 p_RXCDR_LOCK_CFG          = 0b010101,
                 p_RXLPM_HOLD_DURING_EIDLE = 0b1,
@@ -117,9 +143,6 @@ class A7PCIeSerDes(PCIeSerDes):
             self.comb += [
                 gtp.tx_enable.eq(~self.perst),
                 gtp.rx_enable.eq(~self.perst & ~rx_reset),
-                gtp.tx_elecidle.eq(lane.tx_elecidle),
-                gtp.tx_deemph.eq(lane.tx_deemph),
-                gtp.tx_diffctrl.eq(0b1100), # 850 mV.
                 gtp.loopback.eq(self.loopback),
             ]
             readys.append(gtp.tx_ready & gtp.rx_ready)
@@ -131,7 +154,7 @@ class A7PCIeSerDes(PCIeSerDes):
             self.comb += gtp.source.connect(err.sink)
             self.add_lane_datapaths(lane, gtp.sink, err.source, rx_cd=rx_cd, skp_interval=skp_interval)
             self.add_rx_errors(lane, err.error, rx_cd)
-            self.add_rx_elecidle_filter(lane, gtp.rx_elecidle)
+            self.add_rx_elecidle_filter(lane, rx_elecidle)
             self.add_receiver_detection_stub(lane)
 
         self.specials += MultiReg(Reduce("AND", readys), self.ready, "pcie_link")

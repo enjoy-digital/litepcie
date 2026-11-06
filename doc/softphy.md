@@ -87,7 +87,7 @@ Clock domains:
 | Milestone | Scope | Status |
 |-----------|-------|--------|
 | M0 | Package, Symbols/Ordered Sets, scrambler, LCRC/DLLP CRC, reference models, tests, this document | Unit tests (PR #203) |
-| M1 | LiteICLink GTP PCIe ports (electrical idle, rate, de-emphasis, receiver detection, PIPE driver) | LiteICLink branch `serdes/gtp-pcie-ports` (tests, defaults unchanged) |
+| M1 | GTP PCIe settings (Electrical Idle, de-emphasis, CDR, comma alignment) | In the adapter through `gtp_params.update()`, as USB3 PIPE; no LiteICLink change |
 | M2 | Lane contract, Artix-7 clocking, GTP adapter, lane datapaths, TS/Ordered Set generator/checkers, simulation model | Unit tests, two-model link simulation (ppm, polarity, Symbol shift, Electrical Idle); GTP adapter elaborates for 1/2/4 lanes |
 | M2.5 | Passive RX of a host's TS1 on the Acorn (first hardware observation) | Not started |
 | M3 | LTSSM x1 Gen1, two-PHY simulation, debug/tracer; L0 against a real host | Not started |
@@ -105,7 +105,6 @@ Clock domains:
   round trips between two clock domains (SKP compensation), Training Sequence generator/checker at
   every Symbol position, two serdes models back-to-back (`serdes/model.py`), GTP adapter
   elaboration to Verilog.
-- The GTP adapter (`serdes/gtp_7series.py`) needs the LiteICLink `serdes/gtp-pcie-ports` options.
 - Later milestones add a two-PHY Verilator simulation (upstream and downstream LTSSM roles, ppm/SSC
   and lane skew), DLL tests with error injection, and hardware bring-up with the LTSSM tracer,
   LiteScope and the root port's `lspci -vv` link status.
