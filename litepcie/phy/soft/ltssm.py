@@ -228,7 +228,7 @@ class PCIeLTSSM(LiteXModule):
         # the inversion to take effect on the received stream.
         polarity_hold = WaitTimer(scaled(2e-6))
         self.submodules += polarity_hold
-        polarity_check = Signal()
+        polarity_check = self.polarity_check = Signal()
         self.comb += polarity_hold.wait.eq(1)
         self.sync += If(polarity_check & self.rx_ts & self.rx_ts_inverted & polarity_hold.done,
             self.rx_polarity.eq(~self.rx_polarity),
