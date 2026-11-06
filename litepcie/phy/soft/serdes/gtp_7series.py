@@ -36,7 +36,7 @@ GTP_PCIE_RXCDR_CFG = 0x000107FE406001041010
 
 class A7PCIeSerDes(PCIeSerDes):
     def __init__(self, platform, pads, sys_clk_freq, refclk_freq=100e6, rxcdr_cfg=GTP_PCIE_RXCDR_CFG,
-        pcs_pcie_en=False, skp_interval=None):
+        pcs_pcie_en=False, skp_interval=None, speedgrade=-1):
         from liteiclink.serdes.gtp_7series import GTPQuadPLL, GTP
 
         nlanes = len(pads.tx_p)
@@ -51,7 +51,8 @@ class A7PCIeSerDes(PCIeSerDes):
         self.specials += MultiReg(~pads.rst_n, self.perst)
 
         # Clocking ---------------------------------------------------------------------------------
-        self.clocking = clocking = S7PCIeClocking(pads.clk_p, pads.clk_n, refclk_freq, reset=self.perst)
+        self.clocking = clocking = S7PCIeClocking(pads.clk_p, pads.clk_n, refclk_freq, reset=self.perst,
+            speedgrade=speedgrade)
         self.comb += clocking.rate.eq(self.rate)
 
         # Quad PLL (2.5 GT/s configuration, 5.0 GT/s through the rate ports) ----------------------

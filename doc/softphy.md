@@ -30,9 +30,12 @@ Targets, in order: Artix-7 GTP Gen1 x1 (SQRL Acorn CLE-215+ / LiteX Acorn Basebo
                  BAR0 filtering, byte order adaptation
    dll/          DLLPs (ACK/NAK, InitFC/UpdateFC), LCRC, sequence numbers, retry buffer, flow control
                  credits, DLCMSM
-   pipe.py       Physical Layer: lanes + LTSSM -> link Symbol stream (32 bits per lane)
-   ltssm.py      Detect, Polling, Configuration, L0, Recovery, Hot Reset, Disabled (upstream and
-                 downstream roles)
+   pipe.py       Physical Layer: lane + LTSSM glue in the lane clock (TX multiplexing of EIOS/TS/
+                 packets/Logical Idle, TS/EIOS detection, Logical Idle handshake), Data Link Layer
+                 streams and LTSSM in "pcie_link", clock domain crossings
+   ltssm.py      Detect, Polling, Configuration, L0, Recovery, Hot Reset, Disabled, 2.5 GT/s x1,
+                 upstream and downstream roles (LTSSM_PIPE_INTERFACE, UltraScale state encoding)
+   debug.py      bring-up CSRs: LTSSM enable/retrain, state, counters, LTSSM tracer
    lanes.py      striping/destriping, lane-to-lane deskew (COM), per-lane polarity
    datapath.py   per lane: Logical Idle filling, SKP Ordered Set insertion, scrambler (TX, lane clock);
                  8b/10b error substitution, descrambler, SKP Ordered Set removal, elastic buffer to
@@ -76,6 +79,13 @@ Clock domains:
 - Clock compensation: one SKP Ordered Set every 352 words (1408 Symbols) between packets/Ordered
   Sets; on RX the elastic buffer is the recovered-to-lane clock FIFO after SKP removal, words are
   dropped (counted) if it overflows.
+- LTSSM (4.2.6): the LTSSM runs in the fixed "pcie_link" clock and only sees events: Training
+  Sequences received with their fields (one AsyncFIFO entry per TS), TS transmitted, Logical Idle
+  handshake done, Electrical Idle, receiver detection. The consecutive/transmitted counters restart
+  on every state change and the state conditions see them cleared on the first cycle of a state.
+  Polling.Compliance and Loopback are not entered (back to Detect), L0s/L1 and the speed change
+  come with later milestones. The state encoding is the Xilinx UltraScale one (L0 = 0x10), so the
+  existing LTSSM tracer decoding applies.
 - LCRC (3.5.2.1) and DLLP CRC (3.4.1): bytes in transmission order, bits LSB first, all-ones seed,
   remainder complemented and bit-reversed, first CRC byte in `value[0:8]`. The LCRC equals
   `zlib.crc32(sequence_number + tlp)` sent least significant byte first.
@@ -90,7 +100,7 @@ Clock domains:
 | M1 | GTP PCIe settings (Electrical Idle, de-emphasis, CDR, comma alignment) | In the adapter through `gtp_params.update()`, as USB3 PIPE; no LiteICLink change |
 | M2 | Lane contract, Artix-7 clocking, GTP adapter, lane datapaths, TS/Ordered Set generator/checkers, simulation model | Unit tests, two-model link simulation (ppm, polarity, Symbol shift, Electrical Idle); GTP adapter elaborates for 1/2/4 lanes |
 | M2.5 | Passive RX of a host's TS1 on the Acorn (first hardware observation) | Not started |
-| M3 | LTSSM x1 Gen1, two-PHY simulation, debug/tracer; L0 against a real host | Not started |
+| M3 | LTSSM x1 Gen1, Physical Layer, two-PHY simulation, debug/tracer; L0 against a real host | Verilator link simulation (`bench/soft/sim.py`): training to L0, packets both ways, Recovery, with scaled and specification timers; LTSSM pair unit tests; Acorn bring-up bench (`bench/soft/acorn.py`), hardware pending |
 | M4 | Data Link Layer | Not started |
 | M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Not started |
 | M6 | Gen2 x1 (rate change) | Not started |
@@ -105,17 +115,34 @@ Clock domains:
   round trips between two clock domains (SKP compensation), Training Sequence generator/checker at
   every Symbol position, two serdes models back-to-back (`serdes/model.py`), GTP adapter
   elaboration to Verilog.
-- Later milestones add a two-PHY Verilator simulation (upstream and downstream LTSSM roles, ppm/SSC
-  and lane skew), DLL tests with error injection, and hardware bring-up with the LTSSM tracer,
-  LiteScope and the root port's `lspci -vv` link status.
+- `python3 bench/soft/sim.py --timer-scale 100` (or `--timer-scale 1` for the specification
+  timers): Verilator simulation of an upstream and a downstream Physical Layer through two serdes
+  models: LTSSM states displayed, L0, packets both ways checked, Link Retrain (Recovery), "SIM OK".
+  `python3 -m pytest -m slow test/test_soft_sim.py` runs it (needs Verilator). The Migen simulator
+  is far too slow for the full link (about 15 cycles per second), so the Migen tests stop at the
+  LTSSM pair (`test/test_soft_ltssm.py`, behavioral link) and the elaboration of the Physical
+  Layer.
+- Later milestones add DLL tests with error injection, ppm/SSC and lane skew in the Verilator
+  simulation, and the hardware bring-up with the LTSSM tracer, LiteScope and the root port's
+  `lspci -vv` link status.
 
-## Bring-up notes (to be completed)
+## Bring-up on the Acorn (M2.5/M3)
 
-- Keep the LTSSM disabled (CSR) until the host has booted, enable it, then
-  `echo 1 > /sys/bus/pci/rescan`: configuration read timeouts during POST can hang some hosts.
-- Observe the LTSSM history and counters over JTAGBone/UARTBone before looking at traces.
-- A link in L0 without Data Link Layer shows as `LnkSta: 2.5GT/s x1` with `DLActive-` on the root
-  port.
+`bench/soft/acorn.py --build [--load] [--with-jtagbone] [--with-analyzer]` builds the soft
+Physical Layer alone (no Data Link Layer yet) on the SQRL Acorn CLE-215(+) / LiteX Acorn Baseboard
+in a PC slot, with UARTBone (default) or JTAGBone and the `pcie_phy` debug CSRs:
+
+1. Boot the host with the LTSSM disabled (`pcie_phy_control.enable = 0` at reset): configuration
+   read timeouts during POST can hang some hosts.
+2. `litex_server --uart ...` (or `--jtag`), check `pcie_phy_status.serdes_ready`, then
+   `pcie_phy_control.enable = 1` and `echo 1 > /sys/bus/pci/rescan` on the host.
+3. Read the LTSSM history (`bench/test_ltssm_tracer.py`, UltraScale table), `pcie_phy_status`
+   (`ltssm`, `l0`, `link`, `lane`, `rx_polarity`) and the counters: Training Sequences received and
+   corrupted, 8b/10b errors, elastic buffer overflows, DLLP/TLP starts received in L0 (the host's
+   InitFC DLLPs are the proof of L0 at the Data Link Layer).
+4. On the host, the root port shows `LnkSta: 2.5GT/s x1` with `DLActive-` while in L0.
+5. `--with-analyzer`: LiteScope on the lane Symbols (RX/TX), TS detection and the LTSSM state in
+   the lane clock domain (`analyzer.csv`).
 
 ## References
 
