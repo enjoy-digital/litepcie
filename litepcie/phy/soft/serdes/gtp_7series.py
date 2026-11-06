@@ -113,6 +113,8 @@ class A7PCIeSerDes(PCIeSerDes):
             )
             # PCIe attributes (Xilinx 7-Series PCIe GTP wrapper).
             gtp.gtp_params.update(
+                p_RX_CLK25_DIV            = 4, # 100 MHz reference clock.
+                p_TX_CLK25_DIV            = 4,
                 p_PCS_PCIE_EN             = "TRUE" if pcs_pcie_en else "FALSE",
                 p_RXCDR_CFG               = rxcdr_cfg,
                 p_RXCDR_HOLD_DURING_EIDLE = 0b1,

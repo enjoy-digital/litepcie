@@ -101,7 +101,7 @@ Clock domains:
 | M2 | Lane contract, Artix-7 clocking, GTP adapter, lane datapaths, TS/Ordered Set generator/checkers, simulation model | Unit tests, two-model link simulation (ppm, polarity, Symbol shift, Electrical Idle); GTP adapter elaborates for 1/2/4 lanes |
 | M2.5 | Passive RX of a host's TS1 on the Acorn (first hardware observation) | Not started |
 | M3 | LTSSM x1 Gen1, Physical Layer, two-PHY simulation, debug/tracer; L0 against a real host | Verilator link simulation (`bench/soft/sim.py`): training to L0, packets both ways, Recovery, with scaled and specification timers; LTSSM pair unit tests; Acorn bring-up bench (`bench/soft/acorn.py`), hardware pending |
-| M4 | Data Link Layer | Not started |
+| M4 | Data Link Layer: framing, DLLPs, DLCMSM, flow control, retry buffer, Ack/Nak | Unit tests; Verilator link simulation: DL_Active, TLPs both ways, Recovery, lane corruption and lost DLLPs recovered with every TLP delivered once and in order. No hardware run, LCRC/DLLP byte order not yet checked against a real host |
 | M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Not started |
 | M6 | Gen2 x1 (rate change) | Not started |
 | M7 | x2 (deskew, width negotiation) | Not started |
@@ -122,8 +122,10 @@ Clock domains:
   is far too slow for the full link (about 15 cycles per second), so the Migen tests stop at the
   LTSSM pair (`test/test_soft_ltssm.py`, behavioral link) and the elaboration of the Physical
   Layer.
-- Later milestones add DLL tests with error injection, ppm/SSC and lane skew in the Verilator
-  simulation, and the hardware bring-up with the LTSSM tracer, LiteScope and the root port's
+- `bench/soft/sim.py --with-dll [--corrupt-every N] [--drop-dllp-every N] [--debug]`: the same
+  link with the Data Link Layers: flow control initialization, DL_Active, TLPs both ways checked,
+  replays and receiver errors reported.
+- Later milestones add ppm/SSC and lane skew in the Verilator simulation, and the hardware bring-up with the LTSSM tracer, LiteScope and the root port's
   `lspci -vv` link status.
 
 ## Bring-up on the Acorn (M2.5/M3)
