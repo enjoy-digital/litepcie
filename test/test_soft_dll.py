@@ -14,6 +14,8 @@ from migen import *
 from litepcie.phy.soft.common   import STP, SDP
 from litepcie.phy.soft.dll.core import DataLinkLayer
 
+from test.model.soft.crc import dllp_crc_bytes
+
 pytestmark = pytest.mark.slow # About 2 minutes with the Migen simulator.
 
 class DLLLink(Module):
@@ -142,7 +144,20 @@ class TestSoftDLL(unittest.TestCase):
                     if (yield dut.b.source.last):
                         outs.append(list(current))
                 yield
-        run_simulation(dut, [generator(), monitor()])
+        def dllp_monitor():
+            # DLLPs from b, as they are on the lane.
+            dllps = stats["dllps"] = []
+            first = None
+            while not done:
+                if (yield dut.b.phy_sink.valid):
+                    data = (yield dut.b.phy_sink.data)
+                    if first is not None:
+                        dllps.append(first + (data & 0xffffff).to_bytes(3, "little"))
+                        first = None
+                    elif ((yield dut.b.phy_sink.ctrl) & 1) and (data & 0xff) == SDP.value:
+                        first = (data >> 8).to_bytes(3, "little")
+                yield
+        run_simulation(dut, [generator(), monitor(), dllp_monitor()])
         return outs, stats
 
     def test_init_and_tlps(self):
@@ -173,4 +188,18 @@ class TestSoftDLL(unittest.TestCase):
         self.assertIsNotNone(stats["dl_active"])
         self.assertEqual(outs, tlps)
         self.assertGreaterEqual(stats["replays"], 1)
+        self.assertEqual(stats["pending"], 0)
+
+    def test_dllps_under_load(self):
+        # Ack sequence number and credits changing all the time: each DLLP is consistent on the lane
+        # and one sent while another one is requested doesn't take its place (no Ack lost, no replay).
+        rng  = random.Random(3)
+        tlps = [mwr_tlp(rng, rng.randrange(1, 4), i) for i in range(64)]
+        outs, stats = self.run_link(tlps, budget=20000)
+        self.assertIsNotNone(stats["dl_active"])
+        self.assertEqual(outs, tlps)
+        self.assertGreater(len(stats["dllps"]), 64)
+        bad = [dllp.hex() for dllp in stats["dllps"] if dllp_crc_bytes(dllp[:4]) != dllp[4:]]
+        self.assertEqual(bad, [])
+        self.assertEqual(stats["replays"], 0)
         self.assertEqual(stats["pending"], 0)
