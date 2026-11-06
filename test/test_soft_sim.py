@@ -20,12 +20,12 @@ pytestmark = [pytest.mark.slow, pytest.mark.sim]
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 class TestSoftSim(unittest.TestCase):
-    def run_sim(self, name, *args):
+    def run_sim(self, name, *args, script="sim.py"):
         if shutil.which("verilator") is None:
             self.skipTest("Verilator not available")
         output_dir = os.path.join(ROOT, "build", "test", "soft_sim_" + name)
         shutil.rmtree(output_dir, ignore_errors=True)
-        cmd = [sys.executable, os.path.join(ROOT, "bench", "soft", "sim.py"), "--output-dir", output_dir] + list(args)
+        cmd = [sys.executable, os.path.join(ROOT, "bench", "soft", script), "--output-dir", output_dir] + list(args)
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         self.assertEqual(result.returncode, 0, result.stdout[-4000:] + result.stderr[-4000:])
         return result.stdout
@@ -64,3 +64,13 @@ class TestSoftSim(unittest.TestCase):
     def test_dll_lost_dllps(self):
         # DLLPs lost (Acks, UpdateFC): REPLAY_TIMER, duplicates discarded by the receiver.
         self.check_dll(self.run_sim("dll_drop", "--with-dll", "--packets", "64", "--drop-dllp-every", "3"))
+
+    def test_endpoint(self):
+        # Scripted root <-> LitePCIe endpoint on SoftPCIEPHY: configuration space, BAR0 accesses, byte
+        # order, Unsupported Requests, MSI, device reads and writes, wire TLPs compared.
+        for data_width in [64, 128]:
+            with self.subTest(data_width=data_width):
+                output = self.run_sim(f"endpoint_{data_width}", "--data-width", str(data_width), script="sim_endpoint.py")
+                self.assertIn("device read: cafe1234", output)
+                self.assertIn("SIM OK", output)
+                self.assertNotIn("expected", output)
