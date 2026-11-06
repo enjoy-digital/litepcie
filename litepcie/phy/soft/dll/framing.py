@@ -32,6 +32,11 @@ def tlp_layout():
     first), edb (nullified, valid with last)."""
     return [("data", 32), ("seq", 12), ("edb", 1)]
 
+def seq_symbols(seq):
+    """TLP Sequence Number as its 2 bytes (byte 0 first, on bits 7:0): Reserved bits [7:4] and
+    Sequence Number [11:8], then Sequence Number [7:0] (3.5.2)."""
+    return Cat(seq[8:12], Constant(0, 4), seq[0:8])
+
 # RX Framer ----------------------------------------------------------------------------------------
 
 class RXFramer(LiteXModule):
@@ -296,7 +301,7 @@ class TXFramer(LiteXModule):
                 # First word: STP, Sequence Number, first byte of the first DW.
                 source.valid.eq(1),
                 source.first.eq(1),
-                source.data.eq(Cat(Constant(STP.value, 8), Constant(0, 4), tlp.seq[8:12], tlp.seq[0:8], tlp.data[0:8])),
+                source.data.eq(Cat(Constant(STP.value, 8), seq_symbols(tlp.seq), tlp.data[0:8])),
                 source.ctrl.eq(0b0001),
                 If(source.ready,
                     tlp.ready.eq(1),

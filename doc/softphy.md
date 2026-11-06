@@ -102,7 +102,7 @@ Clock domains:
 | M2.5 | Passive RX of a host's TS1 on the Acorn (first hardware observation) | Not started |
 | M3 | LTSSM x1 Gen1, Physical Layer, two-PHY simulation, debug/tracer; L0 against a real host | Verilator link simulation (`bench/soft/sim.py`): training to L0, packets both ways, Recovery, with scaled and specification timers; LTSSM pair unit tests; Acorn bring-up bench (`bench/soft/acorn.py`), hardware pending |
 | M4 | Data Link Layer: framing, DLLPs, DLCMSM, flow control, retry buffer, Ack/Nak | Unit tests; Verilator link simulation: DL_Active, TLPs both ways, Recovery, lane corruption and lost DLLPs recovered with every TLP delivered once and in order. No hardware run, LCRC/DLLP byte order not yet checked against a real host |
-| M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Verilator end-to-end simulation (`bench/soft/sim_endpoint.py`): configuration space, BAR0 accesses and byte order, Unsupported Requests, MSI, device reads/writes at 64 and 128 bits. Acorn bitstream with LitePCIe, MMAP, DMA and MSI built: about 8.5k LUTs, timing met (`pcie_link` margin only 51 ps). **Not run on hardware, DMA not simulated** |
+| M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Verilator end-to-end simulation (`bench/soft/sim_endpoint.py`): configuration space, BAR0 accesses and byte order, Unsupported Requests, MSI, device reads/writes at 64 and 128 bits. Acorn bitstream with LitePCIe, MMAP, DMA and MSI built: about 8.5k LUTs, timing met (`pcie_link` margin only 51 ps). BAR0/CSR, MSI and DMA simulated at SoC level (`bench/soft/sim_soc.py`). **Not run on hardware or with the real driver** |
 | M6 | Gen2 x1 (rate change) | Not started |
 | M7 | x2 (deskew, width negotiation) | Not started |
 | M8 | x4, 128-bit datapath, robustness, LiteX-Boards | Not started |
@@ -115,6 +115,9 @@ Clock domains:
   round trips between two clock domains (SKP compensation), Training Sequence generator/checker at
   every Symbol position, two serdes models back-to-back (`serdes/model.py`), GTP adapter
   elaboration to Verilog.
+- `python3 bench/soft/sim_soc.py [--mps 256] [--dma-size 1024] [--dma-buffers 4]`: SoC as the Acorn target
+  (`add_pcie`, 64-bit DMA) against a host model with the Linux driver's register sequence: CSRs over
+  BAR0, DMA tables, loopback through host memory with Completions split at 64 bytes, MSIs, buffers compared.
 - `python3 bench/soft/sim_endpoint.py [--data-width 64|128]`: a scripted root (soft Physical and Data
   Link Layers, downstream role) against a LitePCIe endpoint on `SoftPCIEPHY`, wire TLPs compared.
 - `python3 bench/soft/sim.py --timer-scale 100` (or `--timer-scale 1` for the specification
@@ -129,6 +132,25 @@ Clock domains:
   replays and receiver errors reported.
 - Later milestones add ppm/SSC and lane skew in the Verilator simulation, and the hardware bring-up with the LTSSM tracer, LiteScope and the root port's
   `lspci -vv` link status.
+
+## Resources and timing against the hard IP
+
+Same SoC on the Acorn CLE-215+ (`xc7a200t-fbg484-3`, Vivado 2024.1, `bench/soft/acorn.py`): x1, 64-bit,
+`add_pcie` with 1 DMA channel, 64-bit addressing, loopback, MSI, 125 MHz system clock. Whole design, so
+the difference is the PHY cost; the soft build also carries its debug CSRs and LTSSM tracer.
+
+| | Soft (2.5 GT/s) | Hard IP (5 GT/s) |
+|---|---:|---:|
+| Slice LUTs | 9062 | 4538 |
+| Slice Registers | 7706 | 3650 |
+| Block RAM tiles | 28 | 32.5 |
+| `PCIE_2_1` | 0 | 1 |
+| `GTPE2_CHANNEL` | 1 | 1 |
+| Setup WNS | 0.074 ns (`pcie_link`) | 0.667 ns |
+| Estimated power | 0.659 W | 0.804 W |
+
+One build of each, so the small slack can vary with placement. The soft PHY has half the line rate of
+the hard IP here until the Gen2 milestone.
 
 Known limitations of the Transaction Layer glue: no MSI-X, no BAR/Memory Space Enable decoding
 (LitePCIe masks the address), no PME_TO_Ack (a host waiting for it at shutdown times out), and an

@@ -74,3 +74,20 @@ class TestSoftSim(unittest.TestCase):
                 self.assertIn("device read: cafe1234", output)
                 self.assertIn("SIM OK", output)
                 self.assertNotIn("expected", output)
+
+    def test_soc(self):
+        # Acorn-like SoC (add_pcie, 64-bit DMA) against a host model with the driver's register
+        # sequence: CSRs over BAR0, DMA loopback through host memory, split completions, MSIs.
+        for mps, size, buffers in [(128, 512, 2), (256, 1024, 4), (512, 8192, 2), (256, 8192, 4)]:
+            with self.subTest(mps=mps, size=size):
+                output = self.run_sim(f"soc_{mps}", "--mps", str(mps), "--dma-size", str(size),
+                    "--dma-buffers", str(buffers), script="sim_soc.py")
+                self.assertIn("SIM OK", output)
+                self.assertNotIn("expected", output)
+                self.assertNotIn("host memory:", output)
+                self.assertRegex(output, r"replays +0/ +0, receiver errors +0/ +0")
+
+    def test_dll_sequence_wrap(self):
+        # More TLPs than the 12-bit Sequence Number and the 8-bit header credits cover.
+        output = self.run_sim("dll_wrap", "--with-dll", "--packets", "4500", "--max-cycles", "3000000")
+        self.check_dll(output)

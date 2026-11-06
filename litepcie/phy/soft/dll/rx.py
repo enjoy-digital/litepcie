@@ -16,7 +16,7 @@ from litex.soc.interconnect import stream
 
 from litepcie.phy.soft.common           import lane_layout
 from litepcie.phy.soft.dll.crc          import LCRC
-from litepcie.phy.soft.dll.framing      import RXFramer
+from litepcie.phy.soft.dll.framing      import RXFramer, seq_symbols
 from litepcie.phy.soft.dll.buffer       import PacketBuffer
 from litepcie.phy.soft.dll.flow_control import tlp_credits
 
@@ -54,7 +54,7 @@ class DLLRX(LiteXModule):
             tlp.ready.eq(1),
             lcrc.ce.eq(tlp.valid & ~tlp.last),
             If(tlp.first,
-                lcrc.data.eq(Cat(Constant(0, 4), tlp.seq[8:12], tlp.seq[0:8], tlp.data)),
+                lcrc.data.eq(Cat(seq_symbols(tlp.seq), tlp.data)),
                 lcrc.bytes.eq(6),
             ).Else(
                 lcrc.data.eq(tlp.data),

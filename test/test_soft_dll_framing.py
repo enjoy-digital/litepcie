@@ -126,6 +126,38 @@ class TestSoftDLLFraming(unittest.TestCase):
             self.assertEqual(tlps, expected_tlps, f"shift {shift}")
             self.assertEqual(dllps, expected_dllps, f"shift {shift}")
 
+    def test_tx_framer_wire_format(self):
+        # Framed TLP Symbols against the reference model, Sequence Numbers above 255 included.
+        rng = random.Random(4)
+        for seq in [0, 1, 255, 256, 0xabc, 0xfff]:
+            tlp   = random_tlp(rng, 4)
+            crc   = lcrc_bytes(seq.to_bytes(2, "big") + tlp)
+            words = dws(tlp + crc)
+            dut   = TXFramer()
+            out   = []
+            def generator():
+                yield dut.source.ready.eq(1)
+                yield dut.tlp.seq.eq(seq)
+                for i, word in enumerate(words):
+                    yield dut.tlp.data.eq(word)
+                    yield dut.tlp.first.eq(i == 0)
+                    yield dut.tlp.last.eq(i == len(words) - 1)
+                    yield dut.tlp.valid.eq(1)
+                    yield
+                    while True:
+                        if (yield dut.source.valid):
+                            out.append(((yield dut.source.data), (yield dut.source.ctrl)))
+                        if (yield dut.tlp.ready):
+                            break
+                        yield
+                yield dut.tlp.valid.eq(0)
+                yield
+                if (yield dut.source.valid):
+                    out.append(((yield dut.source.data), (yield dut.source.ctrl)))
+                yield
+            run_simulation(dut, generator())
+            self.assertEqual(out, symbols_to_words(tlp_frame(seq, tlp)), f"seq {seq:03x}")
+
     def test_rx_framer_errors(self):
         # A K Symbol inside a TLP drops it (abort), the following packet is received.
         rng = random.Random(2)
