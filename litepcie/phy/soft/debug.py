@@ -107,4 +107,4 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
 
         # LTSSM tracer.
         if with_tracer:
-            self.tracer = LTSSMTracer(ltssm.state)
+            self.tracer = LTSSMTracer(self._status.fields.ltssm)

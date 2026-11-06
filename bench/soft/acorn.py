@@ -8,8 +8,10 @@
 
 """Soft PCIe PHY bring-up on the SQRL Acorn CLE-215(+) / LiteX Acorn Baseboard (Artix-7 GTP, PCIe x1).
 
-The soft Physical Layer (A7PCIeSerDes + PCIePhysicalLayer, upstream role) trains against the host's
-root port; the Data Link Layer is not there yet so the host sees the link in L0 with DLActive clear.
+By default, the soft Physical Layer alone (A7PCIeSerDes + PCIePhysicalLayer, upstream role) trains
+against the host's root port, which sees the link in L0 with DLActive clear; its debug CSRs and LTSSM
+tracer are always there. --with-endpoint builds the full endpoint, where they are optional
+(--with-debug, --with-ltssm-tracer; without --with-debug the LTSSM starts on its own).
 Control/status over UARTBone (serial on the Acorn P2 header / Baseboard) or JTAGBone:
 - pcie_phy debug CSRs: keep the LTSSM disabled until the host has booted (configuration read
   timeouts during POST can hang some hosts), then enable it and `echo 1 > /sys/bus/pci/rescan`.
@@ -80,7 +82,7 @@ class CRG(LiteXModule):
 
 class SoftPHYSoC(SoCMini):
     def __init__(self, platform, sys_clk_freq=int(125e6), lane=3, with_jtagbone=False, with_analyzer=False,
-        with_endpoint=False, ltssm_autostart=False, hard_ip=False):
+        with_endpoint=False, with_debug=False, with_ltssm_tracer=False, ltssm_autostart=False, hard_ip=False):
         SoCMini.__init__(self, platform, sys_clk_freq, ident="LitePCIe soft PHY bring-up on Acorn", ident_version=True)
 
         # CRG --------------------------------------------------------------------------------------
@@ -112,7 +114,10 @@ class SoftPHYSoC(SoCMini):
                 speedgrade   = -2,
             )
             pcie_phy.add_timing_constraints(self.crg.cd_sys.clk)
-            pcie_phy.add_debug(enable_reset=int(ltssm_autostart))
+            if with_debug:
+                pcie_phy.add_debug(enable_reset=int(ltssm_autostart))
+            if with_ltssm_tracer:
+                pcie_phy.add_ltssm_tracer()
             self.add_pcie(phy=pcie_phy, ndmas=1, address_width=64, with_dma_loopback=True)
             serdes, phy = pcie_phy.serdes, pcie_phy.phy_layer
         else:
@@ -163,7 +168,9 @@ def main():
     parser.add_argument("--with-jtagbone", action="store_true", help="JTAGBone instead of UARTBone.")
     parser.add_argument("--with-analyzer", action="store_true", help="LiteScope analyzer on the lane.")
     parser.add_argument("--with-endpoint", action="store_true", help="Full LitePCIe endpoint (SoftPCIEPHY, MMAP, DMA, MSI).")
-    parser.add_argument("--ltssm-autostart", action="store_true", help="LTSSM enabled at reset (else through the debug CSR).")
+    parser.add_argument("--with-debug",    action="store_true", help="Bring-up CSRs on the endpoint (LTSSM enable, status, counters).")
+    parser.add_argument("--with-ltssm-tracer", action="store_true", help="LTSSM state history on the endpoint.")
+    parser.add_argument("--ltssm-autostart", action="store_true", help="LTSSM enabled at reset with the debug CSRs (else through the enable CSR).")
     parser.add_argument("--hard-ip",       action="store_true", help="Same endpoint on the hard IP (S7PCIEPHY), for comparison.")
     parser.add_argument("--driver",        action="store_true", help="Generate the PCIe driver.")
     parser.add_argument("--output-dir",    default="build/soft_acorn", help="Build directory.")
@@ -175,6 +182,8 @@ def main():
         with_jtagbone = args.with_jtagbone,
         with_analyzer = args.with_analyzer,
         with_endpoint = args.with_endpoint,
+        with_debug    = args.with_debug,
+        with_ltssm_tracer = args.with_ltssm_tracer,
         hard_ip       = args.hard_ip,
         ltssm_autostart = args.ltssm_autostart,
     )
