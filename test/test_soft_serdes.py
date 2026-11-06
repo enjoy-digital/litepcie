@@ -161,10 +161,6 @@ class TestSoftSerDes(unittest.TestCase):
 
 class TestSoftSerDesGTP(unittest.TestCase):
     def elaborate(self, nlanes):
-        import inspect
-        from liteiclink.serdes.gtp_7series import GTP
-        if "align_comma_word" not in inspect.signature(GTP.__init__).parameters:
-            self.skipTest("Requires the LiteICLink serdes/gtp-pcie-ports GTP options.")
         from litepcie.phy.soft.serdes.gtp_7series import A7PCIeSerDes
         class Top(LiteXModule):
             def __init__(self, platform):
