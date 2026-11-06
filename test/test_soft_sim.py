@@ -45,3 +45,22 @@ class TestSoftSim(unittest.TestCase):
     def test_link_spec_timers(self):
         # Specification timers (events, not timeouts, drive the training).
         self.check(self.run_sim("spec", "--timer-scale", "1", "--packets", "32"))
+
+    def check_dll(self, output):
+        self.check(output)
+        self.assertIn("DL_Active (both)", output)
+
+    def test_dll(self):
+        # Data Link Layers on both sides: flow control initialization, TLPs both ways.
+        self.check_dll(self.run_sim("dll", "--with-dll", "--packets", "64"))
+
+    def test_dll_corruption(self):
+        # Lane corruption: Naks and replays, TLPs still delivered exactly once, in order.
+        output = self.run_sim("dll_corrupt", "--with-dll", "--packets", "64", "--corrupt-every", "5")
+        self.check_dll(output)
+        self.assertRegex(output, r"replays: up +[1-9]")
+        self.assertRegex(output, r"receiver errors: up +\d+, down +[1-9]")
+
+    def test_dll_lost_dllps(self):
+        # DLLPs lost (Acks, UpdateFC): REPLAY_TIMER, duplicates discarded by the receiver.
+        self.check_dll(self.run_sim("dll_drop", "--with-dll", "--packets", "64", "--drop-dllp-every", "3"))
