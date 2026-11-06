@@ -271,4 +271,7 @@ class SoftTransactionLayer(LiteXModule):
         )
 
         # Transmitted TLPs -------------------------------------------------------------------------
-        self.arbiter = TLPArbiter([cpl, ep_sink, msi_tlp], source)
+        # MSI goes before LitePCIe: DMA keeps the stream busy and keeps running without the driver,
+        # an interrupt left to the gaps would be starved. It's a short TLP at a bounded rate, LitePCIe
+        # isn't starved in return.
+        self.arbiter = TLPArbiter([cpl, msi_tlp, ep_sink], source)
