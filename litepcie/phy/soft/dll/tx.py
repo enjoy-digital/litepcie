@@ -15,7 +15,7 @@ from litex.soc.interconnect import stream
 
 from litepcie.phy.soft.common      import lane_layout
 from litepcie.phy.soft.dll.crc     import LCRC
-from litepcie.phy.soft.dll.framing import TXFramer
+from litepcie.phy.soft.dll.framing import TXFramer, seq_symbols
 from litepcie.phy.soft.dll.retry   import ReplayBuffer
 
 # DLL TX -------------------------------------------------------------------------------------------
@@ -64,7 +64,7 @@ class DLLTX(LiteXModule):
         )
         self.comb += [
             If(replay.source.first,
-                lcrc.data.eq(Cat(Constant(0, 4), replay.source.seq[8:12], replay.source.seq[0:8], replay.source.data)),
+                lcrc.data.eq(Cat(seq_symbols(replay.source.seq), replay.source.data)),
                 lcrc.bytes.eq(6),
             ).Else(
                 lcrc.data.eq(replay.source.data),
