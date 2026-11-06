@@ -135,22 +135,45 @@ Clock domains:
 
 ## Resources and timing against the hard IP
 
-Same SoC on the Acorn CLE-215+ (`xc7a200t-fbg484-3`, Vivado 2024.1, `bench/soft/acorn.py`): x1, 64-bit,
-`add_pcie` with 1 DMA channel, 64-bit addressing, loopback, MSI, 125 MHz system clock. Whole design, so
-the difference is the PHY cost; the soft build also carries its debug CSRs and LTSSM tracer.
+Same SoC on the Acorn CLE-215+ (`xc7a200t-fbg484-3`, Vivado 2024.1, `bench/soft/acorn.py --with-endpoint`):
+x1, 64-bit, `add_pcie` with 1 DMA channel, 64-bit addressing, loopback, MSI, 125 MHz system clock. Whole
+design, so the difference between the soft and hard columns is the PHY cost. One build of each:
 
-| | Soft (2.5 GT/s) | Hard IP (5 GT/s) |
-|---|---:|---:|
-| Slice LUTs | 9062 | 4538 |
-| Slice Registers | 7706 | 3650 |
-| Block RAM tiles | 28 | 32.5 |
-| `PCIE_2_1` | 0 | 1 |
-| `GTPE2_CHANNEL` | 1 | 1 |
-| Setup WNS | 0.074 ns (`pcie_link`) | 0.667 ns |
-| Estimated power | 0.659 W | 0.804 W |
+| | Soft | Soft + tracer | Soft + debug | Soft + both | Hard IP (5 GT/s) |
+|---|---:|---:|---:|---:|---:|
+| Slice LUTs (placed) | 9211 | 8867 | 8948 | 9038 | 4538 |
+| Slice LUTs (synthesis) | 9534 | 9478 | 9595 | 9535 | not measured |
+| Slice Registers | 6976 | 6999 | 7595 | 7588 | 3650 |
+| Block RAM tiles | 28 | 28 | 28 | 28 | 32.5 |
+| `PCIE_2_1` | 0 | 0 | 0 | 0 | 1 |
+| `GTPE2_CHANNEL` | 1 | 1 | 1 | 1 | 1 |
+| Setup WNS | **-0.244 ns** | 0.007 ns | 0.002 ns | **-0.425 ns** | 0.667 ns |
+| Estimated power | 0.668 W | 0.660 W | 0.670 W | 0.686 W | 0.804 W |
 
-One build of each, so the small slack can vary with placement. The soft PHY has half the line rate of
-the hard IP here until the Gen2 milestone.
+- The debug CSRs cost about 620 registers and the LTSSM tracer about 25. Their LUT cost is below the
+  build-to-build spread (about 120 LUTs after synthesis, 340 after placement), so the LUT gap to the
+  hard IP is the PHY itself.
+- **Timing is not reliably met on `pcie_link`**: slack goes from -0.425 to 0.007 ns across these
+  builds, unrelated to the options. The failing paths are in the Data Link Layer: RX framer state to
+  its repacker (10-11 logic levels), replay descriptor memory to its output registers (8), replay
+  descriptors to the transmit credit counters (15). To fix before relying on a build.
+- The soft PHY has half the line rate of the hard IP here until the Gen2 milestone.
+
+## Options and power management
+
+`SoftPCIEPHY` alone has only the CSRs of the PHY contract, and its LTSSM starts on its own. Two optional
+additions, for bring-up (`--with-debug`, `--with-ltssm-tracer` on `bench/soft/acorn.py --with-endpoint`):
+
+- `add_debug(enable_reset=0)`: LTSSM enable/retrain and status, counters. The LTSSM then waits for the
+  enable CSR.
+- `add_ltssm_tracer()`: LTSSM state history, as with the hard-IP PHYs.
+
+No Link Power Management is implemented: no L0s, L1, L2 or ASPM, and no PM DLLP is generated or acted on.
+Link Capabilities advertises no ASPM, Link Control's ASPM Control and Device Control's Aux Power PM are
+hardwired to 0, and the N_FTS in Training Sequences is a fixed value (the partner's is ignored). What
+remains is required: the PM capability (mandatory for a PCIe function, D0/D3hot PowerState only, no
+PME), EIOS and Electrical Idle detection (Recovery and link down, not low power states). The
+`RXLPM_*` transceiver attributes are unrelated: LPM is the GTP's only receive equalizer.
 
 Known limitations of the Transaction Layer glue: no MSI-X, no BAR/Memory Space Enable decoding
 (LitePCIe masks the address), no PME_TO_Ack (a host waiting for it at shutdown times out), and an
@@ -161,7 +184,8 @@ present), Electrical Idle comes from the GTP detector.
 ## Bring-up on the Acorn (M2.5/M3)
 
 `--with-endpoint` builds the full endpoint (SoftPCIEPHY, LitePCIe MMAP, DMA, MSI, `--driver` for the
-kernel driver) with the same debug CSRs; once L0 and DL_Active are reached, Linux should enumerate
+kernel driver); add `--with-debug --with-ltssm-tracer` for bring-up (CSRs `pcie_phy_debug_*` and
+`pcie_phy_ltssm_tracer_*`, steps below). Once L0 and DL_Active are reached, Linux should enumerate
 it as a `10ee:7021` device.
 
 
