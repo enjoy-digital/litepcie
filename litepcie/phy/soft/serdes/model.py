@@ -39,7 +39,8 @@ class PCIeSerDesModel(PCIeSerDes):
         # # #
 
         assert 0 <= rx_symbol_shift <= 3
-        self.comb += self.ready.eq(1)
+        # Ready: cleared by the RX re-initialization, as with a real transceiver.
+        self.comb += self.ready.eq(Reduce("AND", [lane.ready for lane in self.lanes]))
         for i, lane in enumerate(self.lanes):
             encoder  = ClockDomainsRenamer(tx_cd)(Encoder(4, True))
             decoders = [ClockDomainsRenamer(rx_cd)(Decoder(True)) for _ in range(4)]
@@ -96,7 +97,7 @@ class PCIeSerDesModel(PCIeSerDes):
             self.add_rx_elecidle_filter(lane, idle, cd=tx_cd)
             sync_tx = getattr(self.sync, tx_cd)
             sync_tx += [
-                lane.ready.eq(1),
+                lane.ready.eq(~lane.rx_reset),
                 lane.detect_done.eq(lane.tx_detect_rx),
                 lane.rx_detected.eq(self.present),
             ]

@@ -262,12 +262,22 @@ class PCIeLTSSM(LiteXModule):
             fsm.act(name, self.state.eq(LTSSM_STATES[name]), *statements)
 
         # Detect (4.2.6.1).
+        # The RX is re-initialized on entry (2 us pulse, a training failure can be a bad transceiver
+        # init). enable depends on the transceivers being ready: held in the state for the status
+        # of the re-initialization to be seen.
+        rx_reset_cycles = max(4, int(2e-6*clk_freq))
+        quiet_count = Signal(max=2*rx_reset_cycles + 1)
+        self.sync += If(state_changed,
+            quiet_count.eq(0)
+        ).Elif(fsm.ongoing("Detect.Quiet") & (quiet_count != 2*rx_reset_cycles),
+            quiet_count.eq(quiet_count + 1)
+        )
         wait, done = timeout(12e-3)
         act("Detect.Quiet",
             self.tx_elecidle.eq(1),
-            self.rx_reset.eq(1),
+            self.rx_reset.eq(quiet_count < rx_reset_cycles),
             *wait,
-            If(self.enable & (done | ~self.rx_elecidle),
+            If(self.enable & (quiet_count == 2*rx_reset_cycles) & (done | ~self.rx_elecidle),
                 NextState("Detect.Active")
             )
         )
