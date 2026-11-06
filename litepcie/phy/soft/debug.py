@@ -29,7 +29,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
         ltssm = phy.ltssm
 
         self._control = CSRStorage(fields=[
-            CSRField("enable",  size=1, offset=0, reset=enable_reset, description="LTSSM enable (keep disabled until the host has booted during bring-up)."),
+            CSRField("enable",  size=1, offset=0, reset=enable_reset, description="LTSSM enable, write to apply. Without autostart (reset value), cleared by PERST#: a host reset comes back with the LTSSM disabled, so a design making a host hang cannot do it again at the next boot."),
             CSRField("retrain", size=1, offset=1, pulse=True, description="Link Retrain (Recovery)."),
         ])
         self._status = CSRStatus(fields=[
@@ -39,6 +39,8 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             CSRField("serdes_ready", size=1, offset=10, description="Transceivers initialized."),
             CSRField("rx_elecidle",  size=1, offset=11, description="RX Electrical Idle."),
             CSRField("rx_polarity",  size=1, offset=12, description="RX polarity inverted."),
+            CSRField("enabled",      size=1, offset=13, description="LTSSM enabled (cleared by PERST#, see control)."),
+            CSRField("perst",        size=1, offset=14, description="PERST# asserted."),
             CSRField("link",         size=8, offset=16, description="Negotiated Link Number."),
             CSRField("lane",         size=5, offset=24, description="Lane Number."),
         ])
@@ -49,14 +51,31 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
         self._rx_dllp      = CSRStatus(32, description="DLLP starts (SDP) received in L0.")
         self._rx_tlp       = CSRStatus(32, description="TLP starts (STP) received in L0.")
         self._rx_rate      = CSRStatus(8,  description="Partner Data Rate Identifier.")
+        self._loopback     = CSRStorage(3, description="Transceiver loopback mode (0: none, 2: near-end PMA).")
 
         # # #
 
         # Controls (sys -> pcie_link).
         enable  = Signal()
+        enabled = Signal(reset=enable_reset) # sys.
+        perst   = Signal()
+        if hasattr(serdes, "perst"):
+            self.comb += perst.eq(serdes.perst)
+        self.sync += [
+            If(self._control.re,
+                enabled.eq(self._control.fields.enable)
+            ).Elif(perst & (enable_reset == 0),
+                enabled.eq(0)
+            )
+        ]
+        self.comb += [
+            self._status.fields.enabled.eq(enabled),
+            self._status.fields.perst.eq(perst),
+            serdes.loopback.eq(self._loopback.storage),
+        ]
         retrain = PulseSynchronizer("sys", "pcie_link")
         self.submodules += retrain
-        self.specials += MultiReg(self._control.fields.enable, enable, "pcie_link")
+        self.specials += MultiReg(enabled, enable, "pcie_link")
         self.comb += [
             phy.enable.eq(enable),
             retrain.i.eq(self._control.fields.retrain),
