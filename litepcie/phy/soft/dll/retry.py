@@ -68,14 +68,14 @@ class ReplayBuffer(LiteXModule):
         wr_ptr   = Signal(adr_width)
         start    = Signal(adr_width)
         pending  = Signal(adr_width + 1) # DWs of the TLP being written.
-        used     = Signal(adr_width + 1) # DWs stored (acknowledged ones excluded).
+        free     = Signal(adr_width + 1, reset=depth) # DWs free (acknowledged ones freed).
         next_seq = Signal(12)
         tlp_type = Signal(2)
         tlp_data = Signal(9)
         statements, dw0_type, dw0_data = tlp_credits(sink.data)
         self.comb += statements
         self.comb += [
-            sink.ready.eq(~self.reset & (used + pending != depth) & (count != descriptors)),
+            sink.ready.eq(~self.reset & (free != 0) & (count != descriptors)),
             wr_port.adr.eq(wr_ptr),
             wr_port.dat_w.eq(sink.data),
             wr_port.we.eq(sink.valid & sink.ready),
@@ -130,7 +130,7 @@ class ReplayBuffer(LiteXModule):
             If(self.reset,
                 acking.eq(0),
                 ack_desc.eq(0),
-                used.eq(0),
+                free.eq(depth),
             ).Else(
                 If(self.ack,
                     acking.eq(1),
@@ -141,8 +141,7 @@ class ReplayBuffer(LiteXModule):
                 If(ack_free,
                     ack_desc.eq(ack_desc + 1),
                 ),
-                # Stored DWs: + written, - freed.
-                used.eq(used + Mux(accepted, 1, 0) - Mux(ack_free, d_length[ack_desc[:desc_width]], 0)),
+                free.eq(free - Mux(accepted, 1, 0) + Mux(ack_free, d_length[ack_desc[:desc_width]], 0)),
             )
         ]
         self.comb += progress.eq(ack_free)
