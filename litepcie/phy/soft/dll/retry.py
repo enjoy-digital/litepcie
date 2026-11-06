@@ -45,7 +45,7 @@ class ReplayBuffer(LiteXModule):
         adr_width  = log2_int(depth)
         desc_width = log2_int(descriptors)
 
-        self.mem = mem = Memory(32, depth)
+        mem = Memory(32, depth)
         wr_port = mem.get_port(write_capable=True)
         rd_port = mem.get_port(async_read=False)
         self.specials += mem, wr_port, rd_port
