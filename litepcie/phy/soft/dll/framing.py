@@ -191,7 +191,14 @@ class RXFramer(LiteXModule):
             repacker.sink.start.eq(start),
             repacker.sink.end.eq(end),
             repacker.sink.abort.eq(abort),
-            repacker.source.connect(tlp, omit={"seq", "edb"}),
+            repacker.source.ready.eq(1),
+        ]
+        # Registered output (timing): no back-pressure on the received words.
+        self.sync += [
+            tlp.valid.eq(repacker.source.valid),
+            tlp.first.eq(repacker.source.first),
+            tlp.last.eq(repacker.source.last),
+            tlp.data.eq(repacker.source.data),
             tlp.seq.eq(seq),
             tlp.edb.eq(end_edb),
         ]

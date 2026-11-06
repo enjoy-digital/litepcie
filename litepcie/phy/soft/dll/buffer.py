@@ -31,7 +31,7 @@ class PacketBuffer(LiteXModule):
         assert depth & (depth - 1) == 0
         adr_width = log2_int(depth)
 
-        self.mem = mem = Memory(32, depth)
+        mem = Memory(32, depth)
         wr_port = mem.get_port(write_capable=True)
         rd_port = mem.get_port(async_read=False)
         self.specials += mem, wr_port, rd_port

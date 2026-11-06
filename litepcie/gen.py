@@ -223,6 +223,8 @@ class LitePCIeCore(SoCMini):
             data_width      = core_config["phy_data_width"],
             bar0_size       = core_config["phy_bar0_size"],
             **phy_kwargs)
+        if hasattr(self.pcie_phy, "add_timing_constraints"):
+            self.pcie_phy.add_timing_constraints(self.crg.cd_sys.clk)
 
         # PCIe Endpoint ----------------------------------------------------------------------------
         self.pcie_endpoint = LitePCIeEndpoint(self.pcie_phy,
@@ -488,6 +490,11 @@ def main():
         from litex.build.xilinx import XilinxPlatform
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
         core_config["phy"] = S7PCIEPHY
+    elif core_config["phy"] == "SoftPCIEPHY":
+        from litex.build.xilinx import XilinxPlatform
+        from litepcie.phy.soft import SoftPCIEPHY
+        platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")
+        core_config["phy"] = SoftPCIEPHY
     elif core_config["phy"] == "USPCIEPHY":
         from litex.build.xilinx import XilinxPlatform
         platform = XilinxPlatform(core_config["phy_device"], io=[], toolchain="vivado")

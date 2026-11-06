@@ -75,8 +75,9 @@ class DLLRX(LiteXModule):
         prev_seq   = Signal(12)
         lost       = Signal() # Word not accepted by the buffer.
         lost_r     = Signal() # Words lost in the current TLP: dropped at its end.
+        end_r      = Signal()
         self.sync += [
-            If(self.reset | (tlp.valid & tlp.last) | framer.tlp_abort,
+            If(self.reset | end_r | framer.tlp_abort,
                 lost_r.eq(0)
             ).Elif(lost,
                 lost_r.eq(1)
@@ -94,36 +95,42 @@ class DLLRX(LiteXModule):
                 ),
             )
         ]
+        # Checks at the LCRC DW, registered (timing): the last DW is written and the TLP committed or
+        # dropped one cycle after the LCRC DW. The first DW of the next TLP comes at least 2 lane words
+        # later (END, STP, Sequence Number), so prev_data still holds the last DW and nothing collides.
+        next_seq      = Signal(12)
+        nak_scheduled = Signal()
+        seq_diff      = Signal(12)
+        end           = tlp.valid & tlp.last
+        prev_valid_r  = Signal()
+        lcrc_ok_r     = Signal()
+        edb_r         = Signal()
+        in_order_r    = Signal()
+        duplicate_r   = Signal()
+        self.comb += seq_diff.eq(next_seq - prev_seq)
+        self.sync += [
+            end_r.eq(end & ~self.reset),
+            prev_valid_r.eq(prev_valid),
+            lcrc_ok_r.eq(Mux(tlp.edb, lcrc.value == ~tlp.data, lcrc.value == tlp.data)),
+            edb_r.eq(tlp.edb),
+            in_order_r.eq(seq_diff == 0),
+            duplicate_r.eq((seq_diff != 0) & (seq_diff < 2048)),
+        ]
+        accept = Signal()
+        bad    = Signal()
         self.comb += [
-            buffer.sink.valid.eq(tlp.valid & prev_valid),
+            buffer.sink.valid.eq((tlp.valid & prev_valid & ~tlp.last) | (end_r & prev_valid_r)),
             buffer.sink.data.eq(prev_data),
             buffer.sink.first.eq(prev_first),
-            buffer.sink.last.eq(tlp.last),
+            buffer.sink.last.eq(end_r),
             buffer.sink.fc_type.eq(fc_type),
             buffer.sink.fc_data.eq(fc_data),
             lost.eq(buffer.sink.valid & ~buffer.sink.ready),
-        ]
-
-        # Checks at the LCRC DW.
-        next_seq      = Signal(12)
-        nak_scheduled = Signal()
-        lcrc_ok       = Signal()
-        seq_diff      = Signal(12)
-        in_order      = Signal()
-        duplicate     = Signal()
-        accept        = Signal()
-        bad           = Signal()
-        end           = tlp.valid & tlp.last
-        self.comb += [
-            lcrc_ok.eq(Mux(tlp.edb, lcrc.value == ~tlp.data, lcrc.value == tlp.data)),
-            seq_diff.eq(next_seq - prev_seq),
-            in_order.eq(seq_diff == 0),
-            duplicate.eq((seq_diff != 0) & (seq_diff < 2048)),
-            accept.eq(end & prev_valid & lcrc_ok & ~tlp.edb & in_order & ~lost & ~lost_r),
-            bad.eq(end & (~prev_valid | ~lcrc_ok | lost | lost_r | (~tlp.edb & ~in_order & ~duplicate))),
-            buffer.abort.eq((end & (~accept | lost | lost_r)) | framer.tlp_abort),
+            accept.eq(end_r & prev_valid_r & lcrc_ok_r & ~edb_r & in_order_r & ~lost & ~lost_r),
+            bad.eq(end_r & (~prev_valid_r | ~lcrc_ok_r | lost | lost_r | (~edb_r & ~in_order_r & ~duplicate_r))),
+            buffer.abort.eq((end_r & ~accept) | framer.tlp_abort),
             self.ack_seq.eq(next_seq - 1),
-            self.ack_req.eq(accept | (end & lcrc_ok & ~tlp.edb & duplicate)),
+            self.ack_req.eq(accept | (end_r & lcrc_ok_r & ~edb_r & duplicate_r)),
             self.nak_req.eq((bad | framer.tlp_abort | framer.error) & ~nak_scheduled),
         ]
         self.sync += [
