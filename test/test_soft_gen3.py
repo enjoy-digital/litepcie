@@ -183,3 +183,167 @@ class TestSoftGen3(unittest.TestCase):
                 # Found in the transmitted sequence, in order.
                 start = blocks.index(out[8])
                 self.assertEqual(out[8:60], blocks[start:start + 52])
+
+# Framing ------------------------------------------------------------------------------------------
+
+def mwr_dws(rng, n, is_4dw=False):
+    """Memory Write header and data as DW bytes."""
+    fmt = 0x60 if is_4dw else 0x40
+    header = [[fmt, 0, (n >> 8) & 3, n & 0xff]] + [[rng.randrange(256) for _ in range(4)] for _ in range(3 if is_4dw else 2)]
+    return header + [[rng.randrange(256) for _ in range(4)] for _ in range(n)]
+
+def to_stream(symbols, ndw):
+    beats = []
+    for i in range(0, len(symbols), 4*ndw):
+        chunk = symbols[i:i+4*ndw] + [0]*(4*ndw - len(symbols[i:i+4*ndw]))
+        beats.append(int.from_bytes(bytes(chunk), "little"))
+    return beats
+
+class TestSoftGen3Framing(unittest.TestCase):
+    def test_stp_token(self):
+        # Example of the specification: 3 DW header, 1 DW data: length 6, the check values are consistent.
+        token = stp_token(6, 0x123)
+        self.assertEqual(token[0] & 0xf, 0xf)
+        self.assertEqual((token[0] >> 4) | ((token[1] & 0x7f) << 4), 6)
+        self.assertEqual(((token[2] & 0xf) << 8) | token[3], 0x123)
+        # Frame Parity: even over the Length and the Frame CRC.
+        l = 6
+        fcrc = token[2] >> 4
+        self.assertEqual((bin(l).count("1") + bin(fcrc).count("1") + (token[1] >> 7)) % 2, 0)
+
+    def run_rx(self, ndw, symbols):
+        from litepcie.phy.soft.gen3 import Gen3RXFramer
+        dut = Gen3RXFramer(ndw)
+        tlps, dllps, errors = [], [], []
+        done = [False]
+        def generator():
+            yield dut.sink.valid.eq(1)
+            for word in to_stream(symbols, ndw) + [0]*8:
+                yield dut.sink.data.eq(word)
+                yield
+            for _ in range(256):
+                yield
+            done[0] = True
+        def monitor():
+            cur = None
+            yield dut.tlp.ready.eq(1)
+            while not done[0]:
+                if (yield dut.tlp.valid):
+                    data = (yield dut.tlp.data)
+                    n    = (yield dut.tlp.dws)
+                    if (yield dut.tlp.first):
+                        cur = dict(seq=(yield dut.tlp.seq), dws=[])
+                    cur["dws"] += [[(data >> (32*i + 8*j)) & 0xff for j in range(4)] for i in range(n)]
+                    if (yield dut.tlp.last):
+                        cur["edb"] = (yield dut.tlp.edb)
+                        tlps.append(cur)
+                        cur = None
+                if (yield dut.dllp_valid):
+                    value = (yield dut.dllp)
+                    dllps.append(list(value.to_bytes(6, "little")))
+                if (yield dut.error):
+                    errors.append(1)
+                yield
+        run_simulation(dut, [generator(), monitor()])
+        return tlps, dllps, errors
+
+    def test_rx_framer(self):
+        # Tokens on DWs, back to back, IDL Tokens, EDS, nullified TLPs.
+        for ndw in [8, 16]:
+            with self.subTest(ndw=ndw):
+                rng = random.Random(ndw)
+                symbols, exp_t, exp_d = [], [], []
+                for i in range(100):
+                    r = rng.random()
+                    if r < 0.3:
+                        dllp = [rng.randrange(256) for _ in range(6)]
+                        exp_d.append(dllp)
+                        symbols += list(SDP_TOKEN) + dllp
+                    else:
+                        dws  = mwr_dws(rng, rng.randrange(1, 40))
+                        lcrc = [rng.randrange(256) for _ in range(4)]
+                        nullified = r > 0.9
+                        exp_t.append(dict(seq=i, dws=dws + [lcrc], edb=int(nullified)))
+                        symbols += list(stp_token(len(dws) + 2, i)) + sum(dws, []) + lcrc
+                        if nullified:
+                            symbols += list(EDB_TOKEN)
+                    if rng.random() < 0.2:
+                        symbols += [0]*(4*rng.randrange(1, 4))
+                    if rng.random() < 0.05:
+                        symbols += list(EDS_TOKEN)
+                tlps, dllps, errors = self.run_rx(ndw, symbols)
+                self.assertEqual(errors, [])
+                self.assertEqual(tlps, exp_t)
+                self.assertEqual(dllps, exp_d)
+
+    def test_rx_framer_bad_token(self):
+        # A wrong Frame CRC is a framing error: the Length isn't used.
+        rng   = random.Random(1)
+        token = bytearray(stp_token(9, 1))
+        token[2] ^= 0x10
+        good  = mwr_dws(rng, 4)
+        tlps, dllps, errors = self.run_rx(8, list(token) + [0]*28 + list(stp_token(len(good) + 2, 2)) + sum(good, []) + [1, 2, 3, 4])
+        self.assertGreaterEqual(len(errors), 1)
+        self.assertEqual([t["seq"] for t in tlps], [2])
+
+    def test_tx_rx_loopback(self):
+        from litepcie.phy.soft.gen3 import Gen3TXFramer, Gen3RXFramer
+        for ndw in [8, 16]:
+            with self.subTest(ndw=ndw):
+                class DUT(Module):
+                    def __init__(self):
+                        self.submodules.tx = Gen3TXFramer(ndw)
+                        self.submodules.rx = Gen3RXFramer(ndw)
+                        self.comb += [
+                            self.rx.sink.valid.eq(1),
+                            self.rx.sink.data.eq(self.tx.source.data),
+                            self.tx.source.ready.eq(1),
+                            self.rx.tlp.ready.eq(1),
+                        ]
+                dut  = DUT()
+                rng  = random.Random(ndw)
+                tlps = []
+                for i, n in enumerate(list(range(1, ndw + 6)) + [32, 64]):
+                    is_4dw = bool(i % 3 == 0)
+                    tlps.append(dict(seq=i, dws=mwr_dws(rng, n, is_4dw), lcrc=rng.getrandbits(32)))
+                out, errors, done = [], [], [False]
+                def generator():
+                    for t in tlps:
+                        beats = [t["dws"][j:j+ndw] for j in range(0, len(t["dws"]), ndw)]
+                        for j, beat in enumerate(beats):
+                            yield dut.tx.tlp.valid.eq(1)
+                            yield dut.tx.tlp.first.eq(j == 0)
+                            yield dut.tx.tlp.last.eq(j == len(beats) - 1)
+                            yield dut.tx.tlp.seq.eq(t["seq"])
+                            yield dut.tx.tlp.dws.eq(len(beat))
+                            yield dut.tx.tlp.data.eq(sum(b << (32*k + 8*m) for k, dw in enumerate(beat) for m, b in enumerate(dw)))
+                            yield dut.tx.lcrc.eq(t["lcrc"])
+                            yield
+                            while not (yield dut.tx.tlp.ready):
+                                yield
+                        yield dut.tx.tlp.valid.eq(0)
+                    for _ in range(64):
+                        yield
+                    done[0] = True
+                def monitor():
+                    cur = None
+                    while not done[0]:
+                        if (yield dut.rx.tlp.valid):
+                            data = (yield dut.rx.tlp.data)
+                            n    = (yield dut.rx.tlp.dws)
+                            if (yield dut.rx.tlp.first):
+                                cur = dict(seq=(yield dut.rx.tlp.seq), dws=[])
+                            cur["dws"] += [[(data >> (32*k + 8*m)) & 0xff for m in range(4)] for k in range(n)]
+                            if (yield dut.rx.tlp.last):
+                                out.append(cur)
+                                cur = None
+                        if (yield dut.rx.error):
+                            errors.append(1)
+                        yield
+                run_simulation(dut, [generator(), monitor()])
+                self.assertEqual(errors, [])
+                self.assertEqual(len(out), len(tlps))
+                for t, o in zip(tlps, out):
+                    self.assertEqual(o["seq"], t["seq"])
+                    self.assertEqual(o["dws"][:-1], t["dws"])
+                    self.assertEqual(o["dws"][-1], list(t["lcrc"].to_bytes(4, "little")))
