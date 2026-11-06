@@ -80,7 +80,7 @@ class CRG(LiteXModule):
 
 class SoftPHYSoC(SoCMini):
     def __init__(self, platform, sys_clk_freq=int(125e6), lane=3, with_jtagbone=False, with_analyzer=False,
-        with_endpoint=False, ltssm_autostart=False):
+        with_endpoint=False, ltssm_autostart=False, hard_ip=False):
         SoCMini.__init__(self, platform, sys_clk_freq, ident="LitePCIe soft PHY bring-up on Acorn", ident_version=True)
 
         # CRG --------------------------------------------------------------------------------------
@@ -93,8 +93,16 @@ class SoftPHYSoC(SoCMini):
             self.add_uartbone()
 
         # Soft PHY ---------------------------------------------------------------------------------
+        # M.2 CLKREQ#: reference clock requested, as the Acorn target.
+        self.comb += platform.request("pcie_clkreq_n").eq(0)
         platform.add_extension(pcie_x1_io(lane))
         pads = platform.request("pcie_soft_x1")
+        if hard_ip:
+            # Same design on the hard IP (resource/timing comparison).
+            from litepcie.phy.s7pciephy import S7PCIEPHY
+            self.pcie_phy = S7PCIEPHY(platform, pads, data_width=64, bar0_size=0x20000)
+            self.add_pcie(phy=self.pcie_phy, ndmas=1, address_width=64, with_dma_loopback=True)
+            return
         if with_endpoint:
             # Full LitePCIe endpoint: driver, MMAP, DMA and MSI as with the hard-IP PHYs.
             self.pcie_phy = pcie_phy = SoftPCIEPHY(platform, pads,
@@ -105,7 +113,7 @@ class SoftPHYSoC(SoCMini):
             )
             pcie_phy.add_timing_constraints(self.crg.cd_sys.clk)
             pcie_phy.add_debug(enable_reset=int(ltssm_autostart))
-            self.add_pcie(phy=pcie_phy, ndmas=1, dma_buffering_depth=1024, with_dma_loopback=True)
+            self.add_pcie(phy=pcie_phy, ndmas=1, address_width=64, with_dma_loopback=True)
             serdes, phy = pcie_phy.serdes, pcie_phy.phy_layer
         else:
             # Physical Layer alone: L0 against the host, received Symbols dropped.
@@ -156,6 +164,7 @@ def main():
     parser.add_argument("--with-analyzer", action="store_true", help="LiteScope analyzer on the lane.")
     parser.add_argument("--with-endpoint", action="store_true", help="Full LitePCIe endpoint (SoftPCIEPHY, MMAP, DMA, MSI).")
     parser.add_argument("--ltssm-autostart", action="store_true", help="LTSSM enabled at reset (else through the debug CSR).")
+    parser.add_argument("--hard-ip",       action="store_true", help="Same endpoint on the hard IP (S7PCIEPHY), for comparison.")
     parser.add_argument("--driver",        action="store_true", help="Generate the PCIe driver.")
     parser.add_argument("--output-dir",    default="build/soft_acorn", help="Build directory.")
     args = parser.parse_args()
@@ -166,6 +175,7 @@ def main():
         with_jtagbone = args.with_jtagbone,
         with_analyzer = args.with_analyzer,
         with_endpoint = args.with_endpoint,
+        hard_ip       = args.hard_ip,
         ltssm_autostart = args.ltssm_autostart,
     )
     builder = Builder(soc, output_dir=args.output_dir, csr_csv="csr.csv")
