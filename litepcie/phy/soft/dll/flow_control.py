@@ -50,7 +50,8 @@ def tlp_credits(dw0):
 
 class FlowControlTX(LiteXModule):
     """Transmitter credits: limits from the received InitFC/UpdateFC DLLPs, consumed on transmission.
-    ok: the TLP (tlp_type, 1 header credit, tlp_data data credits) can be transmitted."""
+    ok: the TLP (tlp_type, 1 header credit, tlp_data data credits) can be transmitted, registered (one
+    cycle after tlp_type/tlp_data and the consumed credits)."""
     def __init__(self):
         self.reset    = Signal()   # i
         self.fc_type  = Signal(2)  # i: received FC DLLP type.
@@ -100,8 +101,8 @@ class FlowControlTX(LiteXModule):
         self.comb += [
             hdr_diff.eq(limit_hdr[self.tlp_type] - (consumed_hdr[self.tlp_type] + 1)),
             data_diff.eq(limit_data[self.tlp_type] - (consumed_data[self.tlp_type] + self.tlp_data)),
-            self.ok.eq(infinite[self.tlp_type] | ((hdr_diff <= 128) & (data_diff <= 2048))),
         ]
+        self.sync += self.ok.eq(~self.reset & (infinite[self.tlp_type] | ((hdr_diff <= 128) & (data_diff <= 2048))))
 
 # Flow Control RX ----------------------------------------------------------------------------------
 

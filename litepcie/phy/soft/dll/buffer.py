@@ -23,8 +23,7 @@ class PacketBuffer(LiteXModule):
         self.sink   = sink   = stream.Endpoint([("data", 32)] + param_layout)
         self.source = source = stream.Endpoint([("data", 32)] + param_layout)
         self.abort  = Signal()              # i (Pulse): drop the packet being written.
-        self.free   = Signal(max=depth + 1) # o: free DWs.
-        self.level  = Signal(max=depth + 1) # o: committed DWs not read yet.
+        self.free   = Signal(max=depth + 1, reset=depth) # o: free DWs.
 
         # # #
 
@@ -43,11 +42,8 @@ class PacketBuffer(LiteXModule):
         wr_ptr     = Signal(adr_width)
         commit_ptr = Signal(adr_width)
         pending    = Signal(adr_width + 1) # DWs written, not committed.
-        used       = Signal(adr_width + 1) # DWs committed, not consumed.
         commit     = Signal()
         self.comb += [
-            self.level.eq(used),
-            self.free.eq(depth - used - pending),
             sink.ready.eq((self.free != 0) & descs.sink.ready),
             wr_port.adr.eq(wr_ptr),
             wr_port.dat_w.eq(sink.data),
@@ -109,13 +105,13 @@ class PacketBuffer(LiteXModule):
             )
         ]
 
-        # Committed/unconsumed DWs.
+        # Free DWs: a single counter (timing), written DWs taken, consumed or dropped ones given back.
         self.sync += [
-            If(commit & consumed,
-                used.eq(used + pending)
-            ).Elif(commit,
-                used.eq(used + pending + 1)
-            ).Elif(consumed,
-                used.eq(used - 1)
+            If(self.abort,
+                self.free.eq(self.free + pending + consumed)
+            ).Elif(sink.valid & sink.ready,
+                self.free.eq(self.free - 1 + consumed)
+            ).Else(
+                self.free.eq(self.free + consumed)
             )
         ]
