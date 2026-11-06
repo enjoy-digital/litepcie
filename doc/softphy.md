@@ -104,8 +104,8 @@ Clock domains:
 | M4 | Data Link Layer: framing, DLLPs, DLCMSM, flow control, retry buffer, Ack/Nak | Unit tests; Verilator link simulation: DL_Active, TLPs both ways, Recovery, lane corruption and lost DLLPs recovered with every TLP delivered once and in order. No hardware run, LCRC/DLLP byte order not yet checked against a real host |
 | M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Verilator end-to-end simulation (`bench/soft/sim_endpoint.py`): configuration space, BAR0 accesses and byte order, Unsupported Requests, MSI, device reads/writes at 64 and 128 bits. Acorn bitstream with LitePCIe, MMAP, DMA and MSI built: about 8.5k LUTs, timing met (`pcie_link` margin only 51 ps). BAR0/CSR, MSI and DMA simulated at SoC level (`bench/soft/sim_soc.py`). Runs on hardware, see the hardware results |
 | M6 | Gen2 x1 (rate change) | Verilator link simulation at full lane rate (`bench/soft/sim.py --gen2`), fallback to 2.5 GT/s (`--fail-5g`). Runs on hardware on the GTX, see the hardware results |
-| M7 | x2 (deskew, width negotiation) | Not started |
-| M8 | x4, 128-bit datapath, robustness, LiteX-Boards | Not started |
+| M7 | x2 to x8: wide Data Link Layers, multi-lane Physical Layer, deskew | Verilator simulation (`bench/soft/sim_wide.py`: Data Link Layers with corruption; `--phy`: training with lane skew, speed change, Link Retrain; `sim_endpoint.py --nlanes`). Timing met on the `xc7k480t`. Hardware pending. No width negotiation nor lane reversal yet: the link width is the design's |
+| M8 | Robustness, LiteX-Boards | Not started |
 | M9 | Other transceivers, soft root port | Not started |
 
 ## Verification
@@ -222,6 +222,24 @@ and Retrain Link if it doesn't do it on its own, or `status.py speed` from the d
 
 The LTSSM is disabled at reset and by PERST#, so that a design making a host hang cannot do it again at the next boot.
 Rescan works when the root port already has a memory window (for example from the design loaded at the previous boot).
+
+`--nlanes` selects the width (x2 on the first lanes of the x4 pins), with LitePCIe at 32 bits per lane.
+
+## Multi-lane links
+
+Above x1 the Data Link Layer works on beats of a DW per lane (`dll/wide.py`), at 125 MHz whatever the width:
+
+- RX: the K Symbols are only found at the packets' boundaries, so the DW slots of a beat are classified in
+  parallel. Packets start on a DW from x4 on; at x2 they can also start 2 Symbols into a DW, `RXPhaseAligner`
+  realigns them by inserting or deleting a Symbol time of Logical Idle. A beat can hold the end of a TLP and the
+  start of the next one: a FIFO and `TLPRepacker` make first-aligned beats. A TLP of `4*k+1` DWs takes more output
+  beats than input ones, the FIFO absorbs that during a burst; if it fills up the TLPs are Naked.
+- TX: one packet per beat, the end of the beat in Logical Idle, PAD above x4.
+- `lanes.py`: Ordered Sets at the same time on all the lanes, striping, per-lane polarity, deskew on the COM Symbols
+  of the Training Sequences (16 words per lane).
+
+At 5.0 GT/s the receiver has to tolerate 8 ns between the lanes. The transmitters' buffers are on, so their
+latency isn't matched between lanes.
 
 ## Bring-up on the Acorn (M2.5/M3)
 
