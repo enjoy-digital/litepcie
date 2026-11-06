@@ -252,15 +252,17 @@ class RXErrorSubstitution(LiteXModule):
         # # #
 
         self.comb += self.sink.connect(self.source)
-        checker = RX8b10bChecker(decoders)
-        if clock_domain != "sys":
-            checker = ClockDomainsRenamer(clock_domain)(checker)
-        self.checker = checker
+        # Without the disparity check, the decoders' invalid outputs are enough (no code table).
+        if with_disparity:
+            checker = RX8b10bChecker(decoders)
+            if clock_domain != "sys":
+                checker = ClockDomainsRenamer(clock_domain)(checker)
+            self.checker = checker
         errors = []
         for i in range(n):
-            error = decoders[i].invalid | checker.invalid[i]
+            error = decoders[i].invalid
             if with_disparity:
-                error = error | checker.disparity_error[i]
+                error = error | checker.invalid[i] | checker.disparity_error[i]
             errors.append(error)
             self.comb += [
                 If(error,

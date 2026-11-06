@@ -44,7 +44,8 @@ class PCIeSerDesModel(PCIeSerDes):
             encoder  = ClockDomainsRenamer(tx_cd)(Encoder(4, True))
             decoders = [ClockDomainsRenamer(rx_cd)(Decoder(True)) for _ in range(4)]
             self.submodules += encoder, decoders
-            err = ClockDomainsRenamer(rx_cd)(RXErrorSubstitution(decoders, clock_domain=rx_cd))
+            # Decode errors only (no disparity code table: simulation speed).
+            err = ClockDomainsRenamer(rx_cd)(RXErrorSubstitution(decoders, clock_domain=rx_cd, with_disparity=False))
             self.submodules += err
 
             # Transceiver-like stream endpoints: TX always ready, RX always valid.
