@@ -162,26 +162,29 @@ class ScriptedRoot(LiteXModule):
     """Plays the script on the Data Link Layer streams: transmits a step's TLP (after its trigger)
     then compares the received TLP, any other TLP is an error."""
     def __init__(self, dll, steps, timer):
-        self.trigger = Signal(2)  # o (Pulse)
-        self.done    = Signal()   # o
-        self.errors  = Signal(16) # o
+        self.trigger    = Signal(2)  # o (Pulse)
+        self.done       = Signal()   # o
+        self.errors     = Signal(16) # o
+        self.wait_count = Signal(16) # i: a step with "wait" waits for this count to reach its value.
 
         # # #
 
         tx_rom, rx_rom, rx_mask = [], [], []
         table = []
         for s in steps:
-            table.append((len(tx_rom), len(s["tx"]), len(rx_rom), len(s["rx"]), s["trigger"], int(s["patch_tag"])))
+            table.append((len(tx_rom), len(s["tx"]), len(rx_rom), len(s["rx"]), s.get("trigger", TRIG_NONE),
+                int(s.get("patch_tag", False)), s.get("wait", 0)))
             tx_rom += s["tx"]
             rx_rom += [v for v, m in s["rx"]]
             rx_mask += [m for v, m in s["rx"]]
-        tx_rom_a  = Array(Constant(v, 32) for v in tx_rom)
-        rx_rom_a  = Array(Constant(v, 32) for v in rx_rom)
-        rx_mask_a = Array(Constant(v, 32) for v in rx_mask)
+        tx_rom_a  = Array(Constant(v, 32) for v in tx_rom or [0])
+        rx_rom_a  = Array(Constant(v, 32) for v in rx_rom or [0])
+        rx_mask_a = Array(Constant(v, 32) for v in rx_mask or [0])
         field = lambda i, width: Array(Constant(e[i], width) for e in table)
         f_tx_start, f_tx_len = field(0, 12), field(1, 12)
         f_rx_start, f_rx_len = field(2, 12), field(3, 12)
         f_trigger, f_patch   = field(4, 2),  field(5, 1)
+        f_wait               = field(6, 16)
 
         step   = Signal(max=len(steps) + 1)
         index  = Signal(12)
@@ -218,11 +221,19 @@ class ScriptedRoot(LiteXModule):
                 NextState("DONE")
             ).Else(
                 self.trigger.eq(f_trigger[step]),
-                If(f_tx_len[step] != 0,
+                If(f_wait[step] != 0,
+                    NextState("WAIT")
+                ).Elif(f_tx_len[step] != 0,
                     NextState("TX")
                 ).Else(
                     NextState("RX")
                 )
+            )
+        )
+        fsm.act("WAIT",
+            If(self.wait_count >= f_wait[step],
+                NextValue(step, step + 1),
+                NextState("STEP")
             )
         )
         fsm.act("TX",
