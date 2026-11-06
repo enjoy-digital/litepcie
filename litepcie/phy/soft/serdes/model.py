@@ -28,17 +28,35 @@ from litepcie.phy.soft.serdes.base import PCIeSerDes
 
 class PCIeSerDesModel(PCIeSerDes):
     def __init__(self, nlanes=1, tx_cd="pcie_pipe", rx_cd="pcie_pipe_partner", rx_symbol_shift=0,
-        skp_interval=None):
+        skp_interval=None, rate_delay=64):
         PCIeSerDes.__init__(self, nlanes)
         self.tx = [stream.Endpoint([("data", 40)]) for _ in range(nlanes)] # o (tx_cd): raw words.
         self.rx = [stream.Endpoint([("data", 40)]) for _ in range(nlanes)] # i (rx_cd): raw words.
         self.tx_idle = Signal(nlanes) # o: TX in Electrical Idle (to the partner).
         self.rx_idle = Signal(nlanes) # i: partner in Electrical Idle.
         self.present = Signal(reset=1) # i: partner receiver present.
+        self.partner_rate = Signal()   # i: partner's rate, nothing received when it differs from ours.
+        self.fail_5g = Signal()        # i: nothing received at 5.0 GT/s.
+        self.applied_rate = Signal()   # o: rate applied.
 
         # # #
 
         assert 0 <= rx_symbol_shift <= 3
+        # Rate change, after a delay as with real transceivers.
+        rate_count = Signal(max=rate_delay + 1)
+        sync_rate  = getattr(self.sync, tx_cd)
+        sync_rate += [
+            If(self.applied_rate == self.rate,
+                rate_count.eq(0)
+            ).Elif(rate_count == rate_delay,
+                self.applied_rate.eq(self.rate)
+            ).Else(
+                rate_count.eq(rate_count + 1)
+            )
+        ]
+        self.comb += self.rate_done.eq(self.applied_rate == self.rate)
+        rx_bad = (self.partner_rate != self.applied_rate) | (self.fail_5g & self.applied_rate)
+
         # Ready: cleared by the RX re-initialization, as with a real transceiver.
         self.comb += self.ready.eq(Reduce("AND", [lane.ready for lane in self.lanes]))
         for i, lane in enumerate(self.lanes):
@@ -86,7 +104,11 @@ class PCIeSerDesModel(PCIeSerDes):
             rx_data     = Signal(40)
             rx_data_sr  = Signal(80)
             self.specials += MultiReg(lane.rx_polarity, rx_polarity, rx_cd)
-            self.comb += rx_data.eq(Mux(rx_polarity, ~self.rx[i].data, self.rx[i].data))
+            self.comb += If(rx_bad,
+                rx_data.eq(0) # Not decodable.
+            ).Else(
+                rx_data.eq(Mux(rx_polarity, ~self.rx[i].data, self.rx[i].data))
+            )
             getattr(self.sync, rx_cd).__iadd__(rx_data_sr.eq(Cat(rx_data_sr[40:], rx_data)))
             for j in range(4):
                 self.comb += decoders[j].input.eq(rx_data_sr[10*(rx_symbol_shift + j):10*(rx_symbol_shift + j + 1)])
@@ -101,7 +123,6 @@ class PCIeSerDesModel(PCIeSerDes):
                 lane.detect_done.eq(lane.tx_detect_rx),
                 lane.rx_detected.eq(self.present),
             ]
-        self.comb += self.rate_done.eq(1)
 
     def connect(self, partner):
         """Link two models: this TX to the partner RX and the reverse."""
@@ -112,3 +133,7 @@ class PCIeSerDesModel(PCIeSerDes):
                 partner.rx_idle[i].eq(self.tx_idle[i]),
                 self.rx_idle[i].eq(partner.tx_idle[i]),
             ]
+        self.comb += [
+            partner.partner_rate.eq(self.applied_rate),
+            self.partner_rate.eq(partner.applied_rate),
+        ]

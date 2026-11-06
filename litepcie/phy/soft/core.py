@@ -38,7 +38,8 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         link_freq   = 125e6,
         **phy_kwargs):
         assert data_width in [64, 128]
-        assert speed == "gen1" # Gen2: later milestone.
+        assert speed in ["gen1", "gen2"]
+        gen2_capable = speed == "gen2"
         self.platform   = platform
         self.data_width = data_width
         self.sink       = stream.Endpoint(phy_layout(data_width))
@@ -77,7 +78,7 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
             else:
                 raise NotImplementedError(f"No soft PCIe PHY transceiver support for {platform.device}.")
             serdes = SerDes(platform, pads, sys_clk_freq=phy_kwargs.pop("sys_clk_freq", 125e6),
-                speedgrade=phy_kwargs.pop("speedgrade", -1))
+                speedgrade=phy_kwargs.pop("speedgrade", -1), rate_change=gen2_capable)
             self.serdes = serdes
         else:
             object.__setattr__(self, "serdes", serdes) # The caller's submodule: reference only.
@@ -87,7 +88,7 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
             device_id = 0x7020 + nlanes # In the driver's table (litepcie/software/kernel/main.c).
 
         # Physical Layer / Data Link Layer ---------------------------------------------------------
-        self.phy_layer = phy = PCIePhysicalLayer(serdes, link_freq, upstream=True, **phy_kwargs)
+        self.phy_layer = phy = PCIePhysicalLayer(serdes, link_freq, upstream=True, gen2_capable=gen2_capable, **phy_kwargs)
         self.dll       = dll = ClockDomainsRenamer("pcie_link")(DataLinkLayer(link_freq))
         self.sync.pcie_link += [
             # Registered (timing): decoded from the LTSSM state, gate the DLL transmit path.
@@ -115,7 +116,11 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
             vendor_id   = vendor_id,
             device_id   = device_id,
             msi_vectors = msi_vectors,
+            gen2_capable = gen2_capable,
         ))
+        link_speed = Signal(4)
+        self.comb += link_speed.eq(phy.ltssm.rate + 1) # Link Status: 1: 2.5 GT/s, 2: 5.0 GT/s.
+        self.specials += MultiReg(link_speed, tl.cfg.link_speed, "pcie")
         self.comb += [
             # TLPs held in the Data Link Layer buffers while "pcie" is in reset.
             tl.sink.valid.eq(dll.source.valid & ~pcie_rst),
@@ -172,6 +177,7 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
             MultiReg(max_payload_size, self.max_payload_size,  odomain=cd, reset=128),
             MultiReg(dll.dl_active,    self._link_status.fields.status, "sys"),
             MultiReg(phy.ltssm.state,  self._link_status.fields.ltssm,  "sys"),
+            MultiReg(phy.ltssm.rate,   self._link_status.fields.rate,   "sys"),
             MultiReg(tl.cfg.msi_enable, self._msi_enable.status,        "sys"),
             MultiReg(tl.cfg.bme,        self._bus_master_enable.status, "sys"),
             MultiReg(max_request_size,  self._max_request_size.status,  "sys"),

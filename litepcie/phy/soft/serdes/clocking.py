@@ -9,8 +9,9 @@
 The 100 MHz PCIe reference clock from the slot feeds the transceivers PLL (IBUFDS_GTE2) and, through
 the buffer's divided output, an MMCM generating the fixed clocks ("pcie_link" 125 MHz, "pcie_oob"
 50 MHz for the Electrical Idle detection) and the two lane clocks (62.5 MHz for 2.5 GT/s, 125 MHz for
-5.0 GT/s) switched by a glitch-free BUFGCTRL into "pcie_pipe" with the rate. The lane clock domain is
-held in reset across a rate switch. Using the reference clock (common clock architecture) keeps the
+5.0 GT/s) switched by a glitch-free BUFGCTRL into "pcie_pipe" with the rate. The lane clock domain isn't
+reset across a rate switch: BUFGCTRL has no glitch, the transmitter is in Electrical Idle and the other
+side of its CDC FIFOs and pulse synchronizers ("pcie_link") keeps running. Using the reference clock (common clock architecture) keeps the
 lane clock frequency-locked to the transceivers (TX buffers enabled) and tracks the host's spread
 spectrum.
 """
@@ -63,19 +64,9 @@ class S7PCIeClocking(LiteXModule):
         mmcm.create_clkout(self.cd_pcie_pipe_gen2,  125e6, buf=None, with_reset=False)
         self.comb += self.locked.eq(mmcm.locked)
 
-        # Lane clock selection: held in reset while switching.
-        sel       = Signal()
-        count     = Signal(5)
-        switching = Signal()
-        self.sync.pcie_link += [
-            If(sel != self.rate,
-                sel.eq(self.rate),
-                count.eq(31),
-            ).Elif(count != 0,
-                count.eq(count - 1)
-            )
-        ]
-        self.comb += switching.eq((sel != self.rate) | (count != 0))
+        # Lane clock selection.
+        sel = Signal()
+        self.sync.pcie_link += sel.eq(self.rate)
         self.specials += [
             Instance("BUFGCTRL",
                 i_I0      = self.cd_pcie_pipe_gen1.clk,
@@ -104,4 +95,4 @@ class S7PCIeClocking(LiteXModule):
             sync = getattr(self.sync, name)
             sync += rst_r.eq(0)
         add_reset(self.cd_pcie_link, "pcie_link_rst", ~mmcm.locked)
-        add_reset(self.cd_pcie_pipe, "pcie_pipe_rst", ~mmcm.locked | switching)
+        add_reset(self.cd_pcie_pipe, "pcie_pipe_rst", ~mmcm.locked)

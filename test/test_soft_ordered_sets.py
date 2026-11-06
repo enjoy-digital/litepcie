@@ -9,7 +9,7 @@ import unittest
 
 from migen import *
 
-from litepcie.phy.soft.common       import EIOS, FTS_OS, TS1, LOGICAL_IDLE, RATE_2_5GT, RATE_5_0GT
+from litepcie.phy.soft.common       import EIE, EIOS, FTS_OS, TS1, LOGICAL_IDLE, RATE_2_5GT, RATE_5_0GT
 from litepcie.phy.soft.common       import training_sequence
 from litepcie.phy.soft.ordered_sets import TSGenerator, TSChecker, OrderedSetDetector
 
@@ -102,6 +102,46 @@ class TestSoftOrderedSets(unittest.TestCase):
         self.assertEqual([f for d, c, f, l in outs], [1, 0, 0, 0]*len(tss))
         self.assertEqual([l for d, c, f, l in outs], [0, 0, 0, 1]*len(tss))
         self.assertEqual(len(dones), len(tss))
+
+    def test_ts_generator_eieos(self):
+        # Rates above 2.5 GT/s: EIEOS first, then every 32 Training Sequences, not counted as one.
+        dut   = TSGenerator()
+        words = []
+        dones = []
+        def generator():
+            yield dut.eieos.eq(1)
+            yield dut.enable.eq(1)
+            yield dut.source.ready.eq(1)
+            yield
+            for _ in range(4*70):
+                if (yield dut.source.valid):
+                    words.append(((yield dut.source.data), (yield dut.source.ctrl)))
+                dones.append((yield dut.done))
+                yield
+        run_simulation(dut, generator())
+        eie   = 0xfc # K28.7.
+        eieos = [(0xfcfcfcbc, 0xf), (0xfcfcfcfc, 0xf), (0xfcfcfcfc, 0xf), (0x4afcfcfc, 0x7)]
+        sets  = [words[i:i+4] for i in range(0, len(words) - 3, 4)]
+        where = [i for i, os in enumerate(sets) if os == eieos]
+        self.assertEqual(where[:3], [0, 33, 66])
+        self.assertEqual(eie, EIE.value)
+        # A Training Sequence per done, EIEOS excluded.
+        self.assertEqual(sum(dones), len(sets) - len(where))
+
+    def test_ts_generator_no_eieos(self):
+        # 2.5 GT/s: Training Sequences only (first word's Symbol 1 isn't EIE).
+        dut   = TSGenerator()
+        words = []
+        def generator():
+            yield dut.enable.eq(1)
+            yield dut.source.ready.eq(1)
+            yield
+            for _ in range(4*40):
+                words.append((yield dut.source.ctrl))
+                yield
+        run_simulation(dut, generator())
+        self.assertNotIn(0xf, words)
+        self.assertNotIn(0x7, words)
 
     def test_ts_checker_any_alignment(self):
         # TS1/TS2 with random fields, PAD Link/Lane numbers, at every Symbol position, separated

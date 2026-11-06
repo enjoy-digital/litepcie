@@ -253,7 +253,7 @@ class PCIeLinkSim(SoCMini):
     corrupt_every: a raw lane word corrupted after every Nth TLP from the upstream, drop_dllp_every:
     every Nth DLLP from the downstream dropped (Acks lost: replay timer)."""
     def __init__(self, timer_scale=100, packets=64, max_cycles=2**24, ts1_min=1024, with_dll=False,
-        corrupt_every=0, drop_dllp_every=0, debug=False):
+        corrupt_every=0, drop_dllp_every=0, debug=False, gen2=False, fail_5g=False):
         sys_clk_freq = int(125e6)
         platform     = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq)
@@ -263,7 +263,9 @@ class PCIeLinkSim(SoCMini):
         self.cd_lane = ClockDomain()
         lane_clk = Signal()
         self.sync += lane_clk.eq(~lane_clk)
-        self.comb += self.cd_lane.clk.eq(lane_clk)
+        # Lane clock = sys (125 MHz, 5.0 GT/s) once both sides applied the rate.
+        lane_5g = Signal()
+        self.comb += self.cd_lane.clk.eq(Mux(lane_5g, ClockSignal("sys"), lane_clk))
         self.specials += AsyncResetSynchronizer(self.cd_lane, ResetSignal("sys"))
 
         # Timer.
@@ -281,12 +283,16 @@ class PCIeLinkSim(SoCMini):
             serdes_dn.rx[0].data.eq(serdes_up.tx[0].data ^ (corrupt << 17)),
             serdes_dn.rx_idle.eq(serdes_up.tx_idle),
             serdes_up.rx_idle.eq(serdes_dn.tx_idle),
+            serdes_up.partner_rate.eq(serdes_dn.applied_rate),
+            serdes_dn.partner_rate.eq(serdes_up.applied_rate),
+            serdes_up.fail_5g.eq(fail_5g),
+            lane_5g.eq(serdes_up.applied_rate & serdes_dn.applied_rate),
         ]
         renamer = ClockDomainsRenamer({"pcie_pipe": "lane", "pcie_link": "sys"})
         self.phy_up = phy_up = renamer(PCIePhysicalLayer(serdes_up, sys_clk_freq, upstream=True,
-            timer_scale=timer_scale, ts1_min=ts1_min))
+            timer_scale=timer_scale, ts1_min=ts1_min, gen2_capable=gen2))
         self.phy_dn = phy_dn = renamer(PCIePhysicalLayer(serdes_dn, sys_clk_freq, upstream=False,
-            timer_scale=timer_scale, ts1_min=ts1_min))
+            timer_scale=timer_scale, ts1_min=ts1_min, gen2_capable=gen2))
         self.comb += phy_dn.link_number.eq(0x05)
 
         # Packets: upstream -> downstream and downstream -> upstream.
@@ -423,6 +429,22 @@ class PCIeLinkSim(SoCMini):
         fsm.act("TRAIN",
             If(both_l0,
                 Display("[%08d] L0 reached, link %d lane %d", timer, phy_up.ltssm.link, phy_up.ltssm.lane),
+                NextState("SPEED-CHANGE" if gen2 else "WAIT-READY"),
+            )
+        )
+        # Speed change from the downstream, 5.0 GT/s expected or 2.5 GT/s if the upstream can't lock.
+        fsm.act("SPEED-CHANGE",
+            phy_dn.speed_change.eq(1),
+            NextState("SPEED-LEAVE"),
+        )
+        fsm.act("SPEED-LEAVE",
+            If(~both_l0,
+                NextState("SPEED-WAIT")
+            )
+        )
+        fsm.act("SPEED-WAIT",
+            If(both_l0,
+                Display("[%08d] SPEED OK: rate %d/%d", timer, phy_up.ltssm.rate, phy_dn.ltssm.rate),
                 NextState("WAIT-READY"),
             )
         )
@@ -496,6 +518,8 @@ def main():
     parser.add_argument("--ts1-min",     default=1024, type=int, help="TS1 transmitted in Polling.Active (specification: 1024).")
     parser.add_argument("--packets",     default=64,  type=int, help="Packets exchanged in each direction.")
     parser.add_argument("--with-dll",    action="store_true",  help="Data Link Layers on both sides (TLPs, Acks, replay).")
+    parser.add_argument("--gen2",        action="store_true",  help="Speed change to 5.0 GT/s after the training, traffic at full rate.")
+    parser.add_argument("--fail-5g",     action="store_true",  help="With --gen2: the upstream can't receive at 5.0 GT/s (fallback to 2.5 GT/s).")
     parser.add_argument("--corrupt-every", default=0, type=int, help="Corrupt a lane word after every Nth upstream TLP (--with-dll).")
     parser.add_argument("--drop-dllp-every", default=0, type=int, help="Drop every Nth downstream DLLP (--with-dll).")
     parser.add_argument("--debug",       action="store_true",  help="Display the DLLPs and Data Link Layer states (--with-dll).")
@@ -505,6 +529,8 @@ def main():
 
     sim_config = SimConfig(default_clk="sys_clk")
     soc = PCIeLinkSim(
+        gen2    = args.gen2,
+        fail_5g = args.fail_5g,
         timer_scale = args.timer_scale,
         packets     = args.packets,
         max_cycles  = args.max_cycles,

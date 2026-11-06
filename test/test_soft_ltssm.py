@@ -17,9 +17,9 @@ class LTSSMPair(Module):
     a Training Sequence is delivered to the partner `latency` cycles after being transmitted (one
     transmitted every `ts_period` cycles while enabled), the Logical Idle handshake completes when
     both sides are in it, receiver detection always succeeds, Electrical Idle is the partner's."""
-    def __init__(self, timer_scale=1000, ts1_min=16, ts_period=8, latency=4):
-        self.submodules.up = up = PCIeLTSSM(125e6, upstream=True,  timer_scale=timer_scale, ts1_min=ts1_min)
-        self.submodules.dn = dn = PCIeLTSSM(125e6, upstream=False, timer_scale=timer_scale, ts1_min=ts1_min)
+    def __init__(self, timer_scale=1000, ts1_min=16, ts_period=8, latency=4, gen2=(False, False), fail_5g=False):
+        self.submodules.up = up = PCIeLTSSM(125e6, upstream=True,  timer_scale=timer_scale, ts1_min=ts1_min, gen2_capable=gen2[0])
+        self.submodules.dn = dn = PCIeLTSSM(125e6, upstream=False, timer_scale=timer_scale, ts1_min=ts1_min, gen2_capable=gen2[1])
         self.comb += dn.link_number.eq(0x12)
         for a, b in [(up, dn), (dn, up)]:
             # Training Sequences a -> b.
@@ -46,7 +46,8 @@ class LTSSMPair(Module):
                 stage = [Signal(len(s)) for s in pipe]
                 self.sync += [n.eq(o) for n, o in zip(stage, pipe)]
                 pipe = stage
-            self.comb += b.rx_ts.eq(pipe[0] & ~a.tx_elecidle)
+            # Nothing received at another rate, nor at 5.0 GT/s on the upstream with fail_5g.
+            self.comb += b.rx_ts.eq(pipe[0] & ~a.tx_elecidle & (a.rate == b.rate) & ~(fail_5g & (b is up) & b.rate))
             for f, s in zip(fields, pipe[1:]):
                 self.comb += getattr(b, "rx_ts_" + f).eq(s)
             # Electrical Idle, receiver detection.
@@ -161,3 +162,58 @@ class TestSoftLTSSM(unittest.TestCase):
         self.assertEqual(len(cycles), 2, trace_str)
         # 24 ms / 1000 at 125 MHz = 3000 cycles.
         self.assertGreater(cycles[1] - cycles[0], 2900)
+
+    def speed_trace(self, dut, budget=60000):
+        def request(dut):
+            yield dut.dn.speed_change.eq(1)
+            yield
+            yield dut.dn.speed_change.eq(0)
+        def speed_entered(dut):
+            return ((yield dut.up.state) == LTSSM_STATES["Recovery.Speed"]) | ((yield dut.dn.state) == LTSSM_STATES["Recovery.Speed"])
+        results = {}
+        def check(dut):
+            results["rate"] = ((yield dut.up.rate), (yield dut.dn.rate))
+            return True
+        trace, cycles = run_pair(dut, [(both_l0, request), (speed_entered, None), (both_l0, None), (check, None)], budget=budget)
+        trace_str = "\n".join(f"{c:6d} {s} {n}" for c, s, n in trace)
+        self.assertEqual(len(cycles), 4, "Not back in L0:\n" + trace_str)
+        return trace, results["rate"], trace_str
+
+    def test_speed_change(self):
+        # Directed by the downstream, followed by the upstream on its TS1: 5.0 GT/s after one Recovery.
+        trace, rate, trace_str = self.speed_trace(LTSSMPair(gen2=(True, True)))
+        self.assertEqual(rate, (1, 1), trace_str)
+        for side in "ud":
+            states = [n for c, s, n in trace if s == side]
+            self.assertEqual(states[states.index("L0") + 1:], [
+                "Recovery.RcvrLock", "Recovery.RcvrCfg", "Recovery.Speed",
+                "Recovery.RcvrLock", "Recovery.RcvrCfg", "Recovery.Idle", "L0"], trace_str)
+
+    def test_speed_change_failed(self):
+        # The upstream can't lock at 5.0 GT/s: both back to 2.5 GT/s and to L0, without a new training.
+        trace, rate, trace_str = self.speed_trace(LTSSMPair(gen2=(True, True), fail_5g=True))
+        self.assertEqual(rate, (0, 0), trace_str)
+        for side in "ud":
+            states = [n for c, s, n in trace if s == side]
+            self.assertEqual(states.count("Detect.Quiet"), 1, trace_str)
+            self.assertEqual(states.count("Recovery.Speed"), 2, trace_str)
+
+    def test_speed_change_gen1_partner(self):
+        # The partner advertises 2.5 GT/s only: the request is ignored.
+        dut = LTSSMPair(gen2=(True, False))
+        results = {}
+        def request(dut):
+            yield dut.up.speed_change.eq(1)
+            yield
+            yield dut.up.speed_change.eq(0)
+        def later(dut):
+            yield from ()
+            results["count"] = results.get("count", 0) + 1
+            return results["count"] == 2000
+        def check(dut):
+            results["state"] = (yield dut.up.state)
+            results["rate"]  = (yield dut.up.rate)
+            return True
+        run_pair(dut, [(both_l0, request), (later, None), (check, None)])
+        self.assertEqual(results["state"], LTSSM_STATES["L0"])
+        self.assertEqual(results["rate"], 0)
