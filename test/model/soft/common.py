@@ -11,7 +11,7 @@ Symbols are (value, k) tuples. Lane words are (data, ctrl) with Symbol 0 in data
 the lane streams.
 """
 
-from litepcie.phy.soft.common import COM, SKP
+from litepcie.phy.soft.common import COM, SKP, PAD, TS_LENGTH
 
 # Symbols <-> Words --------------------------------------------------------------------------------
 
@@ -65,19 +65,28 @@ class ScramblerModel:
     - D Symbols are scrambled (when enabled), K Symbols are not.
     - The LFSR advances 8 shifts on every Symbol except SKP, scrambled or not.
     - The LFSR is initialized (FFFFh) after a COM.
+    - Training Sequences (COM followed by a D Symbol or PAD, 16 Symbols) are not scrambled.
     """
     def __init__(self, seed=LFSR_SEED):
-        self.lfsr = seed
+        self.lfsr     = seed
+        self.prev_com = False
+        self.bypass   = 0
 
     def process(self, symbols, enable=True):
         out = []
         for value, k in symbols:
             if k and value == SKP.value:
                 out.append((value, k))
+                self.prev_com = False
                 continue
+            if self.prev_com and ((not k) or (value == PAD.value)):
+                self.bypass = TS_LENGTH - 1
             scrambled, self.lfsr = lfsr_scramble_byte(self.lfsr, value)
-            out.append((scrambled if (enable and not k) else value, k))
-            if k and value == COM.value:
+            out.append((scrambled if (enable and not k and self.bypass == 0) else value, k))
+            if self.bypass:
+                self.bypass -= 1
+            self.prev_com = bool(k and value == COM.value)
+            if self.prev_com:
                 self.lfsr = LFSR_SEED
         return out
 

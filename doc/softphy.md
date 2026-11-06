@@ -34,12 +34,15 @@ Targets, in order: Artix-7 GTP Gen1 x1 (SQRL Acorn CLE-215+ / LiteX Acorn Basebo
    ltssm.py      Detect, Polling, Configuration, L0, Recovery, Hot Reset, Disabled (upstream and
                  downstream roles)
    lanes.py      striping/destriping, lane-to-lane deskew (COM), per-lane polarity
-   datapath.py   per lane: scrambler, SKP Ordered Set insertion, CDC, 8b/10b encoder;
-                 8b/10b decoder, COM word aligner, descrambler, SKP Ordered Set removal/elastic buffer
-   ordered_sets  TS1/TS2 generators and checkers (Link/Lane numbers, N_FTS, rate, control),
-                 SKP, FTS, EIOS
-   scrambler.py  G(X) = X^16 + X^5 + X^4 + X^3 + 1, seed FFFFh, COM initialization, SKP hold
-   serdes/       lane transceiver adapters on LiteICLink (GTP first), lane clocking, simulation model
+   datapath.py   per lane: Logical Idle filling, SKP Ordered Set insertion, scrambler (TX, lane clock);
+                 8b/10b error substitution, descrambler, SKP Ordered Set removal, elastic buffer to
+                 the lane clock (RX, recovered clock)
+   ordered_sets  TS1/TS2 generator (word aligned) and checker (any Symbol position, fields,
+                 inverted polarity), 4-Symbol Ordered Set detector (FTS, EIOS, SKP)
+   scrambler.py  G(X) = X^16 + X^5 + X^4 + X^3 + 1, seed FFFFh, COM initialization, SKP hold,
+                 automatic Training Sequence bypass
+   coding.py     8b/10b code tables and RX checker (decode/disparity errors)
+   serdes/       lane contract (base), Artix-7 clocking, GTP adapter on LiteICLink, simulation model
   ─────────────────────────────────────────────────────────────────────────────────────── transceivers
 ```
 
@@ -60,7 +63,19 @@ Clock domains:
 - Lane words: Symbol i is `data[8*i:8*(i+1)]` with `ctrl[i]` set for a K Symbol; Symbol 0 is
   transmitted first (`litepcie/phy/soft/common.py`).
 - Scrambling (PCIe Base 4.2.1.3): D Symbols only, the LFSR advances on every Symbol except SKP, is
-  initialized after each COM; TS1/TS2 and the Compliance Pattern are not scrambled.
+  initialized after each COM; TS1/TS2 and the Compliance Pattern are not scrambled. They are the
+  only Ordered Sets with a D Symbol or PAD right after the COM, so the scrambler and descrambler
+  bypass that Symbol and the 14 following ones by themselves: the descrambled RX stream carries the
+  Training Sequences with readable fields and no side channel is needed.
+- RX word phase: the transmitter builds its stream in 4-Symbol units (TS, Ordered Sets and framed
+  packets are all multiples of 4 Symbols) but the receiver's word phase is arbitrary. There is no
+  word aligner on COM: SKP Ordered Sets are removed whole (4 Symbols, phase preserved) in the
+  recovered clock domain, Training Sequences and Ordered Sets are detected at any Symbol position,
+  and the packet framing (Data Link Layer) realigns on STP/SDP only, where dropping idle Symbols
+  is harmless. Realigning on every COM would drop packet Symbols around SKP Ordered Sets.
+- Clock compensation: one SKP Ordered Set every 352 words (1408 Symbols) between packets/Ordered
+  Sets; on RX the elastic buffer is the recovered-to-lane clock FIFO after SKP removal, words are
+  dropped (counted) if it overflows.
 - LCRC (3.5.2.1) and DLLP CRC (3.4.1): bytes in transmission order, bits LSB first, all-ones seed,
   remainder complemented and bit-reversed, first CRC byte in `value[0:8]`. The LCRC equals
   `zlib.crc32(sequence_number + tlp)` sent least significant byte first.
@@ -71,9 +86,9 @@ Clock domains:
 
 | Milestone | Scope | Status |
 |-----------|-------|--------|
-| M0 | Package, Symbols/Ordered Sets, scrambler, LCRC/DLLP CRC, reference models, tests, this document | Unit tests |
-| M1 | LiteICLink GTP PCIe ports (electrical idle, rate, de-emphasis, receiver detection) | Not started |
-| M2 | Lane serdes adapter, clocking, lane datapath, Ordered Set generators/checkers, simulation model | Not started |
+| M0 | Package, Symbols/Ordered Sets, scrambler, LCRC/DLLP CRC, reference models, tests, this document | Unit tests (PR #203) |
+| M1 | GTP PCIe settings (Electrical Idle, de-emphasis, CDR, comma alignment) | In the adapter through `gtp_params.update()`, as USB3 PIPE; no LiteICLink change |
+| M2 | Lane contract, Artix-7 clocking, GTP adapter, lane datapaths, TS/Ordered Set generator/checkers, simulation model | Unit tests, two-model link simulation (ppm, polarity, Symbol shift, Electrical Idle); GTP adapter elaborates for 1/2/4 lanes |
 | M2.5 | Passive RX of a host's TS1 on the Acorn (first hardware observation) | Not started |
 | M3 | LTSSM x1 Gen1, two-PHY simulation, debug/tracer; L0 against a real host | Not started |
 | M4 | Data Link Layer | Not started |
@@ -86,7 +101,10 @@ Clock domains:
 ## Verification
 
 - `python3 -m pytest -v test/test_soft_*.py`: unit tests against the Python reference models in
-  `test/model/soft/` (scrambler keystream, CRC conventions against `zlib.crc32`).
+  `test/model/soft/` (scrambler keystream, CRC conventions against `zlib.crc32`), lane datapath
+  round trips between two clock domains (SKP compensation), Training Sequence generator/checker at
+  every Symbol position, two serdes models back-to-back (`serdes/model.py`), GTP adapter
+  elaboration to Verilog.
 - Later milestones add a two-PHY Verilator simulation (upstream and downstream LTSSM roles, ppm/SSC
   and lane skew), DLL tests with error injection, and hardware bring-up with the LTSSM tracer,
   LiteScope and the root port's `lspci -vv` link status.
