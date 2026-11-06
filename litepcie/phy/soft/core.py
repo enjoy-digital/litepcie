@@ -70,8 +70,13 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
 
         # SerDes -----------------------------------------------------------------------------------
         if serdes is None:
-            from litepcie.phy.soft.serdes.gtp_7series import A7PCIeSerDes
-            serdes = A7PCIeSerDes(platform, pads, sys_clk_freq=phy_kwargs.pop("sys_clk_freq", 125e6),
+            if platform.device.startswith("xc7k"):
+                from litepcie.phy.soft.serdes.gtx_7series import K7PCIeSerDes as SerDes
+            elif platform.device.startswith("xc7a"):
+                from litepcie.phy.soft.serdes.gtp_7series import A7PCIeSerDes as SerDes
+            else:
+                raise NotImplementedError(f"No soft PCIe PHY transceiver support for {platform.device}.")
+            serdes = SerDes(platform, pads, sys_clk_freq=phy_kwargs.pop("sys_clk_freq", 125e6),
                 speedgrade=phy_kwargs.pop("speedgrade", -1))
             self.serdes = serdes
         else:
