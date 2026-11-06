@@ -31,9 +31,11 @@ from litepcie.phy.soft.dll.tx           import DLLTX
 class DataLinkLayer(LiteXModule):
     """link_up: the Physical Layer link is up (LTSSM Configuration done); dl_active: the Data Link
     Layer is active (TLPs flow). Receiver credits advertised: p_hdr/p_data, np_hdr/np_data,
-    Completions infinite (an endpoint must). update_timer: UpdateFC period (cycles, 30 us)."""
+    Completions infinite (an endpoint must). update_timer: UpdateFC period (cycles, 30 us).
+    replay_timer: REPLAY_TIMER limit (cycles), default for a 512-byte Max Payload Size at 2.5 GT/s x1
+    (1677 Symbol times, to check against the specification table with the speed/width milestones)."""
     def __init__(self, clk_freq, p_hdr=16, p_data=128, np_hdr=8, np_data=8, rx_depth=2048, tx_depth=1024,
-        descriptors=16, replay_timer=375, update_timer=None):
+        descriptors=16, replay_timer=None, update_timer=None):
         self.link_up    = Signal()   # i
         self.l0         = Signal()   # i: LTSSM in L0 (lane traffic).
         self.dl_active  = Signal()   # o
@@ -48,16 +50,19 @@ class DataLinkLayer(LiteXModule):
 
         if update_timer is None:
             update_timer = int(30e-6*clk_freq)
+        if replay_timer is None:
+            replay_timer = int(1677*4e-9*clk_freq)
 
         reset = Signal()
         self.comb += reset.eq(~self.link_up)
 
         # RX/TX ------------------------------------------------------------------------------------
-        self.rx = rx = DLLRX(depth=rx_depth)
+        self.rx = rx = DLLRX(depth=rx_depth, packets=64)
         self.tx = tx = DLLTX(depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer)
         self.comb += [
             rx.reset.eq(reset),
             tx.reset.eq(reset),
+            tx.replay.hold.eq(~self.l0),
             self.phy_source.connect(rx.sink),
             tx.source.connect(self.phy_sink),
             rx.source.connect(source),

@@ -25,6 +25,7 @@ class ReplayBuffer(LiteXModule):
     def __init__(self, depth=1024, descriptors=16, replay_timer=375):
         self.reset      = Signal()    # i: Data Link down (flush).
         self.enable     = Signal()    # i: TLPs transmission allowed (DL_Active).
+        self.hold       = Signal()    # i: REPLAY_TIMER held (LTSSM not in L0).
         self.sink       = sink   = stream.Endpoint([("data", 32)])
         self.source     = source = stream.Endpoint([("data", 32), ("seq", 12)])
         self.ack        = Signal()    # i (Pulse): Ack or Nak received, ack_seq acknowledged.
@@ -146,15 +147,20 @@ class ReplayBuffer(LiteXModule):
         ]
         self.comb += progress.eq(ack_free)
 
-        # Replay requests: Nak (after its acknowledgment) or timer.
+        # Replay requests: Nak (after its acknowledgment) or timer. REPLAY_TIMER (3.5.2.1) is held in
+        # reset during a replay (restarts after its last TLP) and outside L0, else a replay longer than
+        # the timer would restart forever.
         replay_req = Signal()
         replay_num = Signal(2)
+        replaying  = Signal()
+        replay_end = Signal(desc_width + 1)
         timer      = Signal(max=replay_timer + 1)
         self.comb += self.pending.eq(ack_desc != tx_desc)
         self.sync += [
             If(self.reset,
                 replay_req.eq(0),
                 replay_num.eq(0),
+                replaying.eq(0),
                 timer.eq(0),
                 self.replays.eq(0),
             ).Else(
@@ -162,7 +168,10 @@ class ReplayBuffer(LiteXModule):
                     replay_req.eq(1)
                 ),
                 # REPLAY_TIMER: runs with unacknowledged TLPs, restarts on progress and replays.
-                If(~self.pending | progress,
+                If(replaying & (tx_desc == replay_end),
+                    replaying.eq(0)
+                ),
+                If(~self.pending | progress | replaying | self.hold,
                     timer.eq(0)
                 ).Elif(timer == replay_timer,
                     replay_req.eq(1),
@@ -196,6 +205,8 @@ class ReplayBuffer(LiteXModule):
             ).Elif(replay_req & ~acking,
                 # Replay from the oldest unacknowledged TLP.
                 NextValue(tx_desc, ack_desc),
+                NextValue(replay_end, tx_desc),
+                NextValue(replaying, tx_desc != ack_desc),
                 NextValue(replay_req, 0),
                 NextValue(self.replays, self.replays + 1),
                 NextValue(replay_num, replay_num + 1),
