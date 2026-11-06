@@ -43,10 +43,12 @@ import shutil
 import subprocess
 
 from migen import *
+from migen.genlib.cdc import MultiReg
 
 from litex.gen import *
 
 from litex.soc.interconnect import stream
+from litex.soc.interconnect.csr import *
 from litex.soc.interconnect.avalon import Native2AvalonST, AvalonST2Native
 
 from litepcie.common import *
@@ -583,6 +585,31 @@ class SVPCIEPHY(LiteXModule):
         # Streams ----------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
+
+        # Registers --------------------------------------------------------------------------------
+        # Same registers as S7PCIEPHY, so software reads the link the same way on either vendor.
+        self._link_status = CSRStatus(fields=[
+            CSRField("status", size=1, values=[
+                ("``0b0``", "Link Down."),
+                ("``0b1``", "Link Up."),
+            ]),
+            CSRField("rate", size=1, values=[
+                ("``0b0``", "2.5 Gb/s."),
+                ("``0b1``", "5.0 Gb/s."),
+            ]),
+            CSRField("width", size=2, values=[
+                ("``0b00``", "1-Lane link."),
+                ("``0b01``", "2-Lane link."),
+                ("``0b10``", "4-Lane link."),
+                ("``0b11``", "8-Lane link."),
+            ]),
+            CSRField("ltssm", size=6, description="LTSSM State (Intel encoding)."),
+        ])
+        self._msi_enable        = CSRStatus(description="MSI Enable Status. ``1``: MSI is enabled.")
+        self._msix_enable       = CSRStatus(description="MSI-X Enable Status. Always ``0``: MSI-X is not implemented.")
+        self._bus_master_enable = CSRStatus(description="Bus Mastering Status. ``1``: Bus Mastering enabled.")
+        self._max_request_size  = CSRStatus(16, description="Negotiated Max Request Size (in bytes).")
+        self._max_payload_size  = CSRStatus(16, description="Negotiated Max Payload Size (in bytes).")
         self.msi    = stream.Endpoint(msi_layout())
 
         # Parameters/Locals ------------------------------------------------------------------------
@@ -802,6 +829,8 @@ class SVPCIEPHY(LiteXModule):
         device_number   = Signal(5)
         function_number = Signal(3)
         dcommand        = Signal(16)
+        command         = Signal(16)
+        msi_control     = Signal(16)
 
         self.bus_number      = bus_number
         self.device_number   = device_number
@@ -836,6 +865,14 @@ class SVPCIEPHY(LiteXModule):
             If(captured_addr == 0x0,
                 dcommand.eq(captured_data[16:32]),
             ),
+            # tl_cfg_add == 3 : Command register in bits [23:8] (cfg_prmcsr[15:0]).
+            If(captured_addr == 0x3,
+                command.eq(captured_data[8:24]),
+            ),
+            # tl_cfg_add == 13 : MSI Message Control in bits [15:0] (cfg_msicsr[15:0]).
+            If(captured_addr == 0xd,
+                msi_control.eq(captured_data[0:16]),
+            ),
             # tl_cfg_add == 15 : cfg_busdev[12:0] = {bus[7:0], device[4:0]}.
             If(captured_addr == 0xf,
                 device_number.eq(captured_data[0:5]),
@@ -850,6 +887,31 @@ class SVPCIEPHY(LiteXModule):
         ]
         # Only one function is enabled on the hard IP, so the function number is always 0.
         self.comb += function_number.eq(0)
+
+        # Status registers. All of it changes only on link and configuration events, so a plain
+        # MultiReg per field is enough to bring it into the CSR domain.
+        lane_act = hip_status["lane_act"]
+        width    = Signal(2)
+        self.comb += Case(lane_act, {
+            1         : width.eq(0b00),
+            2         : width.eq(0b01),
+            4         : width.eq(0b10),
+            8         : width.eq(0b11),
+            "default" : width.eq(0b00),
+        })
+        for sig, csr in [
+            (hip_status["dlup"],       self._link_status.fields.status),
+            (currentspeed == 0b10,     self._link_status.fields.rate),
+            (width,                    self._link_status.fields.width),
+            (hip_status["ltssmstate"], self._link_status.fields.ltssm),
+            (msi_control[0],           self._msi_enable.status),
+            (command[2],               self._bus_master_enable.status),
+            (self.max_request_size,    self._max_request_size.status),
+            (self.max_payload_size,    self._max_payload_size.status),
+        ]:
+            pcie_sig = Signal(len(csr))
+            self.comb += pcie_sig.eq(sig)
+            self.specials += MultiReg(pcie_sig, csr, cd)
 
         # Qword Alignment + Native <-> Avalon-ST ---------------------------------------------------
         tx_align = _TXQwordAligner(data_width)
