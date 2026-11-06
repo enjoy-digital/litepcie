@@ -102,7 +102,7 @@ Clock domains:
 | M2.5 | Passive RX of a host's TS1 on the Acorn (first hardware observation) | Not started |
 | M3 | LTSSM x1 Gen1, Physical Layer, two-PHY simulation, debug/tracer; L0 against a real host | Verilator link simulation (`bench/soft/sim.py`): training to L0, packets both ways, Recovery, with scaled and specification timers; LTSSM pair unit tests; Acorn bring-up bench (`bench/soft/acorn.py`), hardware pending |
 | M4 | Data Link Layer: framing, DLLPs, DLCMSM, flow control, retry buffer, Ack/Nak | Unit tests; Verilator link simulation: DL_Active, TLPs both ways, Recovery, lane corruption and lost DLLPs recovered with every TLP delivered once and in order. No hardware run, LCRC/DLLP byte order not yet checked against a real host |
-| M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Verilator end-to-end simulation (`bench/soft/sim_endpoint.py`): configuration space, BAR0 accesses and byte order, Unsupported Requests, MSI, device reads/writes at 64 and 128 bits. Acorn bitstream with LitePCIe, MMAP, DMA and MSI built: about 8.5k LUTs, timing met (`pcie_link` margin only 51 ps). BAR0/CSR, MSI and DMA simulated at SoC level (`bench/soft/sim_soc.py`). **Not run on hardware or with the real driver** |
+| M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Verilator end-to-end simulation (`bench/soft/sim_endpoint.py`): configuration space, BAR0 accesses and byte order, Unsupported Requests, MSI, device reads/writes at 64 and 128 bits. Acorn bitstream with LitePCIe, MMAP, DMA and MSI built: about 8.5k LUTs, timing met (`pcie_link` margin only 51 ps). BAR0/CSR, MSI and DMA simulated at SoC level (`bench/soft/sim_soc.py`). Runs on hardware, see the hardware results |
 | M6 | Gen2 x1 (rate change) | Not started |
 | M7 | x2 (deskew, width negotiation) | Not started |
 | M8 | x4, 128-bit datapath, robustness, LiteX-Boards | Not started |
@@ -132,6 +132,23 @@ Clock domains:
   replays and receiver errors reported.
 - Later milestones add ppm/SSC and lane skew in the Verilator simulation, and the hardware bring-up with the LTSSM tracer, LiteScope and the root port's
   `lspci -vv` link status.
+
+## Hardware results
+
+YPCB-00338-1P1 (`xc7k480t-ffg1156-2`, GTX) on Lane 0 in a PC slot, `bench/soft/ypcb.py --with-endpoint`, the LitePCIe
+driver and `litepcie_util`, against the same design on the hard IP:
+
+| | Soft (2.5 GT/s x1) | Hard IP (5 GT/s x1) |
+|---|---:|---:|
+| Enumeration | Yes (rescan, LTSSM enabled after boot) | Yes (at boot) |
+| `scratch_test` over BAR0 | OK | OK |
+| MSI | OK | OK |
+| `dma_test` loopback | 1.72 Gb/s, 0 errors | 3.36 Gb/s, 0 errors |
+| Slice LUTs | 8617 | 4672 |
+| Slice Registers | 7045 | 3755 |
+| Setup WNS | 0.641 ns | 0.739 ns |
+
+The Artix-7 GTP path has not been run on hardware yet.
 
 ## Resources and timing against the hard IP
 
@@ -178,11 +195,25 @@ NP-starved request blocks the TLPs behind it (single transmit queue). The DLL ti
 values not yet checked against the specification tables. Receiver detection is stubbed (always
 present), Electrical Idle comes from the GTP detector.
 
+## Bring-up on the YPCB-00338-1P1
+
+`bench/soft/ypcb.py` over JTAGBone, `bench/soft/status.py` for the control and status:
+
+```sh
+python3 bench/soft/ypcb.py --with-endpoint --driver --build     # --hard-ip for the same design on the hard IP.
+litex_server --jtag --jtag-config openocd_xc7_ft232.cfg
+python3 bench/soft/status.py --csr-csv build/soft_ypcb/csr.csv enable status trace
+echo 1 > /sys/bus/pci/rescan                                    # Once dl_active is set.
+```
+
+The LTSSM is disabled at reset and by PERST#, so that a design making a host hang cannot do it again at the next boot.
+Rescan works when the root port already has a memory window (for example from the design loaded at the previous boot).
+
 ## Bring-up on the Acorn (M2.5/M3)
 
 `--with-endpoint` builds the full endpoint (SoftPCIEPHY, LitePCIe MMAP, DMA, MSI, `--driver` for the
-kernel driver); add `--with-debug --with-ltssm-tracer` for bring-up (CSRs `pcie_phy_debug_*` and
-`pcie_phy_ltssm_tracer_*`, steps below). Once L0 and DL_Active are reached, Linux should enumerate
+kernel driver); add `--with-debug --with-ltssm-tracer` for bring-up (CSRs `pcie_endpoint_phy_debug_*` and
+`pcie_endpoint_phy_ltssm_tracer_*`, steps below). Once L0 and DL_Active are reached, Linux should enumerate
 it as a `10ee:7021` device.
 
 
