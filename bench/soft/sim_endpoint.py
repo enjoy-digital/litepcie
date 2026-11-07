@@ -298,7 +298,7 @@ class ScriptedRoot(LiteXModule):
 # Simulation SoC -----------------------------------------------------------------------------------
 
 class SoftPHYEndpointSim(SoCMini):
-    def __init__(self, data_width=64, timer_scale=100, ts1_min=64, max_cycles=2**22, nlanes=1):
+    def __init__(self, data_width=64, timer_scale=100, ts1_min=64, max_cycles=2**22, nlanes=1, dead_lanes=0, width=None):
         sys_clk_freq = int(125e6)
         platform     = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq)
@@ -355,7 +355,9 @@ class SoftPHYEndpointSim(SoCMini):
             root_dll.phy_sink.connect(root_phy.sink),
             root_phy.source.connect(root_dll.phy_source),
         ]
-        steps = script(((0x7020 + nlanes) << 16) | 0x10ee, phy.bar0_mask, nlanes=nlanes)
+        steps = script(((0x7020 + nlanes) << 16) | 0x10ee, phy.bar0_mask, nlanes=width or nlanes)
+        if dead_lanes:
+            self.comb += phy.phy_layer.lane_disable.eq(dead_lanes)
         # The script works on DWs, the wide Data Link Layer through converters.
         root_side = root_dll
         if nlanes > 1:
@@ -448,6 +450,8 @@ def main():
     parser.add_argument("--trace",       action="store_true",   help="Enable VCD tracing.")
     parser.add_argument("--data-width",  default=64, type=int,  help="LitePCIe data width (64, 128 or 256).")
     parser.add_argument("--nlanes",      default=1, type=int,   help="Link width (above 1: data width of 32 bits per lane).")
+    parser.add_argument("--dead-lanes",  default="0",           help="Endpoint lanes out of service (mask).")
+    parser.add_argument("--width",       default=None, type=int, help="Negotiated width expected in Link Status.")
     parser.add_argument("--timer-scale", default=100, type=int, help="LTSSM timers scale.")
     parser.add_argument("--ts1-min",     default=64, type=int,  help="TS1 transmitted in Polling.Active (specification: 1024).")
     parser.add_argument("--max-cycles",  default=2**22, type=int, help="Simulation timeout (sys clock cycles).")
@@ -457,6 +461,8 @@ def main():
     soc = SoftPHYEndpointSim(
         data_width  = args.data_width,
         nlanes      = args.nlanes,
+        dead_lanes  = int(args.dead_lanes, 0),
+        width       = args.width,
         timer_scale = args.timer_scale,
         ts1_min     = args.ts1_min,
         max_cycles  = args.max_cycles,

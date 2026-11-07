@@ -106,6 +106,25 @@ class TestSoftSim(unittest.TestCase):
                     if gen2:
                         self.assertIn("SPEED OK: rate 1/1", output)
 
+    def test_width_negotiation(self):
+        # Lanes out of service on the upstream side: a narrower link, traffic and Recovery at this width.
+        for nlanes, dead, width, gen2 in [(2, "0x2", 1, False), (4, "0x8", 2, False), (4, "0x2", 1, True),
+                                          (8, "0x80", 4, False), (8, "0x10", 4, True), (8, "0x4", 2, False), (8, "0x2", 1, False)]:
+            with self.subTest(nlanes=nlanes, dead=dead):
+                args = ["--phy", "--nlanes", str(nlanes), "--tlps", "32", "--dead-lanes", dead] + (["--gen2"] if gen2 else [])
+                output = self.run_sim(f"width_{nlanes}_{dead}_{gen2}", *args, script="sim_wide.py")
+                self.assertIn("SIM OK", output)
+                self.assertRegex(output, rf"width x *{width}/x *{width}")
+                self.assertRegex(output, r"mismatches +0/ +0")
+                self.assertNotIn("Detect.Quiet", output[output.index("L0 reached"):])
+
+    def test_endpoint_narrower(self):
+        # The configuration space reports the negotiated width, a design of x4 at x2.
+        output = self.run_sim("endpoint_x4_x2", "--nlanes", "4", "--data-width", "128", "--dead-lanes", "0x8", "--width", "2",
+            script="sim_endpoint.py")
+        self.assertIn("device read: cafe1234", output)
+        self.assertIn("SIM OK", output)
+
     def test_multi_lane_restart(self):
         # Receivers restarting at different times after the rate change: back in L0 at 5.0 GT/s without a
         # new training. The model doesn't reset the receive domain as the transceivers do, which isn't
@@ -117,6 +136,14 @@ class TestSoftSim(unittest.TestCase):
                 self.check_wide(output, nlanes)
                 self.assertIn("SPEED OK: rate 1/1", output)
                 self.assertNotIn("Detect.Quiet", output[output.index("L0 reached"):])
+
+    def test_soc_narrower(self):
+        # DMA of the SoC with Completions split as a host does, on a narrower link at the 5.0 GT/s rate.
+        for nlanes, dead in [(4, "0x0"), (4, "0xe"), (4, "0xc"), (2, "0x2")]:
+            with self.subTest(nlanes=nlanes, dead=dead):
+                output = self.run_sim(f"soc_{nlanes}_{dead}", "--nlanes", str(nlanes), "--dead-lanes", dead, "--full-rate",
+                    "--dma-size", "4096", "--dma-buffers", "2", script="sim_soc.py")
+                self.assertIn("SIM OK", output)
 
     def test_endpoint_multi_lane(self):
         # Scripted root on a LitePCIe endpoint through multi-lane links.

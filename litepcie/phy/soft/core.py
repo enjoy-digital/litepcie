@@ -98,6 +98,11 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         dll_kwargs = dict(ndw=nlanes, nlanes=nlanes, rx_depth=2048*max(nlanes//2, 1), tx_depth=1024*nlanes,
             descriptors=16*max(nlanes//2, 1)) if wide else {}
         self.dll       = dll = ClockDomainsRenamer("pcie_link")(DataLinkLayer(link_freq, **dll_kwargs))
+        if wide:
+            # PAD only when running above x4.
+            pad_enable = Signal()
+            self.specials += MultiReg(phy.width > 4, pad_enable, "pcie_link")
+            self.comb += dll.tx.framer.pad_enable.eq(pad_enable)
         self.sync.pcie_link += [
             # Registered (timing): decoded from the LTSSM state, gate the DLL transmit path.
             dll.link_up.eq(phy.ltssm.link_up),
@@ -130,6 +135,8 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         link_speed = Signal(4)
         self.comb += link_speed.eq(phy.ltssm.rate + 1) # Link Status: 1: 2.5 GT/s, 2: 5.0 GT/s.
         self.specials += MultiReg(link_speed, tl.cfg.link_speed, "pcie")
+        if wide:
+            self.specials += MultiReg(phy.width, tl.link_width, "pcie")
         self.comb += [
             # TLPs held in the Data Link Layer buffers while "pcie" is in reset.
             tl.sink.valid.eq(dll.source.valid & ~pcie_rst),
@@ -203,7 +210,7 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         """Optional bring-up CSRs (LTSSM enable/retrain, status, counters), see doc/softphy.md. Without
         them the LTSSM starts on its own; with them it waits for the enable CSR (enable_reset=0)."""
         from litepcie.phy.soft.debug import SoftPHYDebug
-        self.debug = SoftPHYDebug(self.phy_layer, self.serdes, with_tracer=False, enable_reset=enable_reset)
+        self.debug = SoftPHYDebug(self.phy_layer, self.serdes, with_tracer=False, enable_reset=enable_reset, dll=self.dll)
 
     # LTSSM Tracer ---------------------------------------------------------------------------------
     def add_ltssm_tracer(self):

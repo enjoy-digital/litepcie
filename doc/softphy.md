@@ -104,8 +104,8 @@ Clock domains:
 | M4 | Data Link Layer: framing, DLLPs, DLCMSM, flow control, retry buffer, Ack/Nak | Unit tests; Verilator link simulation: DL_Active, TLPs both ways, Recovery, lane corruption and lost DLLPs recovered with every TLP delivered once and in order. No hardware run, LCRC/DLLP byte order not yet checked against a real host |
 | M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Verilator end-to-end simulation (`bench/soft/sim_endpoint.py`): configuration space, BAR0 accesses and byte order, Unsupported Requests, MSI, device reads/writes at 64 and 128 bits. Acorn bitstream with LitePCIe, MMAP, DMA and MSI built: about 8.5k LUTs, timing met (`pcie_link` margin only 51 ps). BAR0/CSR, MSI and DMA simulated at SoC level (`bench/soft/sim_soc.py`). Runs on hardware, see the hardware results |
 | M6 | Gen2 x1 (rate change) | Verilator link simulation at full lane rate (`bench/soft/sim.py --gen2`), fallback to 2.5 GT/s (`--fail-5g`). Runs on hardware on the GTX, see the hardware results |
-| M7 | x2 to x8: wide Data Link Layers, multi-lane Physical Layer, deskew | Verilator simulation (`bench/soft/sim_wide.py`: Data Link Layers with corruption; `--phy`: training with lane skew, speed change, Link Retrain; `sim_endpoint.py --nlanes`). Runs on hardware on the GTX, see the hardware results. No width negotiation nor lane reversal yet: the link width is the design's |
-| M8 | Robustness, width negotiation, lane reversal, LiteX-Boards | Not started |
+| M7 | x2 to x8: wide Data Link Layers, multi-lane Physical Layer, deskew | Verilator simulation (`bench/soft/sim_wide.py`: Data Link Layers with corruption; `--phy`: training with lane skew, speed change, Link Retrain; `sim_endpoint.py --nlanes`). Runs on hardware on the GTX, see the hardware results. Width negotiated down to x1, see the hardware results. No lane reversal yet |
+| M8 | Robustness, lane reversal, LiteX-Boards | Not started |
 | M10 | 8.0 GT/s: 128b/130b lane blocks | `gen3.py`: scrambler checked against the table of the specification, gearboxes, Block alignment, framing Tokens (on a DW only). Near-end loopback on the GTX at 8 GT/s (`bench/soft/ypcb_gen3.py`), see the hardware results. **Not connected to `SoftPCIEPHY`**: no LTSSM support (Recovery.Equalization), no 8 GT/s link with a host |
 | M9 | Other transceivers, soft root port | Not started |
 
@@ -188,6 +188,23 @@ Multi-lane, same conditions, 5 GT/s, LitePCIe at 32 bits per lane, against the h
 
 The hard IP designs use a 128-bit datapath at x8. Above about 13 Gb/s `dma_test` doesn't keep up: its software check loses whole buffers on both PHYs, so at x8 it doesn't prove the data on its own. The losses were whole buffers (0 other rows at x8 and x4, 1 at x2, next to a burst). What limits x8 to 18 Gb/s, against 32 Gb/s on the link, isn't identified.
 
+Width negotiation, lanes kept out of the link from the device (`status.py disable=MASK`), DMA for 15 s (60 s at x1
+on the x4 design), the root port's correctable error status read every second, then Retrain Link at that width:
+
+| Design | Lanes out | Width (device/host) | `dma_test` | Rows with lost buffers |
+|---|---|---|---:|---:|
+| x8 | none | x8/x8 | 14.94 Gb/s | 74 of 74 |
+| x8 | 7, 4-7, 4 | x4/x4 | 11.95 to 12.02 Gb/s | 2 to 8 of 74 |
+| x8 | 2, 2-7 | x2/x2 | 6.02 Gb/s | 0 |
+| x8 | 1, 1-7 | x1/x1 | 2.97 Gb/s | 0 |
+| x4 | 3, 2, 2-3 | x2/x2 | 6.34 Gb/s | 0 |
+| x4 | 1, 1-3 | x1/x1 | 3.14 Gb/s | 0 of 298 |
+| x2 | 1 | x1/x1 | 3.38 Gb/s | 0 |
+
+All at 5 GT/s, Retrain Link worked at each width, at most one second with RxErr per case and no other error. A
+narrower link is a bit slower than a design of that width (2.97 against 3.39 Gb/s at x1): the beats of a wider
+design are split, with Logical Idle in them.
+
 8 GT/s lane test (`bench/soft/ypcb_gen3.py`, no host): QPLL at 8 GHz, near-end PMA loopback on 4 lanes, 40-bit words at 200 MHz, 130-bit Blocks with EIEOS and scrambled Data Blocks. Block alignment found on all the lanes, 0 errors in 10 minutes on each lane (4.8e12 bits, BER below 6.2e-13 at 95 %). The loopback doesn't include the channel to a host, and doesn't say anything about equalization.
 
 The Artix-7 GTP path has not been run on hardware yet, Gen2 and multi-lane included.
@@ -264,6 +281,11 @@ FPGA from its flash.
 `--nlanes` selects the width (x2 on the first lanes of the x4 pins), with LitePCIe at 32 bits per lane.
 
 ## Multi-lane links
+
+The width is negotiated in Configuration: each lane answers with the Link and Lane Numbers it receives, the width is
+the largest of x1, x2, x4, x8 with these lanes from Lane 0, the others go to Electrical Idle. The Data Link Layer keeps
+the width of the design, the Physical Layer splits its beats into words for the lanes in use and makes beats from
+their words, aligning the packets on a DW first at x1 and x2. Lane reversal isn't handled.
 
 Above x1 the Data Link Layer works on beats of a DW per lane (`dll/wide.py`), at 125 MHz whatever the width:
 
