@@ -337,7 +337,9 @@ specification (rev 0.3) for what 8.0 GT/s needs.
 - Hardware (YPCB-00338-1P1, x4, no host link yet): the Quad PLL locks and the run-time switch to 8.0 GT/s completes
   without timeout, with the 8.0 GT/s attributes read back over DRP. In near-end loopback the received words were
   clean but the Block alignment wasn't kept: the GTX comma alignment (enabled with the RX buffer) moved the word
-  boundary on 8b/10b commas found in 128b/130b data. It is now disabled at 8.0 GT/s, to be checked on hardware.
+  boundary on 8b/10b commas found in 128b/130b data. With it disabled at 8.0 GT/s, the 4 lanes are aligned and the
+  lanes locked on EIEOS in near-end loopback, no undefined Sync Header or slip after the first alignment (40 s,
+  about 8e9 words per lane). Timing met at x4 (WNS +0.036 ns).
 
 Simulation: `python3 bench/soft/sim_wide.py --phy --gen3 --nlanes 8 --eq-preset 8` (two Physical Layers, the root port
 requesting preset 8 in its Phase 3, TLPs and a Link Retrain at 8.0 GT/s), `--fail-8g` (nothing received at 8.0 GT/s:
