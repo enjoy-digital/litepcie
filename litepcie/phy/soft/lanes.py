@@ -748,6 +748,7 @@ class Gen3Lanes(LiteXModule):
         resets = {}
         for m in [ltx, lrx] + lanes_tx + lanes_rx + eqs:
             reset = Signal(reset=1)
+            reset.attr.add(("max_fanout", 32)) # Replicated by the tools (timing at 200 MHz).
             self.sync.pcie_g3 += reset.eq(g3_reset)
             self.comb += m.reset.eq(reset)
             resets[m] = reset
