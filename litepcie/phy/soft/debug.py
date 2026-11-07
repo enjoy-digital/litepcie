@@ -68,6 +68,8 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             ])
             self._g3_raw_tx = CSRStatus(40, description="Raw word transmitted on Lane 0 (snapshot).")
             self._g3_raw_rx = CSRStatus(40, description="Raw word received on Lane 0 (snapshot, bit 39: valid).")
+            self._g3_counts = CSRStatus(64, description="Lane 0 at 8.0 GT/s (16-bit counters): Blocks, undefined Sync Headers, EIEOS, slips (bits 63:48).")
+            self._g3_words  = CSRStatus(32, description="Lane 0 raw words received at 8.0 GT/s.")
             self._g3_status = CSRStatus(fields=[
                 CSRField("locked",    size=1, offset=0,  description="Lanes aligned on EIEOS (8.0 GT/s)."),
                 CSRField("aligned",   size=8, offset=1,  description="Block alignment of each lane."),
@@ -93,6 +95,22 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             self.specials += [
                 MultiReg(raw_tx, self._g3_raw_tx.status, "sys"),
                 MultiReg(raw_rx, self._g3_raw_rx.status, "sys"),
+            ]
+            # Lane 0 counters (sampled as they change: debug precision).
+            gb    = g3.lanes_rx[0].gearbox
+            undef = (gb.sync_header == 0b00) | (gb.sync_header == 0b11)
+            counts = [Signal(16) for _ in range(4)]
+            words  = Signal(32)
+            self.sync.pcie_g3 += [
+                If(gb.valid, counts[0].eq(counts[0] + 1)),
+                If(gb.valid & undef, counts[1].eq(counts[1] + 1)),
+                If(g3.lanes_rx[0].aligner.eieos, counts[2].eq(counts[2] + 1)),
+                If(gb.slip, counts[3].eq(counts[3] + 1)),
+                If(serdes.lanes[0].raw_rx_valid, words.eq(words + 1)),
+            ]
+            self.specials += [
+                MultiReg(Cat(*counts), self._g3_counts.status, "sys"),
+                MultiReg(words, self._g3_words.status, "sys"),
             ]
             rs = getattr(serdes, "rate_sequencer", None)
             self.specials += [
