@@ -133,10 +133,10 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             # selection, Electrical Idle (transceiver, LTSSM), 8.0 GT/s lock, with a timestamp (1.024 us at
             # 125 MHz). The first trace_depth changes after the start are kept.
             if rs is not None:
-                trace_depth = 256
-                self._g3_trace_index = CSRStorage(8, description="Rate trace entry to read.")
-                self._g3_trace_data  = CSRStatus(48, description="Rate trace entry: timestamp (bits 47:24), lock (23), LTSSM Electrical Idle (22), transceiver Electrical Idle (21), sequencer state (20:18), sequencer done (17), PLL selection (16), rate (15:14), LTSSM state (5:0).")
-                self._g3_trace_count = CSRStatus(9, description="Rate trace entries.")
+                trace_depth = 1024
+                self._g3_trace_index = CSRStorage(10, description="Rate trace entry to read.")
+                self._g3_trace_data  = CSRStatus(48, description="Rate trace entry: timestamp (bits 47:26, 8.192 us), TS received in the state (25:22), last EC received (21:20) and its count (19:16), lock (15), LTSSM Electrical Idle (14), transceiver Electrical Idle (13), sequencer state (12:10), sequencer done (9), PLL selection (8), rate (7:6), LTSSM state (5:0).")
+                self._g3_trace_count = CSRStatus(11, description="Rate trace entries.")
                 seq_states = ["IDLE", "CLOCK", "PMA-HOLD", "DRP", "PMA-RELEASE", "GT", "RX-RESET", "RX-READY"]
                 seq_state  = Signal(3)
                 for i, name in enumerate(seq_states):
@@ -144,11 +144,22 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
                         self.comb += If(rs.fsm.ongoing(name), seq_state.eq(i))
                 locked = Signal()
                 self.specials += MultiReg(g3.lrx.locked, locked, "pcie_link")
-                event   = Signal(24)
-                event_r = Signal(24)
-                stamp   = Signal(31)
-                self.comb += event.eq(Cat(ltssm.state[:6], Constant(0, 8), ltssm.rate, rs.pll_sel, rs.done, seq_state,
-                    phy.rx_elecidle, ltssm.rx_elecidle, locked))
+                ts_count = Signal(4)
+                state_r  = Signal(6)
+                self.sync.pcie_link += [
+                    state_r.eq(ltssm.state),
+                    If(ltssm.state != state_r,
+                        ts_count.eq(0)
+                    ).Elif(ltssm.rx_ts & (ts_count != 15),
+                        ts_count.eq(ts_count + 1)
+                    )
+                ]
+                # No constant bits (they would be trimmed from the memory).
+                event   = Signal(26)
+                event_r = Signal(26)
+                stamp   = Signal(32)
+                self.comb += event.eq(Cat(ltssm.state[:6], ltssm.rate, rs.pll_sel, rs.done, seq_state,
+                    phy.rx_elecidle, ltssm.rx_elecidle, locked, ltssm.rx_ec_count, ltssm.rx_ec_last, ts_count))
                 start = PulseSynchronizer("sys", "pcie_link")
                 self.submodules += start
                 self.comb += start.i.eq(self._g3_control.fields.trace)
@@ -156,7 +167,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
                 wport = mem.get_port(write_capable=True, clock_domain="pcie_link")
                 rport = mem.get_port(clock_domain="sys")
                 self.specials += mem, wport, rport
-                count = Signal(9)
+                count = Signal(11)
                 self.sync.pcie_link += [
                     event_r.eq(event),
                     stamp.eq(stamp + 1),
@@ -169,7 +180,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
                 ]
                 self.comb += [
                     wport.adr.eq(count),
-                    wport.dat_w.eq(Cat(event, stamp[7:31])),
+                    wport.dat_w.eq(Cat(event, stamp[10:32])),
                     wport.we.eq(~start.o & (event != event_r) & (count != trace_depth)),
                     rport.adr.eq(self._g3_trace_index.storage),
                     self._g3_trace_data.status.eq(rport.dat_r),
