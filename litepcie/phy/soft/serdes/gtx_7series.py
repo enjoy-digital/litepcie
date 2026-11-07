@@ -23,18 +23,23 @@ from litepcie.phy.soft.serdes.s7 import S7PCIeSerDes, S7DRPSequencer
 GTX_PCIE_RXCDR_CFG = 0x03000023FF10200020
 GTX_PCIE_PMA_RSV   = 0x00018480
 
-# 8.0 GT/s attributes over DRP (Xilinx 7-Series PCIe wrapper, GTX): (address, mask: bits kept, 2.5/5.0 GT/s value,
-# 8.0 GT/s value), 2.5/5.0 GT/s values from the static attributes.
-def gtx_gen3_drp_entries(rxcdr_cfg=GTX_PCIE_RXCDR_CFG, pma_rsv=GTX_PCIE_PMA_RSV):
+# RXCDR_CFG at 8.0 GT/s: the one of the GTX for an output divider of 1 (UG476, as LiteICLink: checked on the
+# YPCB-00338-1P1 at 8 GT/s, near-end loopback). The Xilinx PCIe wrapper's Gen3 value is for its configuration
+# (32-bit interface, RX buffer bypassed).
+GTX_GEN3_RXCDR_CFG = 0x03000023ff10400020
+
+# 8.0 GT/s attributes over DRP (address, mask: bits kept, 2.5/5.0 GT/s value, 8.0 GT/s value), the 2.5/5.0 GT/s
+# values from the static attributes; PMA_RSV, Electrical Idle and drive mode values of the Xilinx PCIe wrapper.
+def gtx_gen3_drp_entries(rxcdr_cfg=GTX_PCIE_RXCDR_CFG, pma_rsv=GTX_PCIE_PMA_RSV, gen3_rxcdr_cfg=GTX_GEN3_RXCDR_CFG):
     word = lambda v, n: (v >> (16*n)) & 0xffff
     return [
         (0x099, 0x0000, word(pma_rsv, 0),   0x7080), # PMA_RSV[15:0].
         (0x09a, 0x0000, word(pma_rsv, 1),   0x001e), # PMA_RSV[31:16].
-        (0x0a8, 0x0000, word(rxcdr_cfg, 0), 0x0080), # RXCDR_CFG[15:0].
-        (0x0a9, 0x0000, word(rxcdr_cfg, 1), 0x1010), # RXCDR_CFG[31:16].
-        (0x0aa, 0x0000, word(rxcdr_cfg, 2), 0x0bff), # RXCDR_CFG[47:32].
-        (0x0ab, 0x0000, word(rxcdr_cfg, 3), 0x0000), # RXCDR_CFG[63:48].
-        (0x0ac, 0xff00, word(rxcdr_cfg, 4), 0x000b), # RXCDR_CFG[71:64].
+        (0x0a8, 0x0000, word(rxcdr_cfg, 0), word(gen3_rxcdr_cfg, 0)), # RXCDR_CFG[15:0].
+        (0x0a9, 0x0000, word(rxcdr_cfg, 1), word(gen3_rxcdr_cfg, 1)), # RXCDR_CFG[31:16].
+        (0x0aa, 0x0000, word(rxcdr_cfg, 2), word(gen3_rxcdr_cfg, 2)), # RXCDR_CFG[47:32].
+        (0x0ab, 0x0000, word(rxcdr_cfg, 3), word(gen3_rxcdr_cfg, 3)), # RXCDR_CFG[63:48].
+        (0x0ac, 0xff00, word(rxcdr_cfg, 4), word(gen3_rxcdr_cfg, 4)), # RXCDR_CFG[71:64].
         (0x0a7, 0xf7ff, 0x0800,             0x0000), # RXCDR_HOLD_DURING_EIDLE.
         (0x01e, 0xbfff, 0x4000,             0x0000), # RX_DFE_LPM_HOLD_DURING_EIDLE.
         (0x019, 0xffe0, 0x0001,             0x0002), # TX_DRIVE_MODE: PIPE, PIPEGEN3.
@@ -112,6 +117,17 @@ class K7PCIeSerDes(S7PCIeSerDes):
             drp.sel.eq(rs.pll_sel),
             rs.drp_done.eq(Reduce("AND", self.drp_dones)),
         ]
+
+        # DRP access from the CSRs (bring-up: attributes changed without a build), on the second input of the DRP
+        # mux (drp_sel).
+        from liteiclink.serdes.common import DRPInterface, DRPControl
+        if not hasattr(self, "_drp_sel"):
+            from litex.soc.interconnect.csr import CSRStorage
+            self._drp_sel = CSRStorage(description="DRP of the transceivers from the CSRs (drp_control*) when set.")
+        drp_csr = DRPInterface()
+        gt.drp_mux.add_interface(drp_csr)
+        setattr(self, f"drp_control{i}", DRPControl(drp_csr))
+        self.comb += gt.drp_mux.sel.eq(self._drp_sel.storage)
 
         # Raw words: TX registered on the transmit clock, RX from the recovered clock through a FIFO.
         raw_tx    = Signal()
