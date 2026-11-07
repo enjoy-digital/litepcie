@@ -735,8 +735,9 @@ class Gen3Lanes(LiteXModule):
         ]
         g3 = Signal()
         self.comb += g3.eq(rate == 2)
-        g3_reset = Signal()
-        self.comb += g3_reset.eq(~g3 | levels["rx_reset"])
+        # Reset of the datapath out of 8.0 GT/s, a registered copy per block (fanout).
+        g3_reset = Signal(reset=1)
+        self.sync.pcie_g3 += g3_reset.eq(~g3 | levels["rx_reset"])
         cd = lambda m: ClockDomainsRenamer("pcie_g3")(ResetInserter()(m))
         self.ltx = ltx = cd(Gen3LinkTX(nlanes, skp_interval=skp_interval))
         self.lrx = lrx = cd(Gen3LinkRX(nlanes))
@@ -744,8 +745,12 @@ class Gen3Lanes(LiteXModule):
         self.lanes_rx = lanes_rx = [cd(Gen3LaneRX(LFSR_SEEDS[i % 8])) for i in range(nlanes)]
         self.eqs      = eqs      = [cd(Gen3LaneEQ(upstream)) for i in range(nlanes)]
         self.submodules += lanes_tx + lanes_rx + eqs
+        resets = {}
         for m in [ltx, lrx] + lanes_tx + lanes_rx + eqs:
-            self.comb += m.reset.eq(g3_reset)
+            reset = Signal(reset=1)
+            self.sync.pcie_g3 += reset.eq(g3_reset)
+            self.comb += m.reset.eq(reset)
+            resets[m] = reset
 
         # Clock domain crossings to "pcie_link".
         self.tx_fifo = tx_fifo = ClockDomainsRenamer({"write": "pcie_link", "read": "pcie_g3"})(
@@ -754,8 +759,12 @@ class Gen3Lanes(LiteXModule):
             stream.AsyncFIFO(lane_layout(4*ndw), rx_depth, buffered=True))
         self.ts_fifo = ts_fifo = ClockDomainsRenamer({"write": "pcie_g3", "read": "pcie_link"})(
             stream.AsyncFIFO(rx_ts_layout, 4, buffered=True))
+        # Registered both ways (timing, the ready of the FIFO to the Data Link Layer's replay buffer).
+        self.tx_buffer = tx_buffer = ClockDomainsRenamer("pcie_link")(
+            stream.Buffer(lane_layout(4*ndw), pipe_valid=True, pipe_ready=True))
         self.comb += [
-            sink.connect(tx_fifo.sink),
+            sink.connect(tx_buffer.sink),
+            tx_buffer.source.connect(tx_fifo.sink),
             rx_fifo.source.connect(source),
             ts_fifo.source.ready.eq(1),
             self.rx_ts.eq(ts_fifo.source.valid),
@@ -873,17 +882,23 @@ class Gen3Lanes(LiteXModule):
 
         # Equalization of each lane: preset of the EQ TS2 received at the lower rate, loaded at the change to
         # 8.0 GT/s, phase from the LTSSM, Training Sequences of the lane.
-        g3_r = Signal()
-        self.sync.pcie_g3 += g3_r.eq(g3)
         eval_done = Signal()
         self.comb += eval_done.eq(Reduce("AND", [eq.eval_done for eq in eqs]))
         self.specials += MultiReg(eval_done, self.eq_eval_done, "pcie_link")
+        # Preset loaded on the first cycle out of reset (the change to 8.0 GT/s).
+        eq_load = []
+        for eq in eqs:
+            reset_r = Signal(reset=1)
+            load    = Signal()
+            self.sync.pcie_g3 += reset_r.eq(resets[eq])
+            self.comb += load.eq(reset_r & ~resets[eq])
+            eq_load.append(load)
         for i in range(nlanes):
             rx_ts = Record(ts3_layout())
             self.comb += ts3_fields(lrx.ts_data[128*i:128*(i + 1)], rx_ts)
             self.comb += [
                 eqs[i].ec.eq(levels["tx_ts_eq_info"][0:2]),
-                eqs[i].load.eq(g3 & ~g3_r),
+                eqs[i].load.eq(eq_load[i]),
                 eqs[i].eq_ts2.eq(eq_ts2[i]),
                 eqs[i].rx_valid.eq(lrx.ts_valid),
                 eqs[i].rx.eq(rx_ts),
