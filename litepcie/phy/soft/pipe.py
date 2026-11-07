@@ -70,7 +70,7 @@ class PCIePhysicalLayer(LiteXModule):
         # LTSSM levels in the lane clock domain.
         levels = {}
         for name in ["tx_elecidle", "tx_ts_enable", "tx_ts2", "tx_ts_link", "tx_ts_link_pad",
-                     "tx_ts_lane", "tx_ts_lane_pad", "tx_ts_rate", "tx_ts_ctrl",
+                     "tx_ts_lane", "tx_ts_lane_pad", "tx_ts_rate", "tx_ts_ctrl", "tx_ts_eq_info",
                      "tx_data_enable", "rx_data_enable", "idle_hs", "rx_polarity", "rx_reset",
                      "scrambling_enable", "skp_enable"]:
             level = Signal(len(getattr(ltssm, name)), name="pipe_" + name)
@@ -127,6 +127,7 @@ class PCIePhysicalLayer(LiteXModule):
             ts_gen.ts.n_fts.eq(0xff), # L0s not supported: fixed value, the partner's one is ignored.
             ts_gen.ts.rate.eq(levels["tx_ts_rate"]),
             ts_gen.ts.ctrl.eq(levels["tx_ts_ctrl"]),
+            ts_gen.ts.eq_info.eq(levels["tx_ts_eq_info"]),
         ]
         tx_ts_done = PulseSynchronizer("pcie_pipe", "pcie_link")
         self.submodules += tx_ts_done
