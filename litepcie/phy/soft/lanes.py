@@ -150,19 +150,23 @@ class RXLaneDeskew(LiteXModule):
 # Multi-Lane Physical Layer ------------------------------------------------------------------------
 
 class PCIeMultiLanePhysicalLayer(LiteXModule):
-    """Same interface as PCIePhysicalLayer with sink/source of 4*nlanes Symbols. The LTSSM follows Lane
+    """Same interface as PCIePhysicalLayer with sink/source of 4*ndw Symbols (ndw: a multiple of the lanes, 2 DWs
+    per lane for 8.0 GT/s, default 1). The LTSSM follows Lane
     0, the other lanes have their own Training Sequences generators and checkers and polarity, and follow the
     numbers they receive. width: negotiated link width. lanes_ok: lanes numbered by the partner (status).
     lane_disable: lanes kept out of the link, in Electrical Idle and with their receiver ignored (bring-up).
     early_idle: lanes out of the Link in Electrical Idle during Configuration, as a root port can do."""
     def __init__(self, serdes, clk_freq, upstream=True, with_timers=True, timer_scale=1,
-        gen2_capable=False, ts1_min=1024, tx_depth=16, rx_depth=16, early_idle=False):
+        gen2_capable=False, ts1_min=1024, tx_depth=16, rx_depth=16, early_idle=False, ndw=None):
         nlanes = serdes.nlanes
         assert nlanes >= 2
         lanes  = serdes.lanes
         self.nlanes = nlanes
-        self.sink   = sink   = stream.Endpoint(lane_layout(4*nlanes)) # "pcie_link"
-        self.source = source = stream.Endpoint(lane_layout(4*nlanes)) # "pcie_link"
+        ndw = nlanes if ndw is None else ndw
+        assert ndw % nlanes == 0
+        self.ndw    = ndw
+        self.sink   = sink   = stream.Endpoint(lane_layout(4*ndw)) # "pcie_link"
+        self.source = source = stream.Endpoint(lane_layout(4*ndw)) # "pcie_link"
 
         # Controls ("pcie_link").
         self.enable       = Signal(reset=1)
@@ -298,7 +302,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         ]
 
         self.tx_fifo = tx_fifo = ClockDomainsRenamer({"write": "pcie_link", "read": "pcie_pipe"})(
-            stream.AsyncFIFO(lane_layout(4*nlanes), tx_depth, buffered=True))
+            stream.AsyncFIFO(lane_layout(4*ndw), tx_depth, buffered=True))
         self.comb += sink.connect(tx_fifo.sink)
 
         # EIOS before Electrical Idle.
@@ -324,11 +328,11 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
 
         # Beats split into a word per Symbol times for the lanes in use.
         tx_data  = levels["tx_data_enable"] & tx_fifo.source.valid
-        tx_part  = Signal(max=max(nlanes, 2))
+        tx_part  = Signal(max=max(ndw, 2))
         tx_end   = Signal() # Last word of the beat.
         tx_ok    = all_ready & tx_data & ~eios_pending & ~tx_elecidle & ~ts_mode
         self.comb += tx_fifo.source.ready.eq(tx_ok & tx_end)
-        self.comb += Case(self.width, {w: tx_end.eq(tx_part == nlanes//w - 1) for w in widths})
+        self.comb += Case(self.width, {w: tx_end.eq(tx_part == ndw//w - 1) for w in widths})
         self.sync.pcie_pipe += If(~levels["tx_data_enable"],
             tx_part.eq(0)
         ).Elif(tx_ok,
@@ -343,7 +347,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
                 if i >= w:
                     continue
                 parts = {}
-                for part in range(nlanes//w):
+                for part in range(ndw//w):
                     symbols = [part*4*w + j*w + i for j in range(4)]
                     parts[part] = [
                         striped_data.eq(Cat(*[tx_fifo.source.data[8*k:8*(k+1)] for k in symbols])),
@@ -535,18 +539,18 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         ]
 
         # Words to beats.
-        rx_part  = Signal(max=max(nlanes, 2))
+        rx_part  = Signal(max=max(ndw, 2))
         rx_end   = Signal()
         beat_ok  = Signal()
-        beat_data = Signal(32*nlanes)
-        beat_ctrl = Signal(4*nlanes)
-        self.comb += Case(self.width, {w: rx_end.eq(rx_part == nlanes//w - 1) for w in widths})
+        beat_data = Signal(32*ndw)
+        beat_ctrl = Signal(4*ndw)
+        self.comb += Case(self.width, {w: rx_end.eq(rx_part == ndw//w - 1) for w in widths})
         store = {}
         for w in widths:
             store[w] = Case(rx_part, {part: [
                 beat_data[32*w*part:32*w*(part + 1)].eq(aligned_data[:32*w]),
                 beat_ctrl[4*w*part:4*w*(part + 1)].eq(aligned_ctrl[:4*w]),
-            ] for part in range(nlanes//w)})
+            ] for part in range(ndw//w)})
         self.sync.pcie_pipe += [
             beat_ok.eq(aligned_valid & rx_end),
             If(aligned_valid,
@@ -555,7 +559,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             )
         ]
         self.rx_fifo = rx_fifo = ClockDomainsRenamer({"write": "pcie_pipe", "read": "pcie_link"})(
-            stream.AsyncFIFO(lane_layout(4*nlanes), rx_depth, buffered=True))
+            stream.AsyncFIFO(lane_layout(4*ndw), rx_depth, buffered=True))
         self.comb += [
             rx_fifo.sink.valid.eq(beat_ok & levels["rx_data_enable"]),
             rx_fifo.sink.data.eq(beat_data),
