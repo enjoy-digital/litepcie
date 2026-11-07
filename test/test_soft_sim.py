@@ -167,6 +167,16 @@ class TestSoftSim(unittest.TestCase):
                     "--dma-size", "4096", "--dma-buffers", "2", script="sim_soc.py")
                 self.assertIn("SIM OK", output)
 
+    def test_soc_gen3(self):
+        # LitePCIe SoC on SoftPCIEPHY at 8.0 GT/s (2 DWs per lane: 128 and 512-bit LitePCIe data paths): speed
+        # change by the root before the enumeration, DMA loopback through the host model.
+        for nlanes in [2, 8]:
+            with self.subTest(nlanes=nlanes):
+                output = self.run_sim(f"soc_gen3_{nlanes}", "--nlanes", str(nlanes), "--gen3", script="sim_soc.py")
+                self.assertIn("Root rate 2", output)
+                self.assertIn("SIM OK", output)
+                self.assertRegex(output, r"replays +0/ +0, receiver errors +0/ +0")
+
     def test_endpoint_multi_lane(self):
         # Scripted root on a LitePCIe endpoint through multi-lane links.
         for nlanes in [2, 4, 8]:
