@@ -17,10 +17,14 @@ class LTSSMPair(Module):
     a Training Sequence is delivered to the partner `latency` cycles after being transmitted (one
     transmitted every `ts_period` cycles while enabled), the Logical Idle handshake completes when
     both sides are in it, receiver detection always succeeds, Electrical Idle is the partner's."""
-    def __init__(self, timer_scale=1000, ts1_min=16, ts_period=8, latency=4, gen2=(False, False), fail_5g=False):
-        self.submodules.up = up = PCIeLTSSM(125e6, upstream=True,  timer_scale=timer_scale, ts1_min=ts1_min, gen2_capable=gen2[0])
-        self.submodules.dn = dn = PCIeLTSSM(125e6, upstream=False, timer_scale=timer_scale, ts1_min=ts1_min, gen2_capable=gen2[1])
+    def __init__(self, timer_scale=1000, ts1_min=16, ts_period=8, latency=4, gen2=(False, False), fail_5g=False,
+        gen3=(False, False), fail_8g=False, eq_phases23=True):
+        self.submodules.up = up = PCIeLTSSM(125e6, upstream=True,  timer_scale=timer_scale, ts1_min=ts1_min,
+            gen2_capable=gen2[0], gen3_capable=gen3[0])
+        self.submodules.dn = dn = PCIeLTSSM(125e6, upstream=False, timer_scale=timer_scale, ts1_min=ts1_min,
+            gen2_capable=gen2[1], gen3_capable=gen3[1], eq_phases23=eq_phases23)
         self.comb += dn.link_number.eq(0x12)
+        self.comb += [up.eq_eval_done.eq(1), dn.eq_eval_done.eq(1)]
         for a, b in [(up, dn), (dn, up)]:
             # Training Sequences a -> b.
             count = Signal(max=ts_period)
@@ -40,14 +44,18 @@ class LTSSMPair(Module):
             ]
             self.comb += a.tx_ts_done.eq(done)
             # Delivered to b with the fields latched at transmission.
-            fields = ["ts2", "link", "link_pad", "lane", "lane_pad", "rate", "ctrl"]
+            fields = ["ts2", "link", "link_pad", "lane", "lane_pad", "rate", "ctrl", "eq_info"]
             pipe = [done] + [getattr(a, "tx_ts2" if f == "ts2" else "tx_ts_" + f) for f in fields]
             for _ in range(latency):
                 stage = [Signal(len(s)) for s in pipe]
                 self.sync += [n.eq(o) for n, o in zip(stage, pipe)]
                 pipe = stage
-            # Nothing received at another rate, nor at 5.0 GT/s on the upstream with fail_5g.
-            self.comb += b.rx_ts.eq(pipe[0] & ~a.tx_elecidle & (a.rate == b.rate) & ~(fail_5g & (b is up) & b.rate))
+            # Nothing received at another rate, nor at 5.0 GT/s on the upstream with fail_5g, nor after Phase 1 at
+            # 8.0 GT/s with fail_8g (equalization failing).
+            fail = Signal()
+            if fail_8g:
+                self.sync += If(b.state == LTSSM_STATES["Recovery.Equalization.Phase2"], fail.eq(1)).Elif(b.rate != 2, fail.eq(0))
+            self.comb += b.rx_ts.eq(pipe[0] & ~a.tx_elecidle & (a.rate == b.rate) & ~(fail_5g & (b is up) & (b.rate == 1)) & ~fail)
             for f, s in zip(fields, pipe[1:]):
                 self.comb += getattr(b, "rx_ts_" + f).eq(s)
             # Electrical Idle, receiver detection.
@@ -217,3 +225,57 @@ class TestSoftLTSSM(unittest.TestCase):
         run_pair(dut, [(both_l0, request), (later, None), (check, None)])
         self.assertEqual(results["state"], LTSSM_STATES["L0"])
         self.assertEqual(results["rate"], 0)
+
+class TestSoftLTSSMGen3(unittest.TestCase):
+    def speed_trace(self, dut, budget=200000):
+        return TestSoftLTSSM.speed_trace(self, dut, budget=budget)
+
+    def test_speed_change_8g(self):
+        # 8.0 GT/s from 2.5 GT/s in one speed change, equalization with its four phases, then L0.
+        trace, rate, trace_str = self.speed_trace(LTSSMPair(gen3=(True, True)))
+        self.assertEqual(rate, (2, 2), trace_str)
+        up = [n for c, s, n in trace if s == "u"]
+        dn = [n for c, s, n in trace if s == "d"]
+        self.assertEqual(up[up.index("L0") + 1:], [
+            "Recovery.RcvrLock", "Recovery.RcvrCfg", "Recovery.Speed", "Recovery.RcvrLock",
+            "Recovery.Equalization.Phase0", "Recovery.Equalization.Phase1", "Recovery.Equalization.Phase2",
+            "Recovery.Equalization.Phase3", "Recovery.RcvrLock", "Recovery.RcvrCfg", "Recovery.Idle", "L0"], trace_str)
+        self.assertEqual(dn[dn.index("L0") + 1:], [
+            "Recovery.RcvrLock", "Recovery.RcvrCfg", "Recovery.Speed", "Recovery.RcvrLock",
+            "Recovery.Equalization.Phase1", "Recovery.Equalization.Phase2", "Recovery.Equalization.Phase3",
+            "Recovery.RcvrLock", "Recovery.RcvrCfg", "Recovery.Idle", "L0"], trace_str)
+
+    def test_speed_change_8g_phase1_only(self):
+        # The downstream port skips Phases 2 and 3: the upstream goes back to Recovery.RcvrLock from Phase 1.
+        trace, rate, trace_str = self.speed_trace(LTSSMPair(gen3=(True, True), eq_phases23=False))
+        self.assertEqual(rate, (2, 2), trace_str)
+        up = [n for c, s, n in trace if s == "u"]
+        self.assertEqual(up[up.index("Recovery.Equalization.Phase0"):up.index("Recovery.Equalization.Phase0") + 3], [
+            "Recovery.Equalization.Phase0", "Recovery.Equalization.Phase1", "Recovery.RcvrLock"], trace_str)
+
+    def test_speed_change_8g_gen2_partner(self):
+        # 5.0 GT/s partner: 5.0 GT/s, no EQ TS2, no equalization.
+        trace, rate, trace_str = self.speed_trace(LTSSMPair(gen2=(False, True), gen3=(True, False)))
+        self.assertEqual(rate, (1, 1), trace_str)
+        self.assertFalse(any("Equalization" in n for c, s, n in trace), trace_str)
+
+    def test_speed_change_8g_eq_failed(self):
+        # Nothing received from Phase 2: timeouts, back to 2.5 GT/s through Recovery.Speed, then L0.
+        dut = LTSSMPair(gen3=(True, True), fail_8g=True)
+        def request(dut):
+            yield dut.dn.speed_change.eq(1)
+            yield
+            yield dut.dn.speed_change.eq(0)
+        def speed_entered(dut):
+            return ((yield dut.dn.state) == LTSSM_STATES["Recovery.Speed"])
+        def eq_entered(dut):
+            return ((yield dut.dn.state) == LTSSM_STATES["Recovery.Equalization.Phase2"])
+        results = {}
+        def check(dut):
+            results["rate"] = ((yield dut.up.rate), (yield dut.dn.rate))
+            return True
+        trace, cycles = run_pair(dut, [(both_l0, request), (speed_entered, None), (eq_entered, None), (both_l0, None),
+            (check, None)], budget=400000)
+        trace_str = "\n".join(f"{c:6d} {s} {n}" for c, s, n in trace)
+        self.assertEqual(len(cycles), 5, "Not back in L0:\n" + trace_str)
+        self.assertEqual(results["rate"], (0, 0), trace_str)
