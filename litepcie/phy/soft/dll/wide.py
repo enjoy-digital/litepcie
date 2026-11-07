@@ -394,7 +394,7 @@ class TLPRepacker(LiteXModule):
         dropping_c = dropping
         offset_c   = Constant(0, bits_for(ndw))
         valids     = [Signal() for _ in range(ndw)]
-        offsets    = [Signal(bits_for(ndw)) for _ in range(ndw)]
+        offsets    = [Signal(bits_for(ndw), reset_less=True) for _ in range(ndw)]
         total      = Signal(bits_for(ndw))
         entries    = [Signal(width, reset_less=True) for _ in range(ndw)]
         for i in range(ndw):
@@ -424,13 +424,11 @@ class TLPRepacker(LiteXModule):
             )
 
         # Read: up to the end of the TLP or a full beat.
-        head = [Signal(width) for _ in range(ndw)]
+        # Read index of each DW (rd + i) kept in its own register: no adder, and less fanout on rd (timing).
+        head    = [Signal(width) for _ in range(ndw)]
+        indexes = [Signal(adr, reset=i % depth) for i in range(ndw)]
         for i in range(ndw):
-            index = Signal(adr)
-            self.comb += [
-                index.eq(rd + i),
-                Case(index, {j: head[i].eq(buf[j]) for j in range(depth)}),
-            ]
+            self.comb += Case(indexes[i], {j: head[i].eq(buf[j]) for j in range(depth)})
         lasts = [field(head[i], "last") for i in range(ndw)]
         count = Signal(max=ndw + 1)
         count_case = count.eq(ndw)
@@ -446,6 +444,7 @@ class TLPRepacker(LiteXModule):
             If(self.flushed,
                 wr.eq(0),
                 rd.eq(0),
+                *[indexes[i].eq(i % depth) for i in range(ndw)],
                 dropping.eq(1),
                 source.valid.eq(0),
             ).Else(
@@ -453,6 +452,7 @@ class TLPRepacker(LiteXModule):
                 wr.eq(wr + total),
                 If(take,
                     rd.eq(rd + count),
+                    *[indexes[i].eq(indexes[i] + count) for i in range(ndw)],
                     source.valid.eq(1),
                 )
             ),
