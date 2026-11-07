@@ -1,7 +1,7 @@
 # Soft PCIe PHY
 
-Status: work in progress, started November 2026. Gen1 and Gen2 x1 run on a Kintex-7 GTX board (see the hardware
-results). The status table is updated with each pull request.
+Status: work in progress, started November 2026. Gen1 and Gen2 run up to x8 on a Kintex-7 GTX board (see the
+hardware results). The status table is updated with each pull request.
 
 ## Why
 
@@ -104,7 +104,7 @@ Clock domains:
 | M4 | Data Link Layer: framing, DLLPs, DLCMSM, flow control, retry buffer, Ack/Nak | Unit tests; Verilator link simulation: DL_Active, TLPs both ways, Recovery, lane corruption and lost DLLPs recovered with every TLP delivered once and in order. No hardware run, LCRC/DLLP byte order not yet checked against a real host |
 | M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Verilator end-to-end simulation (`bench/soft/sim_endpoint.py`): configuration space, BAR0 accesses and byte order, Unsupported Requests, MSI, device reads/writes at 64 and 128 bits. Acorn bitstream with LitePCIe, MMAP, DMA and MSI built: about 8.5k LUTs, timing met (`pcie_link` margin only 51 ps). BAR0/CSR, MSI and DMA simulated at SoC level (`bench/soft/sim_soc.py`). Runs on hardware, see the hardware results |
 | M6 | Gen2 x1 (rate change) | Verilator link simulation at full lane rate (`bench/soft/sim.py --gen2`), fallback to 2.5 GT/s (`--fail-5g`). Runs on hardware on the GTX, see the hardware results |
-| M7 | x2 to x8: wide Data Link Layers, multi-lane Physical Layer, deskew | Verilator simulation (`bench/soft/sim_wide.py`: Data Link Layers with corruption; `--phy`: training with lane skew, speed change, Link Retrain; `sim_endpoint.py --nlanes`). Timing met on the `xc7k480t`. Hardware pending. No width negotiation nor lane reversal yet: the link width is the design's |
+| M7 | x2 to x8: wide Data Link Layers, multi-lane Physical Layer, deskew | Verilator simulation (`bench/soft/sim_wide.py`: Data Link Layers with corruption; `--phy`: training with lane skew, speed change, Link Retrain; `sim_endpoint.py --nlanes`). Runs on hardware on the GTX, see the hardware results. No width negotiation nor lane reversal yet: the link width is the design's |
 | M8 | Robustness, LiteX-Boards | Not started |
 | M9 | Other transceivers, soft root port | Not started |
 
@@ -159,7 +159,23 @@ driver and `litepcie_util`, against the same design on the hard IP:
 
 At this rate the driver's ring of 256 buffers lasts 5 ms, the buffers lost here are the host not keeping up: more of them on the hard IP. The link trains at 2.5 GT/s and the root port changes the speed once Link Control 2 targets 5 GT/s. 20 of 20 link cycles came back at 5 GT/s, and speed changes down and up with Retrain Link work. The fallback to 2.5 GT/s after a failed change has only been simulated.
 
-The Artix-7 GTP path has not been run on hardware yet, Gen2 included.
+Multi-lane, same conditions, 5 GT/s, LitePCIe at 32 bits per lane, against the hard IP where it exists:
+
+| | Soft x2 | Soft x4 | Soft x8 | Hard IP x4 | Hard IP x8 |
+|---|---:|---:|---:|---:|---:|
+| `dma_test` | 6.45 Gb/s | 11.57 Gb/s | 14.97 Gb/s | 13.33 Gb/s | 13.3 Gb/s |
+| Without the data check of `litepcie_util` | | | 18.15 Gb/s | | |
+| Seconds with correctable errors (soft: 900 s) | 0 | 0 | 0 | 0 of 30 | 0 of 15 |
+| 200 ms rows with lost buffers | 12 of 4477 | 27 of 4477 | 4475 of 4475 | 149 of 149 | 73 of 74 |
+| Retrain Link and speed changes | 30 of 30 | 30 of 30 | 30 of 30 | | |
+| Link cycles | 20 of 20 | 20 of 20 | 20 of 20 | | |
+| Slice LUTs | 11895 | 20095 | 41553 | 7076 | 8407 |
+| Slice Registers | 9746 | 13750 | 22107 | 5570 | 7370 |
+| Setup WNS | 0.845 ns | 0.463 ns | 0.391 ns | 0.524 ns | -0.012 ns |
+
+The hard IP designs use a 128-bit datapath at x8. Above about 13 Gb/s `dma_test` doesn't keep up: its software check loses whole buffers on both PHYs, so at x8 it doesn't prove the data on its own. The losses were whole buffers (0 other rows at x8 and x4, 1 at x2, next to a burst). What limits x8 to 18 Gb/s, against 32 Gb/s on the link, isn't identified.
+
+The Artix-7 GTP path has not been run on hardware yet, Gen2 and multi-lane included.
 
 ## Resources and timing against the hard IP
 
@@ -238,8 +254,12 @@ Above x1 the Data Link Layer works on beats of a DW per lane (`dll/wide.py`), at
 - `lanes.py`: Ordered Sets at the same time on all the lanes, striping, per-lane polarity, deskew on the COM Symbols
   of the Training Sequences (16 words per lane).
 
+The LTSSM follows Lane 0, it waits for the lanes to be deskewed for 8 Training Sequences before leaving Polling.Active
+and Recovery.RcvrLock. COMs arriving together can be of different Training Sequences when receivers restart at
+different times with old words in a FIFO, so the distance between the lanes is checked on every COM.
+
 At 5.0 GT/s the receiver has to tolerate 8 ns between the lanes. The transmitters' buffers are on, so their
-latency isn't matched between lanes.
+latency isn't matched between lanes: the host's receivers have accepted it up to x8, it wasn't measured.
 
 ## Bring-up on the Acorn (M2.5/M3)
 
