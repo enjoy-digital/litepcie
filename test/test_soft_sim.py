@@ -106,6 +106,18 @@ class TestSoftSim(unittest.TestCase):
                     if gen2:
                         self.assertIn("SPEED OK: rate 1/1", output)
 
+    def test_multi_lane_restart(self):
+        # Receivers restarting at different times after the rate change: back in L0 at 5.0 GT/s without a
+        # new training. The model doesn't reset the receive domain as the transceivers do, which isn't
+        # covered here: some stall patterns then leave a Training Sequence inside a lane (x4).
+        for nlanes in [2, 8]:
+            with self.subTest(nlanes=nlanes):
+                output = self.run_sim(f"multi_lane_restart_{nlanes}", "--phy", "--nlanes", str(nlanes), "--tlps", "32",
+                    "--gen2", "--rate-stall", "3", script="sim_wide.py")
+                self.check_wide(output, nlanes)
+                self.assertIn("SPEED OK: rate 1/1", output)
+                self.assertNotIn("Detect.Quiet", output[output.index("L0 reached"):])
+
     def test_endpoint_multi_lane(self):
         # Scripted root on a LitePCIe endpoint through multi-lane links.
         for nlanes in [2, 4, 8]:

@@ -34,17 +34,22 @@ class RXLaneDeskew(LiteXModule):
     """sinks: received Symbols of each lane (no back-pressure, SKP Ordered Sets already removed).
     With align set (Training Sequences on the lanes), the COM Symbols select the Symbol phase of each lane
     and the lanes are aligned on them: `locked` once they arrive together. source: the lanes side by side:
-    Symbol j of Lane i on Symbol j*nlanes + i. depth: words of skew compensated."""
-    def __init__(self, nlanes, depth=16):
+    Symbol j of Lane i on Symbol j*nlanes + i. depth: words in the FIFOs, max_skew: Symbols of skew compensated:
+    the specification allows 20 ns at 2.5 GT/s and 8 ns at 5.0 GT/s, 2 words and 1 word. Enough margin with
+    that, and below the 16 Symbols of a Training Sequence."""
+    def __init__(self, nlanes, depth=16, max_skew=11):
+        self.clear  = Signal() # i: partner's lanes not valid anymore (Electrical Idle): not locked.
         self.sinks  = [stream.Endpoint(lane_layout(4)) for _ in range(nlanes)]
         self.source = source = stream.Endpoint(lane_layout(4*nlanes))
         self.align  = Signal() # i
-        self.locked = Signal() # o
+        self.locked = Signal() # o: lanes popped together.
+        self.stable = Signal() # o: locked for 8 Training Sequences in a row.
 
         # # #
 
         fifos = []
         heads_com = []
+        queued = [] # Symbols in the FIFO of each lane (a word needs the 4 - shift first Symbols of the next).
         for i, sink in enumerate(self.sinks):
             prev_data = Signal(32)
             prev_ctrl = Signal(4)
@@ -70,6 +75,9 @@ class RXLaneDeskew(LiteXModule):
             fifo = stream.SyncFIFO(lane_layout(4), depth, buffered=True)
             self.submodules += fifo
             fifos.append(fifo)
+            symbols = Signal(bits_for(4*depth + 3))
+            self.comb += symbols.eq(4*fifo.level + 3 - shift)
+            queued.append(symbols)
             data = Cat(prev_data, sink.data)
             ctrl = Cat(prev_ctrl, sink.ctrl)
             self.comb += [
@@ -87,22 +95,41 @@ class RXLaneDeskew(LiteXModule):
         coms    = Cat(*heads_com)
         all_com = coms == (2**nlanes - 1)
         locked  = self.locked
+        # COMs of different Training Sequences: a lane more than max_skew Symbols ahead of another isn't
+        # aligned with it, it goes to its next COM. Happens
+        # when the receivers restart at different times, with old words in some of the FIFOs.
+        drops = []
+        for i, fifo in enumerate(fifos):
+            drop = Signal()
+            self.comb += drop.eq(Reduce("OR", [queued[i] >= queued[j] + max_skew + 1 for j in range(nlanes) if j != i]))
+            drops.append(drop)
+        any_drop = Signal()
+        self.comb += any_drop.eq(Reduce("OR", drops))
         for i, fifo in enumerate(fifos):
             self.comb += If(locked | ~self.align,
                 # Together.
                 fifo.source.ready.eq(all_v),
             ).Else(
                 # Up to the COM of each lane, then waiting for the others.
-                fifo.source.ready.eq(fifo.source.valid & (~heads_com[i] | (all_v & all_com))),
+                fifo.source.ready.eq(fifo.source.valid & (~heads_com[i] | drops[i] | (all_v & all_com & ~any_drop))),
             )
+        # Checked on every COM: a SKP Ordered Set being removed on some of the lanes can hide the difference
+        # for one of them.
+        good = Signal(4)
+        self.comb += self.stable.eq(good == 8)
         self.sync += [
-            If(~self.align,
+            If(self.clear,
+                locked.eq(0),
+                good.eq(0),
+            ).Elif(~self.align,
                 # Kept.
-            ).Elif(all_v & all_com,
-                locked.eq(1)
+            ).Elif(all_v & all_com & ~any_drop,
+                locked.eq(1),
+                If(good != 8, good.eq(good + 1)),
             ).Elif(all_v & (coms != 0),
-                # A lane's COM without the others: not aligned anymore.
-                locked.eq(0)
+                # A lane's COM without the others, or too far from them: not aligned anymore.
+                locked.eq(0),
+                good.eq(0),
             ),
         ]
         self.comb += source.valid.eq(all_v & (locked | ~self.align))
@@ -358,6 +385,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
 
         # Lanes deskewed, then received Symbols to the Data Link Layer (L0, no back-pressure).
         self.deskew = deskew = ClockDomainsRenamer("pcie_pipe")(RXLaneDeskew(nlanes))
+        self.specials += MultiReg(deskew.stable, ltssm.lanes_locked, "pcie_link")
         for i, lane in enumerate(lanes):
             self.comb += [
                 deskew.sinks[i].valid.eq(lane.source.valid),
@@ -367,6 +395,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             ]
         self.comb += [
             deskew.align.eq(~levels["rx_data_enable"]),
+            deskew.clear.eq(tx_elecidle),
             deskew.source.ready.eq(1),
         ]
         self.rx_fifo = rx_fifo = ClockDomainsRenamer({"write": "pcie_pipe", "read": "pcie_link"})(

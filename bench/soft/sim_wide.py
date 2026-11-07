@@ -204,7 +204,7 @@ class WideDLLSim(SoCMini):
         ]
 
 class MultiLanePHYSim(SoCMini):
-    def __init__(self, nlanes, tlps, gen2=False, timer_scale=100, max_cycles=2**23):
+    def __init__(self, nlanes, tlps, gen2=False, timer_scale=100, max_cycles=2**23, rate_stall=0):
         ndw = nlanes
         sys_clk_freq = int(125e6)
         platform = Platform()
@@ -226,8 +226,10 @@ class MultiLanePHYSim(SoCMini):
         shifts_dn = [(i*5 + 3) % 4 for i in range(nlanes)]
         delays_up = [(i*2) % 3 for i in range(nlanes)]
         delays_dn = [(nlanes - i) % 3 for i in range(nlanes)]
-        self.serdes_up = serdes_up = PCIeSerDesModel(nlanes, tx_cd="lane", rx_cd="lane", rx_symbol_shift=shifts_up, rx_word_delay=delays_up)
-        self.serdes_dn = serdes_dn = PCIeSerDesModel(nlanes, tx_cd="lane", rx_cd="lane", rx_symbol_shift=shifts_dn, rx_word_delay=delays_dn)
+        stalls_up = [(i*7 + 3)*rate_stall % 61 for i in range(nlanes)]
+        stalls_dn = [(i*5 + 1)*rate_stall % 53 for i in range(nlanes)]
+        self.serdes_up = serdes_up = PCIeSerDesModel(nlanes, tx_cd="lane", rx_cd="lane", rx_symbol_shift=shifts_up, rx_word_delay=delays_up, rx_rate_stall=stalls_up)
+        self.serdes_dn = serdes_dn = PCIeSerDesModel(nlanes, tx_cd="lane", rx_cd="lane", rx_symbol_shift=shifts_dn, rx_word_delay=delays_dn, rx_rate_stall=stalls_dn)
         serdes_up.connect(serdes_dn)
         self.comb += lane_5g.eq(serdes_up.applied_rate & serdes_dn.applied_rate)
         renamer = ClockDomainsRenamer({"pcie_pipe": "lane", "pcie_link": "sys"})
@@ -343,12 +345,13 @@ def main():
     parser.add_argument("--corrupt-every", default=0, type=int, help="Corrupt every Nth TLP from a to b (power of 2).")
     parser.add_argument("--phy",           action="store_true", help="With the multi-lane Physical Layers and transceiver models.")
     parser.add_argument("--gen2",          action="store_true", help="With --phy: speed change to 5.0 GT/s.")
+    parser.add_argument("--rate-stall",    default=0, type=int, help="With --phy: receivers stopped after a rate change, differently per lane.")
     parser.add_argument("--max-cycles",    default=2**22, type=int, help="Simulation timeout.")
     parser.add_argument("--output-dir",    default="build/soft_sim_wide", help="Build directory.")
     args = parser.parse_args()
     sim_config = SimConfig(default_clk="sys_clk")
     if args.phy:
-        soc = MultiLanePHYSim(args.nlanes, args.tlps, gen2=args.gen2, max_cycles=args.max_cycles)
+        soc = MultiLanePHYSim(args.nlanes, args.tlps, gen2=args.gen2, max_cycles=args.max_cycles, rate_stall=args.rate_stall)
     else:
         soc = WideDLLSim(args.ndw, args.nlanes, args.tlps, args.corrupt_every)
     builder = Builder(soc, output_dir=args.output_dir, compile_software=False)
