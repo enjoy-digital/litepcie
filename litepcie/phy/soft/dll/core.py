@@ -44,6 +44,7 @@ class DataLinkLayer(LiteXModule):
         self.dl_active  = Signal()   # o
         self.state      = Signal(2)  # o: DLCMSM: 0 DL_Inactive, 1/2 DL_Init (FC_INIT1/FC_INIT2), 3 DL_Active.
         self.link_error = Signal()   # o (Pulse): Link retrain requested (replay rollover).
+        self.gen3       = Signal()   # i: 8.0 GT/s framing (framing="both": 8b/10b or 8.0 GT/s from the rate).
         tlp_layout      = [("data", 32*ndw)] + ([("dws", bits_for(ndw))] if ndw > 1 else [])
         self.sink       = sink   = stream.Endpoint(tlp_layout)
         self.source     = source = stream.Endpoint(tlp_layout)
@@ -64,6 +65,7 @@ class DataLinkLayer(LiteXModule):
         if ndw > 1:
             self.rx = rx = WideDLLRX(ndw, depth=rx_depth, packets=64, framing=framing)
             self.tx = tx = WideDLLTX(ndw, nlanes, depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer, framing=framing)
+            self.comb += [rx.gen3.eq(self.gen3), tx.gen3.eq(self.gen3)]
         else:
             self.rx = rx = DLLRX(depth=rx_depth, packets=64)
             self.tx = tx = DLLTX(depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer)
