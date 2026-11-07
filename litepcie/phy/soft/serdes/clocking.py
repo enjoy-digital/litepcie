@@ -9,7 +9,9 @@
 The 100 MHz PCIe reference clock from the slot feeds the transceivers PLL (IBUFDS_GTE2) and, through
 the buffer's divided output, an MMCM generating the fixed clocks ("pcie_link" 125 MHz, "pcie_oob"
 50 MHz for the Electrical Idle detection) and the two lane clocks (62.5 MHz for 2.5 GT/s, 125 MHz for
-5.0 GT/s) switched by a glitch-free BUFGCTRL into "pcie_pipe" with the rate. The lane clock domain isn't
+5.0 GT/s) switched by a glitch-free BUFGCTRL into "pcie_pipe" with the rate. With gen3, a second BUFGCTRL
+gives "pcie_g3": "pcie_pipe" at 2.5/5.0 GT/s, 200 MHz at 8.0 GT/s (the transmit clock of the transceivers and
+the 8.0 GT/s datapath, 40-bit words). The lane clock domain isn't
 reset across a rate switch: BUFGCTRL has no glitch, the transmitter is in Electrical Idle and the other
 side of its CDC FIFOs and pulse synchronizers ("pcie_link") keeps running. Using the reference clock (common clock architecture) keeps the
 lane clock frequency-locked to the transceivers (TX buffers enabled) and tracks the host's spread
@@ -26,13 +28,15 @@ from litex.soc.cores.clock import S7MMCM
 # S7 PCIe Clocking ---------------------------------------------------------------------------------
 
 class S7PCIeClocking(LiteXModule):
-    def __init__(self, refclk_p, refclk_n, refclk_freq=100e6, reset=0, speedgrade=-1):
+    def __init__(self, refclk_p, refclk_n, refclk_freq=100e6, reset=0, speedgrade=-1, gen3=False):
         self.refclk       = Signal()      # o: transceivers reference clock (GTREFCLK).
-        self.rate         = Signal()      # i ("pcie_link"): 0: 2.5 GT/s, 1: 5.0 GT/s.
+        self.rate         = Signal(2)     # i ("pcie_link"): 0: 2.5 GT/s, 1: 5.0 GT/s, 2: 8.0 GT/s.
         self.locked       = Signal()      # o
         self.cd_pcie_link = ClockDomain() # 125 MHz.
         self.cd_pcie_oob  = ClockDomain() # 50 MHz.
         self.cd_pcie_pipe = ClockDomain() # 62.5/125 MHz (rate).
+        if gen3:
+            self.cd_pcie_g3 = ClockDomain() # "pcie_pipe" or 200 MHz (rate).
 
         # # #
 
@@ -62,11 +66,14 @@ class S7PCIeClocking(LiteXModule):
         mmcm.create_clkout(self.cd_pcie_oob,        50e6)
         mmcm.create_clkout(self.cd_pcie_pipe_gen1, 62.5e6, buf=None, with_reset=False)
         mmcm.create_clkout(self.cd_pcie_pipe_gen2,  125e6, buf=None, with_reset=False)
+        if gen3:
+            self.cd_pcie_pipe_gen3 = ClockDomain() # 200 MHz (unbuffered MMCM output).
+            mmcm.create_clkout(self.cd_pcie_pipe_gen3, 200e6, buf=None, with_reset=False)
         self.comb += self.locked.eq(mmcm.locked)
 
         # Lane clock selection.
         sel = Signal()
-        self.sync.pcie_link += sel.eq(self.rate)
+        self.sync.pcie_link += sel.eq(self.rate != 0)
         self.specials += [
             Instance("BUFGCTRL",
                 i_I0      = self.cd_pcie_pipe_gen1.clk,
@@ -96,3 +103,20 @@ class S7PCIeClocking(LiteXModule):
             sync += rst_r.eq(0)
         add_reset(self.cd_pcie_link, "pcie_link_rst", ~mmcm.locked)
         add_reset(self.cd_pcie_pipe, "pcie_pipe_rst", ~mmcm.locked)
+
+        # 8.0 GT/s clock selection (BUFGCTRL cascade).
+        if gen3:
+            sel3 = Signal()
+            self.sync.pcie_link += sel3.eq(self.rate == 2)
+            self.specials += Instance("BUFGCTRL",
+                i_I0      = self.cd_pcie_pipe.clk,
+                i_I1      = self.cd_pcie_pipe_gen3.clk,
+                i_S0      = ~sel3,
+                i_S1      =  sel3,
+                i_CE0     = 1,
+                i_CE1     = 1,
+                i_IGNORE0 = 0,
+                i_IGNORE1 = 0,
+                o_O       = self.cd_pcie_g3.clk,
+            )
+            add_reset(self.cd_pcie_g3, "pcie_g3_rst", ~mmcm.locked)
