@@ -119,6 +119,16 @@ class PCIeConfigSpace(LiteXModule):
         add(PCIE_CAP + 0x2c, ro=(((1 << speed) - 1) << 1))
         add(PCIE_CAP + 0x30, ro=speed)
 
+        # Secondary PCI Express Extended Capability (8.0 GT/s, 7.27): Link Control 3 (Perform Equalization,
+        # Link Equalization Request Interrupt Enable), Lane Error Status (no error recorded), Lane Equalization
+        # Control (presets and hints not reported: reserved values).
+        if gen3_capable:
+            add(0x100, ro=(1 << 16) | 0x0019)
+            add(0x104, mask=0x00000003)
+            add(0x108)
+            for i in range((nlanes + 1)//2):
+                add(0x10c + 4*i, ro=0x7f7f7f7f if (2*i + 1) < nlanes else 0x00007f7f)
+
         self.comb += [
             self.dat_r.eq(0),
             Case(self.adr, cases),
