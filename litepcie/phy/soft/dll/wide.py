@@ -307,34 +307,47 @@ class TLPRepacker(LiteXModule):
         wr     = Signal(adr + 1)
         rd     = Signal(adr + 1)
         used   = Signal(adr + 1)
+        # A beat in the input stage has its place reserved as well.
         self.comb += [
             used.eq(wr - rd),
-            self.sink_ready.eq(used + ndw <= depth),
+            self.sink_ready.eq(used + 2*ndw <= depth),
         ]
 
-        # Write: valid slots after the DWs kept. While dropping, the slots of a beat are ignored up to the
-        # first TLP start.
+        # Input stage: valid slots and their offset from the write position, which don't depend on it
+        # (timing). While dropping, the slots of a beat are ignored up to the first TLP start.
         beat       = self.sink_en & self.sink_ready
-        sink_valid = Signal(ndw)
         dropping   = Signal()
         dropping_c = dropping
+        offset_c   = Constant(0, bits_for(ndw))
+        valids     = [Signal() for _ in range(ndw)]
+        offsets    = [Signal(bits_for(ndw)) for _ in range(ndw)]
+        total      = Signal(bits_for(ndw))
+        entries    = [Signal(width, reset_less=True) for _ in range(ndw)]
         for i in range(ndw):
             dropping_n = Signal()
+            valid      = Signal()
+            offset_n   = Signal(bits_for(ndw))
             self.comb += [
                 dropping_n.eq(dropping_c & ~(self.sink_valid[i] & self.sink_first[i])),
-                sink_valid[i].eq(beat & self.sink_valid[i] & ~dropping_n),
+                valid.eq(beat & self.sink_valid[i] & ~dropping_n),
+                offset_n.eq(offset_c + valid),
             ]
-            dropping_c = dropping_n
-        entries = [Cat(self.sink_data[32*i:32*(i+1)], self.sink_first[i], self.sink_last[i],
-                       self.sink_edb[i], self.sink_seq[12*i:12*(i+1)]) for i in range(ndw)]
-        pos_c = wr
+            self.sync += [
+                valids[i].eq(valid & ~self.flush),
+                offsets[i].eq(offset_c),
+                entries[i].eq(Cat(self.sink_data[32*i:32*(i+1)], self.sink_first[i], self.sink_last[i],
+                    self.sink_edb[i], self.sink_seq[12*i:12*(i+1)])),
+            ]
+            dropping_c, offset_c = dropping_n, offset_n
+        self.sync += total.eq(Mux(self.flush, 0, offset_c))
+
+        # Write.
         for i in range(ndw):
-            pos_n = Signal(adr + 1)
-            self.comb += pos_n.eq(pos_c + sink_valid[i])
-            self.sync += If(sink_valid[i],
-                Case(pos_c[:adr], {j: buf[j].eq(entries[i]) for j in range(depth)})
+            position = Signal(adr)
+            self.comb += position.eq(wr[:adr] + offsets[i])
+            self.sync += If(valids[i],
+                Case(position, {j: buf[j].eq(entries[i]) for j in range(depth)})
             )
-            pos_c = pos_n
 
         # Read: up to the end of the TLP or a full beat.
         head = [Signal(width) for _ in range(ndw)]
@@ -363,7 +376,7 @@ class TLPRepacker(LiteXModule):
                 source.valid.eq(0),
             ).Else(
                 If(beat, dropping.eq(dropping_c)),
-                wr.eq(pos_c),
+                wr.eq(wr + total),
                 If(take,
                     rd.eq(rd + count),
                     source.valid.eq(1),
