@@ -328,39 +328,61 @@ class Gen3RXFramer(LiteXModule):
             prev_data.eq(sink.data),
         )
 
-        # Stage A: slots classified.
+        # Stage A: slots classified (over two registers: the checks, then the kind and next position).
+        c_valid = Signal()
+        c_data  = Signal(32*(ndw + 1))
+        self.sync += [
+            c_valid.eq(prev_valid & sink.valid),
+            c_data.eq(Cat(prev_data, sink.data[0:32])),
+        ]
         a_valid = Signal()
         a_data  = Signal(32*(ndw + 1))
         a_kind  = [Signal(3)  for _ in range(ndw)]
         a_next  = [Signal(pw) for _ in range(ndw)]
         a_seq   = [Signal(12) for _ in range(ndw)]
         self.sync += [
-            a_valid.eq(prev_valid & sink.valid),
-            a_data.eq(Cat(prev_data, sink.data[0:32])),
+            a_valid.eq(c_valid),
+            a_data.eq(c_data),
         ]
         for i in range(ndw):
             slot   = prev_data[32*i:32*(i+1)]
             length = Cat(slot[4:8], slot[8:15])
             fcrc, parity = _stp_check(length)
-            stp_ok = (slot[20:24] == fcrc) & (slot[15] == parity) & (length >= 5)
+            is_eds = Signal()
+            is_edb = Signal()
+            is_stp = Signal()
+            stp_ok = Signal()
+            is_sdp = Signal()
+            is_idl = Signal()
+            c_len  = Signal(11)
             self.sync += [
-                a_seq[i].eq(Cat(slot[24:32], slot[16:20])),
+                is_eds.eq(slot == 0x0090801f),
+                is_edb.eq(slot == 0xc0c0c0c0),
+                is_stp.eq(slot[0:4] == 0xf),
+                stp_ok.eq((slot[20:24] == fcrc) & (slot[15] == parity) & (length >= 5)),
+                is_sdp.eq(slot[0:16] == 0xacf0),
+                is_idl.eq(slot[0:8] == 0),
+                c_len.eq(length),
+            ]
+            cslot = c_data[32*i:32*(i+1)]
+            self.sync += [
+                a_seq[i].eq(Cat(cslot[24:32], cslot[16:20])),
                 a_next[i].eq(i + 1),
-                If(slot == 0x0090801f,
+                If(is_eds,
                     a_kind[i].eq(TOKEN_EDS)
-                ).Elif(slot == 0xc0c0c0c0,
+                ).Elif(is_edb,
                     a_kind[i].eq(TOKEN_EDB)
-                ).Elif(slot[0:4] == 0xf,
+                ).Elif(is_stp,
                     If(stp_ok,
                         a_kind[i].eq(TOKEN_STP),
-                        a_next[i].eq(i + length),
+                        a_next[i].eq(i + c_len),
                     ).Else(
                         a_kind[i].eq(TOKEN_ERR)
                     )
-                ).Elif(slot[0:16] == 0xacf0,
+                ).Elif(is_sdp,
                     a_kind[i].eq(TOKEN_SDP),
                     a_next[i].eq(i + 2),
-                ).Elif(slot[0:8] == 0,
+                ).Elif(is_idl,
                     a_kind[i].eq(TOKEN_IDL)
                 ).Else(
                     a_kind[i].eq(TOKEN_ERR)
@@ -794,7 +816,7 @@ class Gen3LaneTX(LiteXModule):
         ts1  = Signal()
         hdr1 = Signal(2)
         scr1 = Signal(128)
-        sym1 = [Signal(4) for _ in range(16)]
+        sym1 = [Signal(5) for _ in range(9)] # 1s of Symbols 0-1, ..., 12-13, then of 14 and of 15.
         # Stage 2: what the DC Balance needs: thresholds on the running balance for the 4 decisions (from the
         # 1s to Symbol 11), the balance change of the 5 possible Blocks.
         v2    = Signal()
@@ -847,7 +869,9 @@ class Gen3LaneTX(LiteXModule):
                 ts1.eq(k0 == BLOCK_TS),
                 hdr1.eq(Mux(k0 == BLOCK_DATA, SYNC_DATA, SYNC_OS)),
                 scr1.eq(scrambler.data_out),
-                *[sym1[i].eq(popcount(scrambler.data_out[8*i:8*(i+1)])) for i in range(16)],
+                *[sym1[i].eq(popcount(scrambler.data_out[16*i:16*(i+1)])) for i in range(7)],
+                sym1[7].eq(popcount(scrambler.data_out[112:120])),
+                sym1[8].eq(popcount(scrambler.data_out[120:128])),
             ).Elif(take2,
                 v1.eq(0)
             )
@@ -864,11 +888,13 @@ class Gen3LaneTX(LiteXModule):
             while len(terms) > 1:
                 terms = [terms[i] + terms[i + 1] if i + 1 < len(terms) else terms[i] for i in range(0, len(terms), 2)]
             return terms[0]
+        ones128 = Signal(8)
         self.comb += [
-            ones96.eq(total([hdr1[0] + hdr1[1]] + sym1[0:12])),
-            ones112.eq(ones96 + sym1[12] + sym1[13]),
-            ones14.eq(sym1[14]),
-            ones15.eq(sym1[15]),
+            ones96.eq(total([hdr1[0] + hdr1[1]] + sym1[0:6])),
+            ones112.eq(total([hdr1[0] + hdr1[1]] + sym1[0:7])),
+            ones128.eq(total([hdr1[0] + hdr1[1]] + sym1[0:9])),
+            ones14.eq(sym1[7]),
+            ones15.eq(sym1[8]),
         ]
         self.sync += [
             If(take2,
@@ -880,7 +906,7 @@ class Gen3LaneTX(LiteXModule):
                 thr[1].eq(-31 + 98 - 2*ones96), # balance < thr[1]: fewer 0s.
                 thr[2].eq(15 + 98 - 2*ones96),
                 thr[3].eq(-15 + 98 - 2*ones96),
-                delta[0].eq(2*(ones112 + ones14 + ones15) - 130),
+                delta[0].eq(2*ones128 - 130),
                 delta[1].eq(2*(ones112 + 2) - 130),
                 delta[2].eq(2*(ones112 + 14) - 130),
                 delta[3].eq(2*(ones112 + ones14 + 1) - 130),
