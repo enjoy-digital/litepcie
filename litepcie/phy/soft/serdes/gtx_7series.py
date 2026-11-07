@@ -161,6 +161,9 @@ class K7PCIeSerDes(S7PCIeSerDes):
             i_TXDATA         = Mux(raw_tx, Cat(*[raw_tx_r[10*k:10*k + 8] for k in range(4)]), tx_data),
             i_TXCHARDISPMODE = Mux(raw_tx, Cat(*[raw_tx_r[10*k + 9] for k in range(4)]), tx_mode),
             i_TXCHARDISPVAL  = Mux(raw_tx, Cat(*[raw_tx_r[10*k + 8] for k in range(4)]), tx_val),
+            # Receive equalizer: LPM at 2.5/5.0 GT/s, DFE at 8.0 GT/s (as the Xilinx wrapper and LiteICLink).
+            i_RXLPMEN        = ~rs.pll_sel,
+            i_RXDFEXYDEN     = rs.pll_sel,
             i_TXPRECURSOR    = Cat(Constant(0, 1), lane.tx_eq_pre[0:4]),
             i_TXPOSTCURSOR   = Cat(Constant(0, 1), lane.tx_eq_post[0:4]),
         )
