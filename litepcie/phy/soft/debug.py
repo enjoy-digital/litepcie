@@ -64,7 +64,10 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             g3 = phy.g3
             self._g3_control = CSRStorage(fields=[
                 CSRField("force", size=1, offset=0, description="8.0 GT/s with the transmitters on, LTSSM disabled (with loopback: checks the transceivers' rate switch and the Blocks without a partner)."),
+                CSRField("snapshot", size=1, offset=1, pulse=True, description="Capture the raw words of Lane 0 (g3_raw_tx/g3_raw_rx)."),
             ])
+            self._g3_raw_tx = CSRStatus(40, description="Raw word transmitted on Lane 0 (snapshot).")
+            self._g3_raw_rx = CSRStatus(40, description="Raw word received on Lane 0 (snapshot, bit 39: valid).")
             self._g3_status = CSRStatus(fields=[
                 CSRField("locked",    size=1, offset=0,  description="Lanes aligned on EIEOS (8.0 GT/s)."),
                 CSRField("aligned",   size=8, offset=1,  description="Block alignment of each lane."),
@@ -77,6 +80,20 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             self.comb += phy.force_g3.eq(force)
             aligned = Signal(8)
             self.comb += aligned.eq(Cat(*[l.aligned for l in g3.lanes_rx]))
+            # Raw words snapshot: captured in "pcie_g3", held, read in "sys".
+            snapshot = PulseSynchronizer("sys", "pcie_g3")
+            self.submodules += snapshot
+            raw_tx = Signal(40)
+            raw_rx = Signal(40)
+            self.comb += snapshot.i.eq(self._g3_control.fields.snapshot)
+            self.sync.pcie_g3 += If(snapshot.o,
+                raw_tx.eq(serdes.lanes[0].raw_tx),
+                raw_rx.eq(Cat(serdes.lanes[0].raw_rx[:39], serdes.lanes[0].raw_rx_valid)),
+            )
+            self.specials += [
+                MultiReg(raw_tx, self._g3_raw_tx.status, "sys"),
+                MultiReg(raw_rx, self._g3_raw_rx.status, "sys"),
+            ]
             rs = getattr(serdes, "rate_sequencer", None)
             self.specials += [
                 MultiReg(g3.lrx.locked,     self._g3_status.fields.locked,    "sys"),
