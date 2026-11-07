@@ -789,11 +789,12 @@ class Gen3LaneTX(LiteXModule):
         v0 = Signal()
         k0 = Signal(3)
         d0 = Signal(128)
-        # Stage 1: scrambled Block.
+        # Stage 1: scrambled Block, 1s of each Symbol.
         v1   = Signal()
         ts1  = Signal()
         hdr1 = Signal(2)
         scr1 = Signal(128)
+        sym1 = [Signal(4) for _ in range(16)]
         # Stage 2: what the DC Balance needs: thresholds on the running balance for the 4 decisions (from the
         # 1s to Symbol 11), the balance change of the 5 possible Blocks.
         v2    = Signal()
@@ -846,6 +847,7 @@ class Gen3LaneTX(LiteXModule):
                 ts1.eq(k0 == BLOCK_TS),
                 hdr1.eq(Mux(k0 == BLOCK_DATA, SYNC_DATA, SYNC_OS)),
                 scr1.eq(scrambler.data_out),
+                *[sym1[i].eq(popcount(scrambler.data_out[8*i:8*(i+1)])) for i in range(16)],
             ).Elif(take2,
                 v1.eq(0)
             )
@@ -858,11 +860,15 @@ class Gen3LaneTX(LiteXModule):
         ones112 = Signal(8)
         ones14  = Signal(4)
         ones15  = Signal(4)
+        def total(terms):
+            while len(terms) > 1:
+                terms = [terms[i] + terms[i + 1] if i + 1 < len(terms) else terms[i] for i in range(0, len(terms), 2)]
+            return terms[0]
         self.comb += [
-            ones96.eq(popcount(Cat(hdr1, scr1[0:96]))),
-            ones112.eq(popcount(Cat(hdr1, scr1[0:112]))),
-            ones14.eq(popcount(scr1[112:120])),
-            ones15.eq(popcount(scr1[120:128])),
+            ones96.eq(total([hdr1[0] + hdr1[1]] + sym1[0:12])),
+            ones112.eq(ones96 + sym1[12] + sym1[13]),
+            ones14.eq(sym1[14]),
+            ones15.eq(sym1[15]),
         ]
         self.sync += [
             If(take2,
@@ -1106,7 +1112,7 @@ class Gen3LinkRX(LiteXModule):
     """Blocks of the lanes to the Data Stream (2 beats per Data Block) and the Training Sequences of each lane.
     Lanes aligned on an EIEOS received on all of them, the kinds then have to match on every Block (else not
     locked anymore). SKP Ordered Sets dropped."""
-    def __init__(self, nlanes, depth=64):
+    def __init__(self, nlanes, depth=16):
         ndw = 2*nlanes
         self.blocks  = [stream.Endpoint(block_layout()) for _ in range(nlanes)]
         self.source  = source = stream.Endpoint([("data", 32*ndw)])
