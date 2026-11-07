@@ -16,6 +16,11 @@ Training Sequences, Ordered Sets and packets, at any Symbol position on RX.
 
 Lane clock domains come from the serdes: "pcie_pipe" (lane clock, all lanes), "pcie_link" (fixed
 125 MHz), per-lane recovered clocks (internal). Controls/status are in "pcie_pipe" unless noted.
+
+At 8.0 GT/s (rate 2, 128b/130b), the lanes exchange raw 40-bit words (raw_tx/raw_rx, first bit in the
+LSB, in "pcie_g3": the lane clock at 8.0 GT/s, "pcie_pipe" in a simulation) instead of Symbols: the 8b/10b and the lane datapaths are bypassed, Block alignment, scrambling and
+SKP Ordered Sets are in the Physical Layer (gen3.py); the received words cross from the recovered clock
+to the lane clock without clock compensation (common reference clock).
 """
 
 from migen import *
@@ -58,6 +63,13 @@ class PCIeLane:
         self.rx_errors    = Signal()   # o (Pulse): 8b/10b error received.
         self.rx_overflows = Signal(16) # o: elastic buffer overflows.
 
+        # 8.0 GT/s raw words ("pcie_g3": the lane clock at 8.0 GT/s).
+        self.raw_tx       = Signal(40) # i: word to transmit (one per cycle).
+        self.raw_rx       = Signal(40) # o: received word...
+        self.raw_rx_valid = Signal()   # o: ...when valid.
+        self.tx_eq_pre    = Signal(6)  # i: 8.0 GT/s Transmitter Pre-cursor Coefficient (Full Swing of 40).
+        self.tx_eq_post   = Signal(6)  # i: 8.0 GT/s Transmitter Post-cursor Coefficient (Full Swing of 40).
+
 # PCIe SerDes --------------------------------------------------------------------------------------
 
 class PCIeSerDes(LiteXModule):
@@ -65,7 +77,7 @@ class PCIeSerDes(LiteXModule):
     def __init__(self, nlanes):
         self.nlanes    = nlanes
         self.lanes     = [PCIeLane() for _ in range(nlanes)]
-        self.rate      = Signal()  # i ("pcie_link"): 0: 2.5 GT/s, 1: 5.0 GT/s.
+        self.rate      = Signal(2) # i ("pcie_link"): 0: 2.5 GT/s, 1: 5.0 GT/s, 2: 8.0 GT/s.
         self.rate_done = Signal()  # o ("pcie_link"): rate change applied.
         self.loopback  = Signal(3) # i: transceiver loopback mode.
         self.ready     = Signal()  # o: all lanes ready.
