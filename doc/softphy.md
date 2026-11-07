@@ -340,6 +340,15 @@ specification (rev 0.3) for what 8.0 GT/s needs.
   boundary on 8b/10b commas found in 128b/130b data. With it disabled at 8.0 GT/s, the 4 lanes are aligned and the
   lanes locked on EIEOS in near-end loopback, no undefined Sync Header or slip after the first alignment (40 s,
   about 8e9 words per lane). Timing met at x4 (WNS +0.036 ns).
+- Hardware, with a root port (x4, the root port moved to 8.0 GT/s from 5.0 GT/s): the speed change and the rate
+  sequence work (about 65 us), the LTSSM goes to Recovery.Equalization Phase 0, but no Training Sequence is
+  received at 8.0 GT/s. Found on the way, and fixed: the GTX reports Electrical Idle on the 8.0 GT/s signal and
+  squelches the received data (its detection is now off at 8.0 GT/s, Electrical Idle is inferred); the DFE
+  receive equalizer, as configured, only gives alternating bits. With LPM the root port's stream is received
+  (EIEOS every 33 Blocks in a raw capture) but with a bit error rate around 1e-2: Block alignment is not
+  obtained, with any root port transmitter preset (P0 to P10, P9 best). Next: DFE as the Xilinx Gen3 wrapper
+  (RXDFEXYDEN 0, RX_DFE_KL_CFG2, RXDFELPMRESET after the change), eye scan of the receivers. The PCIe lanes of
+  this board were only used at 5.0 GT/s by the hard IP so far.
 
 Simulation: `python3 bench/soft/sim_wide.py --phy --gen3 --nlanes 8 --eq-preset 8` (two Physical Layers, the root port
 requesting preset 8 in its Phase 3, TLPs and a Link Retrain at 8.0 GT/s), `--fail-8g` (nothing received at 8.0 GT/s:
