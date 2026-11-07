@@ -634,3 +634,44 @@ class TestSoftGen3LaneEQ(unittest.TestCase):
         self.assertEqual(res["c_ok"],   (8, 6, 28, 6, 12, 0))
         self.assertEqual(res["c_bad"],  (8, 6, 28, 6, 12, 1, 12, 22, 6))
 
+
+class TestSoftGen3TSSymbols(unittest.TestCase):
+    def test_ts_symbols(self):
+        # TS1 and TS2 Symbols (4.2.4.1, Tables 4-5/4-6), each on 8 bits, then decoded back.
+        from litepcie.phy.soft.gen3 import ts3_layout, ts3_symbols, ts3_fields
+        class DUT(Module):
+            def __init__(self):
+                self.ts  = Record(ts3_layout())
+                self.out = Record(ts3_layout())
+                self.data = Signal(128)
+                self.comb += self.data.eq(Cat(*ts3_symbols(self.ts)))
+                self.comb += ts3_fields(self.data, self.out)
+        dut = DUT()
+        res = {}
+        def generator():
+            for ts2 in [0, 1]:
+                yield dut.ts.ts2.eq(ts2)
+                yield dut.ts.link.eq(5)
+                yield dut.ts.lane.eq(3)
+                yield dut.ts.n_fts.eq(0xff)
+                yield dut.ts.rate.eq(0x0e)
+                yield dut.ts.ctrl.eq(0)
+                yield dut.ts.eq_ctrl.eq(0x0 if ts2 else 0x39)
+                yield dut.ts.pre.eq(4)
+                yield dut.ts.cur.eq(28)
+                yield dut.ts.post.eq(8)
+                yield dut.ts.reject.eq(0)
+                yield
+                data = (yield dut.data)
+                res[ts2] = ([(data >> (8*k)) & 0xff for k in range(16)],
+                    ((yield dut.out.ts2), (yield dut.out.link), (yield dut.out.lane), (yield dut.out.rate),
+                     (yield dut.out.eq_ctrl), (yield dut.out.pre), (yield dut.out.cur), (yield dut.out.post)))
+        run_simulation(dut, generator())
+        ts1, ts2 = res[0][0], res[1][0]
+        parity = bin(0x39 ^ 4 ^ 28 ^ 8).count("1") & 1
+        self.assertEqual(ts1[:9], [0x1e, 5, 3, 0xff, 0x0e, 0, 0x39, 4, 28])
+        self.assertEqual(ts1[9], 8 | (parity << 7))
+        self.assertEqual(ts1[10:], [0x4a]*6)
+        self.assertEqual(ts2, [0x2d, 5, 3, 0xff, 0x0e, 0, 0] + [0x45]*9)
+        self.assertEqual(res[0][1], (0, 5, 3, 0x0e, 0x39, 4, 28, 8))
+        self.assertEqual(res[1][1][:5], (1, 5, 3, 0x0e, 0))

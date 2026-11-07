@@ -650,18 +650,19 @@ def ts3_layout():
 
 def ts3_symbols(ts):
     """The 16 Symbols of a Training Sequence (Symbol 0 first, bits 7:0), Symbols 14 and 15 as the identifier."""
-    ident = Mux(ts.ts2, TS2_ID3, TS1_ID3)
-    s7    = Mux(ts.ts2, TS2_ID3, Cat(ts.pre, Constant(0, 2)))
-    s8    = Mux(ts.ts2, TS2_ID3, Cat(ts.cur, Constant(0, 2)))
+    c8    = lambda v: Constant(v, 8) # Symbols on 8 bits (a Mux of constants takes the width of the largest).
+    ident = Mux(ts.ts2, c8(TS2_ID3), c8(TS1_ID3))
+    s7    = Mux(ts.ts2, c8(TS2_ID3), Cat(ts.pre, Constant(0, 2)))
+    s8    = Mux(ts.ts2, c8(TS2_ID3), Cat(ts.cur, Constant(0, 2)))
     s9lo  = Cat(ts.post, ts.reject)
     parity = Reduce("XOR", [ts.eq_ctrl[i] for i in range(8)] + [ts.pre[i] for i in range(6)] +
         [ts.cur[i] for i in range(6)] + [s9lo[i] for i in range(7)])
-    s9    = Mux(ts.ts2, TS2_ID3, Cat(s9lo, parity))
+    s9    = Mux(ts.ts2, c8(TS2_ID3), Cat(s9lo, parity))
     return [
-        Mux(ts.ts2, 0x2d, 0x1e),
-        Mux(ts.link_pad, GEN3_PAD, ts.link),
-        Mux(ts.lane_pad, GEN3_PAD, Cat(ts.lane, Constant(0, 3))),
-        ts.n_fts, ts.rate, ts.ctrl, ts.eq_ctrl, s7, s8, s9,
+        Mux(ts.ts2, c8(OS_TS2), c8(OS_TS1)),
+        Mux(ts.link_pad, c8(GEN3_PAD), ts.link),
+        Mux(ts.lane_pad, c8(GEN3_PAD), Cat(ts.lane, Constant(0, 3))),
+        ts.n_fts, ts.rate, ts.ctrl, Mux(ts.ts2, c8(0), ts.eq_ctrl), s7, s8, s9,
     ] + [ident]*6
 
 # Lane TX ------------------------------------------------------------------------------------------
@@ -882,14 +883,16 @@ class Gen3LinkTX(LiteXModule):
             self.comb += [
                 block.valid.eq(1),
                 block.kind.eq(kind),
-                If(kind == BLOCK_TS, block.data.eq(ts_data[i])).Else(block.data.eq(data)),
+                # Data Block without its two beats (the framer late): IDL Tokens, the packets aren't split.
+                If(kind == BLOCK_TS, block.data.eq(ts_data[i])).Elif(filled == 2, block.data.eq(data)).Else(block.data.eq(0)),
             ]
         self.comb += [
             If(self.eios & ~in_stream,
                 kind.eq(BLOCK_EIOS)
             ).Elif(after_eds,
                 kind.eq(Mux(self.data_enable, BLOCK_SKP, BLOCK_EIEOS))
-            ).Elif(in_stream,
+            ).Elif(in_stream | self.data_enable,
+                # SDS as soon as the Data Stream is enabled (no Training Sequence with fields of the next state).
                 If(~sds_sent,
                     kind.eq(BLOCK_SDS)
                 ).Else(
@@ -901,8 +904,7 @@ class Gen3LinkTX(LiteXModule):
                 kind.eq(BLOCK_TS)
             )
         ]
-        # A Data Block needs its two beats: the lanes wait (an Ordered Set or IDL would break the stream), at
-        # 2 beats per Block the framer keeps ahead.
+        # A Data Block takes its two beats, the framer keeps ahead at 2 beats per Block (else IDL Tokens).
         self.sync += If(take,
             If(after_eds,
                 after_eds.eq(0),
@@ -920,9 +922,12 @@ class Gen3LinkTX(LiteXModule):
                         skp_count.eq(skp_count + 1)
                     )
                 )
+            ).Elif(kind == BLOCK_SDS,
+                in_stream.eq(1),
+                sds_sent.eq(1),
+                skp_count.eq(0),
             ).Else(
                 If(kind == BLOCK_EIEOS, os_count.eq(0)).Elif(os_count != eieos_interval, os_count.eq(os_count + 1)),
-                If(self.data_enable, in_stream.eq(1), skp_count.eq(0)),
             )
         )
 
