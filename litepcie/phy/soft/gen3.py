@@ -322,7 +322,7 @@ class Gen3RXFramer(LiteXModule):
         # The word processed is the previous one, slot 0 of the current one is its lookahead (second DW of a
         # DLLP, EDB after a TLP).
         prev_valid = Signal()
-        prev_data  = Signal(32*ndw)
+        prev_data  = Signal(32*ndw, reset_less=True)
         self.sync += If(sink.valid,
             prev_valid.eq(1),
             prev_data.eq(sink.data),
@@ -330,16 +330,16 @@ class Gen3RXFramer(LiteXModule):
 
         # Stage A: slots classified (over two registers: the checks, then the kind and next position).
         c_valid = Signal()
-        c_data  = Signal(32*(ndw + 1))
+        c_data  = Signal(32*(ndw + 1), reset_less=True)
         self.sync += [
             c_valid.eq(prev_valid & sink.valid),
             c_data.eq(Cat(prev_data, sink.data[0:32])),
         ]
         a_valid = Signal()
-        a_data  = Signal(32*(ndw + 1))
+        a_data  = Signal(32*(ndw + 1), reset_less=True)
         a_kind  = [Signal(3)  for _ in range(ndw)]
-        a_next  = [Signal(pw) for _ in range(ndw)]
-        a_seq   = [Signal(12) for _ in range(ndw)]
+        a_next  = [Signal(pw, reset_less=True) for _ in range(ndw)]
+        a_seq   = [Signal(12, reset_less=True) for _ in range(ndw)]
         self.sync += [
             a_valid.eq(c_valid),
             a_data.eq(c_data),
@@ -396,8 +396,8 @@ class Gen3RXFramer(LiteXModule):
         M = [Constant(1 << i, ndw) for i in range(ndw)]
         steps = 1
         while steps < ndw:
-            J_n = [Signal(pw)  for _ in range(ndw)]
-            M_n = [Signal(ndw) for _ in range(ndw)]
+            J_n = [Signal(pw, reset_less=True)  for _ in range(ndw)]
+            M_n = [Signal(ndw, reset_less=True) for _ in range(ndw)]
             J_a = Array(J)
             M_a = Array(M)
             for i in range(ndw):
@@ -408,10 +408,10 @@ class Gen3RXFramer(LiteXModule):
                 ]
             # Beat data along.
             valid_n = Signal()
-            data_n  = Signal(len(data))
+            data_n  = Signal(len(data), reset_less=True)
             kinds_n = [Signal(3)  for _ in range(ndw)]
-            nexts_n = [Signal(pw) for _ in range(ndw)]
-            seqs_n  = [Signal(12) for _ in range(ndw)]
+            nexts_n = [Signal(pw, reset_less=True) for _ in range(ndw)]
+            seqs_n  = [Signal(12, reset_less=True) for _ in range(ndw)]
             self.sync += [valid_n.eq(valid), data_n.eq(data)] + \
                 [kinds_n[i].eq(kinds[i]) for i in range(ndw)] + \
                 [nexts_n[i].eq(nexts[i]) for i in range(ndw)] + \
@@ -437,7 +437,7 @@ class Gen3RXFramer(LiteXModule):
         for i in range(ndw): # Highest Token of the beat.
             self.comb += If(tokens[i], last_kind.eq(kinds[i]), last_seq.eq(seqs[i]), last_pos.eq(i))
         d_valid  = Signal()
-        d_data   = Signal(len(data))
+        d_data   = Signal(len(data), reset_less=True)
         d_tokens = Signal(ndw)
         d_start  = Signal(pw)
         d_kind   = Signal(3)
@@ -512,16 +512,24 @@ class Gen3RXFramer(LiteXModule):
         # Index of each one: the write pointer plus the DLLPs before it in the beat (power of 2 queue).
         nq = max(8, ndw)
         qw = log2_int(nq)
+        # Written a cycle later (timing): wr_e is the write pointer once they are.
         dllps = Array(Signal(48) for _ in range(nq))
-        wr, rd = Signal(qw), Signal(qw)
+        wr, wr_e, rd = Signal(qw), Signal(qw), Signal(qw)
         for i in range(ndw):
-            index = Signal(qw)
-            self.comb += index.eq(wr + (popcount(Cat(*dllp_v[:i])) if i else 0))
-            self.sync += If(process & dllp_v[i], dllps[index].eq(Cat(slots[i][16:32], slots[i + 1])))
+            e_valid = Signal()
+            e_index = Signal(qw)
+            e_dllp  = Signal(48, reset_less=True)
+            self.sync += [
+                e_valid.eq(process & dllp_v[i]),
+                e_index.eq(wr + (popcount(Cat(*dllp_v[:i])) if i else 0)),
+                e_dllp.eq(Cat(slots[i][16:32], slots[i + 1])),
+            ]
+            self.sync += If(e_valid, dllps[e_index].eq(e_dllp))
         self.sync += [
             If(process, wr.eq(wr + popcount(Cat(*dllp_v)))),
-            self.dllp_valid.eq(rd != wr),
-            If(rd != wr,
+            wr_e.eq(wr),
+            self.dllp_valid.eq(rd != wr_e),
+            If(rd != wr_e,
                 self.dllp.eq(dllps[rd]),
                 rd.eq(rd + 1),
             )
