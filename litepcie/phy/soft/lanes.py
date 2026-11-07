@@ -11,8 +11,10 @@ same time on all the lanes, and the Symbols of the link stream go to the lanes i
 k mod nlanes. On the receive side RXLaneDeskew compensates the Symbol phase and the skew of the lanes with
 the COM Symbols of the Training Sequences (they arrive at the same time, modulo the skew).
 
-The link width is the width of the design, there is no width negotiation yet: a partner bringing up
-fewer lanes won't reach L0. Lane reversal isn't handled either.
+The link width is negotiated in Configuration (4.2.6.3): each lane answers with the Link and Lane Numbers it
+receives, the width is the largest of x1, x2, x4, x8 with these lanes from Lane 0. Lanes above it go to Electrical
+Idle. The Data Link Layer keeps the width of the design: beats are split into words for the lanes in use, and
+words from them make beats, a word being aligned on a DW first at x1 and x2. Lane reversal isn't handled.
 """
 
 from migen import *
@@ -24,6 +26,7 @@ from litex.gen import *
 from litex.soc.interconnect import stream
 
 from litepcie.phy.soft.common       import COM, EIOS, lane_layout
+from litepcie.phy.soft.dll.wide     import RXPhaseAligner, RXPhaseAlignerX1
 from litepcie.phy.soft.ltssm        import PCIeLTSSM
 from litepcie.phy.soft.ordered_sets import TSGenerator, TSChecker, OrderedSetDetector, ts_layout
 from litepcie.phy.soft.pipe         import EIOS_WORD
@@ -39,6 +42,7 @@ class RXLaneDeskew(LiteXModule):
     that, and below the 16 Symbols of a Training Sequence."""
     def __init__(self, nlanes, depth=16, max_skew=11):
         self.clear  = Signal() # i: partner's lanes not valid anymore (Electrical Idle): not locked.
+        self.mask   = Signal(nlanes, reset=2**nlanes - 1) # i: lanes to deskew, the others are ignored.
         self.sinks  = [stream.Endpoint(lane_layout(4)) for _ in range(nlanes)]
         self.source = source = stream.Endpoint(lane_layout(4*nlanes))
         self.align  = Signal() # i
@@ -91,9 +95,9 @@ class RXLaneDeskew(LiteXModule):
             heads_com.append(head.ctrl[0] & (head.data[0:8] == COM.value))
 
         valids  = Cat(*[fifo.source.valid for fifo in fifos])
-        all_v   = valids == (2**nlanes - 1)
-        coms    = Cat(*heads_com)
-        all_com = coms == (2**nlanes - 1)
+        all_v   = (valids & self.mask) == self.mask
+        coms    = Cat(*heads_com) & self.mask
+        all_com = coms == self.mask
         locked  = self.locked
         # COMs of different Training Sequences: a lane more than max_skew Symbols ahead of another isn't
         # aligned with it, it goes to its next COM. Happens
@@ -101,12 +105,15 @@ class RXLaneDeskew(LiteXModule):
         drops = []
         for i, fifo in enumerate(fifos):
             drop = Signal()
-            self.comb += drop.eq(Reduce("OR", [queued[i] >= queued[j] + max_skew + 1 for j in range(nlanes) if j != i]))
+            self.comb += drop.eq(self.mask[i] & Reduce("OR", [self.mask[j] & (queued[i] >= queued[j] + max_skew + 1) for j in range(nlanes) if j != i]))
             drops.append(drop)
         any_drop = Signal()
         self.comb += any_drop.eq(Reduce("OR", drops))
         for i, fifo in enumerate(fifos):
-            self.comb += If(locked | ~self.align,
+            self.comb += If(~self.mask[i],
+                # Not in the Link.
+                fifo.source.ready.eq(1),
+            ).Elif(locked | ~self.align,
                 # Together.
                 fifo.source.ready.eq(all_v),
             ).Else(
@@ -144,11 +151,12 @@ class RXLaneDeskew(LiteXModule):
 
 class PCIeMultiLanePhysicalLayer(LiteXModule):
     """Same interface as PCIePhysicalLayer with sink/source of 4*nlanes Symbols. The LTSSM follows Lane
-    0, the Lane Numbers go up from there on the other lanes, which have their own Training Sequences
-    generators and checkers and polarity. lanes_ok: lanes receiving Training Sequences with their Lane
-    Number (status, valid after Configuration)."""
+    0, the other lanes have their own Training Sequences generators and checkers and polarity, and follow the
+    numbers they receive. width: negotiated link width. lanes_ok: lanes numbered by the partner (status).
+    lane_disable: lanes kept out of the link, in Electrical Idle and with their receiver ignored (bring-up).
+    early_idle: lanes out of the Link in Electrical Idle during Configuration, as a root port can do."""
     def __init__(self, serdes, clk_freq, upstream=True, with_timers=True, timer_scale=1,
-        gen2_capable=False, ts1_min=1024, tx_depth=16, rx_depth=16):
+        gen2_capable=False, ts1_min=1024, tx_depth=16, rx_depth=16, early_idle=False):
         nlanes = serdes.nlanes
         assert nlanes >= 2
         lanes  = serdes.lanes
@@ -163,6 +171,8 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         self.link_number  = Signal(8)
         self.speed_change = Signal()
         self.lanes_ok     = Signal(nlanes) # o ("pcie_pipe")
+        self.width        = Signal(max=nlanes + 1, reset=nlanes) # o ("pcie_pipe")
+        self.lane_disable = Signal(nlanes) # i
 
         # # #
 
@@ -198,7 +208,13 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         rate           = Signal()
         select_deemph  = Signal()
         polarity_check = Signal()
+        in_training    = Signal(reset=1)
+        in_config      = Signal()
+        lane_disable   = Signal(nlanes)
         self.specials += [
+            MultiReg(ltssm.in_training,    in_training,    "pcie_pipe"),
+            MultiReg(ltssm.in_config,      in_config,      "pcie_pipe"),
+            MultiReg(self.lane_disable,    lane_disable,   "pcie_pipe"),
             MultiReg(ltssm.rate,           rate,           "pcie_pipe"),
             MultiReg(ltssm.select_deemph,  select_deemph,  "pcie_pipe"),
             MultiReg(ltssm.polarity_check, polarity_check, "pcie_pipe"),
@@ -229,6 +245,29 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             ltssm.detect_done.eq(detect_done.o),
         ]
 
+        # Width negotiation ("pcie_pipe") ----------------------------------------------------------
+        # A lane is in the Link once it receives the Link Number (downstream: the partner answers on it)
+        # and its Lane Number (upstream). Width: the largest with all the lanes from Lane 0.
+        link_ok  = [Signal() for _ in range(nlanes)]
+        lane_num = [Signal() for _ in range(nlanes)]
+        lane_pad = [Signal() for _ in range(nlanes)]
+        widths   = [w for w in [1, 2, 4, 8, 16] if w <= nlanes]
+        cand     = Signal(max=nlanes + 1, reset=1)
+        numbered = link_ok if not upstream else lane_num
+        selection = cand.eq(1)
+        for w in widths[1:]:
+            selection = If(Reduce("AND", numbered[:w]), cand.eq(w)).Else(selection)
+        self.comb += selection
+        self.sync.pcie_pipe += If(in_training,
+            self.width.eq(nlanes)
+        ).Elif(in_config,
+            self.width.eq(cand)
+        )
+        frozen = ~in_training & ~in_config
+        self.comb += self.lanes_ok.eq(Cat(*lane_num))
+        for i in range(nlanes):
+            self.comb += lane_pad[i].eq(~lane_num[i] if upstream else (i >= cand))
+
         # TX ("pcie_pipe") -------------------------------------------------------------------------
         self.ts_gens = []
         eieos_reset = PulseSynchronizer("pcie_link", "pcie_pipe")
@@ -244,9 +283,9 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
                 ts_gen.enable.eq(levels["tx_ts_enable"]),
                 ts_gen.ts.ts2.eq(levels["tx_ts2"]),
                 ts_gen.ts.link.eq(levels["tx_ts_link"]),
-                ts_gen.ts.link_pad.eq(levels["tx_ts_link_pad"]),
-                ts_gen.ts.lane.eq(levels["tx_ts_lane"] + i),
-                ts_gen.ts.lane_pad.eq(levels["tx_ts_lane_pad"]),
+                ts_gen.ts.link_pad.eq(levels["tx_ts_link_pad"] | (upstream & ~link_ok[i])),
+                ts_gen.ts.lane.eq(i),
+                ts_gen.ts.lane_pad.eq(levels["tx_ts_lane_pad"] | lane_pad[i]),
                 ts_gen.ts.n_fts.eq(0xff),
                 ts_gen.ts.rate.eq(levels["tx_ts_rate"]),
                 ts_gen.ts.ctrl.eq(levels["tx_ts_ctrl"]),
@@ -282,12 +321,40 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         self.comb += all_ready.eq(Reduce("AND", [lane.sink.ready for lane in lanes]))
         ts_mode = levels["tx_ts_enable"] | self.ts_gens[0].busy
         tx_idle = Signal()
+
+        # Beats split into a word per Symbol times for the lanes in use.
+        tx_data  = levels["tx_data_enable"] & tx_fifo.source.valid
+        tx_part  = Signal(max=max(nlanes, 2))
+        tx_end   = Signal() # Last word of the beat.
+        tx_ok    = all_ready & tx_data & ~eios_pending & ~tx_elecidle & ~ts_mode
+        self.comb += tx_fifo.source.ready.eq(tx_ok & tx_end)
+        self.comb += Case(self.width, {w: tx_end.eq(tx_part == nlanes//w - 1) for w in widths})
+        self.sync.pcie_pipe += If(~levels["tx_data_enable"],
+            tx_part.eq(0)
+        ).Elif(tx_ok,
+            If(tx_end, tx_part.eq(0)).Else(tx_part.eq(tx_part + 1))
+        )
         for i, lane in enumerate(lanes):
             ts_gen = self.ts_gens[i]
-            striped_data = Cat(*[tx_fifo.source.data[8*(j*nlanes + i):8*(j*nlanes + i + 1)] for j in range(4)])
-            striped_ctrl = Cat(*[tx_fifo.source.ctrl[j*nlanes + i] for j in range(4)])
+            striped_data = Signal(32)
+            striped_ctrl = Signal(4)
+            cases = {}
+            for w in widths:
+                if i >= w:
+                    continue
+                parts = {}
+                for part in range(nlanes//w):
+                    symbols = [part*4*w + j*w + i for j in range(4)]
+                    parts[part] = [
+                        striped_data.eq(Cat(*[tx_fifo.source.data[8*k:8*(k+1)] for k in symbols])),
+                        striped_ctrl.eq(Cat(*[tx_fifo.source.ctrl[k] for k in symbols])),
+                    ]
+                cases[w] = Case(tx_part, parts)
             self.comb += [
-                lane.tx_elecidle.eq(tx_elecidle & ~eios_pending),
+                Case(self.width, cases),
+                # Lanes out of the Link in Electrical Idle.
+                lane.tx_elecidle.eq((tx_elecidle & ~eios_pending) | lane_disable[i] | (frozen & (i >= self.width)) |
+                    (early_idle & in_config & link_ok[0] & (i >= cand))),
                 If(eios_pending,
                     lane.sink.valid.eq(all_ready),
                     lane.sink.first.eq(1),
@@ -303,10 +370,10 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
                     lane.sink.data.eq(ts_gen.source.data),
                     lane.sink.ctrl.eq(ts_gen.source.ctrl),
                     ts_gen.source.ready.eq(all_ready),
-                ).Elif(levels["tx_data_enable"] & tx_fifo.source.valid,
+                ).Elif(tx_data,
                     lane.sink.valid.eq(all_ready),
-                    lane.sink.first.eq(tx_fifo.source.first),
-                    lane.sink.last.eq(tx_fifo.source.last),
+                    lane.sink.first.eq(tx_fifo.source.first & (tx_part == 0)),
+                    lane.sink.last.eq(tx_fifo.source.last & tx_end),
                     lane.sink.data.eq(striped_data),
                     lane.sink.ctrl.eq(striped_ctrl),
                 ).Else(
@@ -315,23 +382,22 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             ]
         self.comb += [
             eios_sent.eq(eios_pending & all_ready),
-            If(~eios_pending & ~tx_elecidle & ~ts_mode,
-                If(levels["tx_data_enable"] & tx_fifo.source.valid,
-                    tx_fifo.source.ready.eq(all_ready)
-                ).Else(
-                    tx_idle.eq(all_ready)
-                )
+            If(~eios_pending & ~tx_elecidle & ~ts_mode & ~tx_data,
+                tx_idle.eq(all_ready)
             ),
         ]
 
         # RX ("pcie_pipe") -------------------------------------------------------------------------
         self.ts_chks = []
-        lanes_ok     = []
+        recent       = []
         for i, lane in enumerate(lanes):
             ts_chk = ClockDomainsRenamer("pcie_pipe")(TSChecker())
             self.submodules += ts_chk
             self.ts_chks.append(ts_chk)
-            self.comb += lane.source.connect(ts_chk.sink, omit={"ready"})
+            self.comb += [
+                lane.source.connect(ts_chk.sink, omit={"ready", "valid"}),
+                ts_chk.sink.valid.eq(lane.source.valid & ~lane_disable[i]),
+            ]
             # Polarity of each lane: inverted identifiers received toggle it, held for the inversion to
             # take effect on the received stream.
             hold     = Signal(max=int(2e-6*clk_freq) + 1, reset=int(2e-6*clk_freq))
@@ -346,13 +412,25 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
                     hold.eq(hold - 1)
                 )
             ]
-            # Lane Number status.
-            ok = Signal()
-            self.sync.pcie_pipe += If(ts_chk.detected,
-                ok.eq(~ts_chk.ts.lane_pad & (ts_chk.ts.lane == levels["tx_ts_lane"] + i))
-            )
-            lanes_ok.append(ok)
-        self.comb += self.lanes_ok.eq(Cat(*lanes_ok))
+            # Numbers received on this lane, and is it receiving Training Sequences.
+            received = Signal(13)
+            recent.append(received != 0)
+            self.sync.pcie_pipe += [
+                If(in_training | lane_disable[i],
+                    link_ok[i].eq(0),
+                    lane_num[i].eq(0),
+                ).Elif(ts_chk.detected,
+                    link_ok[i].eq(~ts_chk.ts.link_pad & (ts_chk.ts.link == levels["tx_ts_link"])),
+                    lane_num[i].eq(~ts_chk.ts.lane_pad & (ts_chk.ts.lane == i)),
+                ),
+                If(lane_disable[i],
+                    received.eq(0)
+                ).Elif(ts_chk.detected,
+                    received.eq(2**13 - 1)
+                ).Elif(received != 0,
+                    received.eq(received - 1)
+                )
+            ]
         self.ts_chk   = ts_chk   = self.ts_chks[0]
         self.eios_det = eios_det = ClockDomainsRenamer("pcie_pipe")(OrderedSetDetector(EIOS))
         self.comb += lanes[0].source.connect(eios_det.sink, omit={"ready"})
@@ -393,17 +471,95 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
                 deskew.sinks[i].ctrl.eq(lane.source.ctrl),
                 lane.source.ready.eq(1),
             ]
+        # Lanes to deskew: the ones receiving Training Sequences until the lanes are numbered, then the ones
+        # of the Link: the partner can stop on the others during Configuration. Lane 0 always.
+        in_link = Signal(nlanes)
+        for i in range(nlanes):
+            self.comb += If(frozen | (in_config & numbered[0]),
+                in_link[i].eq(i < self.width)
+            ).Elif(i == 0,
+                in_link[i].eq(1)
+            ).Else(
+                in_link[i].eq(recent[i])
+            )
         self.comb += [
+            deskew.mask.eq(in_link),
             deskew.align.eq(~levels["rx_data_enable"]),
             deskew.clear.eq(tx_elecidle),
             deskew.source.ready.eq(1),
         ]
+
+        # Words of the lanes in use: Symbol j*width + i.
+        word_data = Signal(32*nlanes)
+        word_ctrl = Signal(4*nlanes)
+        cases = {}
+        for w in widths:
+            statements = []
+            for i in range(w):
+                for j in range(4):
+                    statements += [
+                        word_data[8*(j*w + i):8*(j*w + i + 1)].eq(deskew.source.data[8*(j*nlanes + i):8*(j*nlanes + i + 1)]),
+                        word_ctrl[j*w + i].eq(deskew.source.ctrl[j*nlanes + i]),
+                    ]
+            cases[w] = statements
+        self.comb += Case(self.width, cases)
+
+        # x1 and x2: packets aligned on the DWs.
+        self.aligner_x1 = aligner_x1 = ClockDomainsRenamer("pcie_pipe")(RXPhaseAlignerX1())
+        self.aligner_x2 = aligner_x2 = ClockDomainsRenamer("pcie_pipe")(RXPhaseAligner())
+        aligned_valid = Signal()
+        aligned_data  = Signal(32*nlanes)
+        aligned_ctrl  = Signal(4*nlanes)
+        self.comb += [
+            aligner_x1.sink.valid.eq(deskew.source.valid & (self.width == 1)),
+            aligner_x1.sink.data.eq(word_data[:32]),
+            aligner_x1.sink.ctrl.eq(word_ctrl[:4]),
+            aligner_x2.sink.valid.eq(deskew.source.valid & (self.width == 2)),
+            aligner_x2.sink.data.eq(word_data[:64]),
+            aligner_x2.sink.ctrl.eq(word_ctrl[:8]),
+            aligner_x1.source.ready.eq(1),
+            aligner_x2.source.ready.eq(1),
+            If(self.width == 1,
+                aligned_valid.eq(aligner_x1.source.valid),
+                aligned_data.eq(aligner_x1.source.data),
+                aligned_ctrl.eq(aligner_x1.source.ctrl),
+            ).Elif(self.width == 2,
+                aligned_valid.eq(aligner_x2.source.valid),
+                aligned_data.eq(aligner_x2.source.data),
+                aligned_ctrl.eq(aligner_x2.source.ctrl),
+            ).Else(
+                aligned_valid.eq(deskew.source.valid),
+                aligned_data.eq(word_data),
+                aligned_ctrl.eq(word_ctrl),
+            )
+        ]
+
+        # Words to beats.
+        rx_part  = Signal(max=max(nlanes, 2))
+        rx_end   = Signal()
+        beat_ok  = Signal()
+        beat_data = Signal(32*nlanes)
+        beat_ctrl = Signal(4*nlanes)
+        self.comb += Case(self.width, {w: rx_end.eq(rx_part == nlanes//w - 1) for w in widths})
+        store = {}
+        for w in widths:
+            store[w] = Case(rx_part, {part: [
+                beat_data[32*w*part:32*w*(part + 1)].eq(aligned_data[:32*w]),
+                beat_ctrl[4*w*part:4*w*(part + 1)].eq(aligned_ctrl[:4*w]),
+            ] for part in range(nlanes//w)})
+        self.sync.pcie_pipe += [
+            beat_ok.eq(aligned_valid & rx_end),
+            If(aligned_valid,
+                Case(self.width, store),
+                If(rx_end, rx_part.eq(0)).Else(rx_part.eq(rx_part + 1)),
+            )
+        ]
         self.rx_fifo = rx_fifo = ClockDomainsRenamer({"write": "pcie_pipe", "read": "pcie_link"})(
             stream.AsyncFIFO(lane_layout(4*nlanes), rx_depth, buffered=True))
         self.comb += [
-            rx_fifo.sink.valid.eq(deskew.source.valid & levels["rx_data_enable"]),
-            rx_fifo.sink.data.eq(deskew.source.data),
-            rx_fifo.sink.ctrl.eq(deskew.source.ctrl),
+            rx_fifo.sink.valid.eq(beat_ok & levels["rx_data_enable"]),
+            rx_fifo.sink.data.eq(beat_data),
+            rx_fifo.sink.ctrl.eq(beat_ctrl),
             rx_fifo.source.connect(source),
         ]
 
@@ -414,7 +570,10 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         rx_idle_seen  = Signal()
         tx_idle_after = Signal(3)
         idle_hs_done  = Signal()
-        self.comb += rx_idle_word.eq(deskew.source.valid & (deskew.source.data == 0) & (deskew.source.ctrl == 0))
+        lanes_idle = [(~in_link[i] | ((word == 0) & (ctrl == 0))) for i, (word, ctrl) in enumerate(
+            (Cat(*[deskew.source.data[8*(j*nlanes + i):8*(j*nlanes + i + 1)] for j in range(4)]),
+             Cat(*[deskew.source.ctrl[j*nlanes + i] for j in range(4)])) for i in range(nlanes))]
+        self.comb += rx_idle_word.eq(deskew.source.valid & Reduce("AND", lanes_idle))
         self.sync.pcie_pipe += [
             If(deskew.source.valid,
                 If(rx_idle_word,

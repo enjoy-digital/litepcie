@@ -132,6 +132,8 @@ class PCIeLTSSM(LiteXModule):
         self.rate        = Signal()   # o: Link rate (0: 2.5 GT/s, 1: 5.0 GT/s).
         self.select_deemph = Signal() # o: De-emphasis at 5.0 GT/s (0: -6 dB, 1: -3.5 dB).
         self.tx_eieos_reset = Signal() # o (Pulse): EIEOS interval restarted (first TS2 received).
+        self.in_training = Signal()   # o: Detect or Polling: the lanes of the Link aren't known.
+        self.in_config   = Signal()   # o: Configuration: the lanes of the Link are being negotiated.
 
         # # #
 
@@ -437,7 +439,7 @@ class PCIeLTSSM(LiteXModule):
             capture.eq(1),
             match.eq(ts2 & rx_link_ok & rx_lane_ok & rx_params_ok),
             *wait,
-            If((rx_count >= 8) & (tx_after >= 16),
+            If((rx_count >= 8) & (tx_after >= 16) & self.lanes_locked,
                 NextState("Configuration.Idle")
             ).Elif(done,
                 NextState("Detect.Quiet")
@@ -684,6 +686,15 @@ class PCIeLTSSM(LiteXModule):
                 NextState("Detect.Quiet")
             )
         )
+
+        # Link width negotiation phases.
+        self.comb += [
+            self.in_training.eq(Reduce("OR", [fsm.ongoing(s) for s in
+                ["Detect.Quiet", "Detect.Active", "Polling.Active", "Polling.Configuration"]])),
+            self.in_config.eq(Reduce("OR", [fsm.ongoing(s) for s in
+                ["Configuration.Linkwidth.Start", "Configuration.Linkwidth.Accept", "Configuration.Lanenum.Wait",
+                 "Configuration.Lanenum.Accept", "Configuration.Complete", "Configuration.Idle"]])),
+        ]
 
         # Link up: Configuration done.
         self.comb += self.link_up.eq(Reduce("OR", [fsm.ongoing(s) for s in

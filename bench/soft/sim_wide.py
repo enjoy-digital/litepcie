@@ -204,7 +204,7 @@ class WideDLLSim(SoCMini):
         ]
 
 class MultiLanePHYSim(SoCMini):
-    def __init__(self, nlanes, tlps, gen2=False, timer_scale=100, max_cycles=2**23, rate_stall=0):
+    def __init__(self, nlanes, tlps, gen2=False, timer_scale=100, max_cycles=2**23, rate_stall=0, dead_lanes=0):
         ndw = nlanes
         sys_clk_freq = int(125e6)
         platform = Platform()
@@ -235,8 +235,11 @@ class MultiLanePHYSim(SoCMini):
         renamer = ClockDomainsRenamer({"pcie_pipe": "lane", "pcie_link": "sys"})
         kwargs  = dict(timer_scale=timer_scale, gen2_capable=gen2)
         self.phy_up = phy_up = renamer(PCIeMultiLanePhysicalLayer(serdes_up, sys_clk_freq, upstream=True,  **kwargs))
-        self.phy_dn = phy_dn = renamer(PCIeMultiLanePhysicalLayer(serdes_dn, sys_clk_freq, upstream=False, **kwargs))
-        self.comb += phy_dn.link_number.eq(0x05)
+        self.phy_dn = phy_dn = renamer(PCIeMultiLanePhysicalLayer(serdes_dn, sys_clk_freq, upstream=False, early_idle=True, **kwargs))
+        self.comb += [
+            phy_dn.link_number.eq(0x05),
+            phy_up.lane_disable.eq(dead_lanes),
+        ]
 
         # Data Link Layers.
         dll_kwargs = dict(ndw=ndw, nlanes=nlanes, tx_depth=4096, rx_depth=4096)
@@ -282,7 +285,7 @@ class MultiLanePHYSim(SoCMini):
         self.fsm = fsm = FSM(reset_state="TRAIN")
         fsm.act("TRAIN",
             If(both_l0,
-                Display("[%08d] L0 reached, link %d, lanes ok %x/%x", timer, phy_up.ltssm.link, phy_up.lanes_ok, phy_dn.lanes_ok),
+                Display("[%08d] L0 reached, link %d, lanes ok %x/%x, width x%d/x%d", timer, phy_up.ltssm.link, phy_up.lanes_ok, phy_dn.lanes_ok, phy_up.width, phy_dn.width),
                 NextState("SPEED-CHANGE" if gen2 else "WAIT-READY")
             )
         )
@@ -346,12 +349,13 @@ def main():
     parser.add_argument("--phy",           action="store_true", help="With the multi-lane Physical Layers and transceiver models.")
     parser.add_argument("--gen2",          action="store_true", help="With --phy: speed change to 5.0 GT/s.")
     parser.add_argument("--rate-stall",    default=0, type=int, help="With --phy: receivers stopped after a rate change, differently per lane.")
+    parser.add_argument("--dead-lanes",    default="0", help="With --phy: lanes out of service on the upstream side (mask).")
     parser.add_argument("--max-cycles",    default=2**22, type=int, help="Simulation timeout.")
     parser.add_argument("--output-dir",    default="build/soft_sim_wide", help="Build directory.")
     args = parser.parse_args()
     sim_config = SimConfig(default_clk="sys_clk")
     if args.phy:
-        soc = MultiLanePHYSim(args.nlanes, args.tlps, gen2=args.gen2, max_cycles=args.max_cycles, rate_stall=args.rate_stall)
+        soc = MultiLanePHYSim(args.nlanes, args.tlps, gen2=args.gen2, max_cycles=args.max_cycles, rate_stall=args.rate_stall, dead_lanes=int(args.dead_lanes, 0))
     else:
         soc = WideDLLSim(args.ndw, args.nlanes, args.tlps, args.corrupt_every)
     builder = Builder(soc, output_dir=args.output_dir, compile_software=False)

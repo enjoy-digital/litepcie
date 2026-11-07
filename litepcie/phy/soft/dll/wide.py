@@ -35,6 +35,75 @@ def tlp_beat_layout(ndw):
 
 # RX Phase Aligner ---------------------------------------------------------------------------------
 
+class RXPhaseAlignerX1(LiteXModule):
+    """x1: packets aligned on the DWs of the output. A packet can start on any Symbol. A word holds at most
+    one packet start, and a packet being a multiple of 4 Symbols a change of phase only comes after Logical
+    Idle: the Symbols before the start are dropped, it comes out at the start of a word."""
+    def __init__(self):
+        self.sink   = sink   = stream.Endpoint(lane_layout(4))
+        self.source = source = stream.Endpoint(lane_layout(4))
+
+        # # #
+
+        self.comb += sink.ready.eq(1)
+        phase = Signal(2)  # Symbols of the previous word to output first.
+        carry = Signal(32, reset_less=True)
+        cctrl = Signal(4,  reset_less=True)
+        starts = [sink.ctrl[i] & ((sink.data[8*i:8*(i+1)] == STP.value) | (sink.data[8*i:8*(i+1)] == SDP.value)) for i in range(4)]
+        k = Signal(2)
+        self.comb += If(starts[0], k.eq(0)).Elif(starts[1], k.eq(1)).Elif(starts[2], k.eq(2)).Else(k.eq(3))
+        has_start = Reduce("OR", starts)
+        change    = Signal()
+        self.comb += change.eq(has_start & (((phase + k) & 3) != 0))
+
+        # Previous Symbols then the current ones: output without a change of phase.
+        data_cases, ctrl_cases = {}, {}
+        out_data = Signal(32)
+        out_ctrl = Signal(4)
+        for p in range(4):
+            data_cases[p] = out_data.eq(Cat(carry[32 - 8*p:32], sink.data[:32 - 8*p]) if p else sink.data)
+            ctrl_cases[p] = out_ctrl.eq(Cat(cctrl[4 - p:4], sink.ctrl[:4 - p]) if p else sink.ctrl)
+        self.comb += [Case(phase, data_cases), Case(phase, ctrl_cases)]
+
+        # On a change: the Symbols from the start on are kept for the next word, or come out now if it's the
+        # first Symbol of the word; what comes before stays (end of a packet, Logical Idle).
+        self.sync += [
+            source.valid.eq(sink.valid),
+            If(sink.valid,
+                carry.eq(sink.data),
+                cctrl.eq(sink.ctrl),
+                If(change,
+                    phase.eq(-k),
+                    If(k == 0,
+                        source.data.eq(sink.data),
+                        source.ctrl.eq(sink.ctrl),
+                    ).Else(
+                        # The part of the output from the current word, before the start, is Logical Idle
+                        # or the end of a packet: what is at or after the start isn't output.
+                        source.data.eq(out_data),
+                        source.ctrl.eq(out_ctrl),
+                        self._blank(source, k, phase),
+                    )
+                ).Else(
+                    source.data.eq(out_data),
+                    source.ctrl.eq(out_ctrl),
+                )
+            )
+        ]
+
+    def _blank(self, source, k, phase):
+        # Output positions holding Symbols at or after the start: Logical Idle.
+        statements = []
+        for p in range(4):
+            for kk in range(1, 4):
+                for position in range(4):
+                    if position >= p + kk:
+                        statements.append(If((phase == p) & (k == kk),
+                            source.data[8*position:8*(position + 1)].eq(0),
+                            source.ctrl[position].eq(0),
+                        ))
+        return If(1, *statements)
+
 class RXPhaseAligner(LiteXModule):
     """x2: packets aligned on the DWs of the output. A beat has 4 Symbol times and holds at most one
     packet start (a packet is at least 4 Symbol times). When a start needs the other phase, a Symbol time
@@ -385,16 +454,19 @@ class TLPRepacker(LiteXModule):
                 If(take,
                     rd.eq(rd + count),
                     source.valid.eq(1),
-                    source.first.eq(field(head[0], "first")),
-                    source.seq.eq(field(head[0], "seq")),
-                    source.dws.eq(count),
-                    source.data.eq(Cat(*[field(head[i], "data") for i in range(ndw)])),
-                    Case(count, {n: [
-                        source.last.eq(field(head[n - 1], "last")),
-                        source.edb.eq(field(head[n - 1], "edb")),
-                    ] for n in range(1, ndw + 1)}),
                 )
-            )
+            ),
+            # Payload loaded whenever the output is free: its enable doesn't depend on the decision (timing).
+            If(~source.valid | source.ready,
+                source.first.eq(field(head[0], "first")),
+                source.seq.eq(field(head[0], "seq")),
+                source.dws.eq(count),
+                source.data.eq(Cat(*[field(head[i], "data") for i in range(ndw)])),
+                Case(count, {n: [
+                    source.last.eq(field(head[n - 1], "last")),
+                    source.edb.eq(field(head[n - 1], "edb")),
+                ] for n in range(1, ndw + 1)}),
+            ),
         ]
 
 # TX Framer ----------------------------------------------------------------------------------------
@@ -409,6 +481,7 @@ class WideTXFramer(LiteXModule):
         self.dllp       = Signal(48) # i
         self.dllp_valid = Signal()   # i (Level, cleared by dllp_ready)
         self.dllp_ready = Signal()   # o (Pulse)
+        self.pad_enable = Signal(reset=1) # i: Link running above x4.
         self.source     = source = stream.Endpoint(lane_layout(4*ndw))
 
         # # #
@@ -506,7 +579,7 @@ class WideTXFramer(LiteXModule):
                 pad_slots.append(ends_before)
                 # This slot is in the same Symbol time as an END in a previous slot.
                 t = s % slots_per_time
-                self.comb += ends_before.eq(Reduce("OR", [ctrl[4*(s - o) + 3] for o in range(1, t + 1)]) if t else 0)
+                self.comb += ends_before.eq(self.pad_enable & Reduce("OR", [ctrl[4*(s - o) + 3] for o in range(1, t + 1)]) if t else 0)
         out_data = []
         out_ctrl = []
         for s in range(ndw):
@@ -567,7 +640,7 @@ class WideLCRC(LiteXModule):
 
 class WideDLLRX(LiteXModule):
     """As DLLRX, on beats of ndw DWs. Same interface towards the Data Link Layer core."""
-    def __init__(self, ndw, nlanes, depth=2048, packets=32):
+    def __init__(self, ndw, depth=2048, packets=32):
         self.reset        = Signal()
         self.sink         = sink   = stream.Endpoint(lane_layout(4*ndw))
         self.source       = source = stream.Endpoint([("data", 32*ndw), ("dws", bits_for(ndw))])
@@ -585,12 +658,8 @@ class WideDLLRX(LiteXModule):
 
         # Framing.
         self.framer = framer = WideRXFramer(ndw)
-        if nlanes == 2:
-            self.aligner = aligner = RXPhaseAligner()
-            self.comb += [sink.connect(aligner.sink), aligner.source.connect(framer.sink)]
-        else:
-            self.comb += sink.connect(framer.sink)
         self.comb += [
+            sink.connect(framer.sink),
             self.dllp.eq(framer.dllp),
             self.dllp_valid.eq(framer.dllp_valid),
         ]
