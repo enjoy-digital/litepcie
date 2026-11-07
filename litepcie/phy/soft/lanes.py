@@ -188,6 +188,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         self.lane_disable = Signal(nlanes) # i
         self.eq_request_preset = Signal(5) # i
         self.force_g3     = Signal()       # i: debug (gen3_capable, LTSSM disabled): 8.0 GT/s, transmitters on.
+        self.g3_eidle     = Signal()       # i: debug: transceivers' Electrical Idle detection used at 8.0 GT/s.
 
         # # #
 
@@ -253,10 +254,17 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         # Lane status to the LTSSM: from Lane 0.
         detect_done = PulseSynchronizer("pcie_pipe", "pcie_link")
         self.submodules += detect_done
+        # At 8.0 GT/s, Electrical Idle is inferred (4.2.4.3) and the transceivers' detection isn't used: the
+        # 7-Series GTX reports Electrical Idle on a 8.0 GT/s signal.
+        self.rx_elecidle = rx_elecidle = Signal() # o ("pcie_link"): Lane 0, from the transceiver.
         self.specials += [
-            MultiReg(lanes[0].rx_elecidle, ltssm.rx_elecidle, "pcie_link"),
+            MultiReg(lanes[0].rx_elecidle, rx_elecidle, "pcie_link"),
             MultiReg(lanes[0].rx_detected, ltssm.rx_detected, "pcie_link"),
         ]
+        if gen3_capable:
+            self.comb += ltssm.rx_elecidle.eq(rx_elecidle & ((ltssm.rate != 2) | self.g3_eidle))
+        else:
+            self.comb += ltssm.rx_elecidle.eq(rx_elecidle)
         self.comb += [
             detect_done.i.eq(lanes[0].detect_done),
             ltssm.detect_done.eq(detect_done.o),
