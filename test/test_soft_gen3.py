@@ -569,3 +569,68 @@ class TestSoftGen3Link(unittest.TestCase):
                 self.assertEqual(stats["locked"], (1, 1))
                 self.assertEqual(stats["dl_active"], 1)
                 self.assertEqual(out, tlps)
+
+
+class TestSoftGen3LaneEQ(unittest.TestCase):
+    def test_lane_eq(self):
+        from litepcie.phy.soft.gen3 import Gen3LaneEQ
+        dut = Gen3LaneEQ(upstream=True)
+        res = {}
+        def send(ec, use=0, preset=0, pre=0, cur=0, post=0, reject=0, n=2):
+            for _ in range(n):
+                yield dut.rx.eq_ctrl.eq(ec | (preset << 3) | (use << 7))
+                yield dut.rx.pre.eq(pre)
+                yield dut.rx.cur.eq(cur)
+                yield dut.rx.post.eq(post)
+                yield dut.rx.reject.eq(reject)
+                yield dut.rx_valid.eq(1)
+                yield
+                yield dut.rx_valid.eq(0)
+                for _ in range(4):
+                    yield
+        def state():
+            return ((yield dut.preset), (yield dut.c_pre), (yield dut.c_cur), (yield dut.c_post),
+                ((yield dut.tx.eq_ctrl) >> 3) & 0xf, (yield dut.tx.reject))
+        def generator():
+            # Phase 0: preset 7 of the EQ TS2.
+            yield dut.eq_ts2.eq(0x80 | (7 << 3) | 2)
+            yield dut.load.eq(1)
+            yield
+            yield dut.load.eq(0)
+            yield
+            res["load"] = (yield from state())
+            # Phase 1: FS, LF, Post-cursor.
+            yield dut.ec.eq(0b01)
+            yield
+            yield
+            res["phase1"] = ((yield dut.tx.pre), (yield dut.tx.cur), (yield dut.tx.post), (yield dut.tx.eq_ctrl) & 3)
+            # Phase 2 (requesting): keep the partner's Coefficients (the ones of its last TS1).
+            yield from send(0b10, pre=3, cur=30, post=7, n=1)
+            yield dut.ec.eq(0b10)
+            yield
+            yield
+            res["request"] = ((yield dut.tx.pre), (yield dut.tx.cur), (yield dut.tx.post), (yield dut.tx.eq_ctrl) >> 7)
+            yield from send(0b10, pre=3, cur=30, post=7, n=2)
+            res["eval"] = ((yield dut.eval_done), (yield dut.accepted))
+            # Phase 3 (responding): presets and Coefficients, legal or not.
+            yield dut.ec.eq(0b11)
+            yield
+            yield
+            yield from send(0b11, use=1, preset=8)
+            res["p8"] = (yield from state())
+            yield from send(0b11, use=1, preset=12)
+            res["p12"] = (yield from state())
+            yield from send(0b11, pre=6, cur=28, post=6)
+            res["c_ok"] = (yield from state())
+            yield from send(0b11, pre=12, cur=22, post=6)
+            res["c_bad"] = (yield from state()) + ((yield dut.tx.pre), (yield dut.tx.cur), (yield dut.tx.post))
+        run_simulation(dut, generator())
+        self.assertEqual(res["load"],   (7, 4, 28, 8, 7, 0))
+        self.assertEqual(res["phase1"], (40, 15, 8, 0b01))
+        self.assertEqual(res["request"], (3, 30, 7, 0))
+        self.assertEqual(res["eval"],   (1, 1))
+        self.assertEqual(res["p8"],     (8, 5, 30, 5, 8, 0))
+        self.assertEqual(res["p12"],    (8, 5, 30, 5, 12, 1))
+        self.assertEqual(res["c_ok"],   (8, 6, 28, 6, 12, 0))
+        self.assertEqual(res["c_bad"],  (8, 6, 28, 6, 12, 1, 12, 22, 6))
+
