@@ -204,8 +204,8 @@ class WideDLLSim(SoCMini):
         ]
 
 class MultiLanePHYSim(SoCMini):
-    def __init__(self, nlanes, tlps, gen2=False, timer_scale=100, max_cycles=2**23, rate_stall=0, dead_lanes=0):
-        ndw = nlanes
+    def __init__(self, nlanes, tlps, gen2=False, timer_scale=100, max_cycles=2**23, rate_stall=0, dead_lanes=0, ndw=None):
+        ndw = nlanes if ndw is None else ndw
         sys_clk_freq = int(125e6)
         platform = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq)
@@ -233,7 +233,7 @@ class MultiLanePHYSim(SoCMini):
         serdes_up.connect(serdes_dn)
         self.comb += lane_5g.eq(serdes_up.applied_rate & serdes_dn.applied_rate)
         renamer = ClockDomainsRenamer({"pcie_pipe": "lane", "pcie_link": "sys"})
-        kwargs  = dict(timer_scale=timer_scale, gen2_capable=gen2)
+        kwargs  = dict(timer_scale=timer_scale, gen2_capable=gen2, ndw=ndw)
         self.phy_up = phy_up = renamer(PCIeMultiLanePhysicalLayer(serdes_up, sys_clk_freq, upstream=True,  **kwargs))
         self.phy_dn = phy_dn = renamer(PCIeMultiLanePhysicalLayer(serdes_dn, sys_clk_freq, upstream=False, early_idle=True, **kwargs))
         self.comb += [
@@ -342,7 +342,7 @@ class MultiLanePHYSim(SoCMini):
 
 def main():
     parser = argparse.ArgumentParser(description="Soft PCIe PHY wide Data Link Layers simulation.")
-    parser.add_argument("--ndw",           default=4, type=int, help="DWs per cycle.")
+    parser.add_argument("--ndw",           default=None, type=int, help="DWs per cycle (default: the lanes).")
     parser.add_argument("--nlanes",        default=4, type=int, help="Link width.")
     parser.add_argument("--tlps",          default=200, type=int, help="TLPs exchanged in each direction.")
     parser.add_argument("--corrupt-every", default=0, type=int, help="Corrupt every Nth TLP from a to b (power of 2).")
@@ -355,9 +355,9 @@ def main():
     args = parser.parse_args()
     sim_config = SimConfig(default_clk="sys_clk")
     if args.phy:
-        soc = MultiLanePHYSim(args.nlanes, args.tlps, gen2=args.gen2, max_cycles=args.max_cycles, rate_stall=args.rate_stall, dead_lanes=int(args.dead_lanes, 0))
+        soc = MultiLanePHYSim(args.nlanes, args.tlps, gen2=args.gen2, max_cycles=args.max_cycles, rate_stall=args.rate_stall, dead_lanes=int(args.dead_lanes, 0), ndw=args.ndw)
     else:
-        soc = WideDLLSim(args.ndw, args.nlanes, args.tlps, args.corrupt_every)
+        soc = WideDLLSim(args.ndw or args.nlanes, args.nlanes, args.tlps, args.corrupt_every)
     builder = Builder(soc, output_dir=args.output_dir, compile_software=False)
     builder.build(sim_config=sim_config, opt_level="O0", interactive=False)
 
