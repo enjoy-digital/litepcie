@@ -556,6 +556,8 @@ class PCIeLTSSM(LiteXModule):
                     )
                 ),
             ]
+        self.rx_ec_last  = rx_ec_last  # Debug.
+        self.rx_ec_count = rx_ec_count
         def rx_ec_seen(ec, n):
             return (rx_ec_count >= n) & (rx_ec_last == ec)
         wait, done = timeout(24e-3)
@@ -569,9 +571,9 @@ class PCIeLTSSM(LiteXModule):
                 ((self.rate != 2) | ts2 | (rx_ec == 0) if gen3_capable else 1)),
             *wait,
             *([If(self.rate == 2,
-                # Upstream: eight TS1 with an EC (the downstream port in Phase 1). Downstream: after the
-                # change to 8.0 GT/s (no more than 2 TS1 with EC 00b before).
-                If((rx_ec_count >= 8) & (rx_ec_last != 0) if upstream else eq_entry,
+                # After the change to 8.0 GT/s, equalization not done: Recovery.Equalization at once (4.2.6.4.1).
+                # Upstream, also on eight TS1 with an EC (the downstream port in Phase 1).
+                If(eq_entry | ((rx_ec_count >= 8) & (rx_ec_last != 0)) if upstream else eq_entry,
                     NextValue(eq_entry, 0),
                     NextValue(self.eq_done, 1),
                     NextState("Recovery.Equalization.Phase0" if upstream else "Recovery.Equalization.Phase1")
@@ -690,7 +692,7 @@ class PCIeLTSSM(LiteXModule):
                 If((rate_guard == 7) & self.rate_done,
                     NextValue(directed, 0),
                     NextValue(changed, successful),
-                    *([NextValue(eq_entry, successful & (self.rate == 2) & ~self.eq_done)] if gen3_capable and not upstream else []),
+                    *([NextValue(eq_entry, successful & (self.rate == 2) & ~self.eq_done)] if gen3_capable else []),
                     NextState("Recovery.RcvrLock")
                 ).Elif(done,
                     NextState("Detect.Quiet")
