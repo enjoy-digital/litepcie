@@ -112,7 +112,8 @@ class K7PCIeSerDes(S7PCIeSerDes):
             from litex.soc.interconnect.csr import CSRStorage
             self._gen3_rxcdr_cfg = CSRStorage(72, reset=GTX_GEN3_RXCDR_CFG,
                 description="RXCDR_CFG written at 8.0 GT/s (rate change).")
-            self.gen3_lpm = Signal()
+            self.gen3_lpm   = Signal()
+            self.gen3_eidle = Signal()
         drp = ClockDomainsRenamer("pcie_link")(S7DRPSequencer(gt.drp, gtx_gen3_drp_entries(
             GTX_PCIE_RXCDR_CFG if rxcdr_cfg is None else rxcdr_cfg, gen3_rxcdr_cfg=self._gen3_rxcdr_cfg.storage)))
         setattr(self, f"drp{i}", drp)
@@ -171,6 +172,9 @@ class K7PCIeSerDes(S7PCIeSerDes):
             i_TXCHARDISPMODE = Mux(raw_tx, Cat(*[raw_tx_r[10*k + 9] for k in range(4)]), tx_mode),
             i_TXCHARDISPVAL  = Mux(raw_tx, Cat(*[raw_tx_r[10*k + 8] for k in range(4)]), tx_val),
             # Receive equalizer: LPM at 2.5/5.0 GT/s, DFE at 8.0 GT/s (as the Xilinx wrapper and LiteICLink).
+            # No Electrical Idle detection at 8.0 GT/s: the GTX reports Electrical Idle on a 8.0 GT/s signal
+            # and squelches the received data (inferred instead, see lanes.py). gen3_eidle (debug) keeps it.
+            i_RXELECIDLEMODE = Mux(rs.pll_sel & ~self.gen3_eidle, 0b11, 0b00),
             i_RXLPMEN        = ~rs.pll_sel | self.gen3_lpm,
             i_RXDFEXYDEN     = rs.pll_sel & ~self.gen3_lpm,
             i_TXPRECURSOR    = Cat(Constant(0, 1), lane.tx_eq_pre[0:4]),
