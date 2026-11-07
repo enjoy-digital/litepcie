@@ -102,9 +102,10 @@ def main():
             for i in range(reg("g3_trace_count").read()):
                 reg("g3_trace_index").write(i)
                 e = reg("g3_trace_data").read()
-                print(f"{(e >> 24)*1.024:12.1f} us  {names.get(e & 0x3f, hex(e & 0x3f)):30s} rate {(e >> 14) & 3} "
-                      f"pll_sel {(e >> 16) & 1} done {(e >> 17) & 1} seq {seq[(e >> 18) & 7]:11s} "
-                      f"eidle gt {(e >> 21) & 1} ltssm {(e >> 22) & 1} locked {(e >> 23) & 1}")
+                print(f"{(e >> 26)*8.192:12.1f} us  {names.get(e & 0x3f, hex(e & 0x3f)):30s} rate {(e >> 6) & 3} "
+                      f"pll_sel {(e >> 8) & 1} done {(e >> 9) & 1} seq {seq[(e >> 10) & 7]:11s} "
+                      f"eidle gt {(e >> 13) & 1} ltssm {(e >> 14) & 1} locked {(e >> 15) & 1} "
+                      f"ec {(e >> 20) & 3} x{(e >> 16) & 15} ts {(e >> 22) & 15}")
         elif command.startswith("g3eidle="):
             reg("g3_control").write((reg("g3_control").read() & 0b001) | (int(command.split("=")[1]) << 2))
         elif command.startswith("g3force="):
