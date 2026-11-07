@@ -86,6 +86,10 @@ def main():
             reg("control").write(reg("control").read() | 2)
         elif command.startswith("disable="):
             reg("lane_disable").write(int(command.split("=")[1], 0))
+        elif command == "g3raw":
+            for _ in range(8):
+                reg("g3_control").write((reg("g3_control").read() & 1) | 2)
+                print(f"tx {reg('g3_raw_tx').read():010x} rx {reg('g3_raw_rx').read():010x}")
         elif command.startswith("g3force="):
             reg("g3_control").write(int(command.split("=")[1]))
         elif command.startswith("loopback="):
