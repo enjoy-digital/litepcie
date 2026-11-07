@@ -636,12 +636,99 @@ class WideLCRC(LiteXModule):
         ]
         self.sync += If(self.ce, state.eq(new))
 
+# Framers of both encodings --------------------------------------------------------------------------
+
+class RXFramerSelect(LiteXModule):
+    """8b/10b (WideRXFramer) and 8.0 GT/s (Gen3RXFramer) framers, the one of the rate selected by gen3 (the
+    other one held in reset). Same interface as a framer."""
+    def __init__(self, ndw):
+        from litepcie.phy.soft.gen3 import Gen3RXFramer
+        self.gen3       = Signal()   # i
+        self.sink       = sink = stream.Endpoint(lane_layout(4*ndw))
+        self.tlp        = tlp  = stream.Endpoint(tlp_beat_layout(ndw))
+        self.dllp       = Signal(48) # o
+        self.dllp_valid = Signal()   # o (Pulse)
+        self.error      = Signal()   # o (Pulse)
+        self.tlp_abort  = Signal()   # o (Pulse)
+
+        # # #
+
+        self.f8 = f8 = ResetInserter()(WideRXFramer(ndw))
+        self.f3 = f3 = ResetInserter()(Gen3RXFramer(ndw))
+        self.comb += [
+            f8.reset.eq(self.gen3),
+            f3.reset.eq(~self.gen3),
+            sink.ready.eq(1),
+        ]
+        for f in [f8, f3]:
+            sel = self.gen3 if f is f3 else ~self.gen3
+            self.comb += [
+                f.sink.valid.eq(sink.valid & sel),
+                f.sink.first.eq(sink.first),
+                f.sink.last.eq(sink.last),
+                f.sink.data.eq(sink.data),
+                If(sel,
+                    f.tlp.connect(tlp),
+                    self.dllp.eq(f.dllp),
+                    self.dllp_valid.eq(f.dllp_valid),
+                    self.error.eq(f.error),
+                    self.tlp_abort.eq(f.tlp_abort),
+                ),
+            ]
+        self.comb += f8.sink.ctrl.eq(sink.ctrl)
+
+class TXFramerSelect(LiteXModule):
+    """8b/10b (WideTXFramer) and 8.0 GT/s (Gen3TXFramer) framers, the one of the rate selected by gen3 (the
+    other one held in reset). Same interface as a framer, idle: Gen3TXFramer's."""
+    def __init__(self, ndw, nlanes):
+        from litepcie.phy.soft.gen3 import Gen3TXFramer
+        self.gen3       = Signal()   # i
+        self.tlp        = tlp    = stream.Endpoint(tlp_beat_layout(ndw))
+        self.lcrc       = Signal(32) # i
+        self.dllp       = Signal(48) # i
+        self.dllp_valid = Signal()   # i
+        self.dllp_ready = Signal()   # o (Pulse)
+        self.pad_enable = Signal(reset=1) # i
+        self.idle       = Signal()   # o
+        self.source     = source = stream.Endpoint(lane_layout(4*ndw))
+
+        # # #
+
+        self.f8 = f8 = ResetInserter()(WideTXFramer(ndw, nlanes))
+        self.f3 = f3 = ResetInserter()(Gen3TXFramer(ndw))
+        self.comb += [
+            f8.reset.eq(self.gen3),
+            f3.reset.eq(~self.gen3),
+            f8.pad_enable.eq(self.pad_enable),
+            self.idle.eq(f3.idle),
+        ]
+        for f in [f8, f3]:
+            sel = self.gen3 if f is f3 else ~self.gen3
+            self.comb += [
+                f.lcrc.eq(self.lcrc),
+                f.dllp.eq(self.dllp),
+                f.dllp_valid.eq(self.dllp_valid & sel),
+                f.tlp.valid.eq(tlp.valid & sel),
+                f.tlp.first.eq(tlp.first),
+                f.tlp.last.eq(tlp.last),
+                f.tlp.data.eq(tlp.data),
+                f.tlp.dws.eq(tlp.dws),
+                f.tlp.seq.eq(tlp.seq),
+                If(sel,
+                    tlp.ready.eq(f.tlp.ready),
+                    self.dllp_ready.eq(f.dllp_ready),
+                    f.source.connect(source, omit={"ctrl"}),
+                ),
+            ]
+        self.comb += If(~self.gen3, source.ctrl.eq(f8.source.ctrl))
+
 # Data Link Layer RX -------------------------------------------------------------------------------
 
 class WideDLLRX(LiteXModule):
     """As DLLRX, on beats of ndw DWs. Same interface towards the Data Link Layer core."""
     def __init__(self, ndw, depth=2048, packets=32, framing="8b10b"):
         self.reset        = Signal()
+        self.gen3         = Signal() # i: 8.0 GT/s framing (framing="both").
         self.sink         = sink   = stream.Endpoint(lane_layout(4*ndw))
         self.source       = source = stream.Endpoint([("data", 32*ndw), ("dws", bits_for(ndw))])
         self.dllp         = Signal(48)
@@ -661,6 +748,9 @@ class WideDLLRX(LiteXModule):
             from litepcie.phy.soft.gen3 import Gen3RXFramer
             self.framer = framer = Gen3RXFramer(ndw)
             self.comb += sink.connect(framer.sink, omit={"ctrl"})
+        elif framing == "both":
+            self.framer = framer = RXFramerSelect(ndw)
+            self.comb += [sink.connect(framer.sink), framer.gen3.eq(self.gen3)]
         else:
             self.framer = framer = WideRXFramer(ndw)
             self.comb += sink.connect(framer.sink)
@@ -804,6 +894,7 @@ class WideDLLTX(LiteXModule):
     """As DLLTX, on beats of ndw DWs. The LCRC is computed in a stage before the framer (timing)."""
     def __init__(self, ndw, nlanes, depth=1024, descriptors=16, replay_timer=375, framing="8b10b"):
         self.reset      = Signal()
+        self.gen3       = Signal() # i: 8.0 GT/s framing (framing="both").
         self.enable     = Signal()
         self.sink       = sink   = stream.Endpoint([("data", 32*ndw), ("dws", bits_for(ndw))])
         self.source     = source = stream.Endpoint(lane_layout(4*ndw))
@@ -825,6 +916,9 @@ class WideDLLTX(LiteXModule):
         if framing == "gen3":
             from litepcie.phy.soft.gen3 import Gen3TXFramer
             self.framer = framer = Gen3TXFramer(ndw)
+        elif framing == "both":
+            self.framer = framer = TXFramerSelect(ndw, nlanes)
+            self.comb += framer.gen3.eq(self.gen3)
         else:
             self.framer = framer = WideTXFramer(ndw, nlanes)
         tlp = framer.tlp
