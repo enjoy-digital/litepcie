@@ -86,6 +86,10 @@ def main():
             reg("control").write(reg("control").read() | 2)
         elif command.startswith("disable="):
             reg("lane_disable").write(int(command.split("=")[1], 0))
+        elif command == "g3counts":
+            c = reg("g3_counts").read()
+            print(f"lane 0: blocks {c & 0xffff}, undefined {(c >> 16) & 0xffff}, eieos {(c >> 32) & 0xffff}, "
+                  f"slips {(c >> 48) & 0xffff}, words {reg('g3_words').read()}")
         elif command == "g3raw":
             for _ in range(8):
                 reg("g3_control").write((reg("g3_control").read() & 1) | 2)
