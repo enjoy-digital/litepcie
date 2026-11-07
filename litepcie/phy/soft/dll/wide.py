@@ -279,7 +279,10 @@ class WideRXFramer(LiteXModule):
 class TLPRepacker(LiteXModule):
     """DWs of the slots of a beat to TLP beats starting on data[0:32]: a beat can hold the end of a TLP
     and the start of the next one. sink_ready drops while the buffer can't take a whole beat. flush
-    (with a beat, in order): the buffer is dropped, and the slots up to the next TLP start ignored."""
+    (with a beat, in order): the buffer is dropped, and the slots up to the next TLP start ignored.
+
+    The DWs stay in place in a ring buffer: what is written doesn't depend on what is read (timing),
+    and the output beats are registered."""
     def __init__(self, ndw, depth=None):
         self.sink_en    = Signal()    # i: beat present.
         self.sink_ready = Signal()    # o
@@ -295,80 +298,85 @@ class TLPRepacker(LiteXModule):
 
         # # #
 
-        depth   = 3*ndw if depth is None else depth
-        layout  = [("data", 32), ("first", 1), ("last", 1), ("edb", 1), ("seq", 12)]
-        width   = sum(w for _, w in layout)
-        buf     = [Signal(width, reset_less=True) for _ in range(depth)]
-        fill    = Signal(max=depth + 1)
-        field   = lambda s, name: s[sum(w for n, w in layout[:[x[0] for x in layout].index(name)]):][:dict(layout)[name]]
-
-        # Output: up to the end of the TLP or a full beat.
-        lasts = [field(buf[i], "last") for i in range(ndw)]
-        count = Signal(max=ndw + 1) # DWs of the output beat, if complete.
-        count_case = If(lasts[ndw - 1], count.eq(ndw)).Else(count.eq(ndw))
-        for i in reversed(range(ndw - 1)):
-            count_case = If(lasts[i], count.eq(i + 1)).Else(count_case)
-        self.comb += count_case
-        out_avail = Signal()
+        depth = 2**log2_int(3*ndw, need_pow2=False) if depth is None else depth
+        adr   = log2_int(depth)
+        fields = dict(data=(0, 32), first=(32, 1), last=(33, 1), edb=(34, 1), seq=(35, 12))
+        width  = 47
+        field  = lambda s, name: s[fields[name][0]:fields[name][0] + fields[name][1]]
+        buf    = [Signal(width, reset_less=True) for _ in range(depth)]
+        wr     = Signal(adr + 1)
+        rd     = Signal(adr + 1)
+        used   = Signal(adr + 1)
         self.comb += [
-            out_avail.eq((fill >= ndw) | ((fill >= count) & (count != ndw) & (fill != 0))),
-            source.valid.eq(out_avail),
-            source.first.eq(field(buf[0], "first")),
-            source.seq.eq(field(buf[0], "seq")),
-            source.dws.eq(count),
-            source.data.eq(Cat(*[field(buf[i], "data") for i in range(ndw)])),
+            used.eq(wr - rd),
+            self.sink_ready.eq(used + ndw <= depth),
         ]
-        self.comb += Case(count, {n: [
-            source.last.eq(field(buf[n - 1], "last")),
-            source.edb.eq(field(buf[n - 1], "edb")),
-        ] for n in range(1, ndw + 1)})
-        shift = Signal(max=ndw + 1)
-        self.comb += If(source.valid & source.ready, shift.eq(count))
 
-        # Input: valid slots written after the DWs kept. While dropping, the slots of a beat are ignored
-        # up to the first TLP start.
+        # Write: valid slots after the DWs kept. While dropping, the slots of a beat are ignored up to the
+        # first TLP start.
+        beat       = self.sink_en & self.sink_ready
         sink_valid = Signal(ndw)
-        dropping_i = Signal()
-        dropping_c = dropping_i
+        dropping   = Signal()
+        dropping_c = dropping
         for i in range(ndw):
             dropping_n = Signal()
             self.comb += [
                 dropping_n.eq(dropping_c & ~(self.sink_valid[i] & self.sink_first[i])),
-                sink_valid[i].eq(self.sink_en & self.sink_ready & self.sink_valid[i] & ~dropping_n),
+                sink_valid[i].eq(beat & self.sink_valid[i] & ~dropping_n),
             ]
             dropping_c = dropping_n
-        fill_c = Signal(max=depth + ndw + 1)
-        self.comb += fill_c.eq(fill - shift)
         entries = [Cat(self.sink_data[32*i:32*(i+1)], self.sink_first[i], self.sink_last[i],
                        self.sink_edb[i], self.sink_seq[12*i:12*(i+1)]) for i in range(ndw)]
-        # Position of each input slot.
-        positions = []
-        pos_c = fill_c
+        pos_c = wr
         for i in range(ndw):
-            positions.append(pos_c)
-            pos_n = Signal(max=depth + ndw + 1)
+            pos_n = Signal(adr + 1)
             self.comb += pos_n.eq(pos_c + sink_valid[i])
+            self.sync += If(sink_valid[i],
+                Case(pos_c[:adr], {j: buf[j].eq(entries[i]) for j in range(depth)})
+            )
             pos_c = pos_n
-        for j in range(depth):
-            # Kept DW shifted down, or an input slot written there.
-            value = Signal(width)
-            self.comb += Case(shift, {n: value.eq(buf[j + n] if j + n < depth else 0) for n in range(0, ndw + 1)})
-            statements = [buf[j].eq(value)]
-            for i in range(ndw):
-                statements.append(If(sink_valid[i] & (positions[i] == j), buf[j].eq(entries[i])))
-            self.sync += statements
-        # Flush: buffer dropped, input ignored up to the next TLP start.
-        self.comb += self.sink_ready.eq(fill_c + ndw <= depth)
-        beat = self.sink_en & self.sink_ready
+
+        # Read: up to the end of the TLP or a full beat.
+        head = [Signal(width) for _ in range(ndw)]
+        for i in range(ndw):
+            index = Signal(adr)
+            self.comb += [
+                index.eq(rd + i),
+                Case(index, {j: head[i].eq(buf[j]) for j in range(depth)}),
+            ]
+        lasts = [field(head[i], "last") for i in range(ndw)]
+        count = Signal(max=ndw + 1)
+        count_case = count.eq(ndw)
+        for i in reversed(range(ndw - 1)):
+            count_case = If(lasts[i], count.eq(i + 1)).Else(count_case)
+        self.comb += count_case
+        out_avail = (used >= ndw) | ((used >= count) & (used != 0))
+        take      = Signal()
+        self.comb += take.eq(out_avail & (~source.valid | source.ready))
         self.comb += self.flushed.eq(beat & self.flush)
         self.sync += [
+            If(source.ready, source.valid.eq(0)),
             If(self.flushed,
-                fill.eq(0),
-                dropping_i.eq(1),
+                wr.eq(0),
+                rd.eq(0),
+                dropping.eq(1),
+                source.valid.eq(0),
             ).Else(
-                If(beat, dropping_i.eq(dropping_c)),
-                fill.eq(pos_c),
-            ),
+                If(beat, dropping.eq(dropping_c)),
+                wr.eq(pos_c),
+                If(take,
+                    rd.eq(rd + count),
+                    source.valid.eq(1),
+                    source.first.eq(field(head[0], "first")),
+                    source.seq.eq(field(head[0], "seq")),
+                    source.dws.eq(count),
+                    source.data.eq(Cat(*[field(head[i], "data") for i in range(ndw)])),
+                    Case(count, {n: [
+                        source.last.eq(field(head[n - 1], "last")),
+                        source.edb.eq(field(head[n - 1], "edb")),
+                    ] for n in range(1, ndw + 1)}),
+                )
+            )
         ]
 
 # TX Framer ----------------------------------------------------------------------------------------
