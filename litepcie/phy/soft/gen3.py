@@ -533,6 +533,9 @@ class Gen3TXFramer(LiteXModule):
                 source.data.eq(0) # IDL Tokens.
             )
         )
+        # Between packets: the next beat is IDL Tokens (an EDS Token can be placed).
+        self.idle = Signal() # o
+        self.comb += self.idle.eq(fsm.ongoing("IDLE") & ~self.dllp_valid & ~(tlp.valid & tlp.first))
         fsm.act("TLP",
             source.valid.eq(tlp.valid),
             source.last.eq(tlp.last & ~tail),
@@ -640,10 +643,10 @@ SDS_BODY    = 0x55
 SKP_END     = 0xe1
 
 def ts3_layout():
-    """Fields of a 8.0 GT/s Training Sequence. eq: Symbol 6 (EC, Reset EIEOS Interval Count, Transmitter Preset,
+    """Fields of a 8.0 GT/s Training Sequence. eq_ctrl: Symbol 6 (EC, Reset EIEOS Interval Count, Transmitter Preset,
     Use Preset), pre/cur/post: coefficients (or FS/LF), reject: Reject Coefficient Values (TS1 only)."""
     return [("ts2", 1), ("link", 8), ("link_pad", 1), ("lane", 5), ("lane_pad", 1), ("n_fts", 8), ("rate", 8),
-            ("ctrl", 8), ("eq", 8), ("pre", 6), ("cur", 6), ("post", 6), ("reject", 1)]
+            ("ctrl", 8), ("eq_ctrl", 8), ("pre", 6), ("cur", 6), ("post", 6), ("reject", 1)]
 
 def ts3_symbols(ts):
     """The 16 Symbols of a Training Sequence (Symbol 0 first, bits 7:0), Symbols 14 and 15 as the identifier."""
@@ -651,14 +654,14 @@ def ts3_symbols(ts):
     s7    = Mux(ts.ts2, TS2_ID3, Cat(ts.pre, Constant(0, 2)))
     s8    = Mux(ts.ts2, TS2_ID3, Cat(ts.cur, Constant(0, 2)))
     s9lo  = Cat(ts.post, ts.reject)
-    parity = Reduce("XOR", [ts.eq[i] for i in range(8)] + [ts.pre[i] for i in range(6)] +
+    parity = Reduce("XOR", [ts.eq_ctrl[i] for i in range(8)] + [ts.pre[i] for i in range(6)] +
         [ts.cur[i] for i in range(6)] + [s9lo[i] for i in range(7)])
     s9    = Mux(ts.ts2, TS2_ID3, Cat(s9lo, parity))
     return [
         Mux(ts.ts2, 0x2d, 0x1e),
         Mux(ts.link_pad, GEN3_PAD, ts.link),
         Mux(ts.lane_pad, GEN3_PAD, Cat(ts.lane, Constant(0, 3))),
-        ts.n_fts, ts.rate, ts.ctrl, ts.eq, s7, s8, s9,
+        ts.n_fts, ts.rate, ts.ctrl, ts.eq_ctrl, s7, s8, s9,
     ] + [ident]*6
 
 # Lane TX ------------------------------------------------------------------------------------------
@@ -805,4 +808,201 @@ class Gen3LaneRX(LiteXModule):
             source.kind.eq(kind),
             source.data.eq(descrambler.data_out),
             self.error.eq(gearbox.valid & aligner.aligned & ~known),
+        ]
+
+# Link Blocks --------------------------------------------------------------------------------------
+
+def _stream_symbol(beats, nlanes, h, k):
+    """Symbol k of half h of a Block of the Data Stream (8*nlanes Symbols per half)."""
+    return beats[h][8*k:8*(k+1)]
+
+class Gen3LinkTX(LiteXModule):
+    """Data Stream and Ordered Sets to the Blocks of the lanes (4.2.2.3), ndw = 2*nlanes DWs per beat: a Data
+    Block on all the lanes is 2 beats, Symbol k of the Data Stream on Lane k mod nlanes. Out of the Data Stream:
+    an EIEOS then Training Sequences (lane numbers from `lane`), an EIEOS every eieos_interval. data_enable: SDS
+    then the Data Stream, a SKP Ordered Set every skp_interval Blocks (EDS Token in the last DW of the Data
+    Block before it, placed between packets). Leaving the Data Stream: EDS then the Ordered Sets."""
+    def __init__(self, nlanes, skp_interval=370, eieos_interval=32):
+        ndw = 2*nlanes
+        self.sink        = sink = stream.Endpoint([("data", 32*ndw)])
+        self.idle        = Signal(reset=1) # i: the framer is between packets (EDS can be placed).
+        self.blocks      = [stream.Endpoint(block_layout()) for _ in range(nlanes)]
+        self.data_enable = Signal()        # i
+        self.ts          = Record(ts3_layout()) # i
+        self.lane_pad    = Signal(nlanes)  # i: Lane Number PAD per lane.
+        self.eios        = Signal()        # i (Level): send EIOS (then the lanes go to Electrical Idle).
+
+        # # #
+
+        take = self.blocks[0].ready # All the lanes take their Block at the same time.
+
+        # Two beats buffered: a Data Block.
+        beats  = [Signal(32*ndw) for _ in range(2)]
+        filled = Signal(2)
+        eds    = Signal() # The buffered Block is IDL then EDS.
+        skp_count = Signal(max=skp_interval + 1)
+        skp_due   = skp_count >= skp_interval
+        in_stream = Signal()
+        leaving   = Signal()
+        self.comb += leaving.eq(in_stream & ~self.data_enable)
+
+        # Training Sequences per lane.
+        ts_data = []
+        for i in range(nlanes):
+            ts = Record(ts3_layout())
+            self.comb += [ts.eq(self.ts), ts.lane.eq(i), ts.lane_pad.eq(self.ts.lane_pad | self.lane_pad[i])]
+            ts_data.append(Cat(*ts3_symbols(ts)))
+
+        # Fill: from the framer, or IDL/EDS when a SKP is due (or the Data Stream ends) between packets.
+        idl_eds = Cat(Constant(0, 32*ndw - 32), Constant(int.from_bytes(EDS_TOKEN, "little"), 32))
+        self.comb += sink.ready.eq(in_stream & (filled != 2) & ~eds & ~((filled == 0) & (skp_due | leaving) & self.idle))
+        self.sync += [
+            If(in_stream & (filled == 0) & (skp_due | leaving) & self.idle & ~eds,
+                beats[0].eq(0),
+                beats[1].eq(idl_eds),
+                filled.eq(2),
+                eds.eq(1),
+            ).Elif(sink.valid & sink.ready,
+                If(filled == 0, beats[0].eq(sink.data)).Else(beats[1].eq(sink.data)),
+                filled.eq(filled + 1),
+            )
+        ]
+
+        # Blocks.
+        os_count  = Signal(max=eieos_interval + 1, reset=eieos_interval)
+        sds_sent  = Signal()
+        after_eds = Signal()
+        kind      = Signal(3)
+        for i, block in enumerate(self.blocks):
+            data = Cat(*[beats[p//8][8*((p % 8)*nlanes + i):8*((p % 8)*nlanes + i + 1)] for p in range(16)])
+            self.comb += [
+                block.valid.eq(1),
+                block.kind.eq(kind),
+                If(kind == BLOCK_TS, block.data.eq(ts_data[i])).Else(block.data.eq(data)),
+            ]
+        self.comb += [
+            If(self.eios & ~in_stream,
+                kind.eq(BLOCK_EIOS)
+            ).Elif(after_eds,
+                kind.eq(Mux(self.data_enable, BLOCK_SKP, BLOCK_EIEOS))
+            ).Elif(in_stream,
+                If(~sds_sent,
+                    kind.eq(BLOCK_SDS)
+                ).Else(
+                    kind.eq(BLOCK_DATA)
+                )
+            ).Elif(os_count == eieos_interval,
+                kind.eq(BLOCK_EIEOS)
+            ).Else(
+                kind.eq(BLOCK_TS)
+            )
+        ]
+        # A Data Block needs its two beats: the lanes wait (an Ordered Set or IDL would break the stream), at
+        # 2 beats per Block the framer keeps ahead.
+        self.sync += If(take,
+            If(after_eds,
+                after_eds.eq(0),
+                skp_count.eq(0),
+                If(~self.data_enable, in_stream.eq(0), sds_sent.eq(0), os_count.eq(eieos_interval)),
+            ).Elif(in_stream,
+                If(~sds_sent,
+                    sds_sent.eq(1)
+                ).Elif(filled == 2,
+                    filled.eq(0),
+                    If(eds,
+                        eds.eq(0),
+                        after_eds.eq(1),
+                    ).Else(
+                        skp_count.eq(skp_count + 1)
+                    )
+                )
+            ).Else(
+                If(kind == BLOCK_EIEOS, os_count.eq(0)).Elif(os_count != eieos_interval, os_count.eq(os_count + 1)),
+                If(self.data_enable, in_stream.eq(1), skp_count.eq(0)),
+            )
+        )
+
+class Gen3LinkRX(LiteXModule):
+    """Blocks of the lanes to the Data Stream (2 beats per Data Block) and the Training Sequences of each lane.
+    Lanes aligned on an EIEOS received on all of them, the kinds then have to match on every Block (else not
+    locked anymore). SKP Ordered Sets dropped."""
+    def __init__(self, nlanes, depth=64):
+        ndw = 2*nlanes
+        self.blocks  = [stream.Endpoint(block_layout()) for _ in range(nlanes)]
+        self.source  = source = stream.Endpoint([("data", 32*ndw)])
+        self.ts_valid = Signal()       # o (Pulse): TS Blocks on all the lanes.
+        self.ts_data  = Signal(128*nlanes) # o
+        self.eios     = Signal()       # o (Pulse)
+        self.sds      = Signal()       # o (Pulse)
+        self.locked   = Signal()       # o
+        self.error    = Signal()       # o (Pulse)
+
+        # # #
+
+        fifos = []
+        for block in self.blocks:
+            fifo = stream.SyncFIFO(block_layout(), depth, buffered=True)
+            self.submodules += fifo
+            self.comb += block.connect(fifo.sink)
+            fifos.append(fifo)
+        heads   = [fifo.source for fifo in fifos]
+        all_v   = Reduce("AND", [h.valid for h in heads])
+        all_eie = Reduce("AND", [h.kind == BLOCK_EIEOS for h in heads])
+        same    = Signal()
+        self.comb += same.eq(Reduce("AND", [h.kind == heads[0].kind for h in heads[1:]]) if nlanes > 1 else 1)
+        kind    = heads[0].kind
+        half    = Signal() # Second beat of a Data Block pending.
+        pop     = Signal()
+        self.comb += pop.eq(all_v & ~half & (~source.valid | source.ready))
+        # A lane whose FIFO is deeper than another's by more than a Block has older Blocks (its receiver
+        # aligned first): its EIEOS isn't the one of the others, it goes to its next one.
+        drops = []
+        for i, fifo in enumerate(fifos):
+            drop = Signal()
+            self.comb += drop.eq(Reduce("OR", [fifo.level > other.level + 1 for other in fifos if other is not fifo]) if nlanes > 1 else 0)
+            drops.append(drop)
+        any_drop = Signal()
+        self.comb += any_drop.eq(Reduce("OR", drops))
+        for i, h in enumerate(heads):
+            self.comb += If(self.locked,
+                h.ready.eq(pop)
+            ).Else(
+                h.ready.eq(h.valid & ((h.kind != BLOCK_EIEOS) | drops[i] | (all_v & all_eie & ~any_drop)))
+            )
+        # Data Stream beats: half 0 from Symbols 0-7 of the lanes, half 1 from 8-15.
+        block_data = [h.data for h in heads]
+        second = Signal(32*ndw)
+        def beat(h):
+            return Cat(*[block_data[k % nlanes][8*(8*h + k//nlanes):8*(8*h + k//nlanes + 1)] for k in range(8*nlanes)])
+        self.sync += [
+            If(source.valid & source.ready, source.valid.eq(0)),
+            self.ts_valid.eq(0),
+            self.eios.eq(0),
+            self.sds.eq(0),
+            self.error.eq(0),
+            If(half & (~source.valid | source.ready),
+                source.valid.eq(1),
+                source.data.eq(second),
+                half.eq(0),
+            ),
+            If(~self.locked,
+                If(all_v & all_eie & ~any_drop, self.locked.eq(1))
+            ).Elif(pop,
+                If(~same,
+                    self.locked.eq(0),
+                    self.error.eq(1),
+                ).Elif(kind == BLOCK_DATA,
+                    source.valid.eq(1),
+                    source.data.eq(beat(0)),
+                    second.eq(beat(1)),
+                    half.eq(1),
+                ).Elif(kind == BLOCK_TS,
+                    self.ts_valid.eq(1),
+                    self.ts_data.eq(Cat(*block_data)),
+                ).Elif(kind == BLOCK_EIOS,
+                    self.eios.eq(1),
+                ).Elif(kind == BLOCK_SDS,
+                    self.sds.eq(1),
+                )
+            )
         ]

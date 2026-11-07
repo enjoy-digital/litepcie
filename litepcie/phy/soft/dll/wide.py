@@ -640,7 +640,7 @@ class WideLCRC(LiteXModule):
 
 class WideDLLRX(LiteXModule):
     """As DLLRX, on beats of ndw DWs. Same interface towards the Data Link Layer core."""
-    def __init__(self, ndw, depth=2048, packets=32):
+    def __init__(self, ndw, depth=2048, packets=32, framing="8b10b"):
         self.reset        = Signal()
         self.sink         = sink   = stream.Endpoint(lane_layout(4*ndw))
         self.source       = source = stream.Endpoint([("data", 32*ndw), ("dws", bits_for(ndw))])
@@ -657,9 +657,14 @@ class WideDLLRX(LiteXModule):
         # # #
 
         # Framing.
-        self.framer = framer = WideRXFramer(ndw)
+        if framing == "gen3":
+            from litepcie.phy.soft.gen3 import Gen3RXFramer
+            self.framer = framer = Gen3RXFramer(ndw)
+            self.comb += sink.connect(framer.sink, omit={"ctrl"})
+        else:
+            self.framer = framer = WideRXFramer(ndw)
+            self.comb += sink.connect(framer.sink)
         self.comb += [
-            sink.connect(framer.sink),
             self.dllp.eq(framer.dllp),
             self.dllp_valid.eq(framer.dllp_valid),
         ]
@@ -797,7 +802,7 @@ class WideDLLRX(LiteXModule):
 
 class WideDLLTX(LiteXModule):
     """As DLLTX, on beats of ndw DWs. The LCRC is computed in a stage before the framer (timing)."""
-    def __init__(self, ndw, nlanes, depth=1024, descriptors=16, replay_timer=375):
+    def __init__(self, ndw, nlanes, depth=1024, descriptors=16, replay_timer=375, framing="8b10b"):
         self.reset      = Signal()
         self.enable     = Signal()
         self.sink       = sink   = stream.Endpoint([("data", 32*ndw), ("dws", bits_for(ndw))])
@@ -817,7 +822,11 @@ class WideDLLTX(LiteXModule):
 
         # LCRC stage.
         self.lcrc   = lcrc   = WideLCRC(ndw)
-        self.framer = framer = WideTXFramer(ndw, nlanes)
+        if framing == "gen3":
+            from litepcie.phy.soft.gen3 import Gen3TXFramer
+            self.framer = framer = Gen3TXFramer(ndw)
+        else:
+            self.framer = framer = WideTXFramer(ndw, nlanes)
         tlp = framer.tlp
         rs  = replay.source
         out_valid = Signal()
@@ -849,5 +858,5 @@ class WideDLLTX(LiteXModule):
             framer.dllp.eq(self.dllp),
             framer.dllp_valid.eq(self.dllp_valid),
             self.dllp_ready.eq(framer.dllp_ready),
-            framer.source.connect(source),
+            framer.source.connect(source, omit={"ctrl"} if framing == "gen3" else set()),
         ]
