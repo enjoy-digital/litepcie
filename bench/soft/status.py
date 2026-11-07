@@ -92,8 +92,21 @@ def main():
                   f"slips {(c >> 48) & 0xffff}, words {reg('g3_words').read()}")
         elif command == "g3raw":
             for _ in range(8):
-                reg("g3_control").write((reg("g3_control").read() & 1) | 2)
+                reg("g3_control").write((reg("g3_control").read() & 0b101) | 0b10)
                 print(f"tx {reg('g3_raw_tx').read():010x} rx {reg('g3_raw_rx').read():010x}")
+        elif command == "g3trace":
+            reg("g3_control").write((reg("g3_control").read() & 0b101) | 0b1000)
+        elif command == "g3dump":
+            names = {v: k for k, v in LTSSM_STATES.items()}
+            seq   = ["IDLE", "CLOCK", "PMA-HOLD", "DRP", "PMA-RELEASE", "GT", "RX-RESET", "RX-READY"]
+            for i in range(reg("g3_trace_count").read()):
+                reg("g3_trace_index").write(i)
+                e = reg("g3_trace_data").read()
+                print(f"{(e >> 24)*1.024:12.1f} us  {names.get(e & 0x3f, hex(e & 0x3f)):30s} rate {(e >> 14) & 3} "
+                      f"pll_sel {(e >> 16) & 1} done {(e >> 17) & 1} seq {seq[(e >> 18) & 7]:11s} "
+                      f"eidle gt {(e >> 21) & 1} ltssm {(e >> 22) & 1} locked {(e >> 23) & 1}")
+        elif command.startswith("g3eidle="):
+            reg("g3_control").write((reg("g3_control").read() & 0b001) | (int(command.split("=")[1]) << 2))
         elif command.startswith("g3force="):
             reg("g3_control").write(int(command.split("=")[1]))
         elif command.startswith("loopback="):

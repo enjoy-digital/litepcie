@@ -65,6 +65,8 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             self._g3_control = CSRStorage(fields=[
                 CSRField("force", size=1, offset=0, description="8.0 GT/s with the transmitters on, LTSSM disabled (with loopback: checks the transceivers' rate switch and the Blocks without a partner)."),
                 CSRField("snapshot", size=1, offset=1, pulse=True, description="Capture the raw words of Lane 0 (g3_raw_tx/g3_raw_rx)."),
+                CSRField("eidle",    size=1, offset=2, description="Use the transceivers' Electrical Idle detection at 8.0 GT/s."),
+                CSRField("trace",    size=1, offset=3, pulse=True, description="Start the rate trace (g3_trace_*)."),
             ])
             self._g3_raw_tx = CSRStatus(40, description="Raw word transmitted on Lane 0 (snapshot).")
             self._g3_raw_rx = CSRStatus(40, description="Raw word received on Lane 0 (snapshot, bit 39: valid).")
@@ -123,6 +125,56 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
                     MultiReg(rs.pll_lock, self._g3_status.fields.pll_lock, "sys"),
                     MultiReg(rs.timeouts, self._g3_status.fields.timeouts, "sys"),
                 ]
+            eidle = Signal()
+            self.specials += MultiReg(self._g3_control.fields.eidle, eidle, "pcie_link")
+            self.comb += phy.g3_eidle.eq(eidle)
+
+            # Rate trace ("pcie_link"): each change of the LTSSM state and rate, rate sequencer state and PLL
+            # selection, Electrical Idle (transceiver, LTSSM), 8.0 GT/s lock, with a timestamp (1.024 us at
+            # 125 MHz). The first trace_depth changes after the start are kept.
+            if rs is not None:
+                trace_depth = 256
+                self._g3_trace_index = CSRStorage(8, description="Rate trace entry to read.")
+                self._g3_trace_data  = CSRStatus(48, description="Rate trace entry: timestamp (bits 47:24), lock (23), LTSSM Electrical Idle (22), transceiver Electrical Idle (21), sequencer state (20:18), sequencer done (17), PLL selection (16), rate (15:14), LTSSM state (5:0).")
+                self._g3_trace_count = CSRStatus(9, description="Rate trace entries.")
+                seq_states = ["IDLE", "CLOCK", "PMA-HOLD", "DRP", "PMA-RELEASE", "GT", "RX-RESET", "RX-READY"]
+                seq_state  = Signal(3)
+                for i, name in enumerate(seq_states):
+                    if name in rs.fsm.actions:
+                        self.comb += If(rs.fsm.ongoing(name), seq_state.eq(i))
+                locked = Signal()
+                self.specials += MultiReg(g3.lrx.locked, locked, "pcie_link")
+                event   = Signal(24)
+                event_r = Signal(24)
+                stamp   = Signal(31)
+                self.comb += event.eq(Cat(ltssm.state[:6], Constant(0, 8), ltssm.rate, rs.pll_sel, rs.done, seq_state,
+                    phy.rx_elecidle, ltssm.rx_elecidle, locked))
+                start = PulseSynchronizer("sys", "pcie_link")
+                self.submodules += start
+                self.comb += start.i.eq(self._g3_control.fields.trace)
+                mem   = Memory(48, trace_depth)
+                wport = mem.get_port(write_capable=True, clock_domain="pcie_link")
+                rport = mem.get_port(clock_domain="sys")
+                self.specials += mem, wport, rport
+                count = Signal(9)
+                self.sync.pcie_link += [
+                    event_r.eq(event),
+                    stamp.eq(stamp + 1),
+                    If(start.o,
+                        count.eq(0),
+                        stamp.eq(0),
+                    ).Elif(wport.we,
+                        count.eq(count + 1),
+                    )
+                ]
+                self.comb += [
+                    wport.adr.eq(count),
+                    wport.dat_w.eq(Cat(event, stamp[7:31])),
+                    wport.we.eq(~start.o & (event != event_r) & (count != trace_depth)),
+                    rport.adr.eq(self._g3_trace_index.storage),
+                    self._g3_trace_data.status.eq(rport.dat_r),
+                ]
+                self.specials += MultiReg(count, self._g3_trace_count.status, "sys")
         self._rx_ts        = CSRStatus(32, description="Training Sequences received.")
         self._rx_ts_errors = CSRStatus(32, description="Corrupted Training Sequences received.")
         self._rx_errors    = CSRStatus(32, description="8b/10b errors received (words).")
