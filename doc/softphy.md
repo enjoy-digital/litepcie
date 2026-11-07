@@ -148,6 +148,20 @@ driver and `litepcie_util`, against the same design on the hard IP:
 | Slice Registers | 7045 | 3755 |
 | Setup WNS | 0.641 ns | 0.739 ns |
 
+Reliability of the soft design, with the root port's correctable errors watched (2.5 GT/s x1):
+
+| Test | Result |
+|---|---|
+| `dma_test`, 1 hour | 1.72 Gb/s, 0 errors, no Bad DLLP, Bad TLP, Receiver Error, Rollover or Replay Timeout |
+| Link cycling (LTSSM off/on, enumeration, scratch, 2 s DMA), 100 cycles | 100 passed, DL_Active back in 6 ms on average, 14 ms at most |
+| Warm reboots (same checks), 20 | 20 passed, the design kept on all 19 reboots started with it loaded |
+
+Not run: cold power cycles and enumeration at boot (LTSSM autostart).
+
+Known issue: BAR reads before the device is enabled are answered with Command.MSE=0, and the first one after a reboot
+timed out at the host (all-ones, Advisory Non-Fatal Error, 41.7 ms when timed) on the 19 reboots that kept the design, not after a fresh load. Loading the driver first
+didn't show it (one run, not a repeated test). Cause not found.
+
 The Artix-7 GTP path has not been run on hardware yet.
 
 ## Resources and timing against the hard IP
@@ -203,11 +217,18 @@ present), Electrical Idle comes from the GTP detector.
 python3 bench/soft/ypcb.py --with-endpoint --driver --build     # --hard-ip for the same design on the hard IP.
 litex_server --jtag --jtag-config openocd_xc7_ft232.cfg
 python3 bench/soft/status.py --csr-csv build/soft_ypcb/csr.csv enable status trace
-echo 1 > /sys/bus/pci/rescan                                    # Once dl_active is set.
+echo 1 > /sys/bus/pci/devices/<root port>/remove                # Once dl_active is set.
+echo 1 > /sys/bus/pci/rescan
 ```
 
 The LTSSM is disabled at reset and by PERST#, so that a design making a host hang cannot do it again at the next boot.
-Rescan works when the root port already has a memory window (for example from the design loaded at the previous boot).
+
+Remove the root port before the rescan when the BIOS saw no device at boot. A rescan alone assigned the memory window
+without programming it on the host tested: the kernel log and `lspci` show the window, the root port's configuration
+offset 0x20 still reads `0000fff0`, and BAR reads return all-ones.
+
+Check the device ID and the build date after each reboot: a warm reboot usually keeps the design, but one reloaded the
+FPGA from its flash.
 
 ## Bring-up on the Acorn (M2.5/M3)
 
