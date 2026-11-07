@@ -147,6 +147,9 @@ class K7PCIeSerDes(S7PCIeSerDes):
             lane.raw_rx.eq(rx_cdc.source.data),
             lane.raw_rx_valid.eq(rx_cdc.source.valid & raw_g3),
         ]
+        # No comma alignment at 8.0 GT/s: 8b/10b commas also match in 128b/130b data (in each EIEOS, at random
+        # in scrambled data), the word boundary would move under the Block aligner.
+        self.comb += gt.rx_align.eq(~rs.pll_sel)
         params   = gt.gtx_params
         tx_data  = params["i_TXDATA"]
         tx_mode  = params["i_TXCHARDISPMODE"]
