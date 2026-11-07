@@ -293,10 +293,17 @@ SDP_TOKEN = bytes([0xf0, 0xac])
 EDS_TOKEN = bytes([0x1f, 0x80, 0x90, 0x00])
 EDB_TOKEN = bytes([0xc0]*4)
 
+TOKEN_IDL, TOKEN_STP, TOKEN_SDP, TOKEN_EDS, TOKEN_EDB, TOKEN_ERR = range(6)
+
 class Gen3RXFramer(LiteXModule):
     """Data Stream of the Data Blocks to TLP beats and DLLPs, ndw DWs per cycle, same interface as
     WideRXFramer. There are no K Symbols: the Tokens give the location of the next one. Tokens are on a DW
-    from x4 on, this framer doesn't handle the other positions possible at x1 and x2 after IDL Tokens."""
+    from x4 on, this framer doesn't handle the other positions possible at x1 and x2 after IDL Tokens.
+
+    Pipelined (timing): each DW slot classified as if a Token started there (kind, position of the next
+    Token), then for every start slot the Tokens reached in the beat and the position after them (pointer
+    doubling, a stage per level), then the only loop from a beat to the next: the start in the beat, then the
+    slots labelled from the Token before them (TLP DWs, first/last, sequence number, DLLPs, errors)."""
     def __init__(self, ndw, fifo_depth=64):
         from litepcie.phy.soft.dll.wide import TLPRepacker, tlp_beat_layout
         self.sink       = sink = stream.Endpoint([("data", 32*ndw)])
@@ -309,102 +316,184 @@ class Gen3RXFramer(LiteXModule):
         # # #
 
         self.comb += sink.ready.eq(1)
+        pw = 12 # Positions: up to a TLP Length (11 bits) past the last slot.
+        iw = bits_for(ndw - 1)
 
-        # The word processed is the previous one, slot 0 of the current one tells if an EDB follows.
+        # The word processed is the previous one, slot 0 of the current one is its lookahead (second DW of a
+        # DLLP, EDB after a TLP).
         prev_valid = Signal()
         prev_data  = Signal(32*ndw)
-        process    = Signal()
-        self.comb += process.eq(prev_valid & sink.valid)
         self.sync += If(sink.valid,
             prev_valid.eq(1),
             prev_data.eq(sink.data),
         )
-        slots = [prev_data[32*i:32*(i+1)] for i in range(ndw)] + [sink.data[0:32]]
-        edb   = [slots[i] == 0xc0c0c0c0 for i in range(ndw + 1)]
 
-        # A Token at a slot sets what the next slots are: TLP DWs (remaining counter) or the end of a
-        # DLLP. The counter is decremented by the whole beat when the TLP goes past it.
-        remaining  = Signal(11)
-        dllp_tail  = Signal()
-        skip_edb   = Signal()
-        remaining_c, dllp_c, skip_c = remaining, dllp_tail, skip_edb
+        # Stage A: slots classified.
+        a_valid = Signal()
+        a_data  = Signal(32*(ndw + 1))
+        a_kind  = [Signal(3)  for _ in range(ndw)]
+        a_next  = [Signal(pw) for _ in range(ndw)]
+        a_seq   = [Signal(12) for _ in range(ndw)]
+        self.sync += [
+            a_valid.eq(prev_valid & sink.valid),
+            a_data.eq(Cat(prev_data, sink.data[0:32])),
+        ]
+        for i in range(ndw):
+            slot   = prev_data[32*i:32*(i+1)]
+            length = Cat(slot[4:8], slot[8:15])
+            fcrc, parity = _stp_check(length)
+            stp_ok = (slot[20:24] == fcrc) & (slot[15] == parity) & (length >= 5)
+            self.sync += [
+                a_seq[i].eq(Cat(slot[24:32], slot[16:20])),
+                a_next[i].eq(i + 1),
+                If(slot == 0x0090801f,
+                    a_kind[i].eq(TOKEN_EDS)
+                ).Elif(slot == 0xc0c0c0c0,
+                    a_kind[i].eq(TOKEN_EDB)
+                ).Elif(slot[0:4] == 0xf,
+                    If(stp_ok,
+                        a_kind[i].eq(TOKEN_STP),
+                        a_next[i].eq(i + length),
+                    ).Else(
+                        a_kind[i].eq(TOKEN_ERR)
+                    )
+                ).Elif(slot[0:16] == 0xacf0,
+                    a_kind[i].eq(TOKEN_SDP),
+                    a_next[i].eq(i + 2),
+                ).Elif(slot[0:8] == 0,
+                    a_kind[i].eq(TOKEN_IDL)
+                ).Else(
+                    a_kind[i].eq(TOKEN_ERR)
+                )
+            ]
+
+        # Stage B: pointer doubling. J[s]: position after the Tokens followed from s (in the beat: not done),
+        # M[s]: Tokens reached from s.
+        valid, data, kinds, nexts, seqs = a_valid, a_data, a_kind, a_next, a_seq
+        J = list(a_next)
+        M = [Constant(1 << i, ndw) for i in range(ndw)]
+        steps = 1
+        while steps < ndw:
+            J_n = [Signal(pw)  for _ in range(ndw)]
+            M_n = [Signal(ndw) for _ in range(ndw)]
+            J_a = Array(J)
+            M_a = Array(M)
+            for i in range(ndw):
+                inb = J[i] < ndw
+                self.sync += [
+                    J_n[i].eq(Mux(inb, J_a[J[i][:iw]], J[i])),
+                    M_n[i].eq(M[i] | Mux(inb, M_a[J[i][:iw]], 0)),
+                ]
+            # Beat data along.
+            valid_n = Signal()
+            data_n  = Signal(len(data))
+            kinds_n = [Signal(3)  for _ in range(ndw)]
+            nexts_n = [Signal(pw) for _ in range(ndw)]
+            seqs_n  = [Signal(12) for _ in range(ndw)]
+            self.sync += [valid_n.eq(valid), data_n.eq(data)] + \
+                [kinds_n[i].eq(kinds[i]) for i in range(ndw)] + \
+                [nexts_n[i].eq(nexts[i]) for i in range(ndw)] + \
+                [seqs_n[i].eq(seqs[i]) for i in range(ndw)]
+            valid, data, kinds, nexts, seqs = valid_n, data_n, kinds_n, nexts_n, seqs_n
+            J, M = J_n, M_n
+            steps *= 2
+
+        # Stage C: start in the beat (the loop), Token carried from the previous beats (the last one: its kind,
+        # sequence number, and if it was on the last slot).
+        start   = Signal(pw)   # First Token of the beat (>= ndw: none).
+        c_kind  = Signal(3, reset=TOKEN_IDL)
+        c_seq   = Signal(12)
+        c_last  = Signal()     # The carried Token was on the last slot of the previous beat.
+        inb     = start < ndw
+        tokens  = Signal(ndw)
+        J_a     = Array(J)
+        M_a     = Array(M)
+        self.comb += tokens.eq(Mux(inb, M_a[start[:iw]], 0))
+        last_kind = Signal(3)
+        last_seq  = Signal(12)
+        last_pos  = Signal(iw)
+        for i in range(ndw): # Highest Token of the beat.
+            self.comb += If(tokens[i], last_kind.eq(kinds[i]), last_seq.eq(seqs[i]), last_pos.eq(i))
+        d_valid  = Signal()
+        d_data   = Signal(len(data))
+        d_tokens = Signal(ndw)
+        d_start  = Signal(pw)
+        d_kind   = Signal(3)
+        d_seq    = Signal(12)
+        d_last   = Signal()
+        d_kinds  = [Signal(3)  for _ in range(ndw)]
+        d_nexts  = [Signal(pw) for _ in range(ndw)]
+        d_seqs   = [Signal(12) for _ in range(ndw)]
+        self.sync += [
+            d_valid.eq(valid),
+            If(valid,
+                d_data.eq(data),
+                d_tokens.eq(tokens),
+                d_start.eq(start),
+                d_kind.eq(c_kind),
+                d_seq.eq(c_seq),
+                d_last.eq(c_last),
+                *[d_kinds[i].eq(kinds[i]) for i in range(ndw)],
+                *[d_nexts[i].eq(nexts[i]) for i in range(ndw)],
+                *[d_seqs[i].eq(seqs[i]) for i in range(ndw)],
+                start.eq(Mux(inb, J_a[start[:iw]], start) - ndw),
+                If(tokens != 0,
+                    c_kind.eq(last_kind),
+                    c_seq.eq(last_seq),
+                    c_last.eq(last_pos == ndw - 1),
+                ).Else(
+                    c_last.eq(0)
+                )
+            )
+        ]
+
+        # Stage D: slots labelled from the Token before them (or the carried one).
+        slots  = [d_data[32*i:32*(i+1)] for i in range(ndw + 1)]
+        edb    = [slots[i] == 0xc0c0c0c0 for i in range(ndw + 1)]
         tlp_v  = [Signal() for _ in range(ndw)]
         tlp_f  = [Signal() for _ in range(ndw)]
         tlp_l  = [Signal() for _ in range(ndw)]
         dllp_v = [Signal() for _ in range(ndw)]
         errors = [Signal() for _ in range(ndw)]
-        seqs   = [Signal(12) for _ in range(ndw)]
-        seq_c  = Signal(12)
-        seq_r  = seq_c
-        first_c = Signal()
-        first_r = first_c
-        for i in range(ndw):
-            slot = slots[i]
-            s0   = slot[0:8]
-            is_stp = s0[0:4] == 0xf
-            is_sdp = slot[0:16] == 0xacf0
-            is_eds = slot == 0x0090801f
-            is_idl = s0 == 0
-            length = Cat(slot[4:8], slot[8:15])
-            fcrc, parity = _stp_check(length)
-            stp_ok = (slot[20:24] == fcrc) & (slot[15] == parity) & (length >= 5)
-            remaining_n = Signal(11)
-            dllp_n      = Signal()
-            skip_n      = Signal()
-            seq_n       = Signal(12)
-            first_n     = Signal()
-            self.comb += [
-                remaining_n.eq(remaining_c),
-                dllp_n.eq(0),
-                skip_n.eq(0),
-                seq_n.eq(seq_c),
-                first_n.eq(first_c),
-                seqs[i].eq(seq_c),
-                If(remaining_c != 0,
-                    tlp_v[i].eq(1),
-                    tlp_f[i].eq(first_c),
-                    first_n.eq(0),
-                    tlp_l[i].eq(remaining_c == 1),
-                    remaining_n.eq(remaining_c - 1),
-                    # An EDB confirms a nullified TLP, it follows the last DW.
-                    skip_n.eq((remaining_c == 1) & edb[i + 1]),
-                ).Elif(dllp_c,
-                    # Second DW of the DLLP.
-                ).Elif(skip_c,
-                    # EDB Token.
-                ).Elif(is_eds,
-                    # Next Block is an Ordered Set Block, the Data Stream resumes after it.
-                ).Elif(is_stp,
-                    If(stp_ok,
-                        remaining_n.eq(length - 1),
-                        seq_n.eq(Cat(slot[24:32], slot[16:20])),
-                        first_n.eq(1),
-                    ).Else(
-                        errors[i].eq(1)
-                    )
-                ).Elif(is_sdp,
-                    dllp_v[i].eq(1),
-                    dllp_n.eq(1),
-                ).Elif(~is_idl,
-                    errors[i].eq(1)
-                )
+        tseqs  = [Signal(12) for _ in range(ndw)]
+        for k in range(ndw):
+            o_kind  = Signal(3)
+            o_seq   = Signal(12)
+            o_first = Signal()
+            o_last  = Signal()
+            # Carried Token: TLP DWs up to the start, the first one on slot 0 if the STP was on the last slot.
+            statements = [
+                o_kind.eq(d_kind),
+                o_seq.eq(d_seq),
+                o_first.eq(d_last & (k == 0)),
+                o_last.eq(d_start == k + 1),
             ]
-            remaining_c, dllp_c, skip_c, seq_c, first_c = remaining_n, dllp_n, skip_n, seq_n, first_n
-        self.sync += If(process,
-            remaining.eq(remaining_c),
-            dllp_tail.eq(dllp_c),
-            skip_edb.eq(skip_c),
-            seq_r.eq(seq_c),
-            first_r.eq(first_c),
-        )
+            for j in range(k + 1): # Latest Token at or before slot k.
+                statements.append(If(d_tokens[j],
+                    o_kind.eq(d_kinds[j]),
+                    o_seq.eq(d_seqs[j]),
+                    o_first.eq(k == j + 1),
+                    o_last.eq(d_nexts[j] == k + 1),
+                ))
+            self.comb += statements
+            self.comb += [
+                tlp_v[k].eq((o_kind == TOKEN_STP) & ~d_tokens[k]),
+                tlp_f[k].eq(o_first & tlp_v[k]),
+                tlp_l[k].eq(o_last & tlp_v[k]),
+                tseqs[k].eq(o_seq),
+                dllp_v[k].eq(d_tokens[k] & (d_kinds[k] == TOKEN_SDP)),
+                errors[k].eq(d_tokens[k] & (d_kinds[k] == TOKEN_ERR)),
+            ]
+        process = d_valid
 
         # DLLPs: 2 bytes in the Token's DW, 4 in the next one. Queued, one per cycle.
-        dllps = Array(Signal(48) for _ in range(8))
-        wr, rd = Signal(3), Signal(3)
+        nq = max(8, ndw)
+        dllps = Array(Signal(48) for _ in range(nq))
+        wr, rd = Signal(max=nq), Signal(max=nq)
         wr_c = wr
         for i in range(ndw):
-            wr_n = Signal(3)
-            self.comb += wr_n.eq(wr_c + (process & dllp_v[i]))
+            wr_n = Signal(max=nq)
+            self.comb += wr_n.eq(Mux(process & dllp_v[i], Mux(wr_c == nq - 1, 0, wr_c + 1), wr_c))
             self.sync += If(process & dllp_v[i], dllps[wr_c].eq(Cat(slots[i][16:32], slots[i + 1])))
             wr_c = wr_n
         self.sync += [
@@ -412,7 +501,7 @@ class Gen3RXFramer(LiteXModule):
             self.dllp_valid.eq(rd != wr),
             If(rd != wr,
                 self.dllp.eq(dllps[rd]),
-                rd.eq(rd + 1),
+                rd.eq(Mux(rd == nq - 1, 0, rd + 1)),
             )
         ]
 
@@ -452,8 +541,8 @@ class Gen3RXFramer(LiteXModule):
             fifo.sink.last_.eq(Cat(*tlp_l)),
             fifo.sink.edb.eq(Cat(*[edb[i + 1] for i in range(ndw)])),
             fifo.sink.abort.eq(missed),
-            fifo.sink.data.eq(prev_data),
-            fifo.sink.seq.eq(Cat(*seqs)),
+            fifo.sink.data.eq(d_data[:32*ndw]),
+            fifo.sink.seq.eq(Cat(*tseqs)),
             If(fifo.sink.valid & ~fifo.sink.ready,
                 missed.eq(1)
             ).Elif(fifo.sink.valid & fifo.sink.abort,
