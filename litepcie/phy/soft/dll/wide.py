@@ -660,6 +660,7 @@ class RXFramerSelect(LiteXModule):
             f3.reset.eq(~self.gen3),
             sink.ready.eq(1),
         ]
+        # Outputs registered (timing; the TLP beats are always taken).
         for f in [f8, f3]:
             sel = self.gen3 if f is f3 else ~self.gen3
             self.comb += [
@@ -667,14 +668,21 @@ class RXFramerSelect(LiteXModule):
                 f.sink.first.eq(sink.first),
                 f.sink.last.eq(sink.last),
                 f.sink.data.eq(sink.data),
-                If(sel,
-                    f.tlp.connect(tlp),
-                    self.dllp.eq(f.dllp),
-                    self.dllp_valid.eq(f.dllp_valid),
-                    self.error.eq(f.error),
-                    self.tlp_abort.eq(f.tlp_abort),
-                ),
+                f.tlp.ready.eq(1),
             ]
+            self.sync += If(sel,
+                tlp.valid.eq(f.tlp.valid),
+                tlp.first.eq(f.tlp.first),
+                tlp.last.eq(f.tlp.last),
+                tlp.data.eq(f.tlp.data),
+                tlp.dws.eq(f.tlp.dws),
+                tlp.seq.eq(f.tlp.seq),
+                tlp.edb.eq(f.tlp.edb),
+                self.dllp.eq(f.dllp),
+                self.dllp_valid.eq(f.dllp_valid),
+                self.error.eq(f.error),
+                self.tlp_abort.eq(f.tlp_abort),
+            )
         self.comb += f8.sink.ctrl.eq(sink.ctrl)
 
 class TXFramerSelect(LiteXModule):
