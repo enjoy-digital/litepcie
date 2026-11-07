@@ -209,11 +209,16 @@ class WideRXFramer(LiteXModule):
         rd       = Signal(3)
         wr_c     = wr
         for i in range(ndw):
-            wr_n = Signal(3)
-            self.comb += wr_n.eq(wr_c + (process & dllp_v[i]))
-            self.sync += If(process & dllp_v[i],
-                dllps[wr_c].eq(Cat(slots[i][8:32], slots[i + 1][0:24]))
-            )
+            # Registered (timing): the slots classification is on the way.
+            wr_n   = Signal(3)
+            valid  = Signal()
+            value  = Signal(48, reset_less=True)
+            self.sync += [
+                valid.eq(process & dllp_v[i]),
+                value.eq(Cat(slots[i][8:32], slots[i + 1][0:24])),
+            ]
+            self.comb += wr_n.eq(wr_c + valid)
+            self.sync += If(valid, dllps[wr_c].eq(value))
             wr_c = wr_n
         self.sync += [
             wr.eq(wr_c),
