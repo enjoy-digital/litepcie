@@ -56,7 +56,7 @@ class TLPArbiter(LiteXModule):
 # Transaction Layer --------------------------------------------------------------------------------
 
 class SoftTransactionLayer(LiteXModule):
-    def __init__(self, bar0_mask, nlanes=1, vendor_id=0x10ee, device_id=0x7021, msi_vectors=1, gen2_capable=False):
+    def __init__(self, bar0_mask, nlanes=1, vendor_id=0x10ee, device_id=0x7021, msi_vectors=1, gen2_capable=False, gen3_capable=False):
         self.sink       = sink       = stream.Endpoint([("data", 32)]) # i: from the Data Link Layer.
         self.source     = source     = stream.Endpoint([("data", 32)]) # o: to the Data Link Layer.
         self.ep_source  = ep_source  = stream.Endpoint([("data", 32)]) # o: to LitePCIe.
@@ -73,6 +73,7 @@ class SoftTransactionLayer(LiteXModule):
             device_id    = device_id,
             msi_vectors  = msi_vectors,
             gen2_capable = gen2_capable,
+            gen3_capable = gen3_capable,
         )
         self.link_width = Signal(6, reset=nlanes) # i: negotiated width (Link Status).
         self.comb += cfg.link_width.eq(self.link_width)

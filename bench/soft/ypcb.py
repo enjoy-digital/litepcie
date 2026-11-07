@@ -104,7 +104,7 @@ class SoftPHYSoC(SoCMini):
         if with_endpoint:
             # Full LitePCIe endpoint: driver, MMAP, DMA and MSI as with the hard-IP PHYs.
             self.pcie_phy = pcie_phy = SoftPCIEPHY(platform, pads,
-                data_width   = 64 if nlanes == 1 else 32*nlanes,
+                data_width   = 64 if nlanes == 1 else 32*nlanes*(2 if speed == "gen3" else 1),
                 bar0_size    = 0x20000,
                 speed        = speed,
                 sys_clk_freq = sys_clk_freq,
@@ -117,6 +117,7 @@ class SoftPHYSoC(SoCMini):
             serdes, phy = pcie_phy.serdes, pcie_phy.phy_layer
         else:
             # Physical Layer alone: L0 against the host, received Symbols dropped.
+            assert speed != "gen3", "8.0 GT/s: --with-endpoint."
             gen2_capable = speed == "gen2"
             self.serdes = serdes = K7PCIeSerDes(platform, pads, sys_clk_freq, speedgrade=-2, rate_change=gen2_capable)
             self.phy    = phy    = PCIePhysicalLayer(serdes, 125e6, upstream=True, gen2_capable=gen2_capable)
@@ -161,7 +162,7 @@ def main():
     parser.add_argument("--with-endpoint",   action="store_true", help="Full LitePCIe endpoint (SoftPCIEPHY, MMAP, DMA, MSI).")
     parser.add_argument("--ltssm-autostart", action="store_true", help="LTSSM enabled at reset, not disabled by PERST#.")
     parser.add_argument("--hard-ip",         action="store_true", help="Same endpoint on the hard IP (S7PCIEPHY).")
-    parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2"], help="Soft PHY maximum speed.")
+    parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2", "gen3"], help="Soft PHY maximum speed (gen3: x2 and above, --with-endpoint).")
     parser.add_argument("--nlanes",          default=1, type=int, choices=[1, 2, 4, 8], help="Lanes (x2: soft PHY only).")
     parser.add_argument("--driver",          action="store_true", help="Generate the PCIe driver.")
     parser.add_argument("--output-dir",      default="build/soft_ypcb", help="Build directory.")

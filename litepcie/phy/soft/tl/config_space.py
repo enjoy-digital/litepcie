@@ -22,7 +22,7 @@ class PCIeConfigSpace(LiteXModule):
     """adr: DW address, read combinational (dat_r), write with we/be/dat_w (registers little-endian:
     byte 0 of the register on bits 7:0, as in the TLP payload)."""
     def __init__(self, bar0_mask, nlanes=1, vendor_id=0x10ee, device_id=0x7021, class_code=0x058000,
-        msi_vectors=1, gen2_capable=False):
+        msi_vectors=1, gen2_capable=False, gen3_capable=False):
         assert msi_vectors in [1, 2, 4, 8, 16, 32]
 
         # Access.
@@ -110,13 +110,14 @@ class PCIeConfigSpace(LiteXModule):
         ]
         devctl = add(PCIE_CAP + 0x08, ro=Cat(Constant(0, 19), ur), reset=0x00002810, mask=0x000078ff)
         # Link Capabilities: speeds, width, no ASPM (Link Control's ASPM Control is hardwired to 0).
-        add(PCIE_CAP + 0x0c, ro=((2 if gen2_capable else 1) | (nlanes << 4)))
+        speed = 3 if gen3_capable else 2 if gen2_capable else 1 # Max Link Speed: 2.5, 5.0, 8.0 GT/s.
+        add(PCIE_CAP + 0x0c, ro=(speed | (nlanes << 4)))
         # Link Control (Read Completion Boundary, Common Clock, Extended Sync), Link Status: Slot Clock.
         add(PCIE_CAP + 0x10, ro=Cat(Constant(0, 16), self.link_speed, self.link_width, Constant(0, 2), Constant(1, 1)),
             mask=0x000000c8)
         # Link Capabilities 2 (Supported Link Speeds), Link Control 2 (Target Link Speed).
-        add(PCIE_CAP + 0x2c, ro=(0b110 if gen2_capable else 0b010))
-        add(PCIE_CAP + 0x30, ro=(2 if gen2_capable else 1))
+        add(PCIE_CAP + 0x2c, ro=(((1 << speed) - 1) << 1))
+        add(PCIE_CAP + 0x30, ro=speed)
 
         self.comb += [
             self.dat_r.eq(0),
