@@ -830,6 +830,8 @@ class Gen3LinkTX(LiteXModule):
         self.data_enable = Signal()        # i
         self.ts          = Record(ts3_layout()) # i
         self.lane_pad    = Signal(nlanes)  # i: Lane Number PAD per lane.
+        self.lane_eq     = [Record(ts3_layout()) for _ in range(nlanes)] # i: equalization fields per lane...
+        self.lane_eq_enable = Signal()     # i: ...used instead of the ones of ts.
         self.eios        = Signal()        # i (Level): send EIOS (then the lanes go to Electrical Idle).
 
         # # #
@@ -851,6 +853,8 @@ class Gen3LinkTX(LiteXModule):
         for i in range(nlanes):
             ts = Record(ts3_layout())
             self.comb += [ts.eq(self.ts), ts.lane.eq(i), ts.lane_pad.eq(self.ts.lane_pad | self.lane_pad[i])]
+            self.comb += If(self.lane_eq_enable, *[getattr(ts, f).eq(getattr(self.lane_eq[i], f))
+                for f in ["eq_ctrl", "pre", "cur", "post", "reject"]])
             ts_data.append(Cat(*ts3_symbols(ts)))
 
         # Fill: from the framer, or IDL/EDS when a SKP is due (or the Data Stream ends) between packets.
@@ -1005,4 +1009,227 @@ class Gen3LinkRX(LiteXModule):
                     self.sds.eq(1),
                 )
             )
+        ]
+
+# Training Sequence fields -------------------------------------------------------------------------
+
+def ts3_fields(data, ts):
+    """Statements decoding the 16 received Symbols of a Training Sequence (descrambled, data: Symbol 0 in
+    the LSBs) into ts (ts3_layout())."""
+    s = [data[8*k:8*(k+1)] for k in range(16)]
+    return [
+        ts.ts2.eq(s[0] == OS_TS2),
+        ts.link.eq(s[1]),
+        ts.link_pad.eq(s[1] == GEN3_PAD),
+        ts.lane.eq(s[2][:5]),
+        ts.lane_pad.eq(s[2] == GEN3_PAD),
+        ts.n_fts.eq(s[3]),
+        ts.rate.eq(s[4]),
+        ts.ctrl.eq(s[5]),
+        ts.eq_ctrl.eq(s[6]),
+        ts.pre.eq(s[7][:6]),
+        ts.cur.eq(s[8][:6]),
+        ts.post.eq(s[9][:6]),
+        ts.reject.eq(s[9][6] & (s[0] == OS_TS1)),
+    ]
+
+# Lane Equalization --------------------------------------------------------------------------------
+
+# Presets (4.2.3.2, Table 4-17) as Pre-cursor/Post-cursor Coefficients for a Full Swing of 40 (P10: the
+# boost limit, (FS - LF)/2).
+GEN3_FS = 40
+GEN3_LF = 15
+GEN3_PRESETS = {0: (0, 10), 1: (0, 7), 2: (0, 8), 3: (0, 5), 4: (0, 0), 5: (4, 0), 6: (5, 0), 7: (4, 8),
+    8: (5, 5), 9: (7, 0), 10: (0, (GEN3_FS - GEN3_LF)//2)}
+
+class Gen3LaneEQ(LiteXModule):
+    """Transmitter equalization of a lane (4.2.3, 4.2.6.4.2): the Transmitter settings (Coefficients for a Full
+    Swing of fs) and the equalization fields of the transmitted TS1, from the phase (EC transmitted) and the
+    Training Sequences received on the lane.
+
+    - load (Pulse): preset from the EQ TS2 received (eq_ts2: Symbol 6, bit 7 set), reserved or no EQ TS2:
+      reject set, P4 used.
+    - EC 01b: FS, LF and the Post-cursor in the Coefficient fields.
+    - Responding phase (upstream: EC 11b, downstream: EC 10b): two identical consecutive requests (TS1 with the
+      EC) are evaluated, a legal preset or Coefficients are applied and reflected, else rejected (reject set,
+      the request reflected).
+    - Requesting phase (upstream: EC 10b, downstream: EC 11b): request_preset (bit 4: use it, bits 3:0) or the
+      partner's current Coefficients (no change), eval_done once reflected by two consecutive TS1."""
+    def __init__(self, upstream=True, fs=GEN3_FS, lf=GEN3_LF):
+        self.ec        = Signal(2) # i: EC transmitted.
+        self.load      = Signal()  # i (Pulse)
+        self.eq_ts2    = Signal(8) # i
+        self.rx_valid  = Signal()  # i (Pulse): TS received...
+        self.rx        = Record(ts3_layout()) # i: ...with its fields.
+        self.request_preset = Signal(5) # i
+        self.tx        = Record(ts3_layout()) # o: eq_ctrl, pre, cur, post, reject.
+        self.preset    = Signal(4) # o: current preset (when applied by a preset).
+        self.c_pre     = Signal(6) # o: current Coefficients.
+        self.c_cur     = Signal(6) # o
+        self.c_post    = Signal(6) # o
+        self.eval_done = Signal()  # o
+        self.accepted  = Signal()  # o: request accepted (with eval_done).
+
+        # # #
+
+        responding = Signal()
+        requesting = Signal()
+        self.comb += [
+            responding.eq(self.ec == (0b11 if upstream else 0b10)),
+            requesting.eq(self.ec == (0b10 if upstream else 0b11)),
+        ]
+
+        # Preset table lookups.
+        def preset_coeffs(preset, pre, post):
+            return Case(preset, {**{p: [pre.eq(c[0]), post.eq(c[1])] for p, c in GEN3_PRESETS.items()},
+                "default": [pre.eq(0), post.eq(0)]})
+        legal_preset = lambda preset: preset <= 10
+
+        # Received request (TS1 with our EC), two identical consecutive ones.
+        rx_ec   = self.rx.eq_ctrl[0:2]
+        rx_use  = self.rx.eq_ctrl[7]
+        rx_pre  = self.rx.eq_ctrl[3:7]
+        req     = Signal(1 + 4 + 18) # use_preset, preset, Coefficients.
+        req_new = Signal(len(req))
+        req_cnt = Signal(2)
+        handled = Signal()
+        self.comb += req_new.eq(Cat(rx_use, Mux(rx_use, rx_pre, 0), Mux(rx_use, 0, Cat(self.rx.pre, self.rx.cur, self.rx.post))))
+        ec_r    = Signal(2)
+        self.sync += ec_r.eq(self.ec)
+
+        # Current settings and reflected fields.
+        tx_preset = Signal(4) # Transmitter Preset field.
+        tx_reject = Signal()
+        refl_pre  = Signal(6) # Coefficient fields (current settings or a rejected request).
+        refl_cur  = Signal(6)
+        refl_post = Signal(6)
+        refl_req  = Signal()  # Reflect a rejected Coefficients request.
+        p_pre     = Signal(6)
+        p_post    = Signal(6)
+        e_pre     = Signal(6) # Preset of the EQ TS2.
+        e_post    = Signal(6)
+        self.comb += [
+            preset_coeffs(self.eq_ts2[3:7], e_pre, e_post),
+            preset_coeffs(req[1:5], p_pre, p_post),
+            self.c_cur.eq(fs - self.c_pre - self.c_post),
+        ]
+        c_req_pre  = req[5:11]
+        c_req_cur  = req[11:17]
+        c_req_post = req[17:23]
+        legal_coeffs = Signal()
+        self.comb += legal_coeffs.eq((c_req_pre + c_req_cur + c_req_post == fs) & (c_req_pre <= fs//4) &
+            (c_req_cur >= lf + c_req_pre + c_req_post))
+        self.sync += [
+            If(self.load,
+                If(self.eq_ts2[7] & legal_preset(self.eq_ts2[3:7]),
+                    self.preset.eq(self.eq_ts2[3:7]),
+                    tx_preset.eq(self.eq_ts2[3:7]),
+                    self.c_pre.eq(e_pre),
+                    self.c_post.eq(e_post),
+                    tx_reject.eq(0),
+                ).Else(
+                    # Reserved preset (reflected) or no EQ TS2 (Fh): implementation preset P4.
+                    self.preset.eq(4),
+                    tx_preset.eq(Mux(self.eq_ts2[7], self.eq_ts2[3:7], 0xf)),
+                    self.c_pre.eq(0),
+                    self.c_post.eq(0),
+                    tx_reject.eq(1),
+                ),
+                refl_req.eq(0),
+            ),
+            # Requests: restarted on a phase change.
+            If(self.ec != ec_r,
+                req_cnt.eq(0),
+                handled.eq(0),
+                If(responding | requesting, tx_reject.eq(0)),
+            ).Elif(self.rx_valid & ~self.rx.ts2 & (rx_ec == self.ec),
+                req.eq(req_new),
+                If((req_cnt != 0) & (req_new == req),
+                    If(req_cnt != 3, req_cnt.eq(req_cnt + 1)),
+                ).Else(
+                    req_cnt.eq(1),
+                    handled.eq(0),
+                )
+            ),
+            # Responding: evaluation of a request received twice.
+            If(responding & (req_cnt >= 2) & ~handled,
+                handled.eq(1),
+                If(req[0],
+                    tx_preset.eq(req[1:5]),
+                    refl_req.eq(0),
+                    If(legal_preset(req[1:5]),
+                        self.preset.eq(req[1:5]),
+                        self.c_pre.eq(p_pre),
+                        self.c_post.eq(p_post),
+                        tx_reject.eq(0),
+                    ).Else(
+                        tx_reject.eq(1),
+                    )
+                ).Else(
+                    If(legal_coeffs,
+                        self.c_pre.eq(c_req_pre),
+                        self.c_post.eq(c_req_post),
+                        tx_reject.eq(0),
+                        refl_req.eq(0),
+                    ).Else(
+                        tx_reject.eq(1),
+                        refl_req.eq(1),
+                        refl_pre.eq(c_req_pre),
+                        refl_cur.eq(c_req_cur),
+                        refl_post.eq(c_req_post),
+                    )
+                )
+            ),
+        ]
+
+        # Requesting: the request (on entry, keeping the partner's Coefficients: the ones of the last TS1
+        # received, which made the phase change), done when reflected by two consecutive TS1.
+        my_req_use  = Signal()
+        my_req_pre  = Signal(4)
+        my_req_c    = Signal(18)
+        last_rx_c   = Signal(18)
+        refl_cnt    = Signal(2)
+        reflected   = Signal()
+        self.comb += reflected.eq(Mux(my_req_use, rx_pre == my_req_pre,
+            Cat(self.rx.pre, self.rx.cur, self.rx.post) == my_req_c))
+        self.sync += [
+            If(self.rx_valid & ~self.rx.ts2, last_rx_c.eq(Cat(self.rx.pre, self.rx.cur, self.rx.post))),
+            If(~requesting | (self.ec != ec_r),
+                my_req_use.eq(self.request_preset[4]),
+                my_req_pre.eq(self.request_preset[0:4]),
+                my_req_c.eq(last_rx_c),
+                refl_cnt.eq(0),
+                self.eval_done.eq(0),
+            ).Elif(self.rx_valid & ~self.rx.ts2 & (rx_ec == self.ec),
+                If(reflected,
+                    If(refl_cnt != 3, refl_cnt.eq(refl_cnt + 1)),
+                    If(refl_cnt >= 1,
+                        self.eval_done.eq(1),
+                        self.accepted.eq(~self.rx.reject),
+                    )
+                ).Else(
+                    refl_cnt.eq(0)
+                )
+            )
+        ]
+
+        # Transmitted fields.
+        self.comb += [
+            self.tx.eq_ctrl.eq(Cat(self.ec, Constant(0, 1), tx_preset, Constant(0, 1))),
+            self.tx.pre.eq(Mux(refl_req & responding, refl_pre, self.c_pre)),
+            self.tx.cur.eq(Mux(refl_req & responding, refl_cur, self.c_cur)),
+            self.tx.post.eq(Mux(refl_req & responding, refl_post, self.c_post)),
+            self.tx.reject.eq(tx_reject),
+            If(self.ec == 0b01,
+                self.tx.pre.eq(fs),
+                self.tx.cur.eq(lf),
+                self.tx.reject.eq(0),
+            ),
+            If(requesting,
+                self.tx.eq_ctrl.eq(Cat(self.ec, Constant(0, 1), Mux(my_req_use, my_req_pre, self.preset), my_req_use)),
+                self.tx.pre.eq(my_req_c[0:6]),
+                self.tx.cur.eq(my_req_c[6:12]),
+                self.tx.post.eq(my_req_c[12:18]),
+                self.tx.reject.eq(0),
+            ),
         ]
