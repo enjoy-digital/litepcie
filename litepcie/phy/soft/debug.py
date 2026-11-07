@@ -67,6 +67,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
                 CSRField("snapshot", size=1, offset=1, pulse=True, description="Capture the raw words of Lane 0 (g3_raw_tx/g3_raw_rx)."),
                 CSRField("eidle",    size=1, offset=2, description="Use the transceivers' Electrical Idle detection at 8.0 GT/s."),
                 CSRField("trace",    size=1, offset=3, pulse=True, description="Start the rate trace (g3_trace_*)."),
+                CSRField("lpm",      size=1, offset=4, description="LPM receive equalizer at 8.0 GT/s (DFE otherwise)."),
             ])
             self._g3_raw_tx = CSRStatus(40, description="Raw word transmitted on Lane 0 (snapshot).")
             self._g3_raw_rx = CSRStatus(40, description="Raw word received on Lane 0 (snapshot, bit 39: valid).")
@@ -128,6 +129,8 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             eidle = Signal()
             self.specials += MultiReg(self._g3_control.fields.eidle, eidle, "pcie_link")
             self.comb += phy.g3_eidle.eq(eidle)
+            if hasattr(serdes, "gen3_lpm"):
+                self.comb += serdes.gen3_lpm.eq(self._g3_control.fields.lpm)
 
             # Rate trace ("pcie_link"): each change of the LTSSM state and rate, rate sequencer state and PLL
             # selection, Electrical Idle (transceiver, LTSSM), 8.0 GT/s lock, with a timestamp (1.024 us at
