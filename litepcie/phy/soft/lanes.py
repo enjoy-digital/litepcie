@@ -95,7 +95,7 @@ class RXLaneDeskew(LiteXModule):
             heads_com.append(head.ctrl[0] & (head.data[0:8] == COM.value))
 
         valids  = Cat(*[fifo.source.valid for fifo in fifos])
-        all_v   = (valids | ~self.mask) == (2**nlanes - 1)
+        all_v   = (valids & self.mask) == self.mask
         coms    = Cat(*heads_com) & self.mask
         all_com = coms == self.mask
         locked  = self.locked
@@ -153,9 +153,10 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
     """Same interface as PCIePhysicalLayer with sink/source of 4*nlanes Symbols. The LTSSM follows Lane
     0, the other lanes have their own Training Sequences generators and checkers and polarity, and follow the
     numbers they receive. width: negotiated link width. lanes_ok: lanes numbered by the partner (status).
-    lane_disable: lanes kept out of the link, in Electrical Idle and with their receiver ignored (bring-up)."""
+    lane_disable: lanes kept out of the link, in Electrical Idle and with their receiver ignored (bring-up).
+    early_idle: lanes out of the Link in Electrical Idle during Configuration, as a root port can do."""
     def __init__(self, serdes, clk_freq, upstream=True, with_timers=True, timer_scale=1,
-        gen2_capable=False, ts1_min=1024, tx_depth=16, rx_depth=16):
+        gen2_capable=False, ts1_min=1024, tx_depth=16, rx_depth=16, early_idle=False):
         nlanes = serdes.nlanes
         assert nlanes >= 2
         lanes  = serdes.lanes
@@ -352,7 +353,8 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             self.comb += [
                 Case(self.width, cases),
                 # Lanes out of the Link in Electrical Idle.
-                lane.tx_elecidle.eq((tx_elecidle & ~eios_pending) | lane_disable[i] | (frozen & (i >= self.width))),
+                lane.tx_elecidle.eq((tx_elecidle & ~eios_pending) | lane_disable[i] | (frozen & (i >= self.width)) |
+                    (early_idle & in_config & link_ok[0] & (i >= cand))),
                 If(eios_pending,
                     lane.sink.valid.eq(all_ready),
                     lane.sink.first.eq(1),
@@ -469,10 +471,11 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
                 deskew.sinks[i].ctrl.eq(lane.source.ctrl),
                 lane.source.ready.eq(1),
             ]
-        # Lanes to deskew: the ones receiving Training Sequences until the Link is formed. Lane 0 always.
+        # Lanes to deskew: the ones receiving Training Sequences until the lanes are numbered, then the ones
+        # of the Link: the partner can stop on the others during Configuration. Lane 0 always.
         in_link = Signal(nlanes)
         for i in range(nlanes):
-            self.comb += If(frozen,
+            self.comb += If(frozen | (in_config & numbered[0]),
                 in_link[i].eq(i < self.width)
             ).Elif(i == 0,
                 in_link[i].eq(1)

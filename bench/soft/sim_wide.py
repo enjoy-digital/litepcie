@@ -235,7 +235,7 @@ class MultiLanePHYSim(SoCMini):
         renamer = ClockDomainsRenamer({"pcie_pipe": "lane", "pcie_link": "sys"})
         kwargs  = dict(timer_scale=timer_scale, gen2_capable=gen2)
         self.phy_up = phy_up = renamer(PCIeMultiLanePhysicalLayer(serdes_up, sys_clk_freq, upstream=True,  **kwargs))
-        self.phy_dn = phy_dn = renamer(PCIeMultiLanePhysicalLayer(serdes_dn, sys_clk_freq, upstream=False, **kwargs))
+        self.phy_dn = phy_dn = renamer(PCIeMultiLanePhysicalLayer(serdes_dn, sys_clk_freq, upstream=False, early_idle=True, **kwargs))
         self.comb += [
             phy_dn.link_number.eq(0x05),
             phy_up.lane_disable.eq(dead_lanes),

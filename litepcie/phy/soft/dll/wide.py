@@ -454,16 +454,19 @@ class TLPRepacker(LiteXModule):
                 If(take,
                     rd.eq(rd + count),
                     source.valid.eq(1),
-                    source.first.eq(field(head[0], "first")),
-                    source.seq.eq(field(head[0], "seq")),
-                    source.dws.eq(count),
-                    source.data.eq(Cat(*[field(head[i], "data") for i in range(ndw)])),
-                    Case(count, {n: [
-                        source.last.eq(field(head[n - 1], "last")),
-                        source.edb.eq(field(head[n - 1], "edb")),
-                    ] for n in range(1, ndw + 1)}),
                 )
-            )
+            ),
+            # Payload loaded whenever the output is free: its enable doesn't depend on the decision (timing).
+            If(~source.valid | source.ready,
+                source.first.eq(field(head[0], "first")),
+                source.seq.eq(field(head[0], "seq")),
+                source.dws.eq(count),
+                source.data.eq(Cat(*[field(head[i], "data") for i in range(ndw)])),
+                Case(count, {n: [
+                    source.last.eq(field(head[n - 1], "last")),
+                    source.edb.eq(field(head[n - 1], "edb")),
+                ] for n in range(1, ndw + 1)}),
+            ),
         ]
 
 # TX Framer ----------------------------------------------------------------------------------------
