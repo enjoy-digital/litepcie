@@ -22,6 +22,7 @@ import argparse
 from migen import *
 
 from litex.gen import *
+from litex.build.generic_platform import *
 
 from litex_boards.platforms import ypcb_00338_1p1
 
@@ -80,6 +81,17 @@ class SoftPHYSoC(SoCMini):
         self.add_jtagbone()
 
         # PHY --------------------------------------------------------------------------------------
+        if nlanes == 2:
+            # First lanes of the x4 connector.
+            platform.add_extension([("pcie_x2", 0,
+                Subsignal("clk_p", Pins("J8")),
+                Subsignal("clk_n", Pins("J7")),
+                Subsignal("rst_n", Pins("Y26"), IOStandard("LVCMOS18"), Misc("PULLUP=TRUE")),
+                Subsignal("tx_p",  Pins("F2 H2")),
+                Subsignal("tx_n",  Pins("F1 H1")),
+                Subsignal("rx_p",  Pins("H6 J4")),
+                Subsignal("rx_n",  Pins("H5 J3")),
+            )])
         pads = platform.request(f"pcie_x{nlanes}")
         if hard_ip:
             # Same design on the hard IP (control and comparison): Gen2.
@@ -92,7 +104,7 @@ class SoftPHYSoC(SoCMini):
         if with_endpoint:
             # Full LitePCIe endpoint: driver, MMAP, DMA and MSI as with the hard-IP PHYs.
             self.pcie_phy = pcie_phy = SoftPCIEPHY(platform, pads,
-                data_width   = 64,
+                data_width   = 64 if nlanes == 1 else 32*nlanes,
                 bar0_size    = 0x20000,
                 speed        = speed,
                 sys_clk_freq = sys_clk_freq,
@@ -150,7 +162,7 @@ def main():
     parser.add_argument("--ltssm-autostart", action="store_true", help="LTSSM enabled at reset, not disabled by PERST#.")
     parser.add_argument("--hard-ip",         action="store_true", help="Same endpoint on the hard IP (S7PCIEPHY).")
     parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2"], help="Soft PHY maximum speed.")
-    parser.add_argument("--nlanes",          default=1, type=int, choices=[1, 4, 8], help="Lanes (the soft PHY supports x1 for now).")
+    parser.add_argument("--nlanes",          default=1, type=int, choices=[1, 2, 4, 8], help="Lanes (x2: soft PHY only).")
     parser.add_argument("--driver",          action="store_true", help="Generate the PCIe driver.")
     parser.add_argument("--output-dir",      default="build/soft_ypcb", help="Build directory.")
     args = parser.parse_args()

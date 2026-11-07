@@ -21,6 +21,8 @@ from litepcie.phy.common import PHYTXDatapath, PHYRXDatapath, LTSSMTracer
 from litepcie.phy.soft.pipe       import PCIePhysicalLayer
 from litepcie.phy.soft.dll.core   import DataLinkLayer
 from litepcie.phy.soft.tl.core    import SoftTransactionLayer
+from litepcie.phy.soft.tl.wide   import WideTransactionLayer, WideTXAdapter, WideRXAdapter
+from litepcie.phy.soft.lanes     import PCIeMultiLanePhysicalLayer
 from litepcie.phy.soft.tl.adapter import TXAdapter, RXAdapter
 
 # SoftPCIEPHY --------------------------------------------------------------------------------------
@@ -37,7 +39,7 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         serdes      = None,
         link_freq   = 125e6,
         **phy_kwargs):
-        assert data_width in [64, 128]
+        assert data_width in [64, 128, 256]
         assert speed in ["gen1", "gen2"]
         gen2_capable = speed == "gen2"
         self.platform   = platform
@@ -83,13 +85,19 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         else:
             object.__setattr__(self, "serdes", serdes) # The caller's submodule: reference only.
         self.nlanes = nlanes = serdes.nlanes
-        assert nlanes == 1 # x2/x4: later milestones.
+        wide = nlanes > 1
+        if wide:
+            # A DW per lane and per cycle at the Physical Layer's output, LitePCIe at the same width.
+            assert data_width == 32*nlanes
         if device_id is None:
             device_id = 0x7020 + nlanes # In the driver's table (litepcie/software/kernel/main.c).
 
         # Physical Layer / Data Link Layer ---------------------------------------------------------
-        self.phy_layer = phy = PCIePhysicalLayer(serdes, link_freq, upstream=True, gen2_capable=gen2_capable, **phy_kwargs)
-        self.dll       = dll = ClockDomainsRenamer("pcie_link")(DataLinkLayer(link_freq))
+        phy_layer_cls = PCIeMultiLanePhysicalLayer if wide else PCIePhysicalLayer
+        self.phy_layer = phy = phy_layer_cls(serdes, link_freq, upstream=True, gen2_capable=gen2_capable, **phy_kwargs)
+        dll_kwargs = dict(ndw=nlanes, nlanes=nlanes, rx_depth=2048*max(nlanes//2, 1), tx_depth=1024*nlanes,
+            descriptors=16*max(nlanes//2, 1)) if wide else {}
+        self.dll       = dll = ClockDomainsRenamer("pcie_link")(DataLinkLayer(link_freq, **dll_kwargs))
         self.sync.pcie_link += [
             # Registered (timing): decoded from the LTSSM state, gate the DLL transmit path.
             dll.link_up.eq(phy.ltssm.link_up),
@@ -111,7 +119,8 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         ]
 
         # Transaction Layer ------------------------------------------------------------------------
-        self.tl = tl = ClockDomainsRenamer("pcie")(SoftTransactionLayer(self.bar0_mask,
+        tl_cls  = (lambda *args, **kwargs: WideTransactionLayer(nlanes, *args, **kwargs)) if wide else SoftTransactionLayer
+        self.tl = tl = ClockDomainsRenamer("pcie")(tl_cls(self.bar0_mask,
             nlanes      = nlanes,
             vendor_id   = vendor_id,
             device_id   = device_id,
@@ -127,6 +136,7 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
             tl.sink.first.eq(dll.source.first),
             tl.sink.last.eq(dll.source.last),
             tl.sink.data.eq(dll.source.data),
+            *([tl.sink.dws.eq(dll.source.dws), dll.sink.dws.eq(tl.source.dws)] if wide else []),
             dll.source.ready.eq(tl.sink.ready & ~pcie_rst),
             dll.sink.valid.eq(tl.source.valid & ~pcie_rst),
             dll.sink.first.eq(tl.source.first),
@@ -138,8 +148,8 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         # LitePCIe streams -------------------------------------------------------------------------
         self.tx_datapath = PHYTXDatapath(data_width, data_width, cd)
         self.rx_datapath = PHYRXDatapath(data_width, data_width, cd)
-        self.tx_adapter  = tx_adapter = ClockDomainsRenamer("pcie")(TXAdapter(data_width))
-        self.rx_adapter  = rx_adapter = ClockDomainsRenamer("pcie")(RXAdapter(data_width))
+        self.tx_adapter  = tx_adapter = ClockDomainsRenamer("pcie")((WideTXAdapter if wide else TXAdapter)(data_width))
+        self.rx_adapter  = rx_adapter = ClockDomainsRenamer("pcie")((WideRXAdapter if wide else RXAdapter)(data_width))
         self.comb += [
             self.sink.connect(self.tx_datapath.sink),
             self.tx_datapath.source.connect(tx_adapter.sink),

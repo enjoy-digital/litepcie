@@ -21,13 +21,14 @@ from litepcie.phy.soft.dll.flow_control import tlp_credits
 
 class ReplayBuffer(LiteXModule):
     """depth: DWs (power of 2), descriptors: TLPs stored at most, replay_timer: cycles without
-    acknowledgment before a replay."""
-    def __init__(self, depth=1024, descriptors=16, replay_timer=375):
+    acknowledgment before a replay. ndw: DWs per word, with dws the valid DWs of the last word of a TLP."""
+    def __init__(self, depth=1024, descriptors=16, replay_timer=375, ndw=1):
         self.reset      = Signal()    # i: Data Link down (flush).
         self.enable     = Signal()    # i: TLPs transmission allowed (DL_Active).
         self.hold       = Signal()    # i: REPLAY_TIMER held (LTSSM not in L0).
-        self.sink       = stream.Endpoint([("data", 32)])
-        self.source     = source = stream.Endpoint([("data", 32), ("seq", 12)])
+        dws_layout      = [("dws", bits_for(ndw))] if ndw > 1 else []
+        self.sink       = stream.Endpoint([("data", 32*ndw)] + dws_layout)
+        self.source     = source = stream.Endpoint([("data", 32*ndw), ("seq", 12)] + dws_layout)
         self.ack        = Signal()    # i (Pulse): Ack or Nak received, ack_seq acknowledged.
         self.ack_seq    = Signal(12)  # i
         self.nak        = Signal()    # i (Pulse): Nak received (replay after the acknowledgment).
@@ -41,18 +42,21 @@ class ReplayBuffer(LiteXModule):
 
         # # #
 
+        depth //= ndw
         assert depth & (depth - 1) == 0
         assert descriptors & (descriptors - 1) == 0
         adr_width  = log2_int(depth)
         desc_width = log2_int(descriptors)
 
-        mem = Memory(32, depth)
+        mem = Memory(32*ndw, depth)
         wr_port = mem.get_port(write_capable=True)
         rd_port = mem.get_port(async_read=False)
         self.specials += mem, wr_port, rd_port
 
         # Input stage (timing, the credits of a TLP are computed from its first DW), flushed on reset.
-        self.sink_pipe = sink_pipe = ResetInserter()(stream.PipeValid([("data", 32)]))
+        self.sink_pipe = sink_pipe = ResetInserter()(stream.PipeValid([("data", 32*ndw)] + dws_layout))
+        if ndw > 1:
+            self.comb += sink_pipe.sink.dws.eq(self.sink.dws)
         self.comb += [
             sink_pipe.reset.eq(self.reset),
             sink_pipe.sink.valid.eq(self.sink.valid & ~self.reset),
@@ -65,7 +69,7 @@ class ReplayBuffer(LiteXModule):
 
         # Descriptors (ring): in distributed memories (timing), one read by the transmitter, one by the
         # acknowledgments. The sent flags are written by the transmitter.
-        tx_layout  = [("start", adr_width), ("length", adr_width + 1), ("seq", 12), ("type", 2), ("data", 9)]
+        tx_layout  = [("start", adr_width), ("length", adr_width + 1), ("seq", 12), ("type", 2), ("data", 9)] + dws_layout
         ack_layout = [("length", adr_width + 1), ("seq", 12)]
         d_wr       = Signal() # Descriptor written.
         d_tx_w     = Record(tx_layout)
@@ -109,6 +113,7 @@ class ReplayBuffer(LiteXModule):
             d_tx_w.seq.eq(next_seq),
             d_tx_w.type.eq(Mux(sink.first, dw0_type, tlp_type)),
             d_tx_w.data.eq(Mux(sink.first, dw0_data, tlp_data)),
+            *([d_tx_w.dws.eq(sink.dws)] if ndw > 1 else []),
             d_tx_wr.adr.eq(wr_desc[:desc_width]),
             d_tx_wr.we.eq(d_wr),
             d_tx_wr.dat_w.eq(d_tx_w.raw_bits()),
@@ -239,6 +244,11 @@ class ReplayBuffer(LiteXModule):
         settled   = Signal()
         replay    = Signal()
         self.comb += settled.eq(settle == 2)
+        if ndw > 1:
+            cur_dws = Signal(bits_for(ndw))
+            self.sync += cur_dws.eq(d_tx_r.dws)
+            last_dws = Signal(bits_for(ndw))
+            self.comb += If(source.last, source.dws.eq(last_dws)).Else(source.dws.eq(ndw))
         self.sync += [
             cur_start.eq(d_tx_r.start),
             cur_len.eq(d_tx_r.length),
@@ -278,6 +288,7 @@ class ReplayBuffer(LiteXModule):
                 NextValue(remaining, cur_len),
                 NextValue(source.first, 1),
                 NextValue(source.seq, cur_seq),
+                *([NextValue(last_dws, cur_dws)] if ndw > 1 else []),
                 NextState("SEND"),
             )
         )

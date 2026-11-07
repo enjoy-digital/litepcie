@@ -36,6 +36,8 @@ from litepcie.frontend.wishbone   import LitePCIeWishboneMaster, LitePCIeWishbon
 from litepcie.phy.soft            import SoftPCIEPHY
 from litepcie.phy.soft.pipe       import PCIePhysicalLayer
 from litepcie.phy.soft.dll.core   import DataLinkLayer
+from litepcie.phy.soft.lanes      import PCIeMultiLanePhysicalLayer
+from litepcie.phy.soft.tl.wide    import DWsToBeats, BeatsToDWs
 from litepcie.phy.soft.serdes.model import PCIeSerDesModel
 
 # IOs/Platform -------------------------------------------------------------------------------------
@@ -102,7 +104,7 @@ WB_WRITE   = 0x55667788
 MSI_ADDR   = 0xfee00000
 MSI_DATA   = 0x4021
 
-def script(vendor_device, bar0_mask):
+def script(vendor_device, bar0_mask, nlanes=1):
     t = iter(range(256))
     tag = lambda: next(t)
     s = []
@@ -123,7 +125,7 @@ def script(vendor_device, bar0_mask):
     cfg_wr("Command: MSE, BME",   0x04, 0x00000006)
     cfg_rd("Command/Status",      0x04, 0x00100006)
     cfg_rd("PCIe Capability",     0x60, 0x00020010)
-    cfg_rd("Link Status",         0x70, 0x10110000)
+    cfg_rd("Link Status",         0x70, 0x10010000 | (nlanes << 20))
     cfg_wr("Device Control: MPS 256", 0x68, 0x00002830)
     # BAR0: SRAM preloaded word read: the wire bytes are the register little-endian (byte order).
     n = tag()
@@ -296,7 +298,7 @@ class ScriptedRoot(LiteXModule):
 # Simulation SoC -----------------------------------------------------------------------------------
 
 class SoftPHYEndpointSim(SoCMini):
-    def __init__(self, data_width=64, timer_scale=100, ts1_min=64, max_cycles=2**22):
+    def __init__(self, data_width=64, timer_scale=100, ts1_min=64, max_cycles=2**22, nlanes=1):
         sys_clk_freq = int(125e6)
         platform     = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq)
@@ -319,8 +321,10 @@ class SoftPHYEndpointSim(SoCMini):
 
         # Link.
         kwargs = dict(tx_cd="pcie_pipe", rx_cd="pcie_pipe")
-        self.serdes_ep   = serdes_ep   = PCIeSerDesModel(rx_symbol_shift=1, **kwargs)
-        self.serdes_root = serdes_root = PCIeSerDesModel(rx_symbol_shift=2, **kwargs)
+        shifts_ep   = [(i + 1) % 4 for i in range(nlanes)]
+        shifts_root = [(i*3 + 2) % 4 for i in range(nlanes)]
+        self.serdes_ep   = serdes_ep   = PCIeSerDesModel(nlanes, rx_symbol_shift=shifts_ep,   rx_word_delay=[i % 3 for i in range(nlanes)], **kwargs)
+        self.serdes_root = serdes_root = PCIeSerDesModel(nlanes, rx_symbol_shift=shifts_root, rx_word_delay=[(i + 1) % 2 for i in range(nlanes)], **kwargs)
         serdes_ep.connect(serdes_root)
 
         # Endpoint: LitePCIe on SoftPCIEPHY, BAR0 to a SRAM, device accesses to the root.
@@ -339,9 +343,11 @@ class SoftPHYEndpointSim(SoCMini):
         self.wb_slave = wb_slave = LitePCIeWishboneSlave(endpoint, qword_aligned=phy.qword_aligned)
 
         # Root.
-        self.root_phy = root_phy = PCIePhysicalLayer(serdes_root, sys_clk_freq, upstream=False,
+        root_phy_cls = PCIeMultiLanePhysicalLayer if nlanes > 1 else PCIePhysicalLayer
+        self.root_phy = root_phy = root_phy_cls(serdes_root, sys_clk_freq, upstream=False,
             timer_scale=timer_scale, ts1_min=ts1_min)
-        self.root_dll = root_dll = ClockDomainsRenamer("pcie_link")(DataLinkLayer(sys_clk_freq))
+        root_dll_kwargs = dict(ndw=nlanes, nlanes=nlanes, rx_depth=2048*nlanes, tx_depth=1024*nlanes) if nlanes > 1 else {}
+        self.root_dll = root_dll = ClockDomainsRenamer("pcie_link")(DataLinkLayer(sys_clk_freq, **root_dll_kwargs))
         self.comb += [
             root_phy.link_number.eq(0x00),
             root_dll.link_up.eq(root_phy.ltssm.link_up),
@@ -349,8 +355,23 @@ class SoftPHYEndpointSim(SoCMini):
             root_dll.phy_sink.connect(root_phy.sink),
             root_phy.source.connect(root_dll.phy_source),
         ]
-        steps = script((0x7021 << 16) | 0x10ee, phy.bar0_mask)
-        self.root = root = ClockDomainsRenamer("pcie_link")(ScriptedRoot(root_dll, steps, timer))
+        steps = script(((0x7020 + nlanes) << 16) | 0x10ee, phy.bar0_mask, nlanes=nlanes)
+        # The script works on DWs, the wide Data Link Layer through converters.
+        root_side = root_dll
+        if nlanes > 1:
+            class RootSide: pass
+            root_side = RootSide()
+            root_tx = ClockDomainsRenamer("pcie_link")(DWsToBeats(nlanes))
+            root_rx = ClockDomainsRenamer("pcie_link")(BeatsToDWs(nlanes))
+            self.submodules += root_tx, root_rx
+            self.comb += [
+                root_tx.source.connect(root_dll.sink),
+                root_dll.source.connect(root_rx.sink),
+            ]
+            root_side.sink   = root_tx.sink
+            root_side.source = root_rx.source
+            root_side.dl_active = root_dll.dl_active
+        self.root = root = ClockDomainsRenamer("pcie_link")(ScriptedRoot(root_side, steps, timer))
 
         rx_probe, tx_probe = root.fsm.ongoing("RX"), root.fsm.ongoing("TX")
 
@@ -425,7 +446,8 @@ class SoftPHYEndpointSim(SoCMini):
 def main():
     parser = argparse.ArgumentParser(description="SoftPCIEPHY end-to-end simulation.")
     parser.add_argument("--trace",       action="store_true",   help="Enable VCD tracing.")
-    parser.add_argument("--data-width",  default=64, type=int,  help="LitePCIe data width (64 or 128).")
+    parser.add_argument("--data-width",  default=64, type=int,  help="LitePCIe data width (64, 128 or 256).")
+    parser.add_argument("--nlanes",      default=1, type=int,   help="Link width (above 1: data width of 32 bits per lane).")
     parser.add_argument("--timer-scale", default=100, type=int, help="LTSSM timers scale.")
     parser.add_argument("--ts1-min",     default=64, type=int,  help="TS1 transmitted in Polling.Active (specification: 1024).")
     parser.add_argument("--max-cycles",  default=2**22, type=int, help="Simulation timeout (sys clock cycles).")
@@ -434,6 +456,7 @@ def main():
 
     soc = SoftPHYEndpointSim(
         data_width  = args.data_width,
+        nlanes      = args.nlanes,
         timer_scale = args.timer_scale,
         ts1_min     = args.ts1_min,
         max_cycles  = args.max_cycles,

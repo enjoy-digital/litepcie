@@ -28,7 +28,7 @@ from litepcie.phy.soft.serdes.base import PCIeSerDes
 
 class PCIeSerDesModel(PCIeSerDes):
     def __init__(self, nlanes=1, tx_cd="pcie_pipe", rx_cd="pcie_pipe_partner", rx_symbol_shift=0,
-        skp_interval=None, rate_delay=64):
+        skp_interval=None, rate_delay=64, rx_word_delay=None, rx_rate_stall=None):
         PCIeSerDes.__init__(self, nlanes)
         self.tx = [stream.Endpoint([("data", 40)]) for _ in range(nlanes)] # o (tx_cd): raw words.
         self.rx = [stream.Endpoint([("data", 40)]) for _ in range(nlanes)] # i (rx_cd): raw words.
@@ -41,7 +41,12 @@ class PCIeSerDesModel(PCIeSerDes):
 
         # # #
 
-        assert 0 <= rx_symbol_shift <= 3
+        # Per-lane Symbol shift and word delay (lane skew).
+        rx_symbol_shifts = rx_symbol_shift if isinstance(rx_symbol_shift, (list, tuple)) else [rx_symbol_shift]*nlanes
+        rx_word_delays   = rx_word_delay if rx_word_delay is not None else [0]*nlanes
+        # Per-lane words without recovered clock after a rate change, as receivers re-initialized.
+        rx_rate_stalls   = rx_rate_stall if rx_rate_stall is not None else [0]*nlanes
+        assert all(0 <= shift <= 3 for shift in rx_symbol_shifts)
         # Rate change, after a delay as with real transceivers.
         rate_count = Signal(max=rate_delay + 1)
         sync_rate  = getattr(self.sync, tx_cd)
@@ -70,7 +75,18 @@ class PCIeSerDesModel(PCIeSerDes):
             # Transceiver-like stream endpoints: TX always ready, RX always valid.
             xcvr_sink   = stream.Endpoint([("data", 32), ("ctrl", 4)])
             xcvr_source = stream.Endpoint([("data", 32), ("ctrl", 4)])
-            self.comb += [xcvr_sink.ready.eq(1), xcvr_source.valid.eq(1)]
+            stall       = Signal(max=max(rx_rate_stalls[i], 1) + 1)
+            rate_r      = Signal()
+            sync_stall  = getattr(self.sync, rx_cd)
+            sync_stall += [
+                rate_r.eq(self.applied_rate),
+                If(rate_r != self.applied_rate,
+                    stall.eq(rx_rate_stalls[i])
+                ).Elif(stall != 0,
+                    stall.eq(stall - 1)
+                )
+            ]
+            self.comb += [xcvr_sink.ready.eq(1), xcvr_source.valid.eq(stall == 0)]
             for j in range(4):
                 self.comb += [
                     encoder.k[j].eq(xcvr_sink.ctrl[j]),
@@ -110,8 +126,14 @@ class PCIeSerDesModel(PCIeSerDes):
                 rx_data.eq(Mux(rx_polarity, ~self.rx[i].data, self.rx[i].data))
             )
             getattr(self.sync, rx_cd).__iadd__(rx_data_sr.eq(Cat(rx_data_sr[40:], rx_data)))
+            # Word delay on the lane (skew).
+            rx_data_d = rx_data_sr
+            for _ in range(rx_word_delays[i]):
+                delayed = Signal(80)
+                getattr(self.sync, rx_cd).__iadd__(delayed.eq(rx_data_d))
+                rx_data_d = delayed
             for j in range(4):
-                self.comb += decoders[j].input.eq(rx_data_sr[10*(rx_symbol_shift + j):10*(rx_symbol_shift + j + 1)])
+                self.comb += decoders[j].input.eq(rx_data_d[10*(rx_symbol_shifts[i] + j):10*(rx_symbol_shifts[i] + j + 1)])
 
             # Status.
             idle = Signal()

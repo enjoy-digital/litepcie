@@ -117,6 +117,8 @@ class PCIeLTSSM(LiteXModule):
         self.link_number = Signal(8)          # i (downstream): Link Number proposed.
         self.speed_change = Signal()          # i (Pulse): Directed speed change (gen2_capable).
         self.rate_done   = Signal(reset=1)    # i: Link rate change applied (gen2_capable).
+        self.lanes_locked = Signal(reset=1)   # i: Multi-lane: all the lanes deskewed (the Training Sequences
+                                              # followed are the ones of Lane 0).
 
         # Status.
         self.state       = Signal(6)  # o: LTSSM state (LTSSM_STATES).
@@ -228,7 +230,7 @@ class PCIeLTSSM(LiteXModule):
         # the inversion to take effect on the received stream.
         polarity_hold = WaitTimer(scaled(2e-6))
         self.submodules += polarity_hold
-        polarity_check = Signal()
+        polarity_check = self.polarity_check = Signal()
         self.comb += polarity_hold.wait.eq(1)
         self.sync += If(polarity_check & self.rx_ts & self.rx_ts_inverted & polarity_hold.done,
             self.rx_polarity.eq(~self.rx_polarity),
@@ -307,7 +309,7 @@ class PCIeLTSSM(LiteXModule):
             polarity_check.eq(1),
             match.eq(rx_pad_pad & ~rx_compl & ~rx_loopback),
             *wait,
-            If((rx_count >= 8) & (tx_count >= ts1_min),
+            If((rx_count >= 8) & (tx_count >= ts1_min) & self.lanes_locked,
                 NextState("Polling.Configuration")
             ).Elif(done,
                 NextState("Detect.Quiet")
@@ -521,7 +523,8 @@ class PCIeLTSSM(LiteXModule):
             NextValue(successful, 0),
             match.eq(numbers_ok & (rx_speed == directed if gen2_capable else 1)),
             *wait,
-            If(rx_count >= 8,
+            # The partner keeps sending TS1 until it receives our TS2: time for the other lanes.
+            If((rx_count >= 8) & self.lanes_locked,
                 NextState("Recovery.RcvrCfg")
             ).Elif(done,
                 *([

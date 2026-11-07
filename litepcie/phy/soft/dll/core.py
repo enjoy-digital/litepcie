@@ -25,6 +25,7 @@ from litepcie.phy.soft.dll.dllp         import DLLP_ACK, DLLP_NAK, DLLP_INITFC1_
 from litepcie.phy.soft.dll.flow_control import FlowControlTX, FlowControlRX
 from litepcie.phy.soft.dll.rx           import DLLRX
 from litepcie.phy.soft.dll.tx           import DLLTX
+from litepcie.phy.soft.dll.wide         import WideDLLRX, WideDLLTX
 
 # Data Link Layer ----------------------------------------------------------------------------------
 
@@ -33,18 +34,21 @@ class DataLinkLayer(LiteXModule):
     Layer is active (TLPs flow). Receiver credits advertised: p_hdr/p_data, np_hdr/np_data,
     Completions infinite (an endpoint must). update_timer: UpdateFC period (cycles, 30 us).
     replay_timer: REPLAY_TIMER limit (cycles), default for a 512-byte Max Payload Size at 2.5 GT/s x1
-    (1677 Symbol times, to check against the specification table with the speed/width milestones)."""
+    (1677 Symbol times, to check against the specification table with the speed/width milestones).
+    ndw: DWs per cycle on sink/source, with dws the valid DWs of a beat, and on the lane words (above 1:
+    links wider than x1, nlanes: the link width)."""
     def __init__(self, clk_freq, p_hdr=16, p_data=128, np_hdr=8, np_data=8, rx_depth=2048, tx_depth=1024,
-        descriptors=16, replay_timer=None, update_timer=None):
+        descriptors=16, replay_timer=None, update_timer=None, ndw=1, nlanes=1):
         self.link_up    = Signal()   # i
         self.l0         = Signal()   # i: LTSSM in L0 (lane traffic).
         self.dl_active  = Signal()   # o
         self.state      = Signal(2)  # o: DLCMSM: 0 DL_Inactive, 1/2 DL_Init (FC_INIT1/FC_INIT2), 3 DL_Active.
         self.link_error = Signal()   # o (Pulse): Link retrain requested (replay rollover).
-        self.sink       = sink   = stream.Endpoint([("data", 32)])
-        self.source     = source = stream.Endpoint([("data", 32)])
-        self.phy_sink   = stream.Endpoint(lane_layout(4)) # o: to the Physical Layer.
-        self.phy_source = stream.Endpoint(lane_layout(4)) # i: from the Physical Layer.
+        tlp_layout      = [("data", 32*ndw)] + ([("dws", bits_for(ndw))] if ndw > 1 else [])
+        self.sink       = sink   = stream.Endpoint(tlp_layout)
+        self.source     = source = stream.Endpoint(tlp_layout)
+        self.phy_sink   = stream.Endpoint(lane_layout(4*ndw)) # o: to the Physical Layer.
+        self.phy_source = stream.Endpoint(lane_layout(4*ndw)) # i: from the Physical Layer.
 
         # # #
 
@@ -57,8 +61,12 @@ class DataLinkLayer(LiteXModule):
         self.comb += reset.eq(~self.link_up)
 
         # RX/TX ------------------------------------------------------------------------------------
-        self.rx = rx = DLLRX(depth=rx_depth, packets=64)
-        self.tx = tx = DLLTX(depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer)
+        if ndw > 1:
+            self.rx = rx = WideDLLRX(ndw, nlanes, depth=rx_depth, packets=64)
+            self.tx = tx = WideDLLTX(ndw, nlanes, depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer)
+        else:
+            self.rx = rx = DLLRX(depth=rx_depth, packets=64)
+            self.tx = tx = DLLTX(depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer)
         self.comb += [
             rx.reset.eq(reset),
             tx.reset.eq(reset),

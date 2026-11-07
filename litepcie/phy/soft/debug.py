@@ -33,6 +33,15 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             CSRField("retrain", size=1, offset=1, pulse=True, description="Link Retrain (Recovery)."),
             CSRField("speed_change", size=1, offset=2, pulse=True, description="Directed speed change, if the partner advertises a higher rate (Gen2 designs)."),
         ])
+        if hasattr(phy, "lanes_ok"):
+            self._lanes = CSRStatus(fields=[
+                CSRField("ok",     size=8, offset=0, description="Lanes receiving Training Sequences with their Lane Number."),
+                CSRField("locked", size=1, offset=8, description="Lanes deskewed."),
+            ])
+            self.specials += [
+                MultiReg(phy.lanes_ok,      self._lanes.fields.ok,     "sys"),
+                MultiReg(phy.deskew.locked, self._lanes.fields.locked, "sys"),
+            ]
         self._status = CSRStatus(fields=[
             CSRField("ltssm",        size=6, offset= 0, description="LTSSM state (Xilinx UltraScale encoding, L0 = 0x10)."),
             CSRField("l0",           size=1, offset= 8, description="LTSSM in L0."),
@@ -96,8 +105,8 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
         sdp_word = Signal()
         stp_word = Signal()
         self.comb += [
-            sdp_word.eq(Reduce("OR", [phy.source.ctrl[i] & (phy.source.data[8*i:8*(i+1)] == SDP.value) for i in range(4)])),
-            stp_word.eq(Reduce("OR", [phy.source.ctrl[i] & (phy.source.data[8*i:8*(i+1)] == STP.value) for i in range(4)])),
+            sdp_word.eq(Reduce("OR", [phy.source.ctrl[i] & (phy.source.data[8*i:8*(i+1)] == SDP.value) for i in range(len(phy.source.ctrl))])),
+            stp_word.eq(Reduce("OR", [phy.source.ctrl[i] & (phy.source.data[8*i:8*(i+1)] == STP.value) for i in range(len(phy.source.ctrl))])),
         ]
         self.sync.pcie_link += [
             If(ltssm.rx_ts,       rx_ts.eq(rx_ts + 1)),
@@ -105,7 +114,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             If(phy.source.valid & sdp_word, rx_dllp.eq(rx_dllp + 1)),
             If(phy.source.valid & stp_word, rx_tlp.eq(rx_tlp + 1)),
         ]
-        self.sync.pcie_pipe += If(lane.rx_errors, rx_errors.eq(rx_errors + 1))
+        self.sync.pcie_pipe += If(Reduce("OR", [l.rx_errors for l in serdes.lanes]), rx_errors.eq(rx_errors + 1))
 
         # Status (-> sys).
         for src, dst in [

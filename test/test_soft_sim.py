@@ -79,6 +79,53 @@ class TestSoftSim(unittest.TestCase):
         # The upstream can't receive at 5.0 GT/s: back to 2.5 GT/s without a new training.
         self.check_speed(self.run_sim("gen2_fail", "--gen2", "--fail-5g", "--with-dll", "--packets", "64"), 0)
 
+    def check_wide(self, output, nlanes):
+        self.assertIn("SIM OK", output)
+        self.assertIn(f"lanes ok {2**nlanes - 1:x}/{2**nlanes - 1:x}", output)
+        self.assertNotIn("TIMEOUT", output)
+        self.assertRegex(output, r"mismatches +0/ +0")
+
+    def test_wide_dll(self):
+        # Two wide Data Link Layers, with lane corruption: every TLP delivered once and in order.
+        for ndw in [2, 4, 8]:
+            with self.subTest(ndw=ndw):
+                output = self.run_sim(f"wide_dll_{ndw}", "--ndw", str(ndw), "--nlanes", str(ndw), "--tlps", "64",
+                    "--corrupt-every", "8", script="sim_wide.py")
+                self.assertIn("SIM OK", output)
+                self.assertRegex(output, r"replays +[1-9]")
+
+    def test_multi_lane(self):
+        # Two multi-lane Physical and Data Link Layers: Symbol shifts and skew per lane, training,
+        # speed change to 5.0 GT/s, TLPs through a Link Retrain.
+        for nlanes in [2, 4, 8]:
+            for gen2 in [False, True]:
+                with self.subTest(nlanes=nlanes, gen2=gen2):
+                    args = ["--phy", "--nlanes", str(nlanes), "--tlps", "64"] + (["--gen2"] if gen2 else [])
+                    output = self.run_sim(f"multi_lane_{nlanes}_{gen2}", *args, script="sim_wide.py")
+                    self.check_wide(output, nlanes)
+                    if gen2:
+                        self.assertIn("SPEED OK: rate 1/1", output)
+
+    def test_multi_lane_restart(self):
+        # Receivers restarting at different times after the rate change: back in L0 at 5.0 GT/s without a
+        # new training. The model doesn't reset the receive domain as the transceivers do, which isn't
+        # covered here: some stall patterns then leave a Training Sequence inside a lane (x4).
+        for nlanes in [2, 8]:
+            with self.subTest(nlanes=nlanes):
+                output = self.run_sim(f"multi_lane_restart_{nlanes}", "--phy", "--nlanes", str(nlanes), "--tlps", "32",
+                    "--gen2", "--rate-stall", "3", script="sim_wide.py")
+                self.check_wide(output, nlanes)
+                self.assertIn("SPEED OK: rate 1/1", output)
+                self.assertNotIn("Detect.Quiet", output[output.index("L0 reached"):])
+
+    def test_endpoint_multi_lane(self):
+        # Scripted root on a LitePCIe endpoint through multi-lane links.
+        for nlanes in [2, 4, 8]:
+            with self.subTest(nlanes=nlanes):
+                output = self.run_sim(f"endpoint_x{nlanes}", "--nlanes", str(nlanes), "--data-width", str(32*nlanes), script="sim_endpoint.py")
+                self.assertIn("device read: cafe1234", output)
+                self.assertIn("SIM OK", output)
+
     def test_endpoint(self):
         # Scripted root <-> LitePCIe endpoint on SoftPCIEPHY: configuration space, BAR0 accesses, byte
         # order, Unsupported Requests, MSI, device reads and writes, wire TLPs compared.

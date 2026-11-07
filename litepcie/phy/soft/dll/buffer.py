@@ -18,25 +18,33 @@ from litex.soc.interconnect import stream
 
 class PacketBuffer(LiteXModule):
     """depth: DWs (power of 2), packets: committed packets descriptors. sink.ready drops when the
-    memory is full (words of an uncommitted packet are kept) or the descriptors are full."""
-    def __init__(self, param_layout=[], depth=2048, packets=32):
-        self.sink   = sink   = stream.Endpoint([("data", 32)] + param_layout)
-        self.source = source = stream.Endpoint([("data", 32)] + param_layout)
+    memory is full (words of an uncommitted packet are kept) or the descriptors are full. ndw: DWs per
+    word, with dws the valid DWs of the last word of a packet."""
+    def __init__(self, param_layout=[], depth=2048, packets=32, ndw=1):
+        dws_layout  = [("dws", bits_for(ndw))] if ndw > 1 else []
+        self.sink   = sink   = stream.Endpoint([("data", 32*ndw)] + dws_layout + param_layout)
+        self.source = source = stream.Endpoint([("data", 32*ndw)] + dws_layout + param_layout)
         self.abort  = Signal()              # i (Pulse): drop the packet being written.
-        self.free   = Signal(max=depth + 1, reset=depth) # o: free DWs.
+        depth //= ndw
+        self.free   = Signal(max=depth + 1, reset=depth) # o: free words.
 
         # # #
 
         assert depth & (depth - 1) == 0
         adr_width = log2_int(depth)
 
-        mem = Memory(32, depth)
+        mem = Memory(32*ndw, depth)
         wr_port = mem.get_port(write_capable=True)
         rd_port = mem.get_port(async_read=False)
         self.specials += mem, wr_port, rd_port
 
         # Descriptors of the committed packets.
-        self.descs = descs = stream.SyncFIFO([("length", adr_width + 1)] + param_layout, packets, buffered=True)
+        self.descs = descs = stream.SyncFIFO([("length", adr_width + 1)] + dws_layout + param_layout, packets, buffered=True)
+        if ndw > 1:
+            self.comb += [
+                descs.sink.dws.eq(sink.dws),
+                If(source.last, source.dws.eq(descs.source.dws)).Else(source.dws.eq(ndw)),
+            ]
 
         # Write ------------------------------------------------------------------------------------
         wr_ptr     = Signal(adr_width)
