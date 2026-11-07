@@ -106,7 +106,8 @@ Clock domains:
 | M6 | Gen2 x1 (rate change) | Verilator link simulation at full lane rate (`bench/soft/sim.py --gen2`), fallback to 2.5 GT/s (`--fail-5g`). Runs on hardware on the GTX, see the hardware results |
 | M7 | x2 to x8: wide Data Link Layers, multi-lane Physical Layer, deskew | Verilator simulation (`bench/soft/sim_wide.py`: Data Link Layers with corruption; `--phy`: training with lane skew, speed change, Link Retrain; `sim_endpoint.py --nlanes`). Runs on hardware on the GTX, see the hardware results. Width negotiated down to x1, see the hardware results. No lane reversal yet |
 | M8 | Robustness, lane reversal, LiteX-Boards | Not started |
-| M10 | 8.0 GT/s: 128b/130b lane blocks | `gen3.py`: scrambler checked against the table of the specification, gearboxes, Block alignment, framing Tokens (on a DW only). Near-end loopback on the GTX at 8 GT/s (`bench/soft/ypcb_gen3.py`), see the hardware results. **Not connected to `SoftPCIEPHY`**: no LTSSM support (Recovery.Equalization), no 8 GT/s link with a host |
+| M10 | 8.0 GT/s: 128b/130b lane blocks | `gen3.py`: scrambler checked against the table of the specification, gearboxes, Block alignment, framing Tokens (on a DW only). Near-end loopback on the GTX at 8 GT/s (`bench/soft/ypcb_gen3.py`), see the hardware results |
+| M11 | 8.0 GT/s link: LTSSM, equalization, `SoftPCIEPHY(speed="gen3")` | Verilator simulation x2/x4/x8 (`sim_wide.py --phy --gen3`, `sim_soc.py --gen3` up to the 512-bit LitePCIe path), fallback to 2.5 GT/s. GTX run-time PLL switch built, **no 8 GT/s link with a host yet**, see "8.0 GT/s" |
 | M9 | Other transceivers, soft root port | Not started |
 
 ## Verification
@@ -285,6 +286,43 @@ different times with old words in a FIFO, so the distance between the lanes is c
 
 At 5.0 GT/s the receiver has to tolerate 8 ns between the lanes. The transmitters' buffers are on, so their
 latency isn't matched between lanes: the host's receivers have accepted it up to x8, it wasn't measured.
+
+## 8.0 GT/s
+
+`SoftPCIEPHY(speed="gen3")` (x2 and above, GTX) trains at 2.5 GT/s, the root port then changes the speed to
+8.0 GT/s, from 2.5 or 5.0 GT/s, with the transmitter equalization. Checked against the 4.0 draft of the
+specification (rev 0.3) for what 8.0 GT/s needs.
+
+- LTSSM: Recovery.Speed to 8.0 GT/s, EQ TS2 (sent by a downstream port, the presets recorded per lane by an upstream
+  port), Recovery.Equalization (upstream: Phases 0 to 3; downstream, for the simulated root: Phases 1 to 3, or 1 only),
+  timeouts back through Recovery.Speed to the rate of the entry in Recovery, Training Sequences with an EC of 00b
+  only to leave Recovery.RcvrLock.
+- Equalization of each lane (`Gen3LaneEQ`): Phase 0 with the preset of the EQ TS2 (P4 with Reject set when there is
+  none or it's reserved), Phase 1 with a Full Swing of 40 and a Low Frequency of 15 (the GTX cursors in units of 80,
+  as the Xilinx wrapper). The upstream port requests no change in Phase 2 (the root port's current Coefficients).
+  In Phase 3 it answers the root port's requests: presets P0 to P10 and legal Coefficients (Pre-cursor up to FS/4,
+  sum of FS, Cursor minus the others at least LF) applied, the others rejected. The receiver doesn't evaluate
+  anything (LPM equalizer, as at 2.5/5.0 GT/s).
+- Datapath (`Gen3Lanes` in `lanes.py`, clock domain "pcie_g3"): the Blocks of each lane (Sync Header, per-lane
+  scrambling, DC balance), the Data Stream (SDS, SKP Ordered Set every 370 Blocks behind an EDS Token placed between
+  packets), the lanes aligned on EIEOS. 2 DWs per lane per cycle at 125 MHz: LitePCIe at 64 bits per lane (512 bits
+  at x8). The Data Link Layer has both framings (`framing="both"`), the rate selects one.
+- GTX: a Quad PLL at 8 GHz per quad besides the Channel PLLs, the rate sequence of the Xilinx wrapper (PMA held in
+  reset while TXSYSCLKSEL/RXSYSCLKSEL change, the 8.0 GT/s CDR/PMA attributes written over DRP, then TXRATE/RXRATE),
+  raw 40-bit words (the GTX has no 128b/130b gearbox), transmit clock of 200 MHz from the MMCM through a second
+  BUFGCTRL, PIPEGEN3 drive mode with TXPRECURSOR/TXPOSTCURSOR from the equalization.
+- Configuration space: Secondary PCI Express Extended Capability at 0x100 (Link Control 3, Lane Error Status, Lane
+  Equalization Control).
+- Not there yet: 8.0 GT/s at the full width only (no width negotiation at this rate), the equalization bits of Link
+  Status 2, the receiver's evaluation of the presets, SKP Ordered Sets of other lengths (retimers), lane reversal.
+- Hardware (YPCB-00338-1P1, x4, no host link yet): the Quad PLL locks and the run-time switch to 8.0 GT/s completes
+  without timeout, with the 8.0 GT/s attributes read back over DRP. In near-end loopback the received words were
+  clean but the Block alignment wasn't kept: the GTX comma alignment (enabled with the RX buffer) moved the word
+  boundary on 8b/10b commas found in 128b/130b data. It is now disabled at 8.0 GT/s, to be checked on hardware.
+
+Simulation: `python3 bench/soft/sim_wide.py --phy --gen3 --nlanes 8 --eq-preset 8` (two Physical Layers, the root port
+requesting preset 8 in its Phase 3, TLPs and a Link Retrain at 8.0 GT/s), `--fail-8g` (nothing received at 8.0 GT/s:
+back to 2.5 GT/s without a new training), `python3 bench/soft/sim_soc.py --gen3 --nlanes 8` (LitePCIe SoC with DMA).
 
 ## Bring-up on the Acorn (M2.5/M3)
 
