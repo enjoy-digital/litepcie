@@ -187,6 +187,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         self.width        = Signal(max=nlanes + 1, reset=nlanes) # o ("pcie_pipe")
         self.lane_disable = Signal(nlanes) # i
         self.eq_request_preset = Signal(5) # i
+        self.force_g3     = Signal()       # i: debug (gen3_capable, LTSSM disabled): 8.0 GT/s, transmitters on.
 
         # # #
 
@@ -208,7 +209,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             ltssm.link_error.eq(self.link_error),
             ltssm.link_number.eq(self.link_number),
             ltssm.speed_change.eq(self.speed_change),
-            serdes.rate.eq(ltssm.rate),
+            serdes.rate.eq(Mux(self.force_g3, 2, ltssm.rate)),
             ltssm.rate_done.eq(serdes.rate_done),
         ]
 
@@ -231,7 +232,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             MultiReg(ltssm.in_training,    in_training,    "pcie_pipe"),
             MultiReg(ltssm.in_config,      in_config,      "pcie_pipe"),
             MultiReg(self.lane_disable,    lane_disable,   "pcie_pipe"),
-            MultiReg(ltssm.rate,           rate,           "pcie_pipe"),
+            MultiReg(serdes.rate,          rate,           "pcie_pipe"),
             MultiReg(ltssm.select_deemph,  select_deemph,  "pcie_pipe"),
             MultiReg(ltssm.polarity_check, polarity_check, "pcie_pipe"),
         ]
@@ -621,7 +622,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         # Datapath in "pcie_g3" (the transmit clock of the transceivers at 8.0 GT/s), selected on the
         # "pcie_link" side with the rate.
         g3_link = Signal()
-        self.comb += g3_link.eq(ltssm.rate == 2)
+        self.comb += g3_link.eq(serdes.rate == 2)
         eq_ts2 = []
         for i in range(nlanes):
             # EQ TS2 received on each lane at the lower rates.
@@ -632,7 +633,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
                 value.eq(self.ts_chks[i].ts.eq_info)
             )
             eq_ts2.append(value)
-        self.g3 = g3 = Gen3Lanes(ltssm, lanes, upstream, skp_interval=gen3_skp_interval)
+        self.g3 = g3 = Gen3Lanes(ltssm, lanes, upstream, skp_interval=gen3_skp_interval, rate=serdes.rate)
         # Lanes in Electrical Idle once the EIOS Block is out (seen busy then done).
         g3_eios_busy = Signal()
         g3_eios_wait = Signal()
@@ -650,6 +651,10 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             self.comb += If((rate == 2) & tx_elecidle & ~lane_disable[i],
                 lane.tx_elecidle.eq(~(g3_eios_wait | (tx_elecidle & ~tx_elecidle_r)))
             )
+        force_g3 = Signal()
+        self.specials += MultiReg(self.force_g3, force_g3, "pcie_pipe")
+        for i, lane in enumerate(lanes):
+            self.comb += If(force_g3, lane.tx_elecidle.eq(lane_disable[i]))
         self.comb += [
             g3.eq_request_preset.eq(self.eq_request_preset),
             g3.lane_pad.eq(Cat(*lane_pad)),
@@ -687,7 +692,7 @@ class Gen3Lanes(LiteXModule):
     fields of each lane (Gen3LaneEQ), EIOS before Electrical Idle, Data Stream (SDS first) for the Data Link
     Layer and the Logical Idle handshake (IDL Tokens), the Blocks of the lanes (Gen3LaneTX/RX), the lanes
     aligned on EIEOS (Gen3LinkRX). Inputs from "pcie_pipe" (lane_pad, link_pad, eq_ts2) are levels."""
-    def __init__(self, ltssm, lanes, upstream, skp_interval=370, tx_depth=16, rx_depth=16):
+    def __init__(self, ltssm, lanes, upstream, skp_interval=370, tx_depth=16, rx_depth=16, rate=None):
         from litepcie.phy.soft.gen3 import Gen3LaneTX, Gen3LaneRX, Gen3LinkTX, Gen3LinkRX, Gen3LaneEQ
         from litepcie.phy.soft.gen3 import LFSR_SEEDS, BLOCK_TS, BLOCK_EIOS, ts3_layout, ts3_fields
         nlanes = len(lanes)
@@ -714,7 +719,8 @@ class Gen3Lanes(LiteXModule):
 
         # # #
 
-        # LTSSM levels and inputs from "pcie_pipe".
+        # LTSSM levels and inputs from "pcie_pipe" (rate: "pcie_link", the LTSSM's by default).
+        rate_link = rate
         levels = {}
         for name in ["tx_elecidle", "tx_ts2", "tx_ts_link", "tx_ts_link_pad", "tx_ts_lane_pad", "tx_ts_rate",
                      "tx_ts_ctrl", "tx_ts_eq_info", "tx_data_enable", "rx_data_enable", "idle_hs", "rx_reset"]:
@@ -727,7 +733,7 @@ class Gen3Lanes(LiteXModule):
         eq_request_preset = Signal(5)
         eq_ts2   = [Signal(8) for _ in range(nlanes)]
         self.specials += [
-            MultiReg(ltssm.rate, rate, "pcie_g3"),
+            MultiReg(ltssm.rate if rate_link is None else rate_link, rate, "pcie_g3"),
             MultiReg(self.lane_pad, lane_pad, "pcie_g3"),
             MultiReg(self.link_pad, link_pad, "pcie_g3"),
             MultiReg(self.eq_request_preset, eq_request_preset, "pcie_g3"),
