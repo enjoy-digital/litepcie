@@ -10,7 +10,8 @@ PCIeSerDesModel implements the PCIeSerDes contract with the fabric 8b/10b encode
 lane datapaths, exchanging 40-bit raw words (tx/rx per lane) with a partner model: polarity
 inversion, RX Symbol shift (the word phase of a real link is arbitrary) and Electrical Idle are
 emulated, receiver detection reports the partner's presence. The RX side runs in the partner's lane
-clock domain (rx_cd: the recovered clock), as a real transceiver.
+clock domain (rx_cd: the recovered clock), as a real transceiver. At 8.0 GT/s, the raw words go through
+(the Symbol shift becomes a bit offset of the Blocks).
 """
 
 from migen import *
@@ -19,6 +20,7 @@ from migen.genlib.cdc import MultiReg
 from litex.gen import *
 
 from litex.soc.interconnect import stream
+from litex.soc.interconnect.stream import AsyncFIFO
 from litex.soc.cores.code_8b10b import Encoder, Decoder
 
 from litepcie.phy.soft.datapath   import RXErrorSubstitution
@@ -35,9 +37,10 @@ class PCIeSerDesModel(PCIeSerDes):
         self.tx_idle = Signal(nlanes) # o: TX in Electrical Idle (to the partner).
         self.rx_idle = Signal(nlanes) # i: partner in Electrical Idle.
         self.present = Signal(reset=1) # i: partner receiver present.
-        self.partner_rate = Signal()   # i: partner's rate, nothing received when it differs from ours.
+        self.partner_rate = Signal(2)  # i: partner's rate, nothing received when it differs from ours.
         self.fail_5g = Signal()        # i: nothing received at 5.0 GT/s.
-        self.applied_rate = Signal()   # o: rate applied.
+        self.fail_8g = Signal()        # i: nothing received at 8.0 GT/s.
+        self.applied_rate = Signal(2)  # o: rate applied.
 
         # # #
 
@@ -60,7 +63,10 @@ class PCIeSerDesModel(PCIeSerDes):
             )
         ]
         self.comb += self.rate_done.eq(self.applied_rate == self.rate)
-        rx_bad = (self.partner_rate != self.applied_rate) | (self.fail_5g & self.applied_rate)
+        rx_bad = (self.partner_rate != self.applied_rate) | (self.fail_5g & (self.applied_rate == 1)) | \
+            (self.fail_8g & (self.applied_rate == 2))
+        raw = Signal() # 8.0 GT/s (tx_cd).
+        self.comb += raw.eq(self.applied_rate == 2)
 
         # Ready: cleared by the RX re-initialization, as with a real transceiver.
         self.comb += self.ready.eq(Reduce("AND", [lane.ready for lane in self.lanes]))
@@ -76,7 +82,7 @@ class PCIeSerDesModel(PCIeSerDes):
             xcvr_sink   = stream.Endpoint([("data", 32), ("ctrl", 4)])
             xcvr_source = stream.Endpoint([("data", 32), ("ctrl", 4)])
             stall       = Signal(max=max(rx_rate_stalls[i], 1) + 1)
-            rate_r      = Signal()
+            rate_r      = Signal(2)
             sync_stall  = getattr(self.sync, rx_cd)
             sync_stall += [
                 rate_r.eq(self.applied_rate),
@@ -103,14 +109,16 @@ class PCIeSerDesModel(PCIeSerDes):
             tx_data     = Cat(*[encoder.output[j] for j in range(4)])
             tx_polarity = Signal()
             self.specials += MultiReg(lane.tx_polarity, tx_polarity, tx_cd)
+            tx_word     = Signal(40)
             self.comb += [
                 self.tx[i].valid.eq(1),
+                tx_word.eq(Mux(raw, lane.raw_tx, tx_data)),
                 If(lane.tx_elecidle,
                     self.tx[i].data.eq(0)
                 ).Elif(tx_polarity,
-                    self.tx[i].data.eq(~tx_data)
+                    self.tx[i].data.eq(~tx_word)
                 ).Else(
-                    self.tx[i].data.eq(tx_data)
+                    self.tx[i].data.eq(tx_word)
                 ),
                 self.tx_idle[i].eq(lane.tx_elecidle),
             ]
@@ -134,6 +142,19 @@ class PCIeSerDesModel(PCIeSerDes):
                 rx_data_d = delayed
             for j in range(4):
                 self.comb += decoders[j].input.eq(rx_data_d[10*(rx_symbol_shifts[i] + j):10*(rx_symbol_shifts[i] + j + 1)])
+
+            # 8.0 GT/s: raw words to the lane clock (no compensation, the clocks are the same).
+            raw_fifo = ClockDomainsRenamer({"write": rx_cd, "read": tx_cd})(AsyncFIFO([("data", 40)], 8))
+            self.submodules += raw_fifo
+            raw_rx   = Signal()
+            self.specials += MultiReg(raw, raw_rx, rx_cd)
+            self.comb += [
+                raw_fifo.sink.valid.eq(raw_rx & (stall == 0)),
+                raw_fifo.sink.data.eq(rx_data_d[10*rx_symbol_shifts[i]:10*rx_symbol_shifts[i] + 40]),
+                raw_fifo.source.ready.eq(1),
+                lane.raw_rx.eq(raw_fifo.source.data),
+                lane.raw_rx_valid.eq(raw_fifo.source.valid & raw),
+            ]
 
             # Status.
             idle = Signal()
