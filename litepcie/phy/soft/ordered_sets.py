@@ -33,6 +33,7 @@ ts_layout = [
     ("n_fts",    8), # N_FTS.
     ("rate",     8), # Data Rate Identifier.
     ("ctrl",     8), # Training Control.
+    ("eq_info",  8), # EQ TS2 (TS2 only): Symbol 6 with bit 7 set (8.0 GT/s presets), 0: standard TS2.
 ]
 
 def ts_identifier(ts2, inverted=False):
@@ -122,7 +123,7 @@ class TSGenerator(LiteXModule):
             Case(word, {
                 0: [source.data.eq(Cat(Constant(COM.value, 8), link, lane, cur.n_fts)),
                     source.ctrl.eq(Cat(Constant(1, 1), cur.link_pad, cur.lane_pad, Constant(0, 1)))],
-                1: [source.data.eq(Cat(cur.rate, cur.ctrl, ident, ident)),
+                1: [source.data.eq(Cat(cur.rate, cur.ctrl, Mux(cur.ts2 & cur.eq_info[7], cur.eq_info, ident), ident)),
                     source.ctrl.eq(0)],
                 2: [source.data.eq(Replicate(ident, 4)),
                     source.ctrl.eq(0)],
@@ -169,7 +170,12 @@ class TSChecker(LiteXModule):
         inv = Signal()
         cap = Record(ts_layout)
 
-        idx_c, ts2_c, inv_c = idx, ts2, inv
+        # EQ TS2: Symbol 6 with bit 7 set, a TS2 identifier from Symbol 7 (an EQ Symbol 6 can be the
+        # identifier of an inverted TS1, Symbol 7 decides).
+        eq6 = Signal() # Symbol 6 can be an EQ TS2 one.
+        id6 = Signal() # Symbol 6 is an identifier.
+        eqv = Signal() # EQ TS2.
+        idx_c, ts2_c, inv_c, eq6_c, id6_c, eqv_c = idx, ts2, inv, eq6, id6, eqv
         detected = []
         errors   = []
         for i in range(4):
@@ -181,6 +187,9 @@ class TSChecker(LiteXModule):
             idx_n  = Signal(max=TS_LENGTH)
             ts2_n  = Signal()
             inv_n  = Signal()
+            eq6_n  = Signal()
+            id6_n  = Signal()
+            eqv_n  = Signal()
             det    = Signal()
             err    = Signal()
             ident  = ts_identifier(ts2_c, inv_c)
@@ -190,6 +199,9 @@ class TSChecker(LiteXModule):
                 idx_n.eq(idx_c),
                 ts2_n.eq(ts2_c),
                 inv_n.eq(inv_c),
+                eq6_n.eq(eq6_c),
+                id6_n.eq(id6_c),
+                eqv_n.eq(eqv_c),
                 If(com,
                     idx_n.eq(1),
                     err.eq(idx_c > 1), # Training Sequence interrupted by a new COM.
@@ -203,11 +215,19 @@ class TSChecker(LiteXModule):
                 ).Elif(idx_c <= 5,
                     step(is_d)
                 ).Elif(idx_c == 6,
+                    eq6_n.eq(is_d & sym[7]),
+                    id6_n.eq(1),
+                    eqv_n.eq(0),
                     If(is_d & (sym == TS1_ID),     idx_n.eq(7), ts2_n.eq(0), inv_n.eq(0)
                     ).Elif(is_d & (sym == TS2_ID), idx_n.eq(7), ts2_n.eq(1), inv_n.eq(0)
                     ).Elif(is_d & (sym == TS1_ID_INV), idx_n.eq(7), ts2_n.eq(0), inv_n.eq(1)
                     ).Elif(is_d & (sym == TS2_ID_INV), idx_n.eq(7), ts2_n.eq(1), inv_n.eq(1)
+                    ).Elif(is_d & sym[7], idx_n.eq(7), id6_n.eq(0)
                     ).Else(err.eq(1), idx_n.eq(0))
+                ).Elif((idx_c == 7) & eq6_c & is_d & (sym == TS2_ID),
+                    idx_n.eq(8), ts2_n.eq(1), inv_n.eq(0), eqv_n.eq(1)
+                ).Elif((idx_c == 7) & ~id6_c,
+                    err.eq(1), idx_n.eq(0)
                 ).Else(
                     If(is_d & (sym == ident),
                         If(idx_c == (TS_LENGTH - 1),
@@ -229,22 +249,27 @@ class TSChecker(LiteXModule):
                 If(idx_c == 3, cap.n_fts.eq(sym)),
                 If(idx_c == 4, cap.rate.eq(sym)),
                 If(idx_c == 5, cap.ctrl.eq(sym)),
+                If(idx_c == 6, cap.eq_info.eq(sym)),
             )
             detected.append(valid & det)
             errors.append(valid & err)
-            idx_c, ts2_c, inv_c = idx_n, ts2_n, inv_n
+            idx_c, ts2_c, inv_c, eq6_c, id6_c, eqv_c = idx_n, ts2_n, inv_n, eq6_n, id6_n, eqv_n
 
         self.sync += [
             If(valid,
                 idx.eq(idx_c),
                 ts2.eq(ts2_c),
                 inv.eq(inv_c),
+                eq6.eq(eq6_c),
+                id6.eq(id6_c),
+                eqv.eq(eqv_c),
             ),
             self.detected.eq(Reduce("OR", detected)),
             self.error.eq(Reduce("OR", errors)),
             If(Reduce("OR", detected),
                 self.ts.eq(cap),
                 self.ts.ts2.eq(ts2_c),
+                If(~eqv_c, self.ts.eq_info.eq(0)),
                 self.inverted.eq(inv_c),
             )
         ]
