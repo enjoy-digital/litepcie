@@ -172,15 +172,16 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
         rx_errors    = Signal(32)
         sdp_word = Signal()
         stp_word = Signal()
-        self.comb += [
-            sdp_word.eq(Reduce("OR", [phy.source.ctrl[i] & (phy.source.data[8*i:8*(i+1)] == SDP.value) for i in range(len(phy.source.ctrl))])),
-            stp_word.eq(Reduce("OR", [phy.source.ctrl[i] & (phy.source.data[8*i:8*(i+1)] == STP.value) for i in range(len(phy.source.ctrl))])),
+        # Registered first (timing): the source is muxed by the rate.
+        self.sync.pcie_link += [
+            sdp_word.eq(phy.source.valid & Reduce("OR", [phy.source.ctrl[i] & (phy.source.data[8*i:8*(i+1)] == SDP.value) for i in range(len(phy.source.ctrl))])),
+            stp_word.eq(phy.source.valid & Reduce("OR", [phy.source.ctrl[i] & (phy.source.data[8*i:8*(i+1)] == STP.value) for i in range(len(phy.source.ctrl))])),
         ]
         self.sync.pcie_link += [
             If(ltssm.rx_ts,       rx_ts.eq(rx_ts + 1)),
             If(ltssm.rx_ts_error, rx_ts_errors.eq(rx_ts_errors + 1)),
-            If(phy.source.valid & sdp_word, rx_dllp.eq(rx_dllp + 1)),
-            If(phy.source.valid & stp_word, rx_tlp.eq(rx_tlp + 1)),
+            If(sdp_word, rx_dllp.eq(rx_dllp + 1)),
+            If(stp_word, rx_tlp.eq(rx_tlp + 1)),
         ]
         self.sync.pcie_pipe += If(Reduce("OR", [l.rx_errors for l in serdes.lanes]), rx_errors.eq(rx_errors + 1))
 
