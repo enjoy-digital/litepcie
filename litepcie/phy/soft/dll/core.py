@@ -120,6 +120,10 @@ class DataLinkLayer(LiteXModule):
         fc_init_type  = Signal(2) # P, NP, Cpl in turn.
         fc_init_type_n = Signal(2)
         self.comb += fc_init_type_n.eq(Mux(fc_init_type == 2, 0, fc_init_type + 1))
+        dllp_req   = Signal() # A DLLP is selected on the encoder.
+        dllp_taken = Signal() # It's captured: the next one can be selected.
+        ack_taken  = Signal()
+        nak_taken  = Signal()
         ack_pending  = Signal()
         nak_pending  = Signal()
         self.sync += [
@@ -127,6 +131,9 @@ class DataLinkLayer(LiteXModule):
                 ack_pending.eq(0),
                 nak_pending.eq(0),
             ).Else(
+                # A request wins over a capture in the same cycle: its Ack/Nak is still to send.
+                If(ack_taken,  ack_pending.eq(0)),
+                If(nak_taken,  nak_pending.eq(0)),
                 If(rx.ack_req, ack_pending.eq(1)),
                 If(rx.nak_req, nak_pending.eq(1)),
             )
@@ -161,11 +168,20 @@ class DataLinkLayer(LiteXModule):
             If(update_type == 0, update_due[0].eq(0)).Else(update_due[1].eq(0))
         )
 
-        sent = tx.dllp_ready # The DLLP presented has been transmitted.
+        # DLLP captured once and held while it's on the lane (2 words): the Sequence Number, credits
+        # and selection on the encoder can change at any time.
         self.comb += [
-            tx.dllp.eq(encoder.dllp),
+            dllp_taken.eq(dllp_req & ~tx.dllp_valid),
             encoder.seq.eq(rx.ack_seq),
             encoder.vc.eq(0),
+        ]
+        self.sync += [
+            If(tx.dllp_ready, tx.dllp_valid.eq(0)),
+            If(dllp_taken,
+                tx.dllp.eq(encoder.dllp),
+                tx.dllp_valid.eq(1),
+            ),
+            If(reset | ~self.l0, tx.dllp_valid.eq(0)),
         ]
         self.fsm = fsm = FSM(reset_state="DL-INACTIVE")
         fsm.act("DL-INACTIVE",
@@ -178,11 +194,11 @@ class DataLinkLayer(LiteXModule):
         # FC_INIT1: InitFC1-P/NP/Cpl until InitFC1 or InitFC2 received for the three types.
         fsm.act("DL-INIT-FC1",
             self.state.eq(1),
-            tx.dllp_valid.eq(self.l0),
+            dllp_req.eq(self.l0),
             encoder.type.eq(DLLP_INITFC1_P | (fc_init_type << 4)),
             encoder.hdr_fc.eq(initial_hdr[fc_init_type]),
             encoder.data_fc.eq(initial_data[fc_init_type]),
-            If(sent, NextValue(fc_init_type, fc_init_type_n)),
+            If(dllp_taken, NextValue(fc_init_type, fc_init_type_n)),
             If(~self.link_up,
                 NextState("DL-INACTIVE")
             ).Elif(init1_rx == 0b111,
@@ -194,11 +210,11 @@ class DataLinkLayer(LiteXModule):
         # or TLP received.
         fsm.act("DL-INIT-FC2",
             self.state.eq(2),
-            tx.dllp_valid.eq(self.l0),
+            dllp_req.eq(self.l0),
             encoder.type.eq(DLLP_INITFC2_P | (fc_init_type << 4)),
             encoder.hdr_fc.eq(initial_hdr[fc_init_type]),
             encoder.data_fc.eq(initial_data[fc_init_type]),
-            If(sent, NextValue(fc_init_type, fc_init_type_n)),
+            If(dllp_taken, NextValue(fc_init_type, fc_init_type_n)),
             If(~self.link_up,
                 NextState("DL-INACTIVE")
             ).Elif((init2_rx == 0b111) | update_rx | rx.ack_req,
@@ -211,19 +227,19 @@ class DataLinkLayer(LiteXModule):
             tx.enable.eq(1),
             # DLLP priorities: Nak, Ack, UpdateFC.
             If(nak_pending,
-                tx.dllp_valid.eq(self.l0),
+                dllp_req.eq(self.l0),
                 encoder.type.eq(DLLP_NAK),
-                If(sent, NextValue(nak_pending, 0)),
+                nak_taken.eq(dllp_taken),
             ).Elif(ack_pending,
-                tx.dllp_valid.eq(self.l0),
+                dllp_req.eq(self.l0),
                 encoder.type.eq(DLLP_ACK),
-                If(sent, NextValue(ack_pending, 0)),
+                ack_taken.eq(dllp_taken),
             ).Elif(update_req,
-                tx.dllp_valid.eq(self.l0),
+                dllp_req.eq(self.l0),
                 encoder.type.eq(DLLP_UPDATEFC_P | (update_type << 4)),
                 encoder.hdr_fc.eq(fc_rx.allocated_hdr[update_type]),
                 encoder.data_fc.eq(fc_rx.allocated_data[update_type]),
-                fc_rx_sent.eq(sent),
+                fc_rx_sent.eq(dllp_taken),
             ),
             If(~self.link_up,
                 NextState("DL-INACTIVE")
