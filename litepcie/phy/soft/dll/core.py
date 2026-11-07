@@ -38,7 +38,7 @@ class DataLinkLayer(LiteXModule):
     ndw: DWs per cycle on sink/source, with dws the valid DWs of a beat, and on the lane words (above 1:
     links wider than x1, nlanes: the link width)."""
     def __init__(self, clk_freq, p_hdr=16, p_data=128, np_hdr=8, np_data=8, rx_depth=2048, tx_depth=1024,
-        descriptors=16, replay_timer=None, update_timer=None, ndw=1, nlanes=1):
+        descriptors=16, replay_timer=None, update_timer=None, ndw=1, nlanes=1, framing="8b10b"):
         self.link_up    = Signal()   # i
         self.l0         = Signal()   # i: LTSSM in L0 (lane traffic).
         self.dl_active  = Signal()   # o
@@ -62,8 +62,8 @@ class DataLinkLayer(LiteXModule):
 
         # RX/TX ------------------------------------------------------------------------------------
         if ndw > 1:
-            self.rx = rx = WideDLLRX(ndw, depth=rx_depth, packets=64)
-            self.tx = tx = WideDLLTX(ndw, nlanes, depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer)
+            self.rx = rx = WideDLLRX(ndw, depth=rx_depth, packets=64, framing=framing)
+            self.tx = tx = WideDLLTX(ndw, nlanes, depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer, framing=framing)
         else:
             self.rx = rx = DLLRX(depth=rx_depth, packets=64)
             self.tx = tx = DLLTX(depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer)

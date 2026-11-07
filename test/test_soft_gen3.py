@@ -425,7 +425,7 @@ class TestSoftGen3Lane(unittest.TestCase):
             yield dut.ts.link.eq(0x12)
             yield dut.ts.lane.eq(3)
             yield dut.ts.rate.eq(0x0e)
-            yield dut.ts.eq.eq(0x29)
+            yield dut.ts.eq_ctrl.eq(0x29)
             yield dut.ts.pre.eq(5)
             yield dut.ts.cur.eq(40)
             yield dut.ts.post.eq(7)
@@ -468,3 +468,104 @@ class TestSoftGen3Lane(unittest.TestCase):
                 self.assertEqual(d1 & mask, d2 & mask)
             n += 1
         self.assertGreater(n, 400)
+
+class TestSoftGen3Link(unittest.TestCase):
+    def run_link(self, nlanes, tlps=40, cycles=30000):
+        # Two Data Link Layers with 8.0 GT/s framing, through the Blocks of the lanes and the transceivers'
+        # words (another bit offset per lane): EIEOS and TS, then SDS and the Data Stream with SKP Ordered Sets.
+        from litepcie.phy.soft.gen3 import Gen3LaneTX, Gen3LaneRX, Gen3LinkTX, Gen3LinkRX
+        from litepcie.phy.soft.dll.core import DataLinkLayer
+        ndw = 2*nlanes
+        class Side(Module):
+            def __init__(self, name):
+                self.submodules.dll = DataLinkLayer(125e6, ndw=ndw, nlanes=nlanes, framing="gen3", rx_depth=2048, tx_depth=2048)
+                self.submodules.ltx = Gen3LinkTX(nlanes, skp_interval=40)
+                self.submodules.lrx = Gen3LinkRX(nlanes)
+                self.lanes_tx = [Gen3LaneTX(LFSR_SEEDS[i]) for i in range(nlanes)]
+                self.lanes_rx = [Gen3LaneRX(LFSR_SEEDS[i]) for i in range(nlanes)]
+                self.submodules += self.lanes_tx + self.lanes_rx
+                self.comb += [
+                    self.dll.phy_sink.connect(self.ltx.sink, omit={"ctrl"}),
+                    self.ltx.idle.eq(self.dll.tx.framer.idle),
+                    self.lrx.source.connect(self.dll.phy_source, omit={"ctrl"}),
+                ]
+                for i in range(nlanes):
+                    self.comb += [
+                        self.ltx.blocks[i].connect(self.lanes_tx[i].sink),
+                        self.lanes_rx[i].source.connect(self.lrx.blocks[i]),
+                        self.lanes_rx[i].locked.eq(self.lrx.locked),
+                    ]
+        class DUT(Module):
+            def __init__(self):
+                self.submodules.a = a = Side("a")
+                self.submodules.b = b = Side("b")
+                for x, y in [(a, b), (b, a)]:
+                    for i in range(nlanes):
+                        bits = Signal(80)
+                        offset = (7*i + (3 if x is a else 11)) % 40
+                        self.sync += bits.eq(Cat(bits[40:], x.lanes_tx[i].data))
+                        self.comb += y.lanes_rx[i].data.eq(bits[offset:offset + 40])
+                self.data_enable = Signal()
+                self.comb += [
+                    a.ltx.data_enable.eq(self.data_enable), b.ltx.data_enable.eq(self.data_enable),
+                    a.dll.link_up.eq(self.data_enable), b.dll.link_up.eq(self.data_enable),
+                    a.dll.l0.eq(self.data_enable), b.dll.l0.eq(self.data_enable),
+                ]
+        dut = DUT()
+        rng = random.Random(nlanes)
+        tlp_list = []
+        for i in range(tlps):
+            n = rng.randrange(1, 24)
+            tlp_list.append([0x40 | ((n & 0xff) << 24), i, 0x1000] + [rng.getrandbits(32) for _ in range(n)])
+        out, stats, done = [], {}, [False]
+        def generator():
+            for _ in range(3000):
+                yield
+            stats["locked"] = ((yield dut.a.lrx.locked), (yield dut.b.lrx.locked))
+            yield dut.data_enable.eq(1)
+            for _ in range(cycles):
+                if (yield dut.a.dll.dl_active) and (yield dut.b.dll.dl_active):
+                    break
+                yield
+            stats["dl_active"] = (yield dut.a.dll.dl_active)
+            for tlp in tlp_list:
+                beats = [tlp[j:j+ndw] for j in range(0, len(tlp), ndw)]
+                for j, beat in enumerate(beats):
+                    yield dut.a.dll.sink.valid.eq(1)
+                    yield dut.a.dll.sink.first.eq(j == 0)
+                    yield dut.a.dll.sink.last.eq(j == len(beats) - 1)
+                    yield dut.a.dll.sink.dws.eq(len(beat))
+                    yield dut.a.dll.sink.data.eq(sum(dw << (32*k) for k, dw in enumerate(beat)))
+                    yield
+                    while not (yield dut.a.dll.sink.ready):
+                        yield
+                yield dut.a.dll.sink.valid.eq(0)
+            for _ in range(cycles):
+                if len(out) >= len(tlp_list):
+                    break
+                yield
+            stats["replays"] = (yield dut.a.dll.tx.replay.replays)
+            stats["errors"]  = ((yield dut.a.lrx.error), (yield dut.b.dll.rx.errors))
+            done[0] = True
+        def monitor():
+            cur = []
+            yield dut.b.dll.source.ready.eq(1)
+            while not done[0]:
+                if (yield dut.b.dll.source.valid):
+                    data = (yield dut.b.dll.source.data)
+                    n    = (yield dut.b.dll.source.dws)
+                    cur += [(data >> (32*k)) & 0xffffffff for k in range(n)]
+                    if (yield dut.b.dll.source.last):
+                        out.append(cur)
+                        cur = []
+                yield
+        run_simulation(dut, [generator(), monitor()])
+        return out, tlp_list, stats
+
+    def test_link(self):
+        for nlanes in [1, 2, 4]:
+            with self.subTest(nlanes=nlanes):
+                out, tlps, stats = self.run_link(nlanes, tlps=8, cycles=8000)
+                self.assertEqual(stats["locked"], (1, 1))
+                self.assertEqual(stats["dl_active"], 1)
+                self.assertEqual(out, tlps)
