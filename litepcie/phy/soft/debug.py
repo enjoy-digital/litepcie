@@ -68,6 +68,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
                 CSRField("eidle",    size=1, offset=2, description="Use the transceivers' Electrical Idle detection at 8.0 GT/s."),
                 CSRField("trace",    size=1, offset=3, pulse=True, description="Start the rate trace (g3_trace_*)."),
                 CSRField("lpm",      size=1, offset=4, description="LPM receive equalizer at 8.0 GT/s (DFE otherwise)."),
+                CSRField("capture",  size=1, offset=5, pulse=True, description="Arm the raw capture of Lane 0 (g3_capture_*)."),
             ])
             self._g3_raw_tx = CSRStatus(40, description="Raw word transmitted on Lane 0 (snapshot).")
             self._g3_raw_rx = CSRStatus(40, description="Raw word received on Lane 0 (snapshot, bit 39: valid).")
@@ -99,6 +100,55 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
                 MultiReg(raw_tx, self._g3_raw_tx.status, "sys"),
                 MultiReg(raw_rx, self._g3_raw_rx.status, "sys"),
             ]
+            # Raw capture ("pcie_g3"): 1024 consecutive words of Lane 0 (bit 39: valid), from g3_capture_delay
+            # cycles after the start (arm: at once with force, else on the entry in Recovery.Equalization).
+            self._g3_capture_delay = CSRStorage(24, description="Raw capture: cycles of 200 MHz after the trigger.")
+            self._g3_capture_index = CSRStorage(10, description="Raw capture: word to read.")
+            self._g3_capture_data  = CSRStatus(40, description="Raw capture: word (bit 39: valid).")
+            self._g3_capture_done  = CSRStatus(description="Raw capture done.")
+            arm = PulseSynchronizer("sys", "pcie_g3")
+            self.submodules += arm
+            self.comb += arm.i.eq(self._g3_control.fields.capture)
+            in_eq   = Signal()
+            delay   = Signal(24)
+            force_c = Signal()
+            self.specials += [
+                MultiReg(self._g3_control.fields.force, force_c, "pcie_g3"),
+                MultiReg(ltssm.state[2:6] == (0x2c >> 2), in_eq, "pcie_g3"),
+                MultiReg(self._g3_capture_delay.storage, delay, "pcie_g3"),
+            ]
+            cmem   = Memory(40, 1024)
+            cwport = cmem.get_port(write_capable=True, clock_domain="pcie_g3")
+            crport = cmem.get_port(clock_domain="sys")
+            self.specials += cmem, cwport, crport
+            armed   = Signal()
+            waiting = Signal(24)
+            running = Signal()
+            cindex  = Signal(10)
+            cdone   = Signal()
+            self.sync.pcie_g3 += [
+                If(arm.o,
+                    armed.eq(1), running.eq(0), cdone.eq(0), cindex.eq(0), waiting.eq(0),
+                ).Elif(armed & (force_c | in_eq),
+                    If(waiting == delay,
+                        armed.eq(0), running.eq(1),
+                    ).Else(
+                        waiting.eq(waiting + 1)
+                    )
+                ).Elif(running,
+                    cindex.eq(cindex + 1),
+                    If(cindex == 1023, running.eq(0), cdone.eq(1)),
+                )
+            ]
+            self.comb += [
+                cwport.adr.eq(cindex),
+                cwport.dat_w.eq(Cat(serdes.lanes[0].raw_rx[:39], serdes.lanes[0].raw_rx_valid)),
+                cwport.we.eq(running),
+                crport.adr.eq(self._g3_capture_index.storage),
+                self._g3_capture_data.status.eq(crport.dat_r),
+            ]
+            self.specials += MultiReg(cdone, self._g3_capture_done.status, "sys")
+
             # Lane 0 counters (sampled as they change: debug precision).
             gb    = g3.lanes_rx[0].gearbox
             undef = (gb.sync_header == 0b00) | (gb.sync_header == 0b11)

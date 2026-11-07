@@ -106,6 +106,15 @@ def main():
                       f"pll_sel {(e >> 8) & 1} done {(e >> 9) & 1} seq {seq[(e >> 10) & 7]:11s} "
                       f"eidle gt {(e >> 13) & 1} ltssm {(e >> 14) & 1} locked {(e >> 15) & 1} "
                       f"ec {(e >> 20) & 3} x{(e >> 16) & 15} ts {(e >> 22) & 15}")
+        elif command.startswith("g3capture="):
+            # Arm the raw capture of Lane 0, delay in 200 MHz cycles after the trigger.
+            reg("g3_capture_delay").write(int(command.split("=")[1], 0))
+            reg("g3_control").write((reg("g3_control").read() & 0b10101) | 0b100000)
+        elif command == "g3words":
+            print(f"done {reg('g3_capture_done').read()}")
+            for i in range(1024):
+                reg("g3_capture_index").write(i)
+                print(f"{reg('g3_capture_data').read():010x}")
         elif command.startswith("g3eidle="):
             reg("g3_control").write((reg("g3_control").read() & 0b10001) | (int(command.split("=")[1]) << 2))
         elif command.startswith("g3lpm="):
