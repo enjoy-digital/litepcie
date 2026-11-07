@@ -288,3 +288,49 @@ class TestSoftDLLWide(unittest.TestCase):
         run_simulation(dut, [generator(), monitor()])
         self.assertEqual(errors, [])
         self.assertEqual(tlps, exp)
+
+def x1_aligned(symbols):
+    """Symbols through the x1 aligner, as 4-Symbol words of (byte, k)."""
+    from litepcie.phy.soft.dll.wide import RXPhaseAlignerX1
+    dut = RXPhaseAlignerX1()
+    out = []
+    words = [symbols[i:i+4] for i in range(0, len(symbols) - 3, 4)]
+    def generator():
+        yield dut.sink.valid.eq(1)
+        for word in words + [[(0, 0)]*4]*4:
+            yield dut.sink.data.eq(sum(b << (8*j) for j, (b, k) in enumerate(word)))
+            yield dut.sink.ctrl.eq(sum(k << j for j, (b, k) in enumerate(word)))
+            yield
+            if (yield dut.source.valid):
+                d, c = (yield dut.source.data), (yield dut.source.ctrl)
+                out.append([((d >> (8*j)) & 0xff, (c >> j) & 1) for j in range(4)])
+    run_simulation(dut, generator())
+    return out
+
+class TestSoftAlignerX1(unittest.TestCase):
+    def test_any_position(self):
+        # Packets after any number of Logical Idle Symbols: each one starts on a word, complete.
+        rng = random.Random(9)
+        for gap in [0, 1, 2, 3, 5, 6, 7]:
+            with self.subTest(gap=gap):
+                symbols, packets = [], []
+                for i in range(30):
+                    dws  = random_dws(rng, rng.randrange(3, 8))
+                    pkt  = tlp_symbols(i, dws, rng.getrandbits(32)) if i % 3 else dllp_symbols([rng.randrange(256) for _ in range(6)])
+                    packets.append(pkt)
+                    symbols += pkt + [(0, 0)]*((gap*(i + 1)) % 11 if gap else 0)
+                symbols += [(0, 0)]*(4 - len(symbols) % 4)
+                out = sum(x1_aligned(symbols), [])
+                found = 0
+                index = 0
+                while index < len(out) and found < len(packets):
+                    if out[index][1] and out[index][0] in (STP.value, SDP.value):
+                        self.assertEqual(index % 4, 0, f"packet {found} not on a word")
+                        pkt = packets[found]
+                        self.assertEqual(out[index:index + len(pkt)], pkt, f"packet {found}")
+                        found += 1
+                        index += len(pkt)
+                    else:
+                        self.assertEqual(out[index], (0, 0), "not Logical Idle between the packets")
+                        index += 1
+                self.assertEqual(found, len(packets))

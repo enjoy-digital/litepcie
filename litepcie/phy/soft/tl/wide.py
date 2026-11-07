@@ -147,6 +147,7 @@ class WideTransactionLayer(LiteXModule):
         self.cfg      = tl.cfg
         self.id       = tl.id
         self.ur_count = tl.ur_count
+        self.link_width = tl.link_width
         self.comb += [
             msi.connect(tl.msi),
             tl.ep_source.ready.eq(1), # Not used: memory TLPs don't go through it.

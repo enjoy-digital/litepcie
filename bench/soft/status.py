@@ -8,7 +8,7 @@
 
 """Soft PCIe PHY control and status over a litex_server.
 
-python3 bench/soft/status.py --csr-csv csr.csv [status] [trace] [enable] [disable] [retrain] [speed] [loopback=N]
+python3 bench/soft/status.py --csr-csv csr.csv [status] [trace] [enable] [disable] [retrain] [speed] [disable=MASK] [loopback=N]
 """
 
 import sys
@@ -50,7 +50,7 @@ def main():
             lanes = name + "lanes"
             if hasattr(regs, lanes):
                 value = getattr(regs, lanes).read()
-                print(f"lanes ok: {value & 0xff:#04x}, deskew locked: {(value >> 8) & 1}")
+                print(f"lanes ok: {value & 0xff:#04x}, deskew locked: {(value >> 8) & 1}, width: x{(value >> 9) & 0x1f}")
             if hasattr(regs, "gt_status_status"):
                 gt = regs.gt_status_status.read()
                 print(f"gt: tx_ready {gt & 1}, rx_ready {(gt >> 1) & 1}, mmcm_locked {(gt >> 2) & 1}, cpll_locked {(gt >> 3) & 1}")
@@ -74,6 +74,8 @@ def main():
             reg("control").write(reg("control").read() | 4)
         elif command == "retrain":
             reg("control").write(reg("control").read() | 2)
+        elif command.startswith("disable="):
+            reg("lane_disable").write(int(command.split("=")[1], 0))
         elif command.startswith("loopback="):
             reg("loopback").write(int(command.split("=")[1]))
         else:

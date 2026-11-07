@@ -37,8 +37,12 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             self._lanes = CSRStatus(fields=[
                 CSRField("ok",     size=8, offset=0, description="Lanes receiving Training Sequences with their Lane Number."),
                 CSRField("locked", size=1, offset=8, description="Lanes deskewed."),
+                CSRField("width",  size=5, offset=9, description="Negotiated link width."),
             ])
+            self._lane_disable = CSRStorage(8, description="Lanes kept out of the link (Electrical Idle, receiver ignored).")
+            self.comb += phy.lane_disable.eq(self._lane_disable.storage)
             self.specials += [
+                MultiReg(phy.width,         self._lanes.fields.width,  "sys"),
                 MultiReg(phy.lanes_ok,      self._lanes.fields.ok,     "sys"),
                 MultiReg(phy.deskew.locked, self._lanes.fields.locked, "sys"),
             ]

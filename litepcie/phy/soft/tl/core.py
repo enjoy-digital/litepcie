@@ -74,7 +74,8 @@ class SoftTransactionLayer(LiteXModule):
             msi_vectors  = msi_vectors,
             gen2_capable = gen2_capable,
         )
-        self.comb += cfg.link_width.eq(nlanes)
+        self.link_width = Signal(6, reset=nlanes) # i: negotiated width (Link Status).
+        self.comb += cfg.link_width.eq(self.link_width)
 
         # Received TLPs ----------------------------------------------------------------------------
         fmt  = sink.data[5:8]
