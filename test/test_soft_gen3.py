@@ -347,3 +347,43 @@ class TestSoftGen3Framing(unittest.TestCase):
                     self.assertEqual(o["seq"], t["seq"])
                     self.assertEqual(o["dws"][:-1], t["dws"])
                     self.assertEqual(o["dws"][-1], list(t["lcrc"].to_bytes(4, "little")))
+
+class TestSoftGen3Tester(unittest.TestCase):
+    def run_loop(self, offset, inject=None, cycles=6000):
+        from litepcie.phy.soft.gen3 import Gen3TXTester, Gen3RXChecker
+        class DUT(Module):
+            def __init__(self):
+                self.submodules.tx = Gen3TXTester(LFSR_SEEDS[1])
+                self.submodules.rx = Gen3RXChecker(LFSR_SEEDS[1])
+                self.flip = Signal()
+                self.bits = Signal(80)
+                self.sync += self.bits.eq(Cat(self.bits[40:], self.tx.data))
+                self.comb += self.rx.data.eq(self.bits[offset:offset + 40] ^ self.flip)
+        dut = DUT()
+        res = {}
+        def generator():
+            for i in range(cycles):
+                if inject is not None and i == inject:
+                    yield dut.flip.eq(1)
+                    yield
+                    yield dut.flip.eq(0)
+                yield
+            res.update(aligned=(yield dut.rx.aligned), blocks=(yield dut.rx.blocks), errors=(yield dut.rx.errors), eieos=(yield dut.rx.eieos))
+        run_simulation(dut, generator())
+        return res
+
+    def test_loop(self):
+        # Clean link, any bit offset: aligned, many Blocks, no error.
+        for offset in [0, 1, 17, 39]:
+            with self.subTest(offset=offset):
+                res = self.run_loop(offset)
+                self.assertEqual(res["aligned"], 1)
+                self.assertGreater(res["blocks"], 500)
+                self.assertGreater(res["eieos"], 10)
+                self.assertEqual(res["errors"], 0)
+
+    def test_detects_errors(self):
+        # The checker has to see a flipped bit.
+        res = self.run_loop(5, inject=4000)
+        self.assertEqual(res["aligned"], 1)
+        self.assertGreaterEqual(res["errors"], 1)

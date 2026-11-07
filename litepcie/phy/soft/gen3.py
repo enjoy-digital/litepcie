@@ -206,7 +206,8 @@ class TXBlockGearbox(LiteXModule):
         ]
         rest = Signal(170)
         self.comb += rest.eq(buffer[40:])
-        cases = {l: buffer.eq(rest[:l] | (block << l)) for l in [0, 10, 20, 30]}
+        cases = {l: buffer.eq(Cat(rest[:l], block)) for l in [10, 20, 30]}
+        cases[0] = buffer.eq(block)
         self.sync += [
             If(level >= 80,
                 buffer.eq(rest),
@@ -556,3 +557,76 @@ class Gen3TXFramer(LiteXModule):
                 NextState("IDLE")
             )
         )
+
+# Lane Tester --------------------------------------------------------------------------------------
+
+class Gen3TXTester(LiteXModule):
+    """Blocks for a transceiver without a host: an EIEOS every `interval` Blocks, Data Blocks in between
+    carrying scrambled Logical Idle (the LFSR initialized after each EIEOS, as on a link)."""
+    def __init__(self, seed, interval=33):
+        self.data  = Signal(40) # o
+
+        # # #
+
+        self.gearbox   = gearbox   = TXBlockGearbox()
+        self.scrambler = scrambler = Gen3Scrambler(seed, nsymbols=16)
+        count = Signal(max=interval)
+        eieos = count == 0
+        self.comb += [
+            self.data.eq(gearbox.data),
+            scrambler.ce.eq(gearbox.ready & ~eieos),
+            scrambler.init.eq(gearbox.ready & eieos),
+            If(eieos,
+                gearbox.sync_header.eq(SYNC_OS),
+                gearbox.block.eq(EIEOS_PAYLOAD),
+            ).Else(
+                gearbox.sync_header.eq(SYNC_DATA),
+                gearbox.block.eq(scrambler.data_out),
+            )
+        ]
+        self.sync += If(gearbox.ready,
+            If(count == interval - 1,
+                count.eq(0)
+            ).Else(
+                count.eq(count + 1)
+            )
+        )
+
+class Gen3RXChecker(LiteXModule):
+    """Checks the Blocks of Gen3TXTester: Block alignment, then every Data Block has to descramble to
+    Logical Idle. errors counts wrong Blocks, once aligned and after a first EIEOS."""
+    def __init__(self, seed):
+        self.data    = Signal(40) # i
+        self.aligned = Signal()   # o
+        self.blocks  = Signal(32) # o
+        self.errors  = Signal(32) # o
+        self.eieos   = Signal(32) # o
+
+        # # #
+
+        self.gearbox     = gearbox     = RXBlockGearbox()
+        self.aligner     = aligner     = BlockAligner(gearbox)
+        self.descrambler = descrambler = Gen3Scrambler(seed, nsymbols=16)
+        synced = Signal()
+        is_data = gearbox.sync_header == SYNC_DATA
+        self.comb += [
+            gearbox.data.eq(self.data),
+            self.aligned.eq(aligner.aligned),
+            descrambler.data_in.eq(gearbox.block),
+            descrambler.ce.eq(gearbox.valid & is_data),
+            descrambler.init.eq(aligner.eieos),
+        ]
+        self.sync += [
+            If(~aligner.aligned,
+                synced.eq(0)
+            ).Elif(aligner.eieos,
+                synced.eq(1),
+                self.eieos.eq(self.eieos + 1),
+            ),
+            If(gearbox.valid & synced,
+                self.blocks.eq(self.blocks + 1),
+                If(~aligner.eieos & (~is_data | (descrambler.data_out != 0)),
+                    self.errors.eq(self.errors + 1)
+                )
+            )
+        ]

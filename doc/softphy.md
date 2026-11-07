@@ -105,7 +105,8 @@ Clock domains:
 | M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Verilator end-to-end simulation (`bench/soft/sim_endpoint.py`): configuration space, BAR0 accesses and byte order, Unsupported Requests, MSI, device reads/writes at 64 and 128 bits. Acorn bitstream with LitePCIe, MMAP, DMA and MSI built: about 8.5k LUTs, timing met (`pcie_link` margin only 51 ps). BAR0/CSR, MSI and DMA simulated at SoC level (`bench/soft/sim_soc.py`). Runs on hardware, see the hardware results |
 | M6 | Gen2 x1 (rate change) | Verilator link simulation at full lane rate (`bench/soft/sim.py --gen2`), fallback to 2.5 GT/s (`--fail-5g`). Runs on hardware on the GTX, see the hardware results |
 | M7 | x2 to x8: wide Data Link Layers, multi-lane Physical Layer, deskew | Verilator simulation (`bench/soft/sim_wide.py`: Data Link Layers with corruption; `--phy`: training with lane skew, speed change, Link Retrain; `sim_endpoint.py --nlanes`). Runs on hardware on the GTX, see the hardware results. No width negotiation nor lane reversal yet: the link width is the design's |
-| M8 | Robustness, LiteX-Boards | Not started |
+| M8 | Robustness, width negotiation, lane reversal, LiteX-Boards | Not started |
+| M10 | 8.0 GT/s: 128b/130b lane blocks | `gen3.py`: scrambler checked against the table of the specification, gearboxes, Block alignment, framing Tokens (on a DW only). Near-end loopback on the GTX at 8 GT/s (`bench/soft/ypcb_gen3.py`), see the hardware results. **Not connected to `SoftPCIEPHY`**: no LTSSM support (Recovery.Equalization), no 8 GT/s link with a host |
 | M9 | Other transceivers, soft root port | Not started |
 
 ## Verification
@@ -174,6 +175,8 @@ Multi-lane, same conditions, 5 GT/s, LitePCIe at 32 bits per lane, against the h
 | Setup WNS | 0.845 ns | 0.463 ns | 0.391 ns | 0.524 ns | -0.012 ns |
 
 The hard IP designs use a 128-bit datapath at x8. Above about 13 Gb/s `dma_test` doesn't keep up: its software check loses whole buffers on both PHYs, so at x8 it doesn't prove the data on its own. The losses were whole buffers (0 other rows at x8 and x4, 1 at x2, next to a burst). What limits x8 to 18 Gb/s, against 32 Gb/s on the link, isn't identified.
+
+8 GT/s lane test (`bench/soft/ypcb_gen3.py`, no host): QPLL at 8 GHz, near-end PMA loopback on 4 lanes, 40-bit words at 200 MHz, 130-bit Blocks with EIEOS and scrambled Data Blocks. Block alignment found on all the lanes, 0 errors in 10 minutes on each lane (4.8e12 bits, BER below 6.2e-13 at 95 %). The loopback doesn't include the channel to a host, and doesn't say anything about equalization.
 
 The Artix-7 GTP path has not been run on hardware yet, Gen2 and multi-lane included.
 
