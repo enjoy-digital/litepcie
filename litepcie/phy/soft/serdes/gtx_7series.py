@@ -23,15 +23,15 @@ from litepcie.phy.soft.serdes.s7 import S7PCIeSerDes, S7DRPSequencer
 GTX_PCIE_RXCDR_CFG = 0x03000023FF10200020
 GTX_PCIE_PMA_RSV   = 0x00018480
 
-# RXCDR_CFG at 8.0 GT/s: the one of the GTX for an output divider of 1 (UG476, as LiteICLink: checked on the
-# YPCB-00338-1P1 at 8 GT/s, near-end loopback). The Xilinx PCIe wrapper's Gen3 value is for its configuration
-# (32-bit interface, RX buffer bypassed).
-GTX_GEN3_RXCDR_CFG = 0x03000023ff10400020
+# RXCDR_CFG at 8.0 GT/s: the Xilinx PCIe wrapper's Gen3 GTX value (synchronous). The UG476 one for an output
+# divider of 1 (0x03000023ff10400020) also works in near-end loopback, with no signal from a root port at
+# 8.0 GT/s on the YPCB-00338-1P1. Can be changed from the gen3_rxcdr_cfg CSR (bring-up).
+GTX_GEN3_RXCDR_CFG = 0x000b00000bff10100080
 
 # 8.0 GT/s attributes over DRP (address, mask: bits kept, 2.5/5.0 GT/s value, 8.0 GT/s value), the 2.5/5.0 GT/s
 # values from the static attributes; PMA_RSV, Electrical Idle and drive mode values of the Xilinx PCIe wrapper.
 def gtx_gen3_drp_entries(rxcdr_cfg=GTX_PCIE_RXCDR_CFG, pma_rsv=GTX_PCIE_PMA_RSV, gen3_rxcdr_cfg=GTX_GEN3_RXCDR_CFG):
-    word = lambda v, n: (v >> (16*n)) & 0xffff
+    word = lambda v, n: (v >> (16*n)) & 0xffff if isinstance(v, int) else v[16*n:16*(n + 1)]
     return [
         (0x099, 0x0000, word(pma_rsv, 0),   0x7080), # PMA_RSV[15:0].
         (0x09a, 0x0000, word(pma_rsv, 1),   0x001e), # PMA_RSV[31:16].
@@ -106,9 +106,15 @@ class K7PCIeSerDes(S7PCIeSerDes):
             self.comb += rs.pll_lock.eq(pll_lock)
         qpll = self.qplls[quad]
 
-        # DRP writes of the rate's attributes.
+        # DRP writes of the rate's attributes, the 8.0 GT/s RXCDR_CFG from a CSR (bring-up), receive
+        # equalizer at 8.0 GT/s: DFE, or LPM with gen3_lpm (debug).
+        if not hasattr(self, "_gen3_rxcdr_cfg"):
+            from litex.soc.interconnect.csr import CSRStorage
+            self._gen3_rxcdr_cfg = CSRStorage(72, reset=GTX_GEN3_RXCDR_CFG,
+                description="RXCDR_CFG written at 8.0 GT/s (rate change).")
+            self.gen3_lpm = Signal()
         drp = ClockDomainsRenamer("pcie_link")(S7DRPSequencer(gt.drp, gtx_gen3_drp_entries(
-            GTX_PCIE_RXCDR_CFG if rxcdr_cfg is None else rxcdr_cfg)))
+            GTX_PCIE_RXCDR_CFG if rxcdr_cfg is None else rxcdr_cfg, gen3_rxcdr_cfg=self._gen3_rxcdr_cfg.storage)))
         setattr(self, f"drp{i}", drp)
         self.drp_dones.append(drp.done)
         self.comb += [
@@ -165,8 +171,8 @@ class K7PCIeSerDes(S7PCIeSerDes):
             i_TXCHARDISPMODE = Mux(raw_tx, Cat(*[raw_tx_r[10*k + 9] for k in range(4)]), tx_mode),
             i_TXCHARDISPVAL  = Mux(raw_tx, Cat(*[raw_tx_r[10*k + 8] for k in range(4)]), tx_val),
             # Receive equalizer: LPM at 2.5/5.0 GT/s, DFE at 8.0 GT/s (as the Xilinx wrapper and LiteICLink).
-            i_RXLPMEN        = ~rs.pll_sel,
-            i_RXDFEXYDEN     = rs.pll_sel,
+            i_RXLPMEN        = ~rs.pll_sel | self.gen3_lpm,
+            i_RXDFEXYDEN     = rs.pll_sel & ~self.gen3_lpm,
             i_TXPRECURSOR    = Cat(Constant(0, 1), lane.tx_eq_pre[0:4]),
             i_TXPOSTCURSOR   = Cat(Constant(0, 1), lane.tx_eq_post[0:4]),
         )
