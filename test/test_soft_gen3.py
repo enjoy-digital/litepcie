@@ -387,3 +387,84 @@ class TestSoftGen3Tester(unittest.TestCase):
         res = self.run_loop(5, inject=4000)
         self.assertEqual(res["aligned"], 1)
         self.assertGreaterEqual(res["errors"], 1)
+
+class TestSoftGen3Lane(unittest.TestCase):
+    def test_tx_rx_blocks(self):
+        # TX to RX through the 40-bit words: kinds and contents of the Blocks, TS fields, scrambling rules
+        # (the LFSR follows over SKP and is reinitialized by EIEOS on both sides), DC Balance not breaking TS.
+        from litepcie.phy.soft.gen3 import Gen3LaneTX, Gen3LaneRX, ts3_layout, ts3_symbols
+        from litepcie.phy.soft.gen3 import BLOCK_DATA, BLOCK_TS, BLOCK_EIEOS, BLOCK_SKP, BLOCK_SDS
+        rng = random.Random(5)
+        class DUT(Module):
+            def __init__(self):
+                self.submodules.tx = Gen3LaneTX(LFSR_SEEDS[2])
+                self.submodules.rx = Gen3LaneRX(LFSR_SEEDS[2])
+                self.ts = Record(ts3_layout())
+                self.ts_data = Signal(128)
+                self.comb += self.ts_data.eq(Cat(*ts3_symbols(self.ts)))
+                self.bits = Signal(80)
+                self.sync += self.bits.eq(Cat(self.bits[40:], self.tx.data))
+                self.comb += self.rx.data.eq(self.bits[13:53])
+        dut = DUT()
+        # A sequence as on a link: EIEOS, TS, SKP, SDS, Data Blocks with SKP between.
+        seq = []
+        for i in range(800):
+            if i % 33 == 0:
+                seq.append((BLOCK_EIEOS, 0))
+            elif i < 120:
+                seq.append((BLOCK_TS, None))
+            elif i == 120:
+                seq.append((BLOCK_SDS, 0))
+            elif i % 17 == 0:
+                seq.append((BLOCK_SKP, 0))
+            else:
+                seq.append((BLOCK_DATA, rng.getrandbits(128)))
+        sent, got, errors = [], [], []
+        done = [False]
+        def generator():
+            yield dut.ts.link.eq(0x12)
+            yield dut.ts.lane.eq(3)
+            yield dut.ts.rate.eq(0x0e)
+            yield dut.ts.eq.eq(0x29)
+            yield dut.ts.pre.eq(5)
+            yield dut.ts.cur.eq(40)
+            yield dut.ts.post.eq(7)
+            ts_data = None
+            index = 0
+            for _ in range(800*4):
+                kind, data = seq[min(index, len(seq) - 1)]
+                if kind == BLOCK_TS:
+                    data = (yield dut.ts_data)
+                yield dut.tx.sink.valid.eq(1)
+                yield dut.tx.sink.kind.eq(kind)
+                yield dut.tx.sink.data.eq(data)
+                yield
+                if (yield dut.tx.sink.ready):
+                    sent.append((kind, data))
+                    index += 1
+            done[0] = True
+        def monitor():
+            while not done[0]:
+                if (yield dut.rx.source.valid):
+                    got.append(((yield dut.rx.source.kind), (yield dut.rx.source.data)))
+                if (yield dut.rx.error):
+                    errors.append(1)
+                yield
+        run_simulation(dut, [generator(), monitor()])
+        self.assertEqual(errors, [])
+        # Received from the first EIEOS after alignment on: same Blocks, TS without Symbols 14/15.
+        start = next(i for i, (k, d) in enumerate(got) if k == BLOCK_EIEOS)
+        rx = got[start:]
+        # Find the matching EIEOS in what was sent: the one followed by the same kinds.
+        kinds_rx = [k for k, d in rx[:60]]
+        offset = next(i for i in range(len(sent)) if [k for k, d in sent[i:i + 60]] == kinds_rx)
+        mask = (1 << 112) - 1
+        n = 0
+        for (k1, d1), (k2, d2) in zip(sent[offset:], rx):
+            self.assertEqual(k1, k2)
+            if k1 == BLOCK_DATA:
+                self.assertEqual(d1, d2)
+            if k1 == BLOCK_TS:
+                self.assertEqual(d1 & mask, d2 & mask)
+            n += 1
+        self.assertGreater(n, 400)
