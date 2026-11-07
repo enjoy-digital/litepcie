@@ -630,3 +630,179 @@ class Gen3RXChecker(LiteXModule):
                 )
             )
         ]
+
+# Ordered Sets at 8.0 GT/s (4.2.4.1, 4.2.4.3, 4.2.4.6, 4.2.7.2) -------------------------------------
+
+GEN3_PAD    = 0xf7
+TS1_ID3     = 0x4a
+TS2_ID3     = 0x45
+SDS_BODY    = 0x55
+SKP_END     = 0xe1
+
+def ts3_layout():
+    """Fields of a 8.0 GT/s Training Sequence. eq: Symbol 6 (EC, Reset EIEOS Interval Count, Transmitter Preset,
+    Use Preset), pre/cur/post: coefficients (or FS/LF), reject: Reject Coefficient Values (TS1 only)."""
+    return [("ts2", 1), ("link", 8), ("link_pad", 1), ("lane", 5), ("lane_pad", 1), ("n_fts", 8), ("rate", 8),
+            ("ctrl", 8), ("eq", 8), ("pre", 6), ("cur", 6), ("post", 6), ("reject", 1)]
+
+def ts3_symbols(ts):
+    """The 16 Symbols of a Training Sequence (Symbol 0 first, bits 7:0), Symbols 14 and 15 as the identifier."""
+    ident = Mux(ts.ts2, TS2_ID3, TS1_ID3)
+    s7    = Mux(ts.ts2, TS2_ID3, Cat(ts.pre, Constant(0, 2)))
+    s8    = Mux(ts.ts2, TS2_ID3, Cat(ts.cur, Constant(0, 2)))
+    s9lo  = Cat(ts.post, ts.reject)
+    parity = Reduce("XOR", [ts.eq[i] for i in range(8)] + [ts.pre[i] for i in range(6)] +
+        [ts.cur[i] for i in range(6)] + [s9lo[i] for i in range(7)])
+    s9    = Mux(ts.ts2, TS2_ID3, Cat(s9lo, parity))
+    return [
+        Mux(ts.ts2, 0x2d, 0x1e),
+        Mux(ts.link_pad, GEN3_PAD, ts.link),
+        Mux(ts.lane_pad, GEN3_PAD, Cat(ts.lane, Constant(0, 3))),
+        ts.n_fts, ts.rate, ts.ctrl, ts.eq, s7, s8, s9,
+    ] + [ident]*6
+
+# Lane TX ------------------------------------------------------------------------------------------
+
+BLOCK_DATA, BLOCK_TS, BLOCK_EIEOS, BLOCK_EIOS, BLOCK_SDS, BLOCK_SKP = range(6)
+
+def block_layout():
+    """Block to transmit: kind (BLOCK_*), the 16 Symbols (not scrambled) for Data and TS Blocks."""
+    return [("kind", 3), ("data", 128)]
+
+class Gen3LaneTX(LiteXModule):
+    """Blocks to the transceiver's 40-bit words: Sync Header, scrambling (4.2.2.4), DC Balance (4.2.4.1).
+    TS: Symbol 0 not scrambled, Symbols 1 to 13 scrambled, Symbols 14/15 scrambled or replaced by a DC Balance
+    Symbol. EIEOS, EIOS, SDS: not scrambled, EIEOS reinitializes the LFSR after it. SKP: not scrambled, the
+    LFSR doesn't advance. Data: scrambled. The Block is taken when sink.ready (it has to be there)."""
+    def __init__(self, seed):
+        self.sink  = sink = stream.Endpoint(block_layout())
+        self.data  = Signal(40) # o
+        self.reset_balance = Signal() # i: exit from Electrical Idle.
+
+        # # #
+
+        self.gearbox   = gearbox   = TXBlockGearbox()
+        self.scrambler = scrambler = Gen3Scrambler(seed, nsymbols=16)
+        kind = sink.kind
+        is_ts = kind == BLOCK_TS
+        is_data = kind == BLOCK_DATA
+        payload = Signal(128)
+        bypass  = Signal(16)
+        self.comb += [
+            Case(kind, {
+                BLOCK_DATA:  [payload.eq(sink.data), bypass.eq(0)],
+                BLOCK_TS:    [payload.eq(sink.data), bypass.eq(0b0000000000000001)],
+                BLOCK_EIEOS: [payload.eq(EIEOS_PAYLOAD), bypass.eq(0xffff)],
+                BLOCK_EIOS:  [payload.eq(Replicate(Constant(OS_EIOS, 8), 16)), bypass.eq(0xffff)],
+                BLOCK_SDS:   [payload.eq(Cat(Constant(OS_SDS, 8), Replicate(Constant(SDS_BODY, 8), 15))), bypass.eq(0xffff)],
+                # 12 SKP Symbols, SKP_END, then 3 Symbols: the LFSR value (the Data Parity bit isn't kept).
+                BLOCK_SKP:   [payload.eq(Cat(Replicate(Constant(OS_SKP, 8), 12), Constant(SKP_END, 8), Constant(0, 24))),
+                              bypass.eq(0xffff)],
+            }),
+            scrambler.data_in.eq(payload),
+            scrambler.bypass.eq(bypass),
+            scrambler.advance.eq(kind != BLOCK_SKP),
+            scrambler.ce.eq(gearbox.ready & sink.valid),
+            scrambler.init.eq(gearbox.ready & sink.valid & (kind == BLOCK_EIEOS)),
+            sink.ready.eq(gearbox.ready),
+            gearbox.sync_header.eq(Mux(is_data, SYNC_DATA, SYNC_OS)),
+            self.data.eq(gearbox.data),
+        ]
+
+        # DC Balance: running difference of 1s and 0s on the lane, Symbols 14/15 of the TS replaced when it
+        # is too large at the end of Symbol 11.
+        balance  = Signal((10, True))
+        scrambled = scrambler.data_out
+        def ones(bits):
+            return Reduce("ADD", [bits[i] for i in range(len(bits))])
+        upto11 = Signal((10, True))
+        self.comb += upto11.eq(balance + 2*ones(Cat(gearbox.sync_header, scrambled[0:96])) - (2 + 96))
+        s14 = Signal(8)
+        s15 = Signal(8)
+        self.comb += [
+            s14.eq(scrambled[112:120]),
+            s15.eq(scrambled[120:128]),
+            If(is_ts,
+                If(upto11 > 31,
+                    s14.eq(0x20), s15.eq(0x08)   # Fewer 1s.
+                ).Elif(upto11 < -31,
+                    s14.eq(0xdf), s15.eq(0xf7)   # Fewer 0s.
+                ).Elif(upto11 > 15,
+                    s15.eq(0x08)
+                ).Elif(upto11 < -15,
+                    s15.eq(0xf7)
+                )
+            ),
+        ]
+        block = Signal(128)
+        self.comb += [
+            block.eq(Cat(scrambled[:112], s14, s15)),
+            gearbox.block.eq(block),
+        ]
+        self.sync += If(self.reset_balance,
+            balance.eq(0)
+        ).Elif(gearbox.ready & sink.valid,
+            balance.eq(balance + 2*ones(Cat(gearbox.sync_header, block)) - 130)
+        )
+
+# Lane RX ------------------------------------------------------------------------------------------
+
+class Gen3LaneRX(LiteXModule):
+    """Transceiver's 40-bit words to descrambled Blocks: alignment on EIEOS, descrambling with the rules of the
+    Ordered Sets from their Symbol 0 (not scrambled). source: Blocks with their kind; TS Blocks with Symbols 14
+    and 15 as received (identifier or DC Balance Symbol). Undefined Sync Headers and unknown Ordered Sets: error."""
+    def __init__(self, seed):
+        self.data    = Signal(40) # i
+        self.locked  = Signal()   # i: Block alignment kept (Data Stream).
+        self.source  = source = stream.Endpoint(block_layout())
+        self.aligned = Signal()   # o
+        self.error   = Signal()   # o (Pulse)
+
+        # # #
+
+        self.gearbox     = gearbox     = RXBlockGearbox()
+        self.aligner     = aligner     = BlockAligner(gearbox)
+        self.descrambler = descrambler = Gen3Scrambler(seed, nsymbols=16)
+        header = gearbox.sync_header
+        block  = gearbox.block
+        s0     = block[0:8]
+        kind   = Signal(3)
+        known  = Signal()
+        bypass = Signal(16)
+        self.comb += [
+            gearbox.data.eq(self.data),
+            aligner.locked.eq(self.locked),
+            self.aligned.eq(aligner.aligned),
+            known.eq(1),
+            If(header == SYNC_DATA,
+                kind.eq(BLOCK_DATA), bypass.eq(0),
+            ).Elif(header == SYNC_OS,
+                bypass.eq(0xffff),
+                If((s0 == 0x1e) | (s0 == 0x2d),
+                    kind.eq(BLOCK_TS), bypass.eq(0b1100000000000001),
+                ).Elif(block == EIEOS_PAYLOAD,
+                    kind.eq(BLOCK_EIEOS),
+                ).Elif(s0 == OS_EIOS,
+                    kind.eq(BLOCK_EIOS),
+                ).Elif(s0 == OS_SDS,
+                    kind.eq(BLOCK_SDS),
+                ).Elif(s0 == OS_SKP,
+                    kind.eq(BLOCK_SKP),
+                ).Else(
+                    known.eq(0)
+                )
+            ).Else(
+                known.eq(0)
+            ),
+            descrambler.data_in.eq(block),
+            descrambler.bypass.eq(bypass),
+            descrambler.advance.eq(kind != BLOCK_SKP),
+            descrambler.ce.eq(gearbox.valid & aligner.aligned),
+            descrambler.init.eq(aligner.eieos),
+        ]
+        self.sync += [
+            source.valid.eq(gearbox.valid & aligner.aligned & known),
+            source.kind.eq(kind),
+            source.data.eq(descrambler.data_out),
+            self.error.eq(gearbox.valid & aligner.aligned & ~known),
+        ]
