@@ -210,7 +210,7 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         """Optional bring-up CSRs (LTSSM enable/retrain, status, counters), see doc/softphy.md. Without
         them the LTSSM starts on its own; with them it waits for the enable CSR (enable_reset=0)."""
         from litepcie.phy.soft.debug import SoftPHYDebug
-        self.debug = SoftPHYDebug(self.phy_layer, self.serdes, with_tracer=False, enable_reset=enable_reset)
+        self.debug = SoftPHYDebug(self.phy_layer, self.serdes, with_tracer=False, enable_reset=enable_reset, dll=self.dll)
 
     # LTSSM Tracer ---------------------------------------------------------------------------------
     def add_ltssm_tracer(self):

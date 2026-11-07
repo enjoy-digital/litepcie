@@ -137,6 +137,14 @@ class TestSoftSim(unittest.TestCase):
                 self.assertIn("SPEED OK: rate 1/1", output)
                 self.assertNotIn("Detect.Quiet", output[output.index("L0 reached"):])
 
+    def test_soc_narrower(self):
+        # DMA of the SoC with Completions split as a host does, on a narrower link at the 5.0 GT/s rate.
+        for nlanes, dead in [(4, "0x0"), (4, "0xe"), (4, "0xc"), (2, "0x2")]:
+            with self.subTest(nlanes=nlanes, dead=dead):
+                output = self.run_sim(f"soc_{nlanes}_{dead}", "--nlanes", str(nlanes), "--dead-lanes", dead, "--full-rate",
+                    "--dma-size", "4096", "--dma-buffers", "2", script="sim_soc.py")
+                self.assertIn("SIM OK", output)
+
     def test_endpoint_multi_lane(self):
         # Scripted root on a LitePCIe endpoint through multi-lane links.
         for nlanes in [2, 4, 8]:

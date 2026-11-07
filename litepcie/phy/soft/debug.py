@@ -24,7 +24,7 @@ from litepcie.phy.soft.common import STP, SDP
 # Soft PHY Debug -----------------------------------------------------------------------------------
 
 class SoftPHYDebug(LiteXModule, AutoCSR):
-    def __init__(self, phy, serdes, with_tracer=True, enable_reset=0):
+    def __init__(self, phy, serdes, with_tracer=True, enable_reset=0, dll=None):
         lane  = serdes.lanes[0]
         ltssm = phy.ltssm
 
@@ -140,6 +140,44 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             (ltssm.rx_rate,      self._rx_rate.status),
         ]:
             self.specials += MultiReg(src, dst, "sys")
+
+        # Data Link Layer: what a stall or a lost link leaves behind.
+        if dll is not None:
+            self._dll_status = CSRStatus(fields=[
+                CSRField("state",      size=2, offset=0, description="DLCMSM: 0 DL_Inactive, 1/2 DL_Init, 3 DL_Active."),
+                CSRField("pending",    size=1, offset=2, description="TLPs transmitted and not acknowledged."),
+                CSRField("fc_ok",      size=1, offset=3, description="Flow control allows the next TLP."),
+                CSRField("tx_ready",   size=1, offset=4, description="Replay buffer accepts a word."),
+                CSRField("rx_valid",   size=1, offset=5, description="A received TLP is waiting for the Transaction Layer."),
+                CSRField("rx_ready",   size=1, offset=6, description="The Transaction Layer accepts it."),
+            ])
+            self._dll_replays     = CSRStatus(16, description="TLP replays.")
+            self._dll_rx_errors   = CSRStatus(16, description="LCRC, sequence and framing errors.")
+            self._dll_link_errors = CSRStatus(16, description="REPLAY_NUM rollovers (Recovery requested).")
+            self._dll_tx_tlps     = CSRStatus(32, description="TLPs accepted from the Transaction Layer.")
+            self._dll_rx_tlps     = CSRStatus(32, description="TLPs delivered to the Transaction Layer.")
+            link_errors = Signal(16)
+            tx_tlps     = Signal(32)
+            rx_tlps     = Signal(32)
+            self.sync.pcie_link += [
+                If(dll.link_error, link_errors.eq(link_errors + 1)),
+                If(dll.sink.valid & dll.sink.ready & dll.sink.last, tx_tlps.eq(tx_tlps + 1)),
+                If(dll.source.valid & dll.source.ready & dll.source.last, rx_tlps.eq(rx_tlps + 1)),
+            ]
+            for src, dst in [
+                (dll.state,             self._dll_status.fields.state),
+                (dll.tx.replay.pending, self._dll_status.fields.pending),
+                (dll.tx.replay.fc_ok,   self._dll_status.fields.fc_ok),
+                (dll.sink.ready,        self._dll_status.fields.tx_ready),
+                (dll.source.valid,      self._dll_status.fields.rx_valid),
+                (dll.source.ready,      self._dll_status.fields.rx_ready),
+                (dll.tx.replay.replays, self._dll_replays.status),
+                (dll.rx.errors,         self._dll_rx_errors.status),
+                (link_errors,           self._dll_link_errors.status),
+                (tx_tlps,               self._dll_tx_tlps.status),
+                (rx_tlps,               self._dll_rx_tlps.status),
+            ]:
+                self.specials += MultiReg(src, dst, "sys")
 
         # LTSSM tracer.
         if with_tracer:
