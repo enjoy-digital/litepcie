@@ -673,11 +673,19 @@ def block_layout():
     """Block to transmit: kind (BLOCK_*), the 16 Symbols (not scrambled) for Data and TS Blocks."""
     return [("kind", 3), ("data", 128)]
 
+def popcount(bits):
+    """Number of bits set, as a balanced adder tree."""
+    terms = [bits[i] for i in range(len(bits))]
+    while len(terms) > 1:
+        terms = [terms[i] + terms[i + 1] if i + 1 < len(terms) else terms[i] for i in range(0, len(terms), 2)]
+    return terms[0]
+
 class Gen3LaneTX(LiteXModule):
     """Blocks to the transceiver's 40-bit words: Sync Header, scrambling (4.2.2.4), DC Balance (4.2.4.1).
     TS: Symbol 0 not scrambled, Symbols 1 to 13 scrambled, Symbols 14/15 scrambled or replaced by a DC Balance
     Symbol. EIEOS, EIOS, SDS: not scrambled, EIEOS reinitializes the LFSR after it. SKP: not scrambled, the
-    LFSR doesn't advance. Data: scrambled. The Block is taken when sink.ready (it has to be there)."""
+    LFSR doesn't advance. Data: scrambled. Pipelined (timing at 200 MHz): the Block registered, then scrambled
+    with the counts of 1s of the DC Balance, then taken by the gearbox (sink.ready the same on all the lanes)."""
     def __init__(self, seed):
         self.sink  = sink = stream.Endpoint(block_layout())
         self.data  = Signal(40) # o
@@ -687,15 +695,41 @@ class Gen3LaneTX(LiteXModule):
 
         self.gearbox   = gearbox   = TXBlockGearbox()
         self.scrambler = scrambler = Gen3Scrambler(seed, nsymbols=16)
-        kind = sink.kind
-        is_ts = kind == BLOCK_TS
-        is_data = kind == BLOCK_DATA
+
+        # Stage 0: Block.
+        v0 = Signal()
+        k0 = Signal(3)
+        d0 = Signal(128)
+        # Stage 1: scrambled Block and its counts of 1s (with the Sync Header) to Symbol 11 and to Symbol 13.
+        v1      = Signal()
+        ts1     = Signal()
+        hdr1    = Signal(2)
+        scr1    = Signal(128)
+        ones96  = Signal(8)
+        ones112 = Signal(8)
+        take2 = Signal()
+        take1 = Signal()
+        self.comb += [
+            take2.eq(gearbox.ready & v1),
+            take1.eq(v0 & (~v1 | take2)),
+            sink.ready.eq(~v0 | take1),
+        ]
+        self.sync += [
+            If(sink.valid & sink.ready,
+                v0.eq(1),
+                k0.eq(sink.kind),
+                d0.eq(sink.data),
+            ).Elif(take1,
+                v0.eq(0)
+            )
+        ]
+
         payload = Signal(128)
         bypass  = Signal(16)
         self.comb += [
-            Case(kind, {
-                BLOCK_DATA:  [payload.eq(sink.data), bypass.eq(0)],
-                BLOCK_TS:    [payload.eq(sink.data), bypass.eq(0b0000000000000001)],
+            Case(k0, {
+                BLOCK_DATA:  [payload.eq(d0), bypass.eq(0)],
+                BLOCK_TS:    [payload.eq(d0), bypass.eq(0b0000000000000001)],
                 BLOCK_EIEOS: [payload.eq(EIEOS_PAYLOAD), bypass.eq(0xffff)],
                 BLOCK_EIOS:  [payload.eq(Replicate(Constant(OS_EIOS, 8), 16)), bypass.eq(0xffff)],
                 BLOCK_SDS:   [payload.eq(Cat(Constant(OS_SDS, 8), Replicate(Constant(SDS_BODY, 8), 15))), bypass.eq(0xffff)],
@@ -705,28 +739,36 @@ class Gen3LaneTX(LiteXModule):
             }),
             scrambler.data_in.eq(payload),
             scrambler.bypass.eq(bypass),
-            scrambler.advance.eq(kind != BLOCK_SKP),
-            scrambler.ce.eq(gearbox.ready & sink.valid),
-            scrambler.init.eq(gearbox.ready & sink.valid & (kind == BLOCK_EIEOS)),
-            sink.ready.eq(gearbox.ready),
-            gearbox.sync_header.eq(Mux(is_data, SYNC_DATA, SYNC_OS)),
-            self.data.eq(gearbox.data),
+            scrambler.advance.eq(k0 != BLOCK_SKP),
+            scrambler.ce.eq(take1),
+            scrambler.init.eq(take1 & (k0 == BLOCK_EIEOS)),
+        ]
+        hdr = Mux(k0 == BLOCK_DATA, SYNC_DATA, SYNC_OS)
+        scrambled = scrambler.data_out
+        self.sync += [
+            If(take1,
+                v1.eq(1),
+                ts1.eq(k0 == BLOCK_TS),
+                hdr1.eq(hdr),
+                scr1.eq(scrambled),
+                ones96.eq(popcount(Cat(hdr, scrambled[0:96]))),
+                ones112.eq(popcount(Cat(hdr, scrambled[0:112]))),
+            ).Elif(take2,
+                v1.eq(0)
+            )
         ]
 
-        # DC Balance: running difference of 1s and 0s on the lane, Symbols 14/15 of the TS replaced when it
-        # is too large at the end of Symbol 11.
-        balance  = Signal((10, True))
-        scrambled = scrambler.data_out
-        def ones(bits):
-            return Reduce("ADD", [bits[i] for i in range(len(bits))])
-        upto11 = Signal((10, True))
-        self.comb += upto11.eq(balance + 2*ones(Cat(gearbox.sync_header, scrambled[0:96])) - (2 + 96))
+        # Stage 2: DC Balance, running difference of 1s and 0s on the lane, Symbols 14/15 of the TS replaced
+        # when it is too large at the end of Symbol 11.
+        balance = Signal((10, True))
+        upto11  = Signal((10, True))
+        self.comb += upto11.eq(balance + 2*ones96 - (2 + 96))
         s14 = Signal(8)
         s15 = Signal(8)
         self.comb += [
-            s14.eq(scrambled[112:120]),
-            s15.eq(scrambled[120:128]),
-            If(is_ts,
+            s14.eq(scr1[112:120]),
+            s15.eq(scr1[120:128]),
+            If(ts1,
                 If(upto11 > 31,
                     s14.eq(0x20), s15.eq(0x08)   # Fewer 1s.
                 ).Elif(upto11 < -31,
@@ -737,16 +779,16 @@ class Gen3LaneTX(LiteXModule):
                     s15.eq(0xf7)
                 )
             ),
+            gearbox.sync_header.eq(hdr1),
+            gearbox.block.eq(Cat(scr1[:112], s14, s15)),
+            self.data.eq(gearbox.data),
         ]
-        block = Signal(128)
-        self.comb += [
-            block.eq(Cat(scrambled[:112], s14, s15)),
-            gearbox.block.eq(block),
-        ]
+        ones_end = Signal(5)
+        self.comb += ones_end.eq(popcount(Cat(s14, s15)))
         self.sync += If(self.reset_balance,
             balance.eq(0)
-        ).Elif(gearbox.ready & sink.valid,
-            balance.eq(balance + 2*ones(Cat(gearbox.sync_header, block)) - 130)
+        ).Elif(take2,
+            balance.eq(balance + 2*(ones112 + ones_end) - 130)
         )
 
 # Lane RX ------------------------------------------------------------------------------------------
