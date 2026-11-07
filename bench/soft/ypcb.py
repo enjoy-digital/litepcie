@@ -70,7 +70,7 @@ class GTStatus(LiteXModule, AutoCSR):
 
 class SoftPHYSoC(SoCMini):
     def __init__(self, platform, sys_clk_freq=int(125e6), with_analyzer=False, with_endpoint=False,
-        ltssm_autostart=False, hard_ip=False):
+        ltssm_autostart=False, hard_ip=False, speed="gen1", nlanes=1):
         SoCMini.__init__(self, platform, sys_clk_freq, ident="LitePCIe soft PHY bring-up on YPCB", ident_version=True)
 
         # CRG --------------------------------------------------------------------------------------
@@ -80,20 +80,21 @@ class SoftPHYSoC(SoCMini):
         self.add_jtagbone()
 
         # PHY --------------------------------------------------------------------------------------
-        pads = platform.request("pcie_x1")
+        pads = platform.request(f"pcie_x{nlanes}")
         if hard_ip:
-            # Same design on the hard IP (control and comparison).
+            # Same design on the hard IP (control and comparison): Gen2.
             from litepcie.phy.s7pciephy import S7PCIEPHY
-            self.pcie_phy = S7PCIEPHY(platform, pads, data_width=64, bar0_size=0x20000)
+            self.pcie_phy = S7PCIEPHY(platform, pads, data_width={1: 64, 4: 128, 8: 128}[nlanes], bar0_size=0x20000)
             self.pcie_phy.update_config({"PCIe_Blk_Locn": "X0Y0"})
             self.add_pcie(phy=self.pcie_phy, ndmas=1, address_width=64, with_dma_loopback=True)
-            self.pcie_phy.add_gt_loc_constraints(locs=["GTXE2_CHANNEL_X0Y23"], gt_type="gtx")
+            self.pcie_phy.add_gt_loc_constraints(locs=[f"GTXE2_CHANNEL_X0Y{23 - i}" for i in range(nlanes)], gt_type="gtx")
             return
         if with_endpoint:
             # Full LitePCIe endpoint: driver, MMAP, DMA and MSI as with the hard-IP PHYs.
             self.pcie_phy = pcie_phy = SoftPCIEPHY(platform, pads,
                 data_width   = 64,
                 bar0_size    = 0x20000,
+                speed        = speed,
                 sys_clk_freq = sys_clk_freq,
                 speedgrade   = -2,
             )
@@ -104,8 +105,9 @@ class SoftPHYSoC(SoCMini):
             serdes, phy = pcie_phy.serdes, pcie_phy.phy_layer
         else:
             # Physical Layer alone: L0 against the host, received Symbols dropped.
-            self.serdes = serdes = K7PCIeSerDes(platform, pads, sys_clk_freq, speedgrade=-2)
-            self.phy    = phy    = PCIePhysicalLayer(serdes, 125e6, upstream=True)
+            gen2_capable = speed == "gen2"
+            self.serdes = serdes = K7PCIeSerDes(platform, pads, sys_clk_freq, speedgrade=-2, rate_change=gen2_capable)
+            self.phy    = phy    = PCIePhysicalLayer(serdes, 125e6, upstream=True, gen2_capable=gen2_capable)
             serdes.add_timing_constraints(self.crg.cd_sys.clk)
             self.pcie_phy = SoftPHYDebug(phy, serdes, enable_reset=int(ltssm_autostart))
             self.comb += phy.source.ready.eq(1)
@@ -147,6 +149,8 @@ def main():
     parser.add_argument("--with-endpoint",   action="store_true", help="Full LitePCIe endpoint (SoftPCIEPHY, MMAP, DMA, MSI).")
     parser.add_argument("--ltssm-autostart", action="store_true", help="LTSSM enabled at reset, not disabled by PERST#.")
     parser.add_argument("--hard-ip",         action="store_true", help="Same endpoint on the hard IP (S7PCIEPHY).")
+    parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2"], help="Soft PHY maximum speed.")
+    parser.add_argument("--nlanes",          default=1, type=int, choices=[1, 4, 8], help="Lanes (the soft PHY supports x1 for now).")
     parser.add_argument("--driver",          action="store_true", help="Generate the PCIe driver.")
     parser.add_argument("--output-dir",      default="build/soft_ypcb", help="Build directory.")
     args = parser.parse_args()
@@ -156,6 +160,8 @@ def main():
         with_analyzer   = args.with_analyzer,
         with_endpoint   = args.with_endpoint,
         hard_ip         = args.hard_ip,
+        speed           = args.speed,
+        nlanes          = args.nlanes,
         ltssm_autostart = args.ltssm_autostart,
     )
     builder = Builder(soc, output_dir=args.output_dir, csr_csv=os.path.join(args.output_dir, "csr.csv"))

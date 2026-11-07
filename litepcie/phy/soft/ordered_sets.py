@@ -19,7 +19,7 @@ from litex.gen import *
 
 from litex.soc.interconnect import stream
 
-from litepcie.phy.soft.common import COM, PAD, TS_LENGTH, TS1_ID, TS2_ID, TS1_ID_INV, TS2_ID_INV
+from litepcie.phy.soft.common import COM, EIE, PAD, TS_LENGTH, TS1_ID, TS2_ID, TS1_ID_INV, TS2_ID_INV
 from litepcie.phy.soft.common import lane_layout
 
 # Training Sequence fields -------------------------------------------------------------------------
@@ -47,10 +47,14 @@ class TSGenerator(LiteXModule):
     Generates TS1/TS2 Ordered Sets back-to-back while enable is set (the current Ordered Set is
     completed when it is cleared), 4 words each, with the ts fields sampled at the start of each
     Ordered Set. first/last delimit the Ordered Sets (SKP insertion between them), done pulses when
-    the last word of an Ordered Set is accepted, busy is set inside an Ordered Set.
+    the last word of an Ordered Set is accepted, busy is set inside an Ordered Set. With eieos (rates
+    above 2.5 GT/s, 4.2.4.3) an EIEOS comes before the first Training Sequence of a sequence and after
+    every 32 of them (eieos_reset restarts this interval).
     """
     def __init__(self):
         self.enable = Signal()           # i (Level)
+        self.eieos  = Signal()           # i (Level)
+        self.eieos_reset = Signal()      # i (Pulse)
         self.ts     = Record(ts_layout)  # i
         self.busy   = Signal()           # o (Level)
         self.done   = Signal()           # o (Pulse)
@@ -63,6 +67,12 @@ class TSGenerator(LiteXModule):
         fields = Record(ts_layout) # Sampled at the start of the Ordered Set.
         cur    = Record(ts_layout) # Fields of the word being output.
 
+        # EIEOS scheduling: interval counter at its maximum outside of a sequence.
+        ts_count  = Signal(max=33, reset=32)
+        eieos_now = Signal()  # Ordered Set being output is an EIEOS.
+        eieos_cur = Signal()
+        self.comb += If(word == 0, eieos_cur.eq(self.eieos & (ts_count == 32))).Else(eieos_cur.eq(eieos_now))
+
         accepted = source.valid & source.ready
         self.comb += [
             If(word == 0, cur.eq(self.ts)).Else(cur.eq(fields)),
@@ -70,7 +80,7 @@ class TSGenerator(LiteXModule):
             source.first.eq(word == 0),
             source.last.eq(word == 3),
             self.busy.eq(run),
-            self.done.eq(accepted & (word == 3)),
+            self.done.eq(accepted & (word == 3) & ~eieos_cur),
         ]
         self.sync += [
             If(accepted,
@@ -78,10 +88,21 @@ class TSGenerator(LiteXModule):
                 If(word == 0,
                     run.eq(1),
                     fields.eq(self.ts),
+                    eieos_now.eq(eieos_cur),
                 ),
                 If(word == 3,
                     run.eq(0),
+                    If(eieos_cur,
+                        ts_count.eq(0)
+                    ).Elif(ts_count != 32,
+                        ts_count.eq(ts_count + 1)
+                    )
                 ),
+            ),
+            If(self.eieos_reset,
+                ts_count.eq(0)
+            ).Elif(~self.enable & ~run,
+                ts_count.eq(32)
             )
         ]
 
@@ -89,16 +110,26 @@ class TSGenerator(LiteXModule):
         ident = ts_identifier(cur.ts2)
         link  = Mux(cur.link_pad, PAD.value, cur.link)
         lane  = Mux(cur.lane_pad, PAD.value, Cat(cur.lane, Constant(0, 3)))
-        self.comb += Case(word, {
-            0: [source.data.eq(Cat(Constant(COM.value, 8), link, lane, cur.n_fts)),
-                source.ctrl.eq(Cat(Constant(1, 1), cur.link_pad, cur.lane_pad, Constant(0, 1)))],
-            1: [source.data.eq(Cat(cur.rate, cur.ctrl, ident, ident)),
-                source.ctrl.eq(0)],
-            2: [source.data.eq(Replicate(ident, 4)),
-                source.ctrl.eq(0)],
-            3: [source.data.eq(Replicate(ident, 4)),
-                source.ctrl.eq(0)],
-        })
+        eie = Constant(EIE.value, 8)
+        self.comb += If(eieos_cur,
+            Case(word, {
+                0: [source.data.eq(Cat(Constant(COM.value, 8), eie, eie, eie)), source.ctrl.eq(0b1111)],
+                1: [source.data.eq(Replicate(eie, 4)), source.ctrl.eq(0b1111)],
+                2: [source.data.eq(Replicate(eie, 4)), source.ctrl.eq(0b1111)],
+                3: [source.data.eq(Cat(eie, eie, eie, Constant(TS1_ID, 8))), source.ctrl.eq(0b0111)],
+            })
+        ).Else(
+            Case(word, {
+                0: [source.data.eq(Cat(Constant(COM.value, 8), link, lane, cur.n_fts)),
+                    source.ctrl.eq(Cat(Constant(1, 1), cur.link_pad, cur.lane_pad, Constant(0, 1)))],
+                1: [source.data.eq(Cat(cur.rate, cur.ctrl, ident, ident)),
+                    source.ctrl.eq(0)],
+                2: [source.data.eq(Replicate(ident, 4)),
+                    source.ctrl.eq(0)],
+                3: [source.data.eq(Replicate(ident, 4)),
+                    source.ctrl.eq(0)],
+            })
+        )
 
 # Training Sequence Checker ------------------------------------------------------------------------
 

@@ -8,7 +8,7 @@
 
 """Soft PCIe PHY control and status over a litex_server.
 
-python3 bench/soft/status.py --csr-csv csr.csv [status] [trace] [enable] [disable] [retrain] [loopback=N]
+python3 bench/soft/status.py --csr-csv csr.csv [status] [trace] [enable] [disable] [retrain] [speed] [loopback=N]
 """
 
 import sys
@@ -44,7 +44,7 @@ def main():
             state  = status & 0x3f
             print(f"ltssm: {state:#04x} {STATE_NAMES.get(state, '?')}")
             for field, bit in [("l0", 8), ("link_up", 9), ("serdes_ready", 10), ("rx_elecidle", 11),
-                               ("rx_polarity", 12), ("enabled", 13), ("perst", 14)]:
+                               ("rx_polarity", 12), ("enabled", 13), ("perst", 14), ("rate", 15)]:
                 print(f"{field}: {(status >> bit) & 1}")
             print(f"link: {(status >> 16) & 0xff}, lane: {(status >> 24) & 0x1f}")
             if hasattr(regs, "gt_status_status"):
@@ -66,6 +66,8 @@ def main():
             reg("control").write(1)
         elif command == "disable":
             reg("control").write(0)
+        elif command == "speed":
+            reg("control").write(reg("control").read() | 4)
         elif command == "retrain":
             reg("control").write(reg("control").read() | 2)
         elif command.startswith("loopback="):

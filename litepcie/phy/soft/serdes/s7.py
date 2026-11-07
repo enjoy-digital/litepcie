@@ -18,7 +18,7 @@ the PCS PCIe mode is validated on hardware.
 """
 
 from migen import *
-from migen.genlib.cdc import MultiReg
+from migen.genlib.cdc import MultiReg, PulseSynchronizer
 
 from litex.gen import *
 
@@ -28,11 +28,73 @@ from litepcie.phy.soft.serdes.clocking import S7PCIeClocking
 
 # 7-Series PCIe SerDes -----------------------------------------------------------------------------
 
+class S7RateSequencer(LiteXModule):
+    """Link rate change ("pcie_link"), with the transmitter in Electrical Idle: lane clock, then the
+    transceivers' rate (wait for their rate done, bounded), RX re-initialization on the new rate. done
+    is cleared as soon as rate differs from the applied one."""
+    def __init__(self, clk_freq=125e6, clock_wait=64):
+        self.rate      = Signal() # i
+        self.done      = Signal() # o
+        self.clk_rate  = Signal() # o: lane clock selection.
+        self.gt_rate   = Signal() # o: transceivers' rate.
+        self.gt_done   = Signal() # i (Pulse): all transceivers reported the rate done.
+        self.rx_reset  = Signal() # o: RX re-initialization.
+        self.rx_ready  = Signal() # i: all receivers ready.
+        self.timeouts  = Signal(8) # o: rate done or RX ready not seen in time.
+
+        # # #
+
+        applied = Signal()
+        count   = Signal(max=int(1e-3*clk_freq) + 1)
+        limit   = int(1e-3*clk_freq)
+        rx_reset_cycles = int(2e-6*clk_freq)
+        self.fsm = fsm = FSM(reset_state="IDLE")
+        self.comb += self.done.eq(fsm.ongoing("IDLE") & (applied == self.rate))
+        fsm.act("IDLE",
+            NextValue(count, 0),
+            If(applied != self.rate,
+                NextValue(self.clk_rate, self.rate),
+                NextState("CLOCK")
+            )
+        )
+        fsm.act("CLOCK",
+            NextValue(count, count + 1),
+            If(count == clock_wait - 1,
+                NextValue(count, 0),
+                NextValue(self.gt_rate, self.rate),
+                NextState("GT")
+            )
+        )
+        fsm.act("GT",
+            NextValue(count, count + 1),
+            If(self.gt_done | (count == limit),
+                If(~self.gt_done, NextValue(self.timeouts, self.timeouts + 1)),
+                NextValue(count, 0),
+                NextState("RX-RESET")
+            )
+        )
+        fsm.act("RX-RESET",
+            self.rx_reset.eq(1),
+            NextValue(count, count + 1),
+            If(count == rx_reset_cycles - 1,
+                NextValue(count, 0),
+                NextState("RX-READY")
+            )
+        )
+        fsm.act("RX-READY",
+            NextValue(count, count + 1),
+            If(self.rx_ready | (count == limit),
+                If(~self.rx_ready, NextValue(self.timeouts, self.timeouts + 1)),
+                NextValue(applied, self.gt_rate),
+                NextState("IDLE")
+            )
+        )
+
 class S7PCIeSerDes(PCIeSerDes):
     """Subclasses provide add_pll(refclk, refclk_freq), add_gt(i, pll, tx_pads, rx_pads, sys_clk_freq)
     gt_params(rxcdr_cfg) and gt_update_params(gt, params) for what is specific to the transceiver."""
     def __init__(self, platform, pads, sys_clk_freq, refclk_freq=100e6, rxcdr_cfg=None, pcs_pcie_en=False,
-        skp_interval=None, speedgrade=-1):
+        skp_interval=None, speedgrade=-1, rate_change=False):
         nlanes = len(pads.tx_p)
         PCIeSerDes.__init__(self, nlanes)
         self.platform = platform
@@ -47,7 +109,16 @@ class S7PCIeSerDes(PCIeSerDes):
         # Clocking ---------------------------------------------------------------------------------
         self.clocking = clocking = S7PCIeClocking(pads.clk_p, pads.clk_n, refclk_freq, reset=self.perst,
             speedgrade=speedgrade)
-        self.comb += clocking.rate.eq(self.rate)
+
+        # Rate change ------------------------------------------------------------------------------
+        if rate_change:
+            self.rate_sequencer = rate_sequencer = ClockDomainsRenamer("pcie_link")(S7RateSequencer())
+            self.comb += [
+                rate_sequencer.rate.eq(self.rate),
+                self.rate_done.eq(rate_sequencer.done),
+                clocking.rate.eq(rate_sequencer.clk_rate),
+            ]
+        rate_dones = []
 
         # PLL (2.5 GT/s configuration, 5.0 GT/s through the rate ports) -----------------------------
         pll = self.add_pll(clocking.refclk, refclk_freq)
@@ -110,6 +181,28 @@ class S7PCIeSerDes(PCIeSerDes):
                 i_RXPOLARITY              = lane.rx_polarity,
             )
             params.update(self.gt_params(rxcdr_cfg))
+            if rate_change:
+                # 000: TXOUT_DIV/RXOUT_DIV (2.5 GT/s), 001: divider 1 (5.0 GT/s).
+                tx_rate, rx_rate = Signal(), Signal()
+                tx_rate_done, rx_rate_done = Signal(), Signal()
+                self.specials += [
+                    MultiReg(rate_sequencer.gt_rate, tx_rate, "pcie_pipe"),
+                    MultiReg(rate_sequencer.gt_rate, rx_rate, rx_cd),
+                ]
+                params.update(
+                    i_TXRATE     = Cat(tx_rate, Constant(0, 2)),
+                    i_RXRATE     = Cat(rx_rate, Constant(0, 2)),
+                    o_TXRATEDONE = tx_rate_done,
+                    o_RXRATEDONE = rx_rate_done,
+                )
+                # Rate done pulses to "pcie_link", remembered until all lanes reported.
+                for pulse, cd in [(tx_rate_done, "pcie_pipe"), (rx_rate_done, rx_cd)]:
+                    ps   = PulseSynchronizer(cd, "pcie_link")
+                    seen = Signal()
+                    self.submodules += ps
+                    self.comb += ps.i.eq(pulse)
+                    self.sync.pcie_link += If(ps.o, seen.eq(1)).Elif(rate_sequencer.fsm.ongoing("CLOCK"), seen.eq(0))
+                    rate_dones.append(seen)
             self.gt_update_params(gt, params)
             gt = ClockDomainsRenamer({"tx": tx_cd, "rx": rx_cd})(gt)
             self.submodules += gt
@@ -117,7 +210,7 @@ class S7PCIeSerDes(PCIeSerDes):
 
             # Controls.
             rx_reset = Signal()
-            self.specials += MultiReg(lane.rx_reset, rx_reset, "sys")
+            self.specials += MultiReg(lane.rx_reset | (rate_sequencer.rx_reset if rate_change else 0), rx_reset, "sys")
             self.comb += [
                 gt.tx_enable.eq(~self.perst),
                 gt.rx_enable.eq(~self.perst & ~rx_reset),
@@ -136,7 +229,18 @@ class S7PCIeSerDes(PCIeSerDes):
             self.add_receiver_detection_stub(lane)
 
         self.specials += MultiReg(Reduce("AND", readys), self.ready, "pcie_link")
-        self.comb += self.rate_done.eq(1) # Rate changes: later milestone (2.5 GT/s only).
+        if rate_change:
+            rx_ready = Signal()
+            self.specials += MultiReg(Reduce("AND", [gt.rx_ready for gt in self.gts]), rx_ready, "pcie_link")
+            self.comb += [
+                rate_sequencer.gt_done.eq(Reduce("AND", rate_dones)),
+                rate_sequencer.rx_ready.eq(rx_ready),
+            ]
+        else:
+            self.comb += [
+                clocking.rate.eq(0),
+                self.rate_done.eq(1), # 2.5 GT/s only.
+            ]
 
     def add_timing_constraints(self, sys_clk):
         platform = self.platform

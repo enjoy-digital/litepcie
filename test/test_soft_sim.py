@@ -65,6 +65,20 @@ class TestSoftSim(unittest.TestCase):
         # DLLPs lost (Acks, UpdateFC): REPLAY_TIMER, duplicates discarded by the receiver.
         self.check_dll(self.run_sim("dll_drop", "--with-dll", "--packets", "64", "--drop-dllp-every", "3"))
 
+    def check_speed(self, output, rate):
+        self.check_dll(output)
+        self.assertIn(f"SPEED OK: rate {rate}/{rate}", output)
+        # No new training after the first L0.
+        self.assertNotIn("Detect.Quiet", output[output.index("L0 reached"):])
+
+    def test_gen2_speed_change(self):
+        # Directed speed change to 5.0 GT/s, TLPs at full lane rate, Recovery at 5.0 GT/s.
+        self.check_speed(self.run_sim("gen2", "--gen2", "--with-dll", "--packets", "64"), 1)
+
+    def test_gen2_fallback(self):
+        # The upstream can't receive at 5.0 GT/s: back to 2.5 GT/s without a new training.
+        self.check_speed(self.run_sim("gen2_fail", "--gen2", "--fail-5g", "--with-dll", "--packets", "64"), 0)
+
     def test_endpoint(self):
         # Scripted root <-> LitePCIe endpoint on SoftPCIEPHY: configuration space, BAR0 accesses, byte
         # order, Unsupported Requests, MSI, device reads and writes, wire TLPs compared.

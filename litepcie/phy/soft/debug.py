@@ -31,6 +31,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
         self._control = CSRStorage(fields=[
             CSRField("enable",  size=1, offset=0, reset=enable_reset, description="LTSSM enable, write to apply. Without autostart (reset value), cleared by PERST#: a host reset comes back with the LTSSM disabled, so a design making a host hang cannot do it again at the next boot."),
             CSRField("retrain", size=1, offset=1, pulse=True, description="Link Retrain (Recovery)."),
+            CSRField("speed_change", size=1, offset=2, pulse=True, description="Directed speed change, if the partner advertises a higher rate (Gen2 designs)."),
         ])
         self._status = CSRStatus(fields=[
             CSRField("ltssm",        size=6, offset= 0, description="LTSSM state (Xilinx UltraScale encoding, L0 = 0x10)."),
@@ -41,6 +42,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             CSRField("rx_polarity",  size=1, offset=12, description="RX polarity inverted."),
             CSRField("enabled",      size=1, offset=13, description="LTSSM enabled (cleared by PERST#, see control)."),
             CSRField("perst",        size=1, offset=14, description="PERST# asserted."),
+            CSRField("rate",         size=1, offset=15, description="Link rate (``0b0``: 2.5 GT/s, ``0b1``: 5 GT/s)."),
             CSRField("link",         size=8, offset=16, description="Negotiated Link Number."),
             CSRField("lane",         size=5, offset=24, description="Lane Number."),
         ])
@@ -73,13 +75,16 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             self._status.fields.perst.eq(perst),
             serdes.loopback.eq(self._loopback.storage),
         ]
-        retrain = PulseSynchronizer("sys", "pcie_link")
-        self.submodules += retrain
+        retrain      = PulseSynchronizer("sys", "pcie_link")
+        speed_change = PulseSynchronizer("sys", "pcie_link")
+        self.submodules += retrain, speed_change
         self.specials += MultiReg(enabled, enable, "pcie_link")
         self.comb += [
             phy.enable.eq(enable),
             retrain.i.eq(self._control.fields.retrain),
             phy.retrain.eq(retrain.o),
+            speed_change.i.eq(self._control.fields.speed_change),
+            phy.speed_change.eq(speed_change.o),
         ]
 
         # Counters (pcie_link / pcie_pipe).
@@ -109,6 +114,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             (ltssm.link_up,      self._status.fields.link_up),
             (serdes.ready,       self._status.fields.serdes_ready),
             (ltssm.rx_elecidle,  self._status.fields.rx_elecidle),
+            (ltssm.rate,         self._status.fields.rate),
             (ltssm.rx_polarity,  self._status.fields.rx_polarity),
             (ltssm.link,         self._status.fields.link),
             (ltssm.lane,         self._status.fields.lane),

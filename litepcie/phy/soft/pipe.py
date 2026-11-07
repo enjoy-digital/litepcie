@@ -43,6 +43,7 @@ class PCIePhysicalLayer(LiteXModule):
         self.retrain     = Signal()        # i (Pulse): Link Retrain.
         self.link_error  = Signal()        # i (Pulse): Data Link Layer error (Recovery).
         self.link_number = Signal(8)       # i (downstream): Link Number.
+        self.speed_change = Signal()       # i (Pulse): Directed speed change (gen2_capable).
 
         # # #
 
@@ -61,6 +62,9 @@ class PCIePhysicalLayer(LiteXModule):
             ltssm.retrain.eq(self.retrain),
             ltssm.link_error.eq(self.link_error),
             ltssm.link_number.eq(self.link_number),
+            ltssm.speed_change.eq(self.speed_change),
+            serdes.rate.eq(ltssm.rate),
+            ltssm.rate_done.eq(serdes.rate_done),
         ]
 
         # LTSSM levels in the lane clock domain.
@@ -73,6 +77,14 @@ class PCIePhysicalLayer(LiteXModule):
             self.specials += MultiReg(getattr(ltssm, name), level, "pcie_pipe")
             levels[name] = level
 
+        # Rate and de-emphasis: -3.5 dB at 2.5 GT/s, selected by the LTSSM at 5.0 GT/s.
+        rate          = Signal()
+        select_deemph = Signal()
+        self.specials += [
+            MultiReg(ltssm.rate,          rate,          "pcie_pipe"),
+            MultiReg(ltssm.select_deemph, select_deemph, "pcie_pipe"),
+        ]
+
         # Lane controls.
         tx_detect_rx = PulseSynchronizer("pcie_link", "pcie_pipe")
         self.submodules += tx_detect_rx
@@ -83,7 +95,7 @@ class PCIePhysicalLayer(LiteXModule):
             lane.rx_reset.eq(levels["rx_reset"]),
             lane.skp_enable.eq(levels["skp_enable"]),
             lane.scrambling_enable.eq(levels["scrambling_enable"]),
-            lane.tx_deemph.eq(1), # -3.5 dB at 2.5 GT/s.
+            lane.tx_deemph.eq(~rate | select_deemph),
         ]
 
         # Lane status to the LTSSM.
@@ -100,7 +112,12 @@ class PCIePhysicalLayer(LiteXModule):
 
         # TX ("pcie_pipe") -------------------------------------------------------------------------
         self.ts_gen = ts_gen = ClockDomainsRenamer("pcie_pipe")(TSGenerator())
+        eieos_reset = PulseSynchronizer("pcie_link", "pcie_pipe")
+        self.submodules += eieos_reset
         self.comb += [
+            eieos_reset.i.eq(ltssm.tx_eieos_reset),
+            ts_gen.eieos.eq(rate),
+            ts_gen.eieos_reset.eq(eieos_reset.o),
             ts_gen.enable.eq(levels["tx_ts_enable"]),
             ts_gen.ts.ts2.eq(levels["tx_ts2"]),
             ts_gen.ts.link.eq(levels["tx_ts_link"]),

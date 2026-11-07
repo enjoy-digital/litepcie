@@ -21,12 +21,12 @@ _io = [("pcie_x1", 0,
 )]
 
 class TestSoftPHYTransceivers(unittest.TestCase):
-    def elaborate(self, device):
+    def elaborate(self, device, speed="gen1"):
         platform = Xilinx7SeriesPlatform(device, _io, toolchain="vivado")
         class DUT(LiteXModule):
             def __init__(self):
                 self.cd_sys = ClockDomain()
-                self.phy = SoftPCIEPHY(platform, platform.request("pcie_x1"), data_width=64)
+                self.phy = SoftPCIEPHY(platform, platform.request("pcie_x1"), data_width=64, speed=speed)
                 self.phy.add_debug()
         return str(platform.get_verilog(DUT()))
 
@@ -44,6 +44,15 @@ class TestSoftPHYTransceivers(unittest.TestCase):
         for attribute in [r"\.PCS_RSVD_ATTR\s*\(\d+'d392\)", r"\.RXLPMEN\s*\(1'd1\)", r"\.TX_DRIVE_MODE\s*\(\"PIPE\"\)",
             r"\.CPLL_FBDIV\s*\(3'd5\)", r"\.CPLL_FBDIV_45\s*\(3'd5\)", r"\.TXOUT_DIV\s*\(2'd2\)", r"\.RXOUT_DIV\s*\(2'd2\)"]:
             self.assertRegex(verilog, attribute)
+
+    def test_rate_change_ports(self):
+        # Gen2: the transceivers' rate comes from the sequencer, Gen1 keeps the output dividers.
+        gen2 = self.elaborate("xc7k480t-ffg1156-2", speed="gen2")
+        self.assertRegex(gen2, r"\.TXRATE\s*\(\{2'd0, ")
+        self.assertRegex(gen2, r"\.RXRATE\s*\(\{2'd0, ")
+        gen1 = self.elaborate("xc7k480t-ffg1156-2")
+        self.assertRegex(gen1, r"\.TXRATE\s*\(1'd0\)")
+        self.assertNotIn("ratesequencer", gen1.lower())
 
     def test_unsupported_device(self):
         with self.assertRaises(NotImplementedError):

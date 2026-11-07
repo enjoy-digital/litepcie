@@ -1,7 +1,7 @@
 # Soft PCIe PHY
 
-Status: work in progress, started November 2026. Nothing is hardware-validated yet: everything below
-is simulated only. The status table is updated with each pull request.
+Status: work in progress, started November 2026. Gen1 and Gen2 x1 run on a Kintex-7 GTX board (see the hardware
+results). The status table is updated with each pull request.
 
 ## Why
 
@@ -103,7 +103,7 @@ Clock domains:
 | M3 | LTSSM x1 Gen1, Physical Layer, two-PHY simulation, debug/tracer; L0 against a real host | Verilator link simulation (`bench/soft/sim.py`): training to L0, packets both ways, Recovery, with scaled and specification timers; LTSSM pair unit tests; Acorn bring-up bench (`bench/soft/acorn.py`), hardware pending |
 | M4 | Data Link Layer: framing, DLLPs, DLCMSM, flow control, retry buffer, Ack/Nak | Unit tests; Verilator link simulation: DL_Active, TLPs both ways, Recovery, lane corruption and lost DLLPs recovered with every TLP delivered once and in order. No hardware run, LCRC/DLLP byte order not yet checked against a real host |
 | M5 | Transaction Layer glue, `SoftPCIEPHY`, `litepcie_gen` and bench; Linux enumeration, driver, DMA | Verilator end-to-end simulation (`bench/soft/sim_endpoint.py`): configuration space, BAR0 accesses and byte order, Unsupported Requests, MSI, device reads/writes at 64 and 128 bits. Acorn bitstream with LitePCIe, MMAP, DMA and MSI built: about 8.5k LUTs, timing met (`pcie_link` margin only 51 ps). BAR0/CSR, MSI and DMA simulated at SoC level (`bench/soft/sim_soc.py`). Runs on hardware, see the hardware results |
-| M6 | Gen2 x1 (rate change) | Not started |
+| M6 | Gen2 x1 (rate change) | Verilator link simulation at full lane rate (`bench/soft/sim.py --gen2`), fallback to 2.5 GT/s (`--fail-5g`). Runs on hardware on the GTX, see the hardware results |
 | M7 | x2 (deskew, width negotiation) | Not started |
 | M8 | x4, 128-bit datapath, robustness, LiteX-Boards | Not started |
 | M9 | Other transceivers, soft root port | Not started |
@@ -148,7 +148,18 @@ driver and `litepcie_util`, against the same design on the hard IP:
 | Slice Registers | 7045 | 3755 |
 | Setup WNS | 0.641 ns | 0.739 ns |
 
-The Artix-7 GTP path has not been run on hardware yet.
+15-minute `dma_test` at 5 GT/s x1 with `speed="gen2"`, same board and host, the root port's correctable error status read every second:
+
+| | Soft | Hard IP |
+|---|---:|---:|
+| Throughput | 3.39 Gb/s | 3.36 Gb/s |
+| Seconds with RxErr, BadTLP, BadDLLP, Rollover or Timeout | 0 of 900 | 0 of 900 |
+| Driver "too late" events | 1 | 3 |
+| 200 ms rows with lost buffers (of 4477) | 1 | 2 |
+
+At this rate the driver's ring of 256 buffers lasts 5 ms, the buffers lost here are the host not keeping up: more of them on the hard IP. The link trains at 2.5 GT/s and the root port changes the speed once Link Control 2 targets 5 GT/s. 20 of 20 link cycles came back at 5 GT/s, and speed changes down and up with Retrain Link work. The fallback to 2.5 GT/s after a failed change has only been simulated.
+
+The Artix-7 GTP path has not been run on hardware yet, Gen2 included.
 
 ## Resources and timing against the hard IP
 
@@ -205,6 +216,9 @@ litex_server --jtag --jtag-config openocd_xc7_ft232.cfg
 python3 bench/soft/status.py --csr-csv build/soft_ypcb/csr.csv enable status trace
 echo 1 > /sys/bus/pci/rescan                                    # Once dl_active is set.
 ```
+
+`--speed gen2` advertises 5.0 GT/s: the link trains at 2.5 GT/s, then the root port changes the speed (with Link Control 2
+and Retrain Link if it doesn't do it on its own, or `status.py speed` from the device).
 
 The LTSSM is disabled at reset and by PERST#, so that a design making a host hang cannot do it again at the next boot.
 Rescan works when the root port already has a memory window (for example from the design loaded at the previous boot).
