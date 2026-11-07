@@ -487,21 +487,21 @@ class Gen3RXFramer(LiteXModule):
         process = d_valid
 
         # DLLPs: 2 bytes in the Token's DW, 4 in the next one. Queued, one per cycle.
+        # Index of each one: the write pointer plus the DLLPs before it in the beat (power of 2 queue).
         nq = max(8, ndw)
+        qw = log2_int(nq)
         dllps = Array(Signal(48) for _ in range(nq))
-        wr, rd = Signal(max=nq), Signal(max=nq)
-        wr_c = wr
+        wr, rd = Signal(qw), Signal(qw)
         for i in range(ndw):
-            wr_n = Signal(max=nq)
-            self.comb += wr_n.eq(Mux(process & dllp_v[i], Mux(wr_c == nq - 1, 0, wr_c + 1), wr_c))
-            self.sync += If(process & dllp_v[i], dllps[wr_c].eq(Cat(slots[i][16:32], slots[i + 1])))
-            wr_c = wr_n
+            index = Signal(qw)
+            self.comb += index.eq(wr + (popcount(Cat(*dllp_v[:i])) if i else 0))
+            self.sync += If(process & dllp_v[i], dllps[index].eq(Cat(slots[i][16:32], slots[i + 1])))
         self.sync += [
-            wr.eq(wr_c),
+            If(process, wr.eq(wr + popcount(Cat(*dllp_v)))),
             self.dllp_valid.eq(rd != wr),
             If(rd != wr,
                 self.dllp.eq(dllps[rd]),
-                rd.eq(Mux(rd == nq - 1, 0, rd + 1)),
+                rd.eq(rd + 1),
             )
         ]
 
@@ -789,17 +789,25 @@ class Gen3LaneTX(LiteXModule):
         v0 = Signal()
         k0 = Signal(3)
         d0 = Signal(128)
-        # Stage 1: scrambled Block and its counts of 1s (with the Sync Header) to Symbol 11 and to Symbol 13.
-        v1      = Signal()
-        ts1     = Signal()
-        hdr1    = Signal(2)
-        scr1    = Signal(128)
-        ones96  = Signal(8)
-        ones112 = Signal(8)
+        # Stage 1: scrambled Block.
+        v1   = Signal()
+        ts1  = Signal()
+        hdr1 = Signal(2)
+        scr1 = Signal(128)
+        # Stage 2: what the DC Balance needs: thresholds on the running balance for the 4 decisions (from the
+        # 1s to Symbol 11), the balance change of the 5 possible Blocks.
+        v2    = Signal()
+        ts2   = Signal()
+        hdr2  = Signal(2)
+        scr2  = Signal(128)
+        thr   = [Signal((10, True)) for _ in range(4)]
+        delta = [Signal((10, True)) for _ in range(5)]
+        take3 = Signal()
         take2 = Signal()
         take1 = Signal()
         self.comb += [
-            take2.eq(gearbox.ready & v1),
+            take3.eq(gearbox.ready & v2),
+            take2.eq(v1 & (~v2 | take3)),
             take1.eq(v0 & (~v1 | take2)),
             sink.ready.eq(~v0 | take1),
         ]
@@ -832,52 +840,84 @@ class Gen3LaneTX(LiteXModule):
             scrambler.ce.eq(take1),
             scrambler.init.eq(take1 & (k0 == BLOCK_EIEOS)),
         ]
-        hdr = Mux(k0 == BLOCK_DATA, SYNC_DATA, SYNC_OS)
-        scrambled = scrambler.data_out
         self.sync += [
             If(take1,
                 v1.eq(1),
                 ts1.eq(k0 == BLOCK_TS),
-                hdr1.eq(hdr),
-                scr1.eq(scrambled),
-                ones96.eq(popcount(Cat(hdr, scrambled[0:96]))),
-                ones112.eq(popcount(Cat(hdr, scrambled[0:112]))),
+                hdr1.eq(Mux(k0 == BLOCK_DATA, SYNC_DATA, SYNC_OS)),
+                scr1.eq(scrambler.data_out),
             ).Elif(take2,
                 v1.eq(0)
             )
         ]
 
-        # Stage 2: DC Balance, running difference of 1s and 0s on the lane, Symbols 14/15 of the TS replaced
-        # when it is too large at the end of Symbol 11.
+        # Balance after Symbol 11: balance + 2*ones96 - 98, decisions at > 31, < -31, > 15, < -15: thresholds on
+        # the balance. Balance change of a Block: 2*ones - 130, ones = ones112 + ones of Symbols 14/15 (as
+        # scrambled, 0x20/0x08, 0xdf/0xf7, Symbol 14 with 0x08 or 0xf7).
+        ones96  = Signal(8)
+        ones112 = Signal(8)
+        ones14  = Signal(4)
+        ones15  = Signal(4)
+        self.comb += [
+            ones96.eq(popcount(Cat(hdr1, scr1[0:96]))),
+            ones112.eq(popcount(Cat(hdr1, scr1[0:112]))),
+            ones14.eq(popcount(scr1[112:120])),
+            ones15.eq(popcount(scr1[120:128])),
+        ]
+        self.sync += [
+            If(take2,
+                v2.eq(1),
+                ts2.eq(ts1),
+                hdr2.eq(hdr1),
+                scr2.eq(scr1),
+                thr[0].eq(31 + 98 - 2*ones96),  # balance > thr[0]: fewer 1s.
+                thr[1].eq(-31 + 98 - 2*ones96), # balance < thr[1]: fewer 0s.
+                thr[2].eq(15 + 98 - 2*ones96),
+                thr[3].eq(-15 + 98 - 2*ones96),
+                delta[0].eq(2*(ones112 + ones14 + ones15) - 130),
+                delta[1].eq(2*(ones112 + 2) - 130),
+                delta[2].eq(2*(ones112 + 14) - 130),
+                delta[3].eq(2*(ones112 + ones14 + 1) - 130),
+                delta[4].eq(2*(ones112 + ones14 + 7) - 130),
+            ).Elif(take3,
+                v2.eq(0)
+            )
+        ]
+
+        # Stage 3: DC Balance decision with the running balance, Block to the gearbox.
         balance = Signal((10, True))
-        upto11  = Signal((10, True))
-        self.comb += upto11.eq(balance + 2*ones96 - (2 + 96))
+        choice  = Signal(3)
         s14 = Signal(8)
         s15 = Signal(8)
         self.comb += [
-            s14.eq(scr1[112:120]),
-            s15.eq(scr1[120:128]),
-            If(ts1,
-                If(upto11 > 31,
-                    s14.eq(0x20), s15.eq(0x08)   # Fewer 1s.
-                ).Elif(upto11 < -31,
-                    s14.eq(0xdf), s15.eq(0xf7)   # Fewer 0s.
-                ).Elif(upto11 > 15,
-                    s15.eq(0x08)
-                ).Elif(upto11 < -15,
-                    s15.eq(0xf7)
+            choice.eq(0),
+            If(ts2,
+                If(balance > thr[0],
+                    choice.eq(1)
+                ).Elif(balance < thr[1],
+                    choice.eq(2)
+                ).Elif(balance > thr[2],
+                    choice.eq(3)
+                ).Elif(balance < thr[3],
+                    choice.eq(4)
                 )
             ),
-            gearbox.sync_header.eq(hdr1),
-            gearbox.block.eq(Cat(scr1[:112], s14, s15)),
+            s14.eq(scr2[112:120]),
+            s15.eq(scr2[120:128]),
+            Case(choice, {
+                1: [s14.eq(0x20), s15.eq(0x08)], # Fewer 1s.
+                2: [s14.eq(0xdf), s15.eq(0xf7)], # Fewer 0s.
+                3: s15.eq(0x08),
+                4: s15.eq(0xf7),
+            }),
+            gearbox.sync_header.eq(hdr2),
+            gearbox.block.eq(Cat(scr2[:112], s14, s15)),
             self.data.eq(gearbox.data),
         ]
-        ones_end = Signal(5)
-        self.comb += ones_end.eq(popcount(Cat(s14, s15)))
         self.sync += If(self.reset_balance,
             balance.eq(0)
-        ).Elif(take2,
-            balance.eq(balance + 2*(ones112 + ones_end) - 130)
+        ).Elif(take3,
+            balance.eq(balance + Array(delta)[choice])
         )
 
 # Lane RX ------------------------------------------------------------------------------------------
@@ -1096,10 +1136,11 @@ class Gen3LinkRX(LiteXModule):
         self.comb += pop.eq(all_v & ~half & (~source.valid | source.ready))
         # A lane whose FIFO is deeper than another's by more than a Block has older Blocks (its receiver
         # aligned first): its EIEOS isn't the one of the others, it goes to its next one.
+        # Registered (timing): only used before the lanes are aligned.
         drops = []
         for i, fifo in enumerate(fifos):
             drop = Signal()
-            self.comb += drop.eq(Reduce("OR", [fifo.level > other.level + 1 for other in fifos if other is not fifo]) if nlanes > 1 else 0)
+            self.sync += drop.eq(Reduce("OR", [fifo.level > other.level + 1 for other in fifos if other is not fifo]) if nlanes > 1 else 0)
             drops.append(drop)
         any_drop = Signal()
         self.comb += any_drop.eq(Reduce("OR", drops))
