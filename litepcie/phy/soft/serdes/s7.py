@@ -64,14 +64,16 @@ class S7RateSequencer(LiteXModule):
         rx_reset_cycles = int(2e-6*clk_freq)
         pma_cycles      = int(2e-6*clk_freq)
         release_cycles  = int(50e-6*clk_freq)
+        target          = Signal(2)
         same_gt_rate    = Signal() # TXRATE/RXRATE unchanged (5.0 <-> 8.0 GT/s: divider 1): no rate done.
-        self.comb += same_gt_rate.eq((self.gt_rate != 0) == (applied != 0))
+        self.comb += same_gt_rate.eq((target != 0) == (applied != 0))
         self.fsm = fsm = FSM(reset_state="IDLE")
         self.comb += self.done.eq(fsm.ongoing("IDLE") & (applied == self.rate))
         fsm.act("IDLE",
             NextValue(count, 0),
             If(applied != self.rate,
                 NextValue(self.clk_rate, self.rate),
+                NextValue(target, self.rate),
                 NextState("CLOCK")
             )
         )
@@ -79,9 +81,13 @@ class S7RateSequencer(LiteXModule):
             NextValue(count, count + 1),
             If(count == clock_wait - 1,
                 NextValue(count, 0),
-                NextValue(self.gt_rate, self.rate),
-                *([If((self.rate == 2) != self.pll_sel, NextState("PMA-HOLD")).Else(NextState("GT"))] if gen3 else
-                  [NextState("GT")])
+                # To/from 8.0 GT/s: the rate after the PLL change (PMA released), as the Xilinx wrapper.
+                *([If((target == 2) != self.pll_sel,
+                    NextState("PMA-HOLD")
+                ).Else(
+                    NextValue(self.gt_rate, target),
+                    NextState("GT")
+                )] if gen3 else [NextValue(self.gt_rate, target), NextState("GT")])
             )
         )
         if gen3:
@@ -90,12 +96,12 @@ class S7RateSequencer(LiteXModule):
                 NextValue(count, count + 1),
                 If(self.pll_lock & (count >= pma_cycles),
                     NextValue(count, 0),
-                    NextValue(self.pll_sel, self.gt_rate == 2),
+                    NextValue(self.pll_sel, target == 2),
                     NextState("DRP")
                 ).Elif(count == limit,
                     NextValue(self.timeouts, self.timeouts + 1),
                     NextValue(count, 0),
-                    NextValue(self.pll_sel, self.gt_rate == 2),
+                    NextValue(self.pll_sel, target == 2),
                     NextState("DRP")
                 )
             )
@@ -112,6 +118,7 @@ class S7RateSequencer(LiteXModule):
                 NextValue(count, count + 1),
                 If(count == release_cycles,
                     NextValue(count, 0),
+                    NextValue(self.gt_rate, target),
                     If(same_gt_rate, NextState("RX-RESET")).Else(NextState("GT"))
                 )
             )

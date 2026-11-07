@@ -65,12 +65,17 @@ class TestSoftRateSequencerGen3(unittest.TestCase):
             yield dut.rx_ready.eq(1)
             yield dut.pll_lock.eq(1)
             gt_rate_r = 0
+            gt_rate_hold = [0]
             for rate in rates:
                 yield dut.rate.eq(rate)
                 yield
                 drp_busy = 0
                 for cycle in range(budget):
                     gt_rate = (yield dut.gt_rate)
+                    # The transceivers' rate changes with the PMA out of reset only (Xilinx sequence).
+                    if (yield dut.pma_reset) and gt_rate != gt_rate_hold[0]:
+                        events.append(("rate under PMA reset", rate))
+                    gt_rate_hold[0] = gt_rate
                     yield dut.gt_done.eq((gt_rate != 0) != (gt_rate_r != 0))
                     if (yield dut.drp_start):
                         events.append(("drp", rate, (yield dut.pll_sel), (yield dut.pma_reset)))
