@@ -118,6 +118,28 @@ class TestSoftSim(unittest.TestCase):
                 self.assertRegex(output, r"mismatches +0/ +0")
                 self.assertNotIn("Detect.Quiet", output[output.index("L0 reached"):])
 
+    def test_gen3(self):
+        # Speed change to 8.0 GT/s from 2.5 GT/s with the equalization (the root port requesting preset 8 in its
+        # Phase 3, applied by the endpoint), TLPs and a Link Retrain at 8.0 GT/s.
+        for nlanes in [2, 4, 8]:
+            with self.subTest(nlanes=nlanes):
+                output = self.run_sim(f"gen3_{nlanes}", "--phy", "--gen3", "--nlanes", str(nlanes), "--tlps", "64",
+                    "--eq-preset", "8", script="sim_wide.py")
+                self.assertIn("SPEED OK: rate 2/2", output)
+                self.assertIn("Recovery.Equalization.Phase3", output)
+                self.assertRegex(output, r"EQ: up preset +8 coeffs +5/30/ +5")
+                self.assertIn("SIM OK", output)
+                self.assertRegex(output, r"mismatches +0/ +0")
+                self.assertNotIn("Detect.Quiet", output[output.index("L0 reached"):])
+
+    def test_gen3_fallback(self):
+        # Nothing received at 8.0 GT/s: equalization timeouts, back to 2.5 GT/s without a new training.
+        output = self.run_sim("gen3_fail", "--phy", "--gen3", "--fail-8g", "--nlanes", "2", "--tlps", "32",
+            script="sim_wide.py")
+        self.assertIn("SPEED OK: rate 0/0", output)
+        self.assertIn("SIM OK", output)
+        self.assertNotIn("Detect.Quiet", output[output.index("L0 reached"):])
+
     def test_endpoint_narrower(self):
         # The configuration space reports the negotiated width, a design of x4 at x2.
         output = self.run_sim("endpoint_x4_x2", "--nlanes", "4", "--data-width", "128", "--dead-lanes", "0x8", "--width", "2",
