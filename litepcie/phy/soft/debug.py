@@ -55,10 +55,39 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             CSRField("rx_polarity",  size=1, offset=12, description="RX polarity inverted."),
             CSRField("enabled",      size=1, offset=13, description="LTSSM enabled (cleared by PERST#, see control)."),
             CSRField("perst",        size=1, offset=14, description="PERST# asserted."),
-            CSRField("rate",         size=1, offset=15, description="Link rate (``0b0``: 2.5 GT/s, ``0b1``: 5 GT/s)."),
+            CSRField("rate",         size=1, offset=15, description="Link rate (``0b0``: 2.5 GT/s, ``0b1``: 5 GT/s, see gen3)."),
             CSRField("link",         size=8, offset=16, description="Negotiated Link Number."),
             CSRField("lane",         size=5, offset=24, description="Lane Number."),
+            CSRField("gen3",         size=1, offset=29, description="Link rate 8.0 GT/s."),
         ])
+        if hasattr(phy, "g3"):
+            g3 = phy.g3
+            self._g3_control = CSRStorage(fields=[
+                CSRField("force", size=1, offset=0, description="8.0 GT/s with the transmitters on, LTSSM disabled (with loopback: checks the transceivers' rate switch and the Blocks without a partner)."),
+            ])
+            self._g3_status = CSRStatus(fields=[
+                CSRField("locked",    size=1, offset=0,  description="Lanes aligned on EIEOS (8.0 GT/s)."),
+                CSRField("aligned",   size=8, offset=1,  description="Block alignment of each lane."),
+                CSRField("rate_done", size=1, offset=9,  description="Transceivers' rate applied."),
+                CSRField("pll_lock",  size=1, offset=10, description="8.0 GT/s PLLs locked."),
+                CSRField("timeouts",  size=8, offset=16, description="Rate sequence timeouts."),
+            ])
+            force = Signal()
+            self.specials += MultiReg(self._g3_control.fields.force, force, "pcie_link")
+            self.comb += phy.force_g3.eq(force)
+            aligned = Signal(8)
+            self.comb += aligned.eq(Cat(*[l.aligned for l in g3.lanes_rx]))
+            rs = getattr(serdes, "rate_sequencer", None)
+            self.specials += [
+                MultiReg(g3.lrx.locked,     self._g3_status.fields.locked,    "sys"),
+                MultiReg(aligned,           self._g3_status.fields.aligned,   "sys"),
+                MultiReg(serdes.rate_done,  self._g3_status.fields.rate_done, "sys"),
+            ]
+            if rs is not None:
+                self.specials += [
+                    MultiReg(rs.pll_lock, self._g3_status.fields.pll_lock, "sys"),
+                    MultiReg(rs.timeouts, self._g3_status.fields.timeouts, "sys"),
+                ]
         self._rx_ts        = CSRStatus(32, description="Training Sequences received.")
         self._rx_ts_errors = CSRStatus(32, description="Corrupted Training Sequences received.")
         self._rx_errors    = CSRStatus(32, description="8b/10b errors received (words).")
@@ -127,7 +156,8 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             (ltssm.link_up,      self._status.fields.link_up),
             (serdes.ready,       self._status.fields.serdes_ready),
             (ltssm.rx_elecidle,  self._status.fields.rx_elecidle),
-            (ltssm.rate,         self._status.fields.rate),
+            (ltssm.rate[0],      self._status.fields.rate),
+            (ltssm.rate[1],      self._status.fields.gen3),
             (ltssm.rx_polarity,  self._status.fields.rx_polarity),
             (ltssm.link,         self._status.fields.link),
             (ltssm.lane,         self._status.fields.lane),

@@ -9,6 +9,7 @@
 """Soft PCIe PHY control and status over a litex_server.
 
 python3 bench/soft/status.py --csr-csv csr.csv [status] [trace] [enable] [disable] [retrain] [speed] [disable=MASK] [loopback=N]
+    [g3force=0|1]
 """
 
 import sys
@@ -44,13 +45,17 @@ def main():
             state  = status & 0x3f
             print(f"ltssm: {state:#04x} {STATE_NAMES.get(state, '?')}")
             for field, bit in [("l0", 8), ("link_up", 9), ("serdes_ready", 10), ("rx_elecidle", 11),
-                               ("rx_polarity", 12), ("enabled", 13), ("perst", 14), ("rate", 15)]:
+                               ("rx_polarity", 12), ("enabled", 13), ("perst", 14), ("rate", 15), ("gen3", 29)]:
                 print(f"{field}: {(status >> bit) & 1}")
             print(f"link: {(status >> 16) & 0xff}, lane: {(status >> 24) & 0x1f}")
             lanes = name + "lanes"
             if hasattr(regs, lanes):
                 value = getattr(regs, lanes).read()
                 print(f"lanes ok: {value & 0xff:#04x}, deskew locked: {(value >> 8) & 1}, width: x{(value >> 9) & 0x1f}")
+            if hasattr(regs, name + "g3_status"):
+                g3 = reg("g3_status").read()
+                print(f"8.0 GT/s: locked {g3 & 1}, aligned {(g3 >> 1) & 0xff:#04x}, rate_done {(g3 >> 9) & 1}, "
+                      f"pll_lock {(g3 >> 10) & 1}, rate timeouts {(g3 >> 16) & 0xff}, force {reg('g3_control').read() & 1}")
             if hasattr(regs, "gt_status_status"):
                 gt = regs.gt_status_status.read()
                 print(f"gt: tx_ready {gt & 1}, rx_ready {(gt >> 1) & 1}, mmcm_locked {(gt >> 2) & 1}, cpll_locked {(gt >> 3) & 1}")
@@ -81,6 +86,8 @@ def main():
             reg("control").write(reg("control").read() | 2)
         elif command.startswith("disable="):
             reg("lane_disable").write(int(command.split("=")[1], 0))
+        elif command.startswith("g3force="):
+            reg("g3_control").write(int(command.split("=")[1]))
         elif command.startswith("loopback="):
             reg("loopback").write(int(command.split("=")[1]))
         else:
