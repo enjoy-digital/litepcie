@@ -125,6 +125,11 @@ class SoftPHYSoC(SoCMini):
             self.pcie_phy = SoftPHYDebug(phy, serdes, enable_reset=int(ltssm_autostart))
             self.comb += phy.source.ready.eq(1)
         self.gt_status = GTStatus(serdes)
+        if speed == "gen3":
+            # Clocks check: 8.0 GT/s datapath and Lane 0 recovered clock (200 MHz at 8.0 GT/s).
+            from litex.soc.cores.freqmeter import FreqMeter
+            self.freq_g3  = FreqMeter(period=sys_clk_freq, clk=ClockSignal("pcie_g3"))
+            self.freq_rx0 = FreqMeter(period=sys_clk_freq, clk=ClockSignal("pcie_rx0"))
 
         # Leds -------------------------------------------------------------------------------------
         leds = platform.request_all("user_led")
