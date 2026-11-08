@@ -326,10 +326,18 @@ specification (rev 0.3) for what 8.0 GT/s needs.
   received at 8.0 GT/s. Found on the way, and fixed: the GTX reports Electrical Idle on the 8.0 GT/s signal and
   squelches the received data (its detection is now off at 8.0 GT/s, Electrical Idle is inferred); the DFE
   receive equalizer, as configured, only gives alternating bits. With LPM the root port's stream is received
-  (EIEOS every 33 Blocks in a raw capture) but with a bit error rate around 1e-2: Block alignment is not
-  obtained, with any root port transmitter preset (P0 to P10, P9 best). Next: DFE as the Xilinx Gen3 wrapper
-  (RXDFEXYDEN 0, RX_DFE_KL_CFG2, RXDFELPMRESET after the change), eye scan of the receivers. The PCIe lanes of
-  this board were only used at 5.0 GT/s by the hard IP so far.
+  (EIEOS every 33 Blocks in a raw capture, with edges moved by 1 to 2 bits) but Block alignment is not obtained,
+  with any root port transmitter preset (P0 to P10, P9 best).
+- Eye scans at 8.0 GT/s (`S7DRPPlayer`: a DRP program started at 8.0 GT/s, the root port stays there about 12 ms
+  per attempt): in near-end loopback the eye is open over most of the UI (LPM, lanes 0 and 1); from the root port
+  every word is in error at every horizontal offset, the centre included, on lanes 0 and 1, so the eye is closed.
+  The DFE still gives alternating bits with RXDFEXYDEN 0 or 1 and a RXDFELPMRESET pulse after the change (it works
+  in loopback); the 8.0 GT/s CDR and PMA attributes read back as the Xilinx Gen3 wrapper's (synchronous and
+  asynchronous RXCDR_CFG tried), Quad PLL loop filter as the wrapper's. The root port doesn't complete its
+  Equalization Phase 1 either (Link Status 2), so neither direction is received at 8.0 GT/s while both
+  work at 5.0 GT/s (5.0 GT/s eye open over most of the UI). This points to the channel (slot, connector, board) at
+  8.0 GT/s: the PCIe lanes of this board were only used at 5.0 GT/s by the hard IP so far. Next: another board
+  or slot, the receiver's CTLE settings.
 
 Simulation: `python3 bench/soft/sim_wide.py --phy --gen3 --nlanes 8 --eq-preset 8` (two Physical Layers, the root port
 requesting preset 8 in its Phase 3, TLPs and a Link Retrain at 8.0 GT/s), `--fail-8g` (nothing received at 8.0 GT/s:
