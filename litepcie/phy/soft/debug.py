@@ -69,6 +69,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
                 CSRField("trace",    size=1, offset=3, pulse=True, description="Start the rate trace (g3_trace_*)."),
                 CSRField("lpm",      size=1, offset=4, description="LPM receive equalizer at 8.0 GT/s (DFE otherwise)."),
                 CSRField("capture",  size=1, offset=5, pulse=True, description="Arm the raw capture of Lane 0 (g3_capture_*)."),
+                CSRField("xyden",    size=1, offset=6, description="DFE XYD adaptation at 8.0 GT/s (RXDFEXYDEN, off in the Xilinx wrapper)."),
             ])
             self._g3_raw_tx = CSRStatus(40, description="Raw word transmitted on Lane 0 (snapshot).")
             self._g3_raw_rx = CSRStatus(40, description="Raw word received on Lane 0 (snapshot, bit 39: valid).")
@@ -182,6 +183,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
             if hasattr(serdes, "gen3_lpm"):
                 self.comb += [
                     serdes.gen3_lpm.eq(self._g3_control.fields.lpm),
+                    serdes.gen3_xyden.eq(self._g3_control.fields.xyden),
                     serdes.gen3_eidle.eq(self._g3_control.fields.eidle),
                 ]
 

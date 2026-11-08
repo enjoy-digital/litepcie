@@ -92,10 +92,10 @@ def main():
                   f"slips {(c >> 48) & 0xffff}, words {reg('g3_words').read()}")
         elif command == "g3raw":
             for _ in range(8):
-                reg("g3_control").write((reg("g3_control").read() & 0b10101) | 0b10)
+                reg("g3_control").write((reg("g3_control").read() & 0b1010101) | 0b10)
                 print(f"tx {reg('g3_raw_tx').read():010x} rx {reg('g3_raw_rx').read():010x}")
         elif command == "g3trace":
-            reg("g3_control").write((reg("g3_control").read() & 0b10101) | 0b1000)
+            reg("g3_control").write((reg("g3_control").read() & 0b1010101) | 0b1000)
         elif command == "g3dump":
             names = {v: k for k, v in LTSSM_STATES.items()}
             seq   = ["IDLE", "CLOCK", "PMA-HOLD", "DRP", "PMA-RELEASE", "GT", "RX-RESET", "RX-READY"]
@@ -109,16 +109,18 @@ def main():
         elif command.startswith("g3capture="):
             # Arm the raw capture of Lane 0, delay in 200 MHz cycles after the trigger.
             reg("g3_capture_delay").write(int(command.split("=")[1], 0))
-            reg("g3_control").write((reg("g3_control").read() & 0b10101) | 0b100000)
+            reg("g3_control").write((reg("g3_control").read() & 0b1010101) | 0b100000)
         elif command == "g3words":
             print(f"done {reg('g3_capture_done').read()}")
             for i in range(1024):
                 reg("g3_capture_index").write(i)
                 print(f"{reg('g3_capture_data').read():010x}")
         elif command.startswith("g3eidle="):
-            reg("g3_control").write((reg("g3_control").read() & 0b10001) | (int(command.split("=")[1]) << 2))
+            reg("g3_control").write((reg("g3_control").read() & 0b1010001) | (int(command.split("=")[1]) << 2))
         elif command.startswith("g3lpm="):
-            reg("g3_control").write((reg("g3_control").read() & 0b00101) | (int(command.split("=")[1]) << 4))
+            reg("g3_control").write((reg("g3_control").read() & 0b1000101) | (int(command.split("=")[1]) << 4))
+        elif command.startswith("g3xyden="):
+            reg("g3_control").write((reg("g3_control").read() & 0b0010101) | (int(command.split("=")[1]) << 6))
         elif command.startswith("g3cdr="):
             [getattr(regs, n) for n in regs.__dict__ if n.endswith("gen3_rxcdr_cfg")][0].write(int(command.split("=")[1], 0))
         elif command == "g3cdr":
