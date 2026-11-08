@@ -97,6 +97,10 @@ class K7PCIeSerDes(S7PCIeSerDes):
         quad = i//4
         if quad not in self.qplls:
             qpll = GTXQuadPLL(self.refclk, self.refclk_freq, 8e9)
+            # Loop filter of the Xilinx PCIe wrapper at 8.0 GT/s (primitive default: 0xF).
+            for special in qpll._fragment.specials:
+                if isinstance(special, Instance):
+                    special.items.append(Instance.Parameter("QPLL_LPF", 0b1101))
             setattr(self, f"qpll{quad}", qpll)
             self.qplls[quad] = qpll
             self.comb += qpll.reset.eq(self.perst)
@@ -114,6 +118,7 @@ class K7PCIeSerDes(S7PCIeSerDes):
                 description="RXCDR_CFG written at 8.0 GT/s (rate change).")
             self.gen3_lpm   = Signal()
             self.gen3_eidle = Signal()
+            self.gen3_xyden = Signal()
         drp = ClockDomainsRenamer("pcie_link")(S7DRPSequencer(gt.drp, gtx_gen3_drp_entries(
             GTX_PCIE_RXCDR_CFG if rxcdr_cfg is None else rxcdr_cfg, gen3_rxcdr_cfg=self._gen3_rxcdr_cfg.storage)))
         setattr(self, f"drp{i}", drp)
@@ -134,7 +139,30 @@ class K7PCIeSerDes(S7PCIeSerDes):
         drp_csr = DRPInterface()
         gt.drp_mux.add_interface(drp_csr)
         setattr(self, f"drp_control{i}", DRPControl(drp_csr))
-        self.comb += gt.drp_mux.sel.eq(self._drp_sel.storage)
+
+        # DRP program at 8.0 GT/s on the lane selected by drp_player_lane (bring-up: eye scans), on the third
+        # input of the DRP mux while it runs; its outputs hold/reset the receive equalizer and CDR.
+        if not hasattr(self, "drp_player"):
+            from litex.soc.interconnect.csr import CSRStorage
+            from litepcie.phy.soft.serdes.s7 import S7DRPPlayer
+            self._drp_player_drp  = DRPInterface()
+            self._drp_player_lane = CSRStorage(4, description="Lane of the DRP program.")
+            self.drp_player = S7DRPPlayer(self._drp_player_drp)
+            self.comb += self.drp_player.start.eq(rs.done & rs.pll_sel)
+        player, pdrp, plane = self.drp_player, self._drp_player_drp, self._drp_player_lane.storage
+        drp_player = DRPInterface()
+        gt.drp_mux.add_interface(drp_player)
+        self.comb += [
+            drp_player.clk.eq(ClockSignal("pcie_link")),
+            drp_player.addr.eq(pdrp.addr),
+            drp_player.di.eq(pdrp.di),
+            drp_player.we.eq(pdrp.we),
+            drp_player.en.eq(pdrp.en & (plane == i)),
+            If(plane == i, pdrp.rdy.eq(drp_player.rdy), pdrp.do.eq(drp_player.do)),
+            gt.drp_mux.sel.eq(Mux(player.active & (plane == i), 2, self._drp_sel.storage)),
+        ]
+        pout = Signal(8)
+        self.comb += If(rs.pll_sel, pout.eq(player.out))
 
         # Raw words: TX registered on the transmit clock, RX from the recovered clock through a FIFO.
         raw_tx    = Signal()
@@ -171,12 +199,20 @@ class K7PCIeSerDes(S7PCIeSerDes):
             i_TXDATA         = Mux(raw_tx, Cat(*[raw_tx_r[10*k:10*k + 8] for k in range(4)]), tx_data),
             i_TXCHARDISPMODE = Mux(raw_tx, Cat(*[raw_tx_r[10*k + 9] for k in range(4)]), tx_mode),
             i_TXCHARDISPVAL  = Mux(raw_tx, Cat(*[raw_tx_r[10*k + 8] for k in range(4)]), tx_val),
-            # Receive equalizer: LPM at 2.5/5.0 GT/s, DFE at 8.0 GT/s (as the Xilinx wrapper and LiteICLink).
+            # Receive equalizer: LPM at 2.5/5.0 GT/s, DFE at 8.0 GT/s (as the Xilinx wrapper: RXDFEXYDEN 0,
+            # gen3_xyden sets it as LiteICLink).
             # No Electrical Idle detection at 8.0 GT/s: the GTX reports Electrical Idle on a 8.0 GT/s signal
             # and squelches the received data (inferred instead, see lanes.py). gen3_eidle (debug) keeps it.
             i_RXELECIDLEMODE = Mux(rs.pll_sel & ~self.gen3_eidle, 0b11, 0b00),
             i_RXLPMEN        = ~rs.pll_sel | self.gen3_lpm,
-            i_RXDFEXYDEN     = rs.pll_sel & ~self.gen3_lpm,
+            i_RXDFEXYDEN     = rs.pll_sel & ~self.gen3_lpm & self.gen3_xyden,
+            # Receive equalizer and CDR controls from the DRP program at 8.0 GT/s (bring-up), the Xilinx wrapper
+            # holds the AGC after its receiver equalization.
+            i_RXDFELPMRESET  = pout[0],
+            i_RXDFEAGCHOLD   = pout[1],
+            i_RXCDRHOLD      = pout[2],
+            i_RXOSHOLD       = pout[3],
+            i_RXDFELFHOLD    = pout[4],
             i_TXPRECURSOR    = Cat(Constant(0, 1), lane.tx_eq_pre[0:4]),
             i_TXPOSTCURSOR   = Cat(Constant(0, 1), lane.tx_eq_post[0:4]),
         )

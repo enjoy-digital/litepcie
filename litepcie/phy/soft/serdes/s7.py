@@ -198,6 +198,151 @@ class S7DRPSequencer(LiteXModule):
             )
         )
 
+class S7DRPPlayer(LiteXModule):
+    """DRP program run on one transceiver when start rises (bring-up: eye scans and attribute changes in the
+    short windows at 8.0 GT/s). Entries (48-bit): [8:0] address, [24:9] data, [40:25] mask, [43:41] op: 0 end,
+    1 read-modify-write (the bits set in mask from data), 2 read (result stored), 3 poll until (read & mask)
+    == data, 4 wait data*256 cycles, 5 outputs <= data[7:0]. Runs once per arm, stops at the end or when start
+    falls. Logic in "pcie_link", CSRs in "sys"."""
+    def __init__(self, drp, depth=256, cd="pcie_link"):
+        from litex.soc.interconnect.csr import CSRStorage, CSRStatus, CSRField
+        self.start  = Signal()  # i
+        self.active = Signal()  # o
+        self.out    = Signal(8) # o
+
+        aw = log2_int(depth)
+        self._arm          = CSRStorage(description="Write 1 to arm the program (runs at the next start).")
+        self._prog_index   = CSRStorage(aw, description="Program entry to write.")
+        self._prog_data    = CSRStorage(48, description="Program entry, written to prog_index on write.")
+        self._result_index = CSRStorage(aw, description="Result to read.")
+        self._result_data  = CSRStatus(16, description="Result at result_index.")
+        self._status       = CSRStatus(fields=[
+            CSRField("armed",   size=1,      offset=0),
+            CSRField("running", size=1,      offset=1),
+            CSRField("done",    size=1,      offset=2),
+            CSRField("stopped", size=1,      offset=3, description="start fell before the end."),
+            CSRField("pc",      size=aw,     offset=8),
+            CSRField("count",   size=aw + 1, offset=20, description="Results stored."),
+        ])
+
+        # # #
+
+        sync = getattr(self.sync, cd)
+        prog = Memory(48, depth)
+        res  = Memory(16, depth)
+        pw = prog.get_port(write_capable=True, clock_domain="sys")
+        pr = prog.get_port(async_read=True, clock_domain=cd)
+        rw = res.get_port(write_capable=True, clock_domain=cd)
+        rr = res.get_port(async_read=True, clock_domain="sys")
+        self.specials += prog, res, pw, pr, rw, rr
+        self.comb += [
+            pw.adr.eq(self._prog_index.storage),
+            pw.dat_w.eq(self._prog_data.storage),
+            pw.we.eq(self._prog_data.re),
+            rr.adr.eq(self._result_index.storage),
+            self._result_data.status.eq(rr.dat_r),
+        ]
+
+        arm = PulseSynchronizer("sys", cd)
+        self.submodules += arm
+        self.comb += arm.i.eq(self._arm.re & self._arm.storage)
+
+        pc      = Signal(aw)
+        count   = Signal(aw + 1)
+        armed   = Signal()
+        done    = Signal()
+        stopped = Signal()
+        wait    = Signal(24)
+        data    = Signal(16)
+        entry   = pr.dat_r
+        addr, value, mask, op = entry[0:9], entry[9:25], entry[25:41], entry[41:44]
+        self.comb += [
+            pr.adr.eq(pc),
+            drp.clk.eq(ClockSignal(cd)),
+            drp.addr.eq(addr),
+            rw.adr.eq(count),
+            rw.dat_w.eq(drp.do),
+        ]
+        for s, f in [(armed, "armed"), (done, "done"), (stopped, "stopped"), (pc, "pc"), (count, "count"),
+                     (self.active, "running")]:
+            self.specials += MultiReg(s, getattr(self._status.fields, f), "sys")
+
+        self.fsm = fsm = ClockDomainsRenamer(cd)(FSM(reset_state="IDLE"))
+        sync += If(arm.o, armed.eq(1), done.eq(0), stopped.eq(0), count.eq(0))
+        fsm.act("IDLE",
+            NextValue(pc, 0),
+            NextValue(self.out, 0),
+            If(armed & self.start,
+                NextValue(armed, 0),
+                NextState("DECODE")
+            )
+        )
+        # Stops between DRP accesses when start falls.
+        fsm.act("DECODE",
+            self.active.eq(1),
+            If(~self.start,
+                NextValue(stopped, 1),
+                NextState("IDLE")
+            ).Elif(op == 0,
+                NextValue(done, 1),
+                NextState("IDLE")
+            ).Elif(op == 4,
+                NextValue(wait, Cat(Constant(0, 8), value)),
+                NextState("WAIT")
+            ).Elif(op == 5,
+                NextValue(self.out, value[:8]),
+                NextValue(pc, pc + 1)
+            ).Else(
+                NextState("READ")
+            )
+        )
+        fsm.act("WAIT",
+            self.active.eq(1),
+            NextValue(wait, wait - 1),
+            If((wait == 0) | ~self.start,
+                NextValue(pc, pc + 1),
+                NextState("DECODE")
+            )
+        )
+        fsm.act("READ",
+            self.active.eq(1),
+            drp.en.eq(1),
+            NextState("READ-WAIT")
+        )
+        fsm.act("READ-WAIT",
+            self.active.eq(1),
+            If(drp.rdy,
+                NextValue(data, (drp.do & ~mask) | (value & mask)),
+                If(op == 1,
+                    NextState("WRITE")
+                ).Elif(op == 2,
+                    rw.we.eq(1),
+                    NextValue(count, count + 1),
+                    NextValue(pc, pc + 1),
+                    NextState("DECODE")
+                ).Elif((drp.do & mask) == value,
+                    NextValue(pc, pc + 1),
+                    NextState("DECODE")
+                ).Else(
+                    NextState("DECODE") # Polls again.
+                )
+            )
+        )
+        fsm.act("WRITE",
+            self.active.eq(1),
+            drp.en.eq(1),
+            drp.we.eq(1),
+            drp.di.eq(data),
+            NextState("WRITE-WAIT")
+        )
+        fsm.act("WRITE-WAIT",
+            self.active.eq(1),
+            If(drp.rdy,
+                NextValue(pc, pc + 1),
+                NextState("DECODE")
+            )
+        )
+
 class S7PCIeSerDes(PCIeSerDes):
     """Subclasses provide add_pll(refclk, refclk_freq), add_gt(i, pll, tx_pads, rx_pads, sys_clk_freq)
     gt_params(rxcdr_cfg) and gt_update_params(gt, params) for what is specific to the transceiver, and for gen3:
