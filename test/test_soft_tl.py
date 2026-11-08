@@ -150,6 +150,24 @@ class TestSoftTL(unittest.TestCase):
             self.assertEqual((yield dut.msi_data), 0x1234)
         run_simulation(dut, generator())
 
+    def test_config_space_gen3(self):
+        # 8.0 GT/s: speeds in Link Capabilities (2), Secondary PCI Express Extended Capability at 0x100.
+        dut = PCIeConfigSpace(bar0_mask=0xfff00000, nlanes=8, gen2_capable=True, gen3_capable=True)
+        def read(adr):
+            yield dut.adr.eq(adr//4)
+            yield
+            return (yield dut.dat_r)
+        def generator():
+            self.assertEqual((yield from read(0x6c)) & 0x3ff, 0x083) # x8, 8.0 GT/s.
+            self.assertEqual((yield from read(0x8c)), 0b1110)
+            self.assertEqual((yield from read(0x90)) & 0xf, 3)
+            self.assertEqual((yield from read(0x100)), 0x00010019)
+            lanes_eq = []
+            for i in range(5):
+                lanes_eq.append((yield from read(0x10c + 4*i)))
+            self.assertEqual(lanes_eq, [0x7f7f7f7f]*4 + [0])
+        run_simulation(dut, generator())
+
     def test_msi_not_starved(self):
         # LitePCIe transmits back to back under DMA: an MSI waits for one TLP at most, and it can't be
         # left to the gaps since DMA keeps running without the driver when it misses its interrupts.

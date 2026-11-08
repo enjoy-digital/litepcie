@@ -227,3 +227,33 @@ class TestSoftOrderedSets(unittest.TestCase):
         run_simulation(dut, generator())
         self.assertGreaterEqual(len(count), 8)
         self.assertTrue(all(c == (1, 5, 1, 0x80) for c in count))
+
+    def test_eq_ts2(self):
+        # EQ TS2 (8.0 GT/s presets in Symbol 6, 4.2.4.1), then standard TS2: eq_info received then cleared.
+        # Symbol 6 values equal to inverted identifiers (B5h: TS1, BAh: TS2) are EQ ones with a TS2 Symbol 7.
+        for eq_info in [0x80 | (7 << 3) | 2, 0xb5, 0xba]:
+            with self.subTest(eq_info=hex(eq_info)):
+                class DUT(Module):
+                    def __init__(self):
+                        self.submodules.gen = TSGenerator()
+                        self.submodules.chk = TSChecker()
+                        self.comb += self.gen.source.connect(self.chk.sink)
+                dut = DUT()
+                seen = []
+                def generator():
+                    yield dut.gen.enable.eq(1)
+                    yield dut.gen.ts.ts2.eq(1)
+                    yield dut.gen.ts.link.eq(3)
+                    yield dut.gen.ts.rate.eq(RATE_2_5GT)
+                    yield dut.gen.ts.eq_info.eq(eq_info)
+                    for i in range(80):
+                        if i == 40:
+                            yield dut.gen.ts.eq_info.eq(0)
+                        yield
+                        if (yield dut.chk.detected):
+                            seen.append(((yield dut.chk.ts.ts2), (yield dut.chk.ts.eq_info), (yield dut.chk.inverted)))
+                        self.assertFalse((yield dut.chk.error))
+                run_simulation(dut, generator())
+                self.assertIn((1, eq_info, 0), seen)
+                self.assertEqual(seen[-1], (1, 0, 0))
+                self.assertTrue(all(s in [(1, eq_info, 0), (1, 0, 0)] for s in seen))

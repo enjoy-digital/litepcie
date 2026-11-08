@@ -15,6 +15,11 @@ The link width is negotiated in Configuration (4.2.6.3): each lane answers with 
 receives, the width is the largest of x1, x2, x4, x8 with these lanes from Lane 0. Lanes above it go to Electrical
 Idle. The Data Link Layer keeps the width of the design: beats are split into words for the lanes in use, and
 words from them make beats, a word being aligned on a DW first at x1 and x2. Lane reversal isn't handled.
+
+With gen3_capable (ndw: 2 DWs per lane), 8.0 GT/s replaces this datapath by the 128b/130b one of gen3.py on the
+transceivers' raw words: Blocks of the lanes (Gen3LaneTX/RX), the Data Stream and the Ordered Sets of the Link
+(Gen3LinkTX/RX, the lanes aligned on EIEOS), and the equalization of each lane (Gen3LaneEQ), at the full width
+only.
 """
 
 from migen import *
@@ -150,19 +155,27 @@ class RXLaneDeskew(LiteXModule):
 # Multi-Lane Physical Layer ------------------------------------------------------------------------
 
 class PCIeMultiLanePhysicalLayer(LiteXModule):
-    """Same interface as PCIePhysicalLayer with sink/source of 4*nlanes Symbols. The LTSSM follows Lane
+    """Same interface as PCIePhysicalLayer with sink/source of 4*ndw Symbols (ndw: a multiple of the lanes, 2 DWs
+    per lane for 8.0 GT/s, default 1). The LTSSM follows Lane
     0, the other lanes have their own Training Sequences generators and checkers and polarity, and follow the
     numbers they receive. width: negotiated link width. lanes_ok: lanes numbered by the partner (status).
     lane_disable: lanes kept out of the link, in Electrical Idle and with their receiver ignored (bring-up).
-    early_idle: lanes out of the Link in Electrical Idle during Configuration, as a root port can do."""
+    early_idle: lanes out of the Link in Electrical Idle during Configuration, as a root port can do.
+    gen3_capable: 8.0 GT/s (see the module docstring), eq_request_preset: preset requested in the requesting
+    phase of the equalization (bit 4: request it, else no change)."""
     def __init__(self, serdes, clk_freq, upstream=True, with_timers=True, timer_scale=1,
-        gen2_capable=False, ts1_min=1024, tx_depth=16, rx_depth=16, early_idle=False):
+        gen2_capable=False, gen3_capable=False, ts1_min=1024, tx_depth=16, rx_depth=16, early_idle=False, ndw=None,
+        gen3_skp_interval=370, **ltssm_kwargs):
         nlanes = serdes.nlanes
         assert nlanes >= 2
         lanes  = serdes.lanes
         self.nlanes = nlanes
-        self.sink   = sink   = stream.Endpoint(lane_layout(4*nlanes)) # "pcie_link"
-        self.source = source = stream.Endpoint(lane_layout(4*nlanes)) # "pcie_link"
+        ndw = nlanes if ndw is None else ndw
+        assert ndw % nlanes == 0
+        assert not gen3_capable or ndw == 2*nlanes
+        self.ndw    = ndw
+        self.sink   = sink   = stream.Endpoint(lane_layout(4*ndw)) # "pcie_link"
+        self.source = source = stream.Endpoint(lane_layout(4*ndw)) # "pcie_link"
 
         # Controls ("pcie_link").
         self.enable       = Signal(reset=1)
@@ -173,6 +186,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         self.lanes_ok     = Signal(nlanes) # o ("pcie_pipe")
         self.width        = Signal(max=nlanes + 1, reset=nlanes) # o ("pcie_pipe")
         self.lane_disable = Signal(nlanes) # i
+        self.eq_request_preset = Signal(5) # i
 
         # # #
 
@@ -182,7 +196,9 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             with_timers  = with_timers,
             timer_scale  = timer_scale,
             gen2_capable = gen2_capable,
+            gen3_capable = gen3_capable,
             ts1_min      = ts1_min,
+            **ltssm_kwargs,
         ))
         serdes_ready = Signal()
         self.specials += MultiReg(serdes.ready, serdes_ready, "pcie_link")
@@ -199,13 +215,13 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         # LTSSM levels in the lane clock domain.
         levels = {}
         for name in ["tx_elecidle", "tx_ts_enable", "tx_ts2", "tx_ts_link", "tx_ts_link_pad",
-                     "tx_ts_lane", "tx_ts_lane_pad", "tx_ts_rate", "tx_ts_ctrl",
+                     "tx_ts_lane", "tx_ts_lane_pad", "tx_ts_rate", "tx_ts_ctrl", "tx_ts_eq_info",
                      "tx_data_enable", "rx_data_enable", "idle_hs", "rx_reset",
                      "scrambling_enable", "skp_enable"]:
             level = Signal(len(getattr(ltssm, name)), name="pipe_" + name)
             self.specials += MultiReg(getattr(ltssm, name), level, "pcie_pipe")
             levels[name] = level
-        rate           = Signal()
+        rate           = Signal(2)
         select_deemph  = Signal()
         polarity_check = Signal()
         in_training    = Signal(reset=1)
@@ -230,7 +246,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
                 lane.rx_reset.eq(levels["rx_reset"]),
                 lane.skp_enable.eq(levels["skp_enable"]),
                 lane.scrambling_enable.eq(levels["scrambling_enable"]),
-                lane.tx_deemph.eq(~rate | select_deemph),
+                lane.tx_deemph.eq((rate == 0) | select_deemph),
             ]
 
         # Lane status to the LTSSM: from Lane 0.
@@ -278,7 +294,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             self.submodules += ts_gen
             self.ts_gens.append(ts_gen)
             self.comb += [
-                ts_gen.eieos.eq(rate),
+                ts_gen.eieos.eq(rate != 0),
                 ts_gen.eieos_reset.eq(eieos_reset.o),
                 ts_gen.enable.eq(levels["tx_ts_enable"]),
                 ts_gen.ts.ts2.eq(levels["tx_ts2"]),
@@ -289,6 +305,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
                 ts_gen.ts.n_fts.eq(0xff),
                 ts_gen.ts.rate.eq(levels["tx_ts_rate"]),
                 ts_gen.ts.ctrl.eq(levels["tx_ts_ctrl"]),
+                ts_gen.ts.eq_info.eq(levels["tx_ts_eq_info"]),
             ]
         tx_ts_done = PulseSynchronizer("pcie_pipe", "pcie_link")
         self.submodules += tx_ts_done
@@ -298,7 +315,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         ]
 
         self.tx_fifo = tx_fifo = ClockDomainsRenamer({"write": "pcie_link", "read": "pcie_pipe"})(
-            stream.AsyncFIFO(lane_layout(4*nlanes), tx_depth, buffered=True))
+            stream.AsyncFIFO(lane_layout(4*ndw), tx_depth, buffered=True))
         self.comb += sink.connect(tx_fifo.sink)
 
         # EIOS before Electrical Idle.
@@ -324,11 +341,11 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
 
         # Beats split into a word per Symbol times for the lanes in use.
         tx_data  = levels["tx_data_enable"] & tx_fifo.source.valid
-        tx_part  = Signal(max=max(nlanes, 2))
+        tx_part  = Signal(max=max(ndw, 2))
         tx_end   = Signal() # Last word of the beat.
         tx_ok    = all_ready & tx_data & ~eios_pending & ~tx_elecidle & ~ts_mode
         self.comb += tx_fifo.source.ready.eq(tx_ok & tx_end)
-        self.comb += Case(self.width, {w: tx_end.eq(tx_part == nlanes//w - 1) for w in widths})
+        self.comb += Case(self.width, {w: tx_end.eq(tx_part == ndw//w - 1) for w in widths})
         self.sync.pcie_pipe += If(~levels["tx_data_enable"],
             tx_part.eq(0)
         ).Elif(tx_ok,
@@ -343,7 +360,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
                 if i >= w:
                     continue
                 parts = {}
-                for part in range(nlanes//w):
+                for part in range(ndw//w):
                     symbols = [part*4*w + j*w + i for j in range(4)]
                     parts[part] = [
                         striped_data.eq(Cat(*[tx_fifo.source.data[8*k:8*(k+1)] for k in symbols])),
@@ -463,7 +480,9 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
 
         # Lanes deskewed, then received Symbols to the Data Link Layer (L0, no back-pressure).
         self.deskew = deskew = ClockDomainsRenamer("pcie_pipe")(RXLaneDeskew(nlanes))
-        self.specials += MultiReg(deskew.stable, ltssm.lanes_locked, "pcie_link")
+        lanes_locked = Signal()
+        self.specials += MultiReg(deskew.stable, lanes_locked, "pcie_link")
+        self.comb += ltssm.lanes_locked.eq(lanes_locked)
         for i, lane in enumerate(lanes):
             self.comb += [
                 deskew.sinks[i].valid.eq(lane.source.valid),
@@ -535,18 +554,18 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         ]
 
         # Words to beats.
-        rx_part  = Signal(max=max(nlanes, 2))
+        rx_part  = Signal(max=max(ndw, 2))
         rx_end   = Signal()
         beat_ok  = Signal()
-        beat_data = Signal(32*nlanes)
-        beat_ctrl = Signal(4*nlanes)
-        self.comb += Case(self.width, {w: rx_end.eq(rx_part == nlanes//w - 1) for w in widths})
+        beat_data = Signal(32*ndw)
+        beat_ctrl = Signal(4*ndw)
+        self.comb += Case(self.width, {w: rx_end.eq(rx_part == ndw//w - 1) for w in widths})
         store = {}
         for w in widths:
             store[w] = Case(rx_part, {part: [
                 beat_data[32*w*part:32*w*(part + 1)].eq(aligned_data[:32*w]),
                 beat_ctrl[4*w*part:4*w*(part + 1)].eq(aligned_ctrl[:4*w]),
-            ] for part in range(nlanes//w)})
+            ] for part in range(ndw//w)})
         self.sync.pcie_pipe += [
             beat_ok.eq(aligned_valid & rx_end),
             If(aligned_valid,
@@ -555,7 +574,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             )
         ]
         self.rx_fifo = rx_fifo = ClockDomainsRenamer({"write": "pcie_pipe", "read": "pcie_link"})(
-            stream.AsyncFIFO(lane_layout(4*nlanes), rx_depth, buffered=True))
+            stream.AsyncFIFO(lane_layout(4*ndw), rx_depth, buffered=True))
         self.comb += [
             rx_fifo.sink.valid.eq(beat_ok & levels["rx_data_enable"]),
             rx_fifo.sink.data.eq(beat_data),
@@ -591,4 +610,300 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
             )
         ]
         self.comb += idle_hs_done.eq(idle_hs & rx_idle_seen & (tx_idle_after >= 4))
-        self.specials += MultiReg(idle_hs_done, ltssm.idle_hs_done, "pcie_link")
+        idle_hs_done_link = Signal()
+        self.specials += MultiReg(idle_hs_done, idle_hs_done_link, "pcie_link")
+        self.comb += ltssm.idle_hs_done.eq(idle_hs_done_link)
+
+        # 8.0 GT/s ---------------------------------------------------------------------------------
+        if not gen3_capable:
+            self.comb += ltssm.eq_eval_done.eq(1)
+            return
+        # Datapath in "pcie_g3" (the transmit clock of the transceivers at 8.0 GT/s), selected on the
+        # "pcie_link" side with the rate.
+        g3_link = Signal()
+        self.comb += g3_link.eq(ltssm.rate == 2)
+        eq_ts2 = []
+        for i in range(nlanes):
+            # EQ TS2 received on each lane at the lower rates.
+            value = Signal(8)
+            self.sync.pcie_pipe += If(in_training,
+                value.eq(0)
+            ).Elif((rate != 2) & self.ts_chks[i].detected & self.ts_chks[i].ts.ts2 & self.ts_chks[i].ts.eq_info[7],
+                value.eq(self.ts_chks[i].ts.eq_info)
+            )
+            eq_ts2.append(value)
+        self.g3 = g3 = Gen3Lanes(ltssm, lanes, upstream, skp_interval=gen3_skp_interval)
+        # Lanes in Electrical Idle once the EIOS Block is out (seen busy then done).
+        g3_eios_busy = Signal()
+        g3_eios_wait = Signal()
+        g3_eios_seen = Signal()
+        self.specials += MultiReg(g3.eios_busy, g3_eios_busy, "pcie_pipe")
+        self.sync.pcie_pipe += If(tx_elecidle & ~tx_elecidle_r,
+            g3_eios_wait.eq(rate == 2),
+            g3_eios_seen.eq(0),
+        ).Elif(g3_eios_wait & g3_eios_busy,
+            g3_eios_seen.eq(1),
+        ).Elif(g3_eios_wait & g3_eios_seen,
+            g3_eios_wait.eq(0),
+        )
+        for i, lane in enumerate(lanes):
+            self.comb += If((rate == 2) & tx_elecidle & ~lane_disable[i],
+                lane.tx_elecidle.eq(~(g3_eios_wait | (tx_elecidle & ~tx_elecidle_r)))
+            )
+        self.comb += [
+            g3.eq_request_preset.eq(self.eq_request_preset),
+            g3.lane_pad.eq(Cat(*lane_pad)),
+            g3.link_pad.eq(upstream & ~link_ok[0]),
+            *[g3.eq_ts2[i].eq(eq_ts2[i]) for i in range(nlanes)],
+            ltssm.eq_eval_done.eq(g3.eq_eval_done),
+            # Data Link Layer beats to the datapath of the rate.
+            tx_fifo.sink.valid.eq(sink.valid & ~g3_link),
+            g3.sink.valid.eq(sink.valid & g3_link),
+            g3.sink.first.eq(sink.first),
+            g3.sink.last.eq(sink.last),
+            g3.sink.data.eq(sink.data),
+            If(g3_link,
+                sink.ready.eq(g3.sink.ready),
+                rx_fifo.source.ready.eq(1), # Flushed.
+                g3.source.connect(source),
+                ltssm.rx_ts.eq(g3.rx_ts),
+                *[getattr(ltssm, "rx_ts_" + name).eq(getattr(g3.rx_ts_fields, name)) for name, _ in rx_ts_layout],
+                ltssm.rx_ts_inverted.eq(0),
+                ltssm.rx_ts_error.eq(g3.rx_ts_error),
+                ltssm.rx_eios.eq(g3.rx_eios),
+                ltssm.tx_ts_done.eq(g3.tx_ts_done),
+                ltssm.lanes_locked.eq(g3.lanes_locked),
+                ltssm.idle_hs_done.eq(g3.idle_hs_done),
+            ).Else(
+                g3.source.ready.eq(1), # Flushed.
+            )
+        ]
+
+# 8.0 GT/s Lanes -----------------------------------------------------------------------------------
+
+class Gen3Lanes(LiteXModule):
+    """8.0 GT/s datapath of PCIeMultiLanePhysicalLayer, in "pcie_g3" (the transmit clock of the transceivers
+    at 8.0 GT/s) with its clock domain crossings to "pcie_link": Training Sequences with the equalization
+    fields of each lane (Gen3LaneEQ), EIOS before Electrical Idle, Data Stream (SDS first) for the Data Link
+    Layer and the Logical Idle handshake (IDL Tokens), the Blocks of the lanes (Gen3LaneTX/RX), the lanes
+    aligned on EIEOS (Gen3LinkRX). Inputs from "pcie_pipe" (lane_pad, link_pad, eq_ts2) are levels."""
+    def __init__(self, ltssm, lanes, upstream, skp_interval=370, tx_depth=16, rx_depth=16):
+        from litepcie.phy.soft.gen3 import Gen3LaneTX, Gen3LaneRX, Gen3LinkTX, Gen3LinkRX, Gen3LaneEQ
+        from litepcie.phy.soft.gen3 import LFSR_SEEDS, BLOCK_TS, BLOCK_EIOS, ts3_layout, ts3_fields
+        nlanes = len(lanes)
+        ndw    = 2*nlanes
+        rx_ts_layout = [field for field in ts_layout if field[0] != "n_fts"]
+        # "pcie_link".
+        self.sink         = sink   = stream.Endpoint(lane_layout(4*ndw))
+        self.source       = source = stream.Endpoint(lane_layout(4*ndw))
+        self.rx_ts        = Signal()                 # o (Pulse)
+        self.rx_ts_fields = Record(rx_ts_layout)     # o
+        self.rx_ts_error  = Signal()                 # o (Pulse)
+        self.rx_eios      = Signal()                 # o (Pulse)
+        self.tx_ts_done   = Signal()                 # o (Pulse)
+        self.lanes_locked = Signal()                 # o
+        self.idle_hs_done = Signal()                 # o
+        self.eq_eval_done = Signal()                 # o
+        self.eq_request_preset = Signal(5)           # i
+        # "pcie_g3".
+        self.eios_busy    = Signal()                 # o: EIOS to send or in the transceivers' words.
+        # "pcie_pipe".
+        self.lane_pad     = Signal(nlanes)           # i
+        self.link_pad     = Signal()                 # i
+        self.eq_ts2       = [Signal(8) for _ in range(nlanes)] # i
+
+        # # #
+
+        # LTSSM levels and inputs from "pcie_pipe".
+        levels = {}
+        for name in ["tx_elecidle", "tx_ts2", "tx_ts_link", "tx_ts_link_pad", "tx_ts_lane_pad", "tx_ts_rate",
+                     "tx_ts_ctrl", "tx_ts_eq_info", "tx_data_enable", "rx_data_enable", "idle_hs", "rx_reset"]:
+            level = Signal(len(getattr(ltssm, name)), name="g3_" + name)
+            self.specials += MultiReg(getattr(ltssm, name), level, "pcie_g3")
+            levels[name] = level
+        rate     = Signal(2)
+        lane_pad = Signal(nlanes)
+        link_pad = Signal()
+        eq_request_preset = Signal(5)
+        eq_ts2   = [Signal(8) for _ in range(nlanes)]
+        self.specials += [
+            MultiReg(ltssm.rate, rate, "pcie_g3"),
+            MultiReg(self.lane_pad, lane_pad, "pcie_g3"),
+            MultiReg(self.link_pad, link_pad, "pcie_g3"),
+            MultiReg(self.eq_request_preset, eq_request_preset, "pcie_g3"),
+            *[MultiReg(self.eq_ts2[i], eq_ts2[i], "pcie_g3") for i in range(nlanes)],
+        ]
+        g3 = Signal()
+        self.comb += g3.eq(rate == 2)
+        # Reset of the datapath out of 8.0 GT/s, a registered copy per block (fanout).
+        g3_reset = Signal(reset=1)
+        self.sync.pcie_g3 += g3_reset.eq(~g3 | levels["rx_reset"])
+        cd = lambda m: ClockDomainsRenamer("pcie_g3")(ResetInserter()(m))
+        self.ltx = ltx = cd(Gen3LinkTX(nlanes, skp_interval=skp_interval))
+        self.lrx = lrx = cd(Gen3LinkRX(nlanes))
+        self.lanes_tx = lanes_tx = [cd(Gen3LaneTX(LFSR_SEEDS[i % 8])) for i in range(nlanes)]
+        self.lanes_rx = lanes_rx = [cd(Gen3LaneRX(LFSR_SEEDS[i % 8])) for i in range(nlanes)]
+        self.eqs      = eqs      = [cd(Gen3LaneEQ(upstream)) for i in range(nlanes)]
+        self.submodules += lanes_tx + lanes_rx + eqs
+        resets = {}
+        for m in [ltx, lrx] + lanes_tx + lanes_rx + eqs:
+            reset = Signal(reset=1)
+            reset.attr.add(("max_fanout", 32)) # Replicated by the tools (timing at 200 MHz).
+            self.sync.pcie_g3 += reset.eq(g3_reset)
+            self.comb += m.reset.eq(reset)
+            resets[m] = reset
+
+        # Clock domain crossings to "pcie_link".
+        self.tx_fifo = tx_fifo = ClockDomainsRenamer({"write": "pcie_link", "read": "pcie_g3"})(
+            stream.AsyncFIFO(lane_layout(4*ndw), tx_depth, buffered=True))
+        self.rx_fifo = rx_fifo = ClockDomainsRenamer({"write": "pcie_g3", "read": "pcie_link"})(
+            stream.AsyncFIFO(lane_layout(4*ndw), rx_depth, buffered=True))
+        self.ts_fifo = ts_fifo = ClockDomainsRenamer({"write": "pcie_g3", "read": "pcie_link"})(
+            stream.AsyncFIFO(rx_ts_layout, 4, buffered=True))
+        # Registered both ways (timing, the ready of the FIFO to the Data Link Layer's replay buffer).
+        self.tx_buffer = tx_buffer = ClockDomainsRenamer("pcie_link")(
+            stream.Buffer(lane_layout(4*ndw), pipe_valid=True, pipe_ready=True))
+        self.comb += [
+            sink.connect(tx_buffer.sink),
+            tx_buffer.source.connect(tx_fifo.sink),
+            rx_fifo.source.connect(source),
+            ts_fifo.source.ready.eq(1),
+            self.rx_ts.eq(ts_fifo.source.valid),
+            *[getattr(self.rx_ts_fields, name).eq(getattr(ts_fifo.source, name)) for name, _ in rx_ts_layout],
+        ]
+        pulses = {}
+        for name in ["rx_ts_error", "rx_eios", "tx_ts_done"]:
+            ps = PulseSynchronizer("pcie_g3", "pcie_link")
+            self.submodules += ps
+            self.comb += getattr(self, name).eq(ps.o)
+            pulses[name] = ps.i
+
+        # TX: Training Sequences with the equalization fields of each lane, EIOS before Electrical Idle,
+        # Data Stream (SDS first) in L0 and for the Logical Idle handshake (IDL Tokens).
+        tx_elecidle   = levels["tx_elecidle"]
+        tx_elecidle_r = Signal()
+        eios_pending  = Signal()
+        data_enable   = levels["tx_data_enable"]
+        in_packet     = Signal() # Beats already taken: in a packet (EDS not allowed before the next one).
+        take0         = ltx.blocks[0].valid & ltx.blocks[0].ready
+        eios_drain    = Signal(3)
+        self.sync.pcie_g3 += [
+            tx_elecidle_r.eq(tx_elecidle),
+            If(tx_elecidle & ~tx_elecidle_r,
+                eios_pending.eq(1)
+            ).Elif(take0 & (ltx.blocks[0].kind == BLOCK_EIOS),
+                eios_pending.eq(0),
+                eios_drain.eq(7),
+            ).Elif(eios_drain != 0,
+                eios_drain.eq(eios_drain - 1)
+            ),
+            If(~data_enable,
+                in_packet.eq(0)
+            ).Elif(tx_fifo.source.valid & ltx.sink.ready,
+                If(tx_fifo.source.first & ~tx_fifo.source.last,
+                    in_packet.eq(1)
+                ).Elif(tx_fifo.source.last,
+                    in_packet.eq(0)
+                )
+            )
+        ]
+        self.comb += [
+            self.eios_busy.eq(eios_pending | (eios_drain != 0)),
+            ltx.data_enable.eq(data_enable | levels["idle_hs"]),
+            ltx.eios.eq(eios_pending),
+            ltx.lane_eq_enable.eq(1),
+            ltx.ts.ts2.eq(levels["tx_ts2"]),
+            ltx.ts.link.eq(levels["tx_ts_link"]),
+            ltx.ts.link_pad.eq(levels["tx_ts_link_pad"] | link_pad),
+            ltx.ts.lane_pad.eq(levels["tx_ts_lane_pad"]),
+            ltx.ts.n_fts.eq(0xff),
+            ltx.ts.rate.eq(levels["tx_ts_rate"]),
+            ltx.ts.ctrl.eq(levels["tx_ts_ctrl"]),
+            ltx.lane_pad.eq(lane_pad),
+            ltx.idle.eq(~in_packet),
+            If(data_enable,
+                ltx.sink.valid.eq(tx_fifo.source.valid),
+                ltx.sink.data.eq(tx_fifo.source.data),
+                tx_fifo.source.ready.eq(ltx.sink.ready),
+            ).Else(
+                ltx.sink.valid.eq(1),
+                ltx.sink.data.eq(0),
+                tx_fifo.source.ready.eq(1), # Flushed.
+            ),
+            pulses["tx_ts_done"].eq(take0 & (ltx.blocks[0].kind == BLOCK_TS)),
+        ]
+        for i, lane in enumerate(lanes):
+            self.comb += [
+                ltx.blocks[i].connect(lanes_tx[i].sink),
+                lane.raw_tx.eq(lanes_tx[i].data),
+                lanes_tx[i].reset_balance.eq(tx_elecidle),
+                ltx.lane_eq[i].eq(eqs[i].tx),
+                lane.tx_eq_pre.eq(eqs[i].c_pre),
+                lane.tx_eq_post.eq(eqs[i].c_post),
+            ]
+
+        # RX: Blocks of the lanes aligned, Data Stream to the Data Link Layer, Training Sequences of Lane 0
+        # to the LTSSM.
+        for i, lane in enumerate(lanes):
+            self.comb += [
+                lanes_rx[i].data.eq(lane.raw_rx),
+                lanes_rx[i].gearbox.ce.eq(lane.raw_rx_valid),
+                lanes_rx[i].locked.eq(lrx.locked),
+                lanes_rx[i].source.connect(lrx.blocks[i]),
+            ]
+        rx_ts3 = Record(ts3_layout())
+        self.comb += ts3_fields(lrx.ts_data[0:128], rx_ts3)
+        self.comb += [
+            lrx.source.ready.eq(1),
+            rx_fifo.sink.valid.eq(lrx.source.valid & levels["rx_data_enable"]),
+            rx_fifo.sink.data.eq(lrx.source.data),
+            ts_fifo.sink.valid.eq(lrx.ts_valid),
+            *[getattr(ts_fifo.sink, name).eq(getattr(rx_ts3, name)) for name in
+                ["ts2", "link", "link_pad", "lane", "lane_pad", "rate", "ctrl"]],
+            ts_fifo.sink.eq_info.eq(rx_ts3.eq_ctrl),
+            pulses["rx_ts_error"].eq(lrx.error),
+            pulses["rx_eios"].eq(lrx.eios),
+        ]
+        self.specials += MultiReg(lrx.locked, self.lanes_locked, "pcie_link")
+
+        # Logical Idle handshake: a beat of IDL Tokens received (8 Symbols per lane), then 4 sent.
+        idle_hs       = levels["idle_hs"]
+        rx_idle_seen  = Signal()
+        tx_idle_after = Signal(3)
+        idle_hs_done  = Signal()
+        self.sync.pcie_g3 += If(~idle_hs,
+            rx_idle_seen.eq(0),
+            tx_idle_after.eq(0),
+        ).Else(
+            If(lrx.source.valid & (lrx.source.data == 0), rx_idle_seen.eq(1)),
+            If(~data_enable & ltx.sink.ready & rx_idle_seen & (tx_idle_after != 7), tx_idle_after.eq(tx_idle_after + 1)),
+        )
+        self.comb += idle_hs_done.eq(idle_hs & rx_idle_seen & (tx_idle_after >= 4))
+        self.specials += MultiReg(idle_hs_done, self.idle_hs_done, "pcie_link")
+
+        # Equalization of each lane: preset of the EQ TS2 received at the lower rate, loaded at the change to
+        # 8.0 GT/s, phase from the LTSSM, Training Sequences of the lane.
+        eval_done = Signal()
+        self.comb += eval_done.eq(Reduce("AND", [eq.eval_done for eq in eqs]))
+        self.specials += MultiReg(eval_done, self.eq_eval_done, "pcie_link")
+        # Preset loaded on the first cycle out of reset (the change to 8.0 GT/s).
+        eq_load = []
+        for eq in eqs:
+            reset_r = Signal(reset=1)
+            load    = Signal()
+            self.sync.pcie_g3 += reset_r.eq(resets[eq])
+            self.comb += load.eq(reset_r & ~resets[eq])
+            eq_load.append(load)
+        for i in range(nlanes):
+            rx_ts = Record(ts3_layout())
+            self.comb += ts3_fields(lrx.ts_data[128*i:128*(i + 1)], rx_ts)
+            self.comb += [
+                eqs[i].ec.eq(levels["tx_ts_eq_info"][0:2]),
+                eqs[i].load.eq(eq_load[i]),
+                eqs[i].eq_ts2.eq(eq_ts2[i]),
+                eqs[i].rx_valid.eq(lrx.ts_valid),
+                eqs[i].rx.eq(rx_ts),
+                eqs[i].request_preset.eq(eq_request_preset),
+            ]
+
+

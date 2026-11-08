@@ -4,12 +4,14 @@
 # Copyright (c) 2026 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Soft PCIe PHY Link Training and Status State Machine (PCIe Base 4.2.6), 2.5/5.0 GT/s, x1.
+"""Soft PCIe PHY Link Training and Status State Machine (PCIe Base 4.2.6), 2.5/5.0/8.0 GT/s.
 
 States: Detect.Quiet/Active, Polling.Active/Configuration, Configuration.Linkwidth.Start/Accept,
 Configuration.Lanenum.Wait/Accept, Configuration.Complete/Idle, L0, Recovery.RcvrLock/RcvrCfg/Idle,
 Hot Reset and Disabled, for the upstream (endpoint) and downstream (root) roles, Recovery.Speed with
-gen2_capable. Not implemented (back to Detect): Polling.Compliance, Loopback, L0s/L1/L2.
+gen2_capable, Recovery.Equalization with gen3_capable (phases and their transitions here, presets and
+coefficients per lane in the Physical Layer). Not implemented (back to Detect): Polling.Compliance,
+Loopback, L0s/L1/L2.
 
 The LTSSM runs in the "pcie_link" clock domain (fixed frequency: timers) and drives the Physical
 Layer (pipe.py) through LTSSM_PIPE_INTERFACE: Training Sequence transmission/reception with their
@@ -17,12 +19,14 @@ fields, Logical Idle handshake, Electrical Idle, receiver detection, polarity. `
 Xilinx UltraScale LTSSM encoding (bench/test_ltssm_tracer.py, L0 = 0x10).
 """
 
+from functools import reduce
+
 from migen import *
 from migen.genlib.misc import WaitTimer
 
 from litex.gen import *
 
-from litepcie.phy.soft.common import RATE_2_5GT, RATE_5_0GT, RATE_SPEED_CHANGE
+from litepcie.phy.soft.common import RATE_2_5GT, RATE_5_0GT, RATE_8_0GT, RATE_SPEED_CHANGE
 from litepcie.phy.soft.common import CTRL_HOT_RESET, CTRL_DISABLE_LINK, CTRL_LOOPBACK, CTRL_COMPLIANCE_RECEIVE
 
 # LTSSM <-> PIPE Interface -------------------------------------------------------------------------
@@ -40,6 +44,8 @@ LTSSM_PIPE_INTERFACE = [
     ("tx_ts_lane_pad",    1, "o"), # ...or PAD.
     ("tx_ts_rate",        8, "o"),
     ("tx_ts_ctrl",        8, "o"),
+    ("tx_ts_eq_info",     8, "o"), # Symbol 6: at 2.5/5.0 GT/s EQ TS2 (bit 7 set, downstream role), at
+                                   # 8.0 GT/s the EC (bits 1:0), the PHY adds each lane's preset/coefficients.
     ("tx_ts_done",        1, "i"), # (Pulse) One Training Sequence transmitted.
     ("tx_data_enable",    1, "o"), # Data Link Layer packets transmission allowed (L0).
     ("rx_data_enable",    1, "o"), # Received packets delivered to the Data Link Layer (L0).
@@ -56,6 +62,8 @@ LTSSM_PIPE_INTERFACE = [
     ("rx_ts_lane_pad",    1, "i"),
     ("rx_ts_rate",        8, "i"),
     ("rx_ts_ctrl",        8, "i"),
+    ("rx_ts_eq_info",     8, "i"), # Symbol 6: EQ TS2 (0: standard TS2), at 8.0 GT/s the TS1 one (EC: bits 1:0).
+    ("eq_eval_done",      1, "i"), # Recovery.Equalization: the lanes' requests evaluated (requesting phase).
     ("rx_ts_inverted",    1, "i"), # Received with inverted identifiers (lane polarity).
     ("rx_ts_error",       1, "i"), # (Pulse) Corrupted Training Sequence.
     ("rx_eios",           1, "i"), # (Pulse) EIOS received.
@@ -90,6 +98,10 @@ LTSSM_STATES = {
     "L0"                            : 0x10,
     "Disabled"                      : 0x20,
     "Hot_Reset"                     : 0x27,
+    "Recovery.Equalization.Phase0"  : 0x2c,
+    "Recovery.Equalization.Phase1"  : 0x2d,
+    "Recovery.Equalization.Phase2"  : 0x2e,
+    "Recovery.Equalization.Phase3"  : 0x2f,
 }
 
 # LTSSM --------------------------------------------------------------------------------------------
@@ -102,8 +114,9 @@ class PCIeLTSSM(LiteXModule):
     (link_number proposed, Lane 0). timer_scale divides the timeouts (simulation acceleration).
     """
     def __init__(self, clk_freq, upstream=True, with_timers=True, timer_scale=1, gen2_capable=False,
-        ts1_min=1024):
+        gen3_capable=False, ts1_min=1024, eq_ts2=0x80 | (7 << 3), eq_phases23=True):
         self.upstream = upstream
+        gen2_capable  = gen2_capable or gen3_capable
 
         # PIPE interface.
         for name, width, direction in LTSSM_PIPE_INTERFACE:
@@ -129,7 +142,8 @@ class PCIeLTSSM(LiteXModule):
         self.link        = Signal(8)  # o: Negotiated Link Number.
         self.lane        = Signal(5)  # o: Our Lane Number.
         self.rx_rate     = Signal(8)  # o: Partner Data Rate Identifier.
-        self.rate        = Signal()   # o: Link rate (0: 2.5 GT/s, 1: 5.0 GT/s).
+        self.rate        = Signal(2)  # o: Link rate (0: 2.5 GT/s, 1: 5.0 GT/s, 2: 8.0 GT/s).
+        self.eq_done     = Signal()   # o: equalization_done_8GT_data_rate.
         self.select_deemph = Signal() # o: De-emphasis at 5.0 GT/s (0: -6 dB, 1: -3.5 dB).
         self.tx_eieos_reset = Signal() # o (Pulse): EIEOS interval restarted (first TS2 received).
         self.in_training = Signal()   # o: Detect or Polling: the lanes of the Link aren't known.
@@ -246,13 +260,14 @@ class PCIeLTSSM(LiteXModule):
         directed   = Signal()
         changed    = Signal()
         successful = Signal()
-        entry_rate = Signal()
-        next_rate  = Signal()
+        entry_rate = Signal(2)
+        next_rate  = Signal(2)
         rx_speed   = (self.rx_ts_rate & RATE_SPEED_CHANGE) != 0
 
         # Common TX fields.
         self.comb += [
-            self.tx_ts_rate.eq(RATE_2_5GT | (RATE_5_0GT if gen2_capable else 0) | Mux(directed, RATE_SPEED_CHANGE, 0)),
+            self.tx_ts_rate.eq(RATE_2_5GT | (RATE_5_0GT if gen2_capable else 0) | (RATE_8_0GT if gen3_capable else 0) |
+                Mux(directed, RATE_SPEED_CHANGE, 0)),
             self.scrambling_enable.eq(1),
             self.skp_enable.eq(1),
         ]
@@ -466,7 +481,8 @@ class PCIeLTSSM(LiteXModule):
                self.hot_reset_req,
                 NextState("Recovery.RcvrLock")
             ),
-            *([If(self.speed_change & (self.rx_rate & RATE_5_0GT != 0) & ~self.rate,
+            *([If(self.speed_change & (((self.rx_rate & RATE_5_0GT != 0) & (self.rate == 0)) |
+                ((self.rx_rate & RATE_8_0GT != 0) & (self.rate != 2) if gen3_capable else 0)),
                 NextValue(directed, 1),
                 NextState("Recovery.RcvrLock")
             )] if gen2_capable else [])
@@ -477,7 +493,7 @@ class PCIeLTSSM(LiteXModule):
         rx_speed_count = Signal(4)
         rx_any_match   = Signal()
         last_speed     = Signal()
-        last_5g        = Signal()
+        last_hi        = Signal() # Partner supports a rate above 2.5 GT/s.
         rx_ts2_seen    = Signal()
         numbers_ok     = rx_link_ok & rx_lane_ok
         if gen2_capable:
@@ -497,7 +513,7 @@ class PCIeLTSSM(LiteXModule):
                 ),
                 If(self.rx_ts,
                     last_speed.eq(rx_speed),
-                    last_5g.eq((self.rx_ts_rate & RATE_5_0GT) != 0),
+                    last_hi.eq((self.rx_ts_rate & (RATE_5_0GT | RATE_8_0GT)) != 0),
                 ),
                 If(fsm.ongoing("L0"),
                     changed.eq(0),
@@ -509,6 +525,7 @@ class PCIeLTSSM(LiteXModule):
                     changed.eq(0),
                     self.rate.eq(0),
                     self.select_deemph.eq(0),
+                    self.eq_done.eq(0),
                 ),
                 # directed_speed_change also set by eight consecutive requests of the partner.
                 If(fsm.ongoing("Recovery.RcvrLock") & ~state_changed & (rx_speed_count >= 8),
@@ -517,22 +534,59 @@ class PCIeLTSSM(LiteXModule):
                 # EIEOS interval restarted by the first TS2 received in Recovery.RcvrCfg.
                 self.tx_eieos_reset.eq(fsm.ongoing("Recovery.RcvrCfg") & self.rx_ts & ts2 & ~rx_ts2_seen),
             ]
+        # Recovery.Equalization (4.2.6.4.2): consecutive TS1 with our numbers and the same EC (last one: rx_ec).
+        rx_ec       = self.rx_ts_eq_info[0:2]
+        rx_ec_last  = Signal(2)
+        rx_ec_count = Signal(4)
+        eq_entry    = Signal() # Downstream: equalization to start in Recovery.RcvrLock (new 8.0 GT/s rate).
+        if gen3_capable:
+            self.sync += [
+                If(state_changed,
+                    rx_ec_count.eq(0),
+                ).Elif(self.rx_ts,
+                    If(ts1 & numbers_ok & ~rx_speed,
+                        rx_ec_last.eq(rx_ec),
+                        If((rx_ec != rx_ec_last) | (rx_ec_count == 0),
+                            rx_ec_count.eq(1)
+                        ).Elif(rx_ec_count != 15,
+                            rx_ec_count.eq(rx_ec_count + 1)
+                        )
+                    ).Else(
+                        rx_ec_count.eq(0)
+                    )
+                ),
+            ]
+        self.rx_ec_last  = rx_ec_last  # Debug.
+        self.rx_ec_count = rx_ec_count
+        def rx_ec_seen(ec, n):
+            return (rx_ec_count >= n) & (rx_ec_last == ec)
         wait, done = timeout(24e-3)
         act("Recovery.RcvrLock",
             self.tx_ts_enable.eq(1),
             tx_link_ok.eq(1),
             tx_lane_ok.eq(1),
             NextValue(successful, 0),
-            match.eq(numbers_ok & (rx_speed == directed if gen2_capable else 1)),
+            # At 8.0 GT/s, TS1 with an EC of 00b only (4.2.6.4.1).
+            match.eq(numbers_ok & (rx_speed == directed if gen2_capable else 1) &
+                ((self.rate != 2) | ts2 | (rx_ec == 0) if gen3_capable else 1)),
             *wait,
+            *([If(self.rate == 2,
+                # After the change to 8.0 GT/s, equalization not done: Recovery.Equalization at once (4.2.6.4.1).
+                # Upstream, also on eight TS1 with an EC (the downstream port in Phase 1).
+                If(eq_entry | ((rx_ec_count >= 8) & (rx_ec_last != 0)) if upstream else eq_entry,
+                    NextValue(eq_entry, 0),
+                    NextValue(self.eq_done, 1),
+                    NextState("Recovery.Equalization.Phase0" if upstream else "Recovery.Equalization.Phase1")
+                )
+            )] if gen3_capable else []),
             # The partner keeps sending TS1 until it receives our TS2: time for the other lanes.
-            If((rx_count >= 8) & self.lanes_locked,
+            If((rx_count >= 8) & self.lanes_locked & ~(eq_entry if gen3_capable else 0),
                 NextState("Recovery.RcvrCfg")
             ).Elif(done,
                 *([
-                If((rx_speed_count >= 8) & (self.rate | last_5g),
+                If((rx_speed_count >= 8) & ((self.rate != 0) | last_hi),
                     NextState("Recovery.RcvrCfg")
-                ).Elif(~changed & self.rate,
+                ).Elif(~changed & (self.rate != 0),
                     # Unable to operate at the current rate: back to 2.5 GT/s.
                     NextValue(next_rate, 0),
                     NextState("Recovery.Speed")
@@ -540,7 +594,7 @@ class PCIeLTSSM(LiteXModule):
                     # Unable to operate at the negotiated rate: back to the entry rate.
                     NextValue(next_rate, entry_rate),
                     NextState("Recovery.Speed")
-                ).Elif(rx_any_match & ((~directed & ~last_speed) | (~self.rate & ~last_5g)),
+                ).Elif(rx_any_match & ((~directed & ~last_speed) | ((self.rate == 0) & ~last_hi)),
                     NextState("Configuration.Linkwidth.Start")
                 ).Else(
                     NextState("Detect.Quiet")
@@ -548,7 +602,7 @@ class PCIeLTSSM(LiteXModule):
             )
         )
         wait, done = timeout(48e-3)
-        speed_ok = self.rx_rate[7] & (self.rate | self.rx_rate[2])
+        speed_ok = self.rx_rate[7] & ((self.rate != 0) | self.rx_rate[2])
         # Eight TS2 requesting the speed change, remembered: the partner can leave for Electrical Idle
         # while the 32 TS2 we have to send after its first one are still going.
         speed_seen = Signal()
@@ -561,6 +615,9 @@ class PCIeLTSSM(LiteXModule):
         act("Recovery.RcvrCfg",
             self.tx_ts_enable.eq(1),
             self.tx_ts2.eq(1),
+            *([If(directed & (self.rate != 2) & ~self.eq_done & (self.rx_rate & RATE_8_0GT != 0),
+                self.tx_ts_eq_info.eq(eq_ts2)
+            )] if gen3_capable and not upstream else []),
             tx_link_ok.eq(1),
             tx_lane_ok.eq(1),
             capture.eq(1),
@@ -569,7 +626,7 @@ class PCIeLTSSM(LiteXModule):
             *([
             If(speed_seen & (tx_after >= 32),
                 # Highest common rate, de-emphasis selected by the root port's TS2.
-                NextValue(next_rate, self.rx_rate[2]),
+                NextValue(next_rate, Mux(self.rx_rate[3] if gen3_capable else 0, 2, self.rx_rate[2])),
                 NextValue(successful, 1),
                 NextValue(self.select_deemph, self.rx_rate[6] if upstream else 0),
                 NextState("Recovery.Speed")
@@ -578,7 +635,7 @@ class PCIeLTSSM(LiteXModule):
                 NextState("Recovery.Idle")
             ).Elif((changed | self.rate) & (self.rx_eios | self.rx_elecidle) & ~rx_ts2_seen,
                 # The partner could not achieve Symbol lock at this rate.
-                NextValue(next_rate, changed & entry_rate),
+                NextValue(next_rate, Mux(changed, entry_rate, 0)),
                 NextState("Recovery.Speed")
             ).Elif(done,
                 NextState("Detect.Quiet")
@@ -635,11 +692,51 @@ class PCIeLTSSM(LiteXModule):
                 If((rate_guard == 7) & self.rate_done,
                     NextValue(directed, 0),
                     NextValue(changed, successful),
+                    *([NextValue(eq_entry, successful & (self.rate == 2) & ~self.eq_done)] if gen3_capable else []),
                     NextState("Recovery.RcvrLock")
                 ).Elif(done,
                     NextState("Detect.Quiet")
                 )
             )
+        if gen3_capable:
+            # Phases (upstream 0 to 3, downstream 1 to 3), TS1 with the phase's EC. Requesting phase (upstream 2,
+            # downstream 3): the lanes' requests evaluated (eq_eval_done, 1 us at least per request). Timeouts:
+            # unsuccessful, back through Recovery.Speed to the rate of the entry in Recovery.
+            def phase(n, ec, t, *transitions):
+                wait, done = timeout(t)
+                hold, held = timeout(2e-6)
+                act(f"Recovery.Equalization.Phase{n}",
+                    self.tx_ts_enable.eq(1),
+                    tx_link_ok.eq(1),
+                    tx_lane_ok.eq(1),
+                    self.tx_ts_eq_info.eq(ec),
+                    *wait, *hold,
+                    reduce(lambda a, t: a.Elif(*t(held)), transitions[1:], If(*transitions[0](held))).Elif(done,
+                        NextValue(successful, 0),
+                        NextValue(next_rate, Mux(changed, entry_rate, 0)),
+                        NextState("Recovery.Speed")
+                    )
+                )
+            requested = lambda held: held & self.eq_eval_done
+            if upstream:
+                phase(0, 0b00, 12e-3,
+                    lambda held: (rx_ec_seen(0b01, 2), NextState("Recovery.Equalization.Phase1")))
+                phase(1, 0b01, 12e-3,
+                    lambda held: (rx_ec_seen(0b10, 2), NextState("Recovery.Equalization.Phase2")),
+                    lambda held: (rx_ec_seen(0b00, 8), NextState("Recovery.RcvrLock")))
+                phase(2, 0b10, 24e-3,
+                    lambda held: (requested(held) & rx_ec_seen(0b10, 2), NextState("Recovery.Equalization.Phase3")))
+                phase(3, 0b11, 32e-3,
+                    lambda held: (rx_ec_seen(0b00, 2), NextState("Recovery.RcvrLock")))
+            else:
+                phase(1, 0b01, 24e-3,
+                    lambda held: (rx_ec_seen(0b01, 2),
+                        NextState("Recovery.Equalization.Phase2" if eq_phases23 else "Recovery.RcvrLock")))
+                phase(2, 0b10, 32e-3,
+                    lambda held: (rx_ec_seen(0b11, 2), NextState("Recovery.Equalization.Phase3")))
+                phase(3, 0b11, 24e-3,
+                    lambda held: (requested(held) & rx_ec_seen(0b11, 2), NextState("Recovery.RcvrLock")))
+
         wait, done = timeout(2e-3)
         act("Recovery.Idle",
             self.idle_hs.eq(1),
@@ -698,4 +795,5 @@ class PCIeLTSSM(LiteXModule):
 
         # Link up: Configuration done.
         self.comb += self.link_up.eq(Reduce("OR", [fsm.ongoing(s) for s in
-            ["L0", "Recovery.RcvrLock", "Recovery.RcvrCfg", "Recovery.Idle"] + (["Recovery.Speed"] if gen2_capable else [])]))
+            ["L0", "Recovery.RcvrLock", "Recovery.RcvrCfg", "Recovery.Idle"] + (["Recovery.Speed"] if gen2_capable else []) +
+            ([f"Recovery.Equalization.Phase{n}" for n in (range(4) if upstream else range(1, 4))] if gen3_capable else [])]))

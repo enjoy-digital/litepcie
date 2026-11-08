@@ -128,7 +128,7 @@ class WideRXAdapter(LiteXModule):
 # Transaction Layer --------------------------------------------------------------------------------
 
 class WideTransactionLayer(LiteXModule):
-    def __init__(self, ndw, bar0_mask, nlanes=1, vendor_id=0x10ee, device_id=0x7021, msi_vectors=1, gen2_capable=False):
+    def __init__(self, ndw, bar0_mask, nlanes=1, vendor_id=0x10ee, device_id=0x7021, msi_vectors=1, gen2_capable=False, gen3_capable=False):
         self.sink      = sink      = stream.Endpoint(beat_layout(ndw)) # i: from the Data Link Layer.
         self.source    = source    = stream.Endpoint(beat_layout(ndw)) # o: to the Data Link Layer.
         self.ep_source = ep_source = stream.Endpoint(beat_layout(ndw)) # o: to LitePCIe.
@@ -143,6 +143,7 @@ class WideTransactionLayer(LiteXModule):
             device_id    = device_id,
             msi_vectors  = msi_vectors,
             gen2_capable = gen2_capable,
+            gen3_capable = gen3_capable,
         )
         self.cfg      = tl.cfg
         self.id       = tl.id

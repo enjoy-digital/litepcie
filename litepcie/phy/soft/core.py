@@ -39,9 +39,10 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         serdes      = None,
         link_freq   = 125e6,
         **phy_kwargs):
-        assert data_width in [64, 128, 256]
-        assert speed in ["gen1", "gen2"]
-        gen2_capable = speed == "gen2"
+        assert data_width in [64, 128, 256, 512]
+        assert speed in ["gen1", "gen2", "gen3"]
+        gen2_capable = speed in ["gen2", "gen3"]
+        gen3_capable = speed == "gen3"
         self.platform   = platform
         self.data_width = data_width
         self.sink       = stream.Endpoint(phy_layout(data_width))
@@ -53,7 +54,7 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
                 ("``0b0``", "Link Down."),
                 ("``0b1``", "Link Up (Data Link Layer active)."),
             ]),
-            CSRField("rate",  size=1, description="Link rate (``0b0``: 2.5 GT/s, ``0b1``: 5 GT/s)."),
+            CSRField("rate",  size=2, description="Link rate (``0b00``: 2.5 GT/s, ``0b01``: 5 GT/s, ``0b10``: 8 GT/s)."),
             CSRField("width", size=2, description="Negotiated link width (``0b00``: x1)."),
             CSRField("ltssm", size=6, description="LTSSM state (UltraScale encoding, L0 = 0x10)."),
         ])
@@ -80,23 +81,29 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
             else:
                 raise NotImplementedError(f"No soft PCIe PHY transceiver support for {platform.device}.")
             serdes = SerDes(platform, pads, sys_clk_freq=phy_kwargs.pop("sys_clk_freq", 125e6),
-                speedgrade=phy_kwargs.pop("speedgrade", -1), rate_change=gen2_capable)
+                speedgrade=phy_kwargs.pop("speedgrade", -1), rate_change=gen2_capable,
+                **({"gen3": True} if gen3_capable else {}))
             self.serdes = serdes
         else:
             object.__setattr__(self, "serdes", serdes) # The caller's submodule: reference only.
         self.nlanes = nlanes = serdes.nlanes
         wide = nlanes > 1
+        # A DW per lane and per cycle at the Physical Layer's output (2 at 8.0 GT/s), LitePCIe at the same width.
+        ndw = 2*nlanes if gen3_capable else nlanes
+        if gen3_capable:
+            assert wide, "8.0 GT/s needs the multi-lane Physical Layer (x2 and above)."
         if wide:
-            # A DW per lane and per cycle at the Physical Layer's output, LitePCIe at the same width.
-            assert data_width == 32*nlanes
+            assert data_width == 32*ndw
         if device_id is None:
             device_id = 0x7020 + nlanes # In the driver's table (litepcie/software/kernel/main.c).
 
         # Physical Layer / Data Link Layer ---------------------------------------------------------
         phy_layer_cls = PCIeMultiLanePhysicalLayer if wide else PCIePhysicalLayer
+        if gen3_capable:
+            phy_kwargs.update(gen3_capable=True, ndw=ndw)
         self.phy_layer = phy = phy_layer_cls(serdes, link_freq, upstream=True, gen2_capable=gen2_capable, **phy_kwargs)
-        dll_kwargs = dict(ndw=nlanes, nlanes=nlanes, rx_depth=2048*max(nlanes//2, 1), tx_depth=1024*nlanes,
-            descriptors=16*max(nlanes//2, 1)) if wide else {}
+        dll_kwargs = dict(ndw=ndw, nlanes=nlanes, rx_depth=2048*max(ndw//2, 1), tx_depth=1024*ndw,
+            descriptors=16*max(ndw//2, 1), framing="both" if gen3_capable else "8b10b") if wide else {}
         self.dll       = dll = ClockDomainsRenamer("pcie_link")(DataLinkLayer(link_freq, **dll_kwargs))
         if wide:
             # PAD only when running above x4.
@@ -107,6 +114,8 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
             # Registered (timing): decoded from the LTSSM state, gate the DLL transmit path.
             dll.link_up.eq(phy.ltssm.link_up),
             dll.l0.eq(phy.ltssm.l0),
+            # Framing of the rate (changed out of L0).
+            dll.gen3.eq(phy.ltssm.rate == 2),
         ]
         self.comb += [
             phy.link_error.eq(dll.link_error),
@@ -124,16 +133,17 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         ]
 
         # Transaction Layer ------------------------------------------------------------------------
-        tl_cls  = (lambda *args, **kwargs: WideTransactionLayer(nlanes, *args, **kwargs)) if wide else SoftTransactionLayer
+        tl_cls  = (lambda *args, **kwargs: WideTransactionLayer(ndw, *args, **kwargs)) if wide else SoftTransactionLayer
         self.tl = tl = ClockDomainsRenamer("pcie")(tl_cls(self.bar0_mask,
             nlanes      = nlanes,
             vendor_id   = vendor_id,
             device_id   = device_id,
             msi_vectors = msi_vectors,
             gen2_capable = gen2_capable,
+            **({"gen3_capable": True} if gen3_capable else {}),
         ))
         link_speed = Signal(4)
-        self.comb += link_speed.eq(phy.ltssm.rate + 1) # Link Status: 1: 2.5 GT/s, 2: 5.0 GT/s.
+        self.comb += link_speed.eq(phy.ltssm.rate + 1) # Link Status: 1: 2.5 GT/s, 2: 5.0 GT/s, 3: 8.0 GT/s.
         self.specials += MultiReg(link_speed, tl.cfg.link_speed, "pcie")
         if wide:
             self.specials += MultiReg(phy.width, tl.link_width, "pcie")

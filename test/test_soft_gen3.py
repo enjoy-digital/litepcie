@@ -387,3 +387,291 @@ class TestSoftGen3Tester(unittest.TestCase):
         res = self.run_loop(5, inject=4000)
         self.assertEqual(res["aligned"], 1)
         self.assertGreaterEqual(res["errors"], 1)
+
+class TestSoftGen3Lane(unittest.TestCase):
+    def test_tx_rx_blocks(self):
+        # TX to RX through the 40-bit words: kinds and contents of the Blocks, TS fields, scrambling rules
+        # (the LFSR follows over SKP and is reinitialized by EIEOS on both sides), DC Balance not breaking TS.
+        from litepcie.phy.soft.gen3 import Gen3LaneTX, Gen3LaneRX, ts3_layout, ts3_symbols
+        from litepcie.phy.soft.gen3 import BLOCK_DATA, BLOCK_TS, BLOCK_EIEOS, BLOCK_SKP, BLOCK_SDS
+        rng = random.Random(5)
+        class DUT(Module):
+            def __init__(self):
+                self.submodules.tx = Gen3LaneTX(LFSR_SEEDS[2])
+                self.submodules.rx = Gen3LaneRX(LFSR_SEEDS[2])
+                self.ts = Record(ts3_layout())
+                self.ts_data = Signal(128)
+                self.comb += self.ts_data.eq(Cat(*ts3_symbols(self.ts)))
+                self.bits = Signal(80)
+                self.sync += self.bits.eq(Cat(self.bits[40:], self.tx.data))
+                self.comb += self.rx.data.eq(self.bits[13:53])
+        dut = DUT()
+        # A sequence as on a link: EIEOS, TS, SKP, SDS, Data Blocks with SKP between.
+        seq = []
+        for i in range(800):
+            if i % 33 == 0:
+                seq.append((BLOCK_EIEOS, 0))
+            elif i < 120:
+                seq.append((BLOCK_TS, None))
+            elif i == 120:
+                seq.append((BLOCK_SDS, 0))
+            elif i % 17 == 0:
+                seq.append((BLOCK_SKP, 0))
+            else:
+                seq.append((BLOCK_DATA, rng.getrandbits(128)))
+        sent, got, errors = [], [], []
+        done = [False]
+        def generator():
+            yield dut.ts.link.eq(0x12)
+            yield dut.ts.lane.eq(3)
+            yield dut.ts.rate.eq(0x0e)
+            yield dut.ts.eq_ctrl.eq(0x29)
+            yield dut.ts.pre.eq(5)
+            yield dut.ts.cur.eq(40)
+            yield dut.ts.post.eq(7)
+            ts_data = None
+            index = 0
+            for _ in range(800*4):
+                kind, data = seq[min(index, len(seq) - 1)]
+                if kind == BLOCK_TS:
+                    data = (yield dut.ts_data)
+                yield dut.tx.sink.valid.eq(1)
+                yield dut.tx.sink.kind.eq(kind)
+                yield dut.tx.sink.data.eq(data)
+                yield
+                if (yield dut.tx.sink.ready):
+                    sent.append((kind, data))
+                    index += 1
+            done[0] = True
+        def monitor():
+            while not done[0]:
+                if (yield dut.rx.source.valid):
+                    got.append(((yield dut.rx.source.kind), (yield dut.rx.source.data)))
+                if (yield dut.rx.error):
+                    errors.append(1)
+                yield
+        run_simulation(dut, [generator(), monitor()])
+        self.assertEqual(errors, [])
+        # Received from the first EIEOS after alignment on: same Blocks, TS without Symbols 14/15.
+        start = next(i for i, (k, d) in enumerate(got) if k == BLOCK_EIEOS)
+        rx = got[start:]
+        # Find the matching EIEOS in what was sent: the one followed by the same kinds.
+        kinds_rx = [k for k, d in rx[:60]]
+        offset = next(i for i in range(len(sent)) if [k for k, d in sent[i:i + 60]] == kinds_rx)
+        mask = (1 << 112) - 1
+        n = 0
+        for (k1, d1), (k2, d2) in zip(sent[offset:], rx):
+            self.assertEqual(k1, k2)
+            if k1 == BLOCK_DATA:
+                self.assertEqual(d1, d2)
+            if k1 == BLOCK_TS:
+                self.assertEqual(d1 & mask, d2 & mask)
+            n += 1
+        self.assertGreater(n, 400)
+
+class TestSoftGen3Link(unittest.TestCase):
+    def run_link(self, nlanes, tlps=40, cycles=30000):
+        # Two Data Link Layers with 8.0 GT/s framing, through the Blocks of the lanes and the transceivers'
+        # words (another bit offset per lane): EIEOS and TS, then SDS and the Data Stream with SKP Ordered Sets.
+        from litepcie.phy.soft.gen3 import Gen3LaneTX, Gen3LaneRX, Gen3LinkTX, Gen3LinkRX
+        from litepcie.phy.soft.dll.core import DataLinkLayer
+        ndw = 2*nlanes
+        class Side(Module):
+            def __init__(self, name):
+                self.submodules.dll = DataLinkLayer(125e6, ndw=ndw, nlanes=nlanes, framing="gen3", rx_depth=2048, tx_depth=2048)
+                self.submodules.ltx = Gen3LinkTX(nlanes, skp_interval=40)
+                self.submodules.lrx = Gen3LinkRX(nlanes)
+                self.lanes_tx = [Gen3LaneTX(LFSR_SEEDS[i]) for i in range(nlanes)]
+                self.lanes_rx = [Gen3LaneRX(LFSR_SEEDS[i]) for i in range(nlanes)]
+                self.submodules += self.lanes_tx + self.lanes_rx
+                self.comb += [
+                    self.dll.phy_sink.connect(self.ltx.sink, omit={"ctrl"}),
+                    self.ltx.idle.eq(self.dll.tx.framer.idle),
+                    self.lrx.source.connect(self.dll.phy_source, omit={"ctrl"}),
+                ]
+                for i in range(nlanes):
+                    self.comb += [
+                        self.ltx.blocks[i].connect(self.lanes_tx[i].sink),
+                        self.lanes_rx[i].source.connect(self.lrx.blocks[i]),
+                        self.lanes_rx[i].locked.eq(self.lrx.locked),
+                    ]
+        class DUT(Module):
+            def __init__(self):
+                self.submodules.a = a = Side("a")
+                self.submodules.b = b = Side("b")
+                for x, y in [(a, b), (b, a)]:
+                    for i in range(nlanes):
+                        bits = Signal(80)
+                        offset = (7*i + (3 if x is a else 11)) % 40
+                        self.sync += bits.eq(Cat(bits[40:], x.lanes_tx[i].data))
+                        self.comb += y.lanes_rx[i].data.eq(bits[offset:offset + 40])
+                self.data_enable = Signal()
+                self.comb += [
+                    a.ltx.data_enable.eq(self.data_enable), b.ltx.data_enable.eq(self.data_enable),
+                    a.dll.link_up.eq(self.data_enable), b.dll.link_up.eq(self.data_enable),
+                    a.dll.l0.eq(self.data_enable), b.dll.l0.eq(self.data_enable),
+                ]
+        dut = DUT()
+        rng = random.Random(nlanes)
+        tlp_list = []
+        for i in range(tlps):
+            n = rng.randrange(1, 24)
+            tlp_list.append([0x40 | ((n & 0xff) << 24), i, 0x1000] + [rng.getrandbits(32) for _ in range(n)])
+        out, stats, done = [], {}, [False]
+        def generator():
+            for _ in range(3000):
+                yield
+            stats["locked"] = ((yield dut.a.lrx.locked), (yield dut.b.lrx.locked))
+            yield dut.data_enable.eq(1)
+            for _ in range(cycles):
+                if (yield dut.a.dll.dl_active) and (yield dut.b.dll.dl_active):
+                    break
+                yield
+            stats["dl_active"] = (yield dut.a.dll.dl_active)
+            for tlp in tlp_list:
+                beats = [tlp[j:j+ndw] for j in range(0, len(tlp), ndw)]
+                for j, beat in enumerate(beats):
+                    yield dut.a.dll.sink.valid.eq(1)
+                    yield dut.a.dll.sink.first.eq(j == 0)
+                    yield dut.a.dll.sink.last.eq(j == len(beats) - 1)
+                    yield dut.a.dll.sink.dws.eq(len(beat))
+                    yield dut.a.dll.sink.data.eq(sum(dw << (32*k) for k, dw in enumerate(beat)))
+                    yield
+                    while not (yield dut.a.dll.sink.ready):
+                        yield
+                yield dut.a.dll.sink.valid.eq(0)
+            for _ in range(cycles):
+                if len(out) >= len(tlp_list):
+                    break
+                yield
+            stats["replays"] = (yield dut.a.dll.tx.replay.replays)
+            stats["errors"]  = ((yield dut.a.lrx.error), (yield dut.b.dll.rx.errors))
+            done[0] = True
+        def monitor():
+            cur = []
+            yield dut.b.dll.source.ready.eq(1)
+            while not done[0]:
+                if (yield dut.b.dll.source.valid):
+                    data = (yield dut.b.dll.source.data)
+                    n    = (yield dut.b.dll.source.dws)
+                    cur += [(data >> (32*k)) & 0xffffffff for k in range(n)]
+                    if (yield dut.b.dll.source.last):
+                        out.append(cur)
+                        cur = []
+                yield
+        run_simulation(dut, [generator(), monitor()])
+        return out, tlp_list, stats
+
+    def test_link(self):
+        for nlanes in [1, 2, 4]:
+            with self.subTest(nlanes=nlanes):
+                out, tlps, stats = self.run_link(nlanes, tlps=8, cycles=8000)
+                self.assertEqual(stats["locked"], (1, 1))
+                self.assertEqual(stats["dl_active"], 1)
+                self.assertEqual(out, tlps)
+
+
+class TestSoftGen3LaneEQ(unittest.TestCase):
+    def test_lane_eq(self):
+        from litepcie.phy.soft.gen3 import Gen3LaneEQ
+        dut = Gen3LaneEQ(upstream=True)
+        res = {}
+        def send(ec, use=0, preset=0, pre=0, cur=0, post=0, reject=0, n=2):
+            for _ in range(n):
+                yield dut.rx.eq_ctrl.eq(ec | (preset << 3) | (use << 7))
+                yield dut.rx.pre.eq(pre)
+                yield dut.rx.cur.eq(cur)
+                yield dut.rx.post.eq(post)
+                yield dut.rx.reject.eq(reject)
+                yield dut.rx_valid.eq(1)
+                yield
+                yield dut.rx_valid.eq(0)
+                for _ in range(4):
+                    yield
+        def state():
+            return ((yield dut.preset), (yield dut.c_pre), (yield dut.c_cur), (yield dut.c_post),
+                ((yield dut.tx.eq_ctrl) >> 3) & 0xf, (yield dut.tx.reject))
+        def generator():
+            # Phase 0: preset 7 of the EQ TS2.
+            yield dut.eq_ts2.eq(0x80 | (7 << 3) | 2)
+            yield dut.load.eq(1)
+            yield
+            yield dut.load.eq(0)
+            yield
+            res["load"] = (yield from state())
+            # Phase 1: FS, LF, Post-cursor.
+            yield dut.ec.eq(0b01)
+            yield
+            yield
+            res["phase1"] = ((yield dut.tx.pre), (yield dut.tx.cur), (yield dut.tx.post), (yield dut.tx.eq_ctrl) & 3)
+            # Phase 2 (requesting): keep the partner's Coefficients (the ones of its last TS1).
+            yield from send(0b10, pre=3, cur=30, post=7, n=1)
+            yield dut.ec.eq(0b10)
+            yield
+            yield
+            res["request"] = ((yield dut.tx.pre), (yield dut.tx.cur), (yield dut.tx.post), (yield dut.tx.eq_ctrl) >> 7)
+            yield from send(0b10, pre=3, cur=30, post=7, n=2)
+            res["eval"] = ((yield dut.eval_done), (yield dut.accepted))
+            # Phase 3 (responding): presets and Coefficients, legal or not.
+            yield dut.ec.eq(0b11)
+            yield
+            yield
+            yield from send(0b11, use=1, preset=8)
+            res["p8"] = (yield from state())
+            yield from send(0b11, use=1, preset=12)
+            res["p12"] = (yield from state())
+            yield from send(0b11, pre=6, cur=28, post=6)
+            res["c_ok"] = (yield from state())
+            yield from send(0b11, pre=12, cur=22, post=6)
+            res["c_bad"] = (yield from state()) + ((yield dut.tx.pre), (yield dut.tx.cur), (yield dut.tx.post))
+        run_simulation(dut, generator())
+        self.assertEqual(res["load"],   (7, 4, 28, 8, 7, 0))
+        self.assertEqual(res["phase1"], (40, 15, 8, 0b01))
+        self.assertEqual(res["request"], (3, 30, 7, 0))
+        self.assertEqual(res["eval"],   (1, 1))
+        self.assertEqual(res["p8"],     (8, 5, 30, 5, 8, 0))
+        self.assertEqual(res["p12"],    (8, 5, 30, 5, 12, 1))
+        self.assertEqual(res["c_ok"],   (8, 6, 28, 6, 12, 0))
+        self.assertEqual(res["c_bad"],  (8, 6, 28, 6, 12, 1, 12, 22, 6))
+
+
+class TestSoftGen3TSSymbols(unittest.TestCase):
+    def test_ts_symbols(self):
+        # TS1 and TS2 Symbols (4.2.4.1, Tables 4-5/4-6), each on 8 bits, then decoded back.
+        from litepcie.phy.soft.gen3 import ts3_layout, ts3_symbols, ts3_fields
+        class DUT(Module):
+            def __init__(self):
+                self.ts  = Record(ts3_layout())
+                self.out = Record(ts3_layout())
+                self.data = Signal(128)
+                self.comb += self.data.eq(Cat(*ts3_symbols(self.ts)))
+                self.comb += ts3_fields(self.data, self.out)
+        dut = DUT()
+        res = {}
+        def generator():
+            for ts2 in [0, 1]:
+                yield dut.ts.ts2.eq(ts2)
+                yield dut.ts.link.eq(5)
+                yield dut.ts.lane.eq(3)
+                yield dut.ts.n_fts.eq(0xff)
+                yield dut.ts.rate.eq(0x0e)
+                yield dut.ts.ctrl.eq(0)
+                yield dut.ts.eq_ctrl.eq(0x0 if ts2 else 0x39)
+                yield dut.ts.pre.eq(4)
+                yield dut.ts.cur.eq(28)
+                yield dut.ts.post.eq(8)
+                yield dut.ts.reject.eq(0)
+                yield
+                data = (yield dut.data)
+                res[ts2] = ([(data >> (8*k)) & 0xff for k in range(16)],
+                    ((yield dut.out.ts2), (yield dut.out.link), (yield dut.out.lane), (yield dut.out.rate),
+                     (yield dut.out.eq_ctrl), (yield dut.out.pre), (yield dut.out.cur), (yield dut.out.post)))
+        run_simulation(dut, generator())
+        ts1, ts2 = res[0][0], res[1][0]
+        parity = bin(0x39 ^ 4 ^ 28 ^ 8).count("1") & 1
+        self.assertEqual(ts1[:9], [0x1e, 5, 3, 0xff, 0x0e, 0, 0x39, 4, 28])
+        self.assertEqual(ts1[9], 8 | (parity << 7))
+        self.assertEqual(ts1[10:], [0x4a]*6)
+        self.assertEqual(ts2, [0x2d, 5, 3, 0xff, 0x0e, 0, 0] + [0x45]*9)
+        self.assertEqual(res[0][1], (0, 5, 3, 0x0e, 0x39, 4, 28, 8))
+        self.assertEqual(res[1][1][:5], (1, 5, 3, 0x0e, 0))

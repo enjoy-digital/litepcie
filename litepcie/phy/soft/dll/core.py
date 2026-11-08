@@ -38,12 +38,13 @@ class DataLinkLayer(LiteXModule):
     ndw: DWs per cycle on sink/source, with dws the valid DWs of a beat, and on the lane words (above 1:
     links wider than x1, nlanes: the link width)."""
     def __init__(self, clk_freq, p_hdr=16, p_data=128, np_hdr=8, np_data=8, rx_depth=2048, tx_depth=1024,
-        descriptors=16, replay_timer=None, update_timer=None, ndw=1, nlanes=1):
+        descriptors=16, replay_timer=None, update_timer=None, ndw=1, nlanes=1, framing="8b10b"):
         self.link_up    = Signal()   # i
         self.l0         = Signal()   # i: LTSSM in L0 (lane traffic).
         self.dl_active  = Signal()   # o
         self.state      = Signal(2)  # o: DLCMSM: 0 DL_Inactive, 1/2 DL_Init (FC_INIT1/FC_INIT2), 3 DL_Active.
         self.link_error = Signal()   # o (Pulse): Link retrain requested (replay rollover).
+        self.gen3       = Signal()   # i: 8.0 GT/s framing (framing="both": 8b/10b or 8.0 GT/s from the rate).
         tlp_layout      = [("data", 32*ndw)] + ([("dws", bits_for(ndw))] if ndw > 1 else [])
         self.sink       = sink   = stream.Endpoint(tlp_layout)
         self.source     = source = stream.Endpoint(tlp_layout)
@@ -62,8 +63,9 @@ class DataLinkLayer(LiteXModule):
 
         # RX/TX ------------------------------------------------------------------------------------
         if ndw > 1:
-            self.rx = rx = WideDLLRX(ndw, depth=rx_depth, packets=64)
-            self.tx = tx = WideDLLTX(ndw, nlanes, depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer)
+            self.rx = rx = WideDLLRX(ndw, depth=rx_depth, packets=64, framing=framing)
+            self.tx = tx = WideDLLTX(ndw, nlanes, depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer, framing=framing)
+            self.comb += [rx.gen3.eq(self.gen3), tx.gen3.eq(self.gen3)]
         else:
             self.rx = rx = DLLRX(depth=rx_depth, packets=64)
             self.tx = tx = DLLTX(depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer)
@@ -94,20 +96,27 @@ class DataLinkLayer(LiteXModule):
         ]
 
         # Received DLLPs ---------------------------------------------------------------------------
+        # Registered before the decoder (timing).
+        dllp       = Signal(48)
+        dllp_valid = Signal()
+        self.sync += [
+            dllp.eq(rx.dllp),
+            dllp_valid.eq(rx.dllp_valid),
+        ]
         self.decoder = decoder = DLLPDecoder()
         init1_rx  = Signal(3)
         init2_rx  = Signal(3)
         update_rx = Signal()
         self.comb += [
-            decoder.dllp.eq(rx.dllp),
-            tx.replay.ack.eq(rx.dllp_valid & (decoder.ack | decoder.nak)),
+            decoder.dllp.eq(dllp),
+            tx.replay.ack.eq(dllp_valid & (decoder.ack | decoder.nak)),
             tx.replay.ack_seq.eq(decoder.seq),
-            tx.replay.nak.eq(rx.dllp_valid & decoder.nak),
+            tx.replay.nak.eq(dllp_valid & decoder.nak),
             fc_tx.fc_type.eq(decoder.fc_type),
             fc_tx.fc_hdr.eq(decoder.hdr_fc),
             fc_tx.fc_data.eq(decoder.data_fc),
-            fc_tx.init.eq(rx.dllp_valid & (decoder.init1 | decoder.init2)),
-            fc_tx.update.eq(rx.dllp_valid & decoder.update),
+            fc_tx.init.eq(dllp_valid & (decoder.init1 | decoder.init2)),
+            fc_tx.update.eq(dllp_valid & decoder.update),
         ]
         for t in range(3):
             self.sync += [
@@ -115,11 +124,11 @@ class DataLinkLayer(LiteXModule):
                     init1_rx[t].eq(0),
                     init2_rx[t].eq(0),
                 ).Else(
-                    If(rx.dllp_valid & (decoder.init1 | decoder.init2) & (decoder.fc_type == t), init1_rx[t].eq(1)),
-                    If(rx.dllp_valid & decoder.init2 & (decoder.fc_type == t), init2_rx[t].eq(1)),
+                    If(dllp_valid & (decoder.init1 | decoder.init2) & (decoder.fc_type == t), init1_rx[t].eq(1)),
+                    If(dllp_valid & decoder.init2 & (decoder.fc_type == t), init2_rx[t].eq(1)),
                 )
             ]
-        self.sync += If(reset, update_rx.eq(0)).Elif(rx.dllp_valid & decoder.update, update_rx.eq(1))
+        self.sync += If(reset, update_rx.eq(0)).Elif(dllp_valid & decoder.update, update_rx.eq(1))
 
         # DLCMSM (3.2) -----------------------------------------------------------------------------
         self.encoder = encoder = DLLPEncoder()

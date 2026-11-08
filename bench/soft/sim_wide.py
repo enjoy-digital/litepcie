@@ -13,7 +13,8 @@ table), with a lane corruption every N TLPs (Naks and replays).
 python3 bench/soft/sim_wide.py --ndw 4 --nlanes 4 [--tlps 200] [--corrupt-every 8]
 
 With --phy: two multi-lane Physical Layers on transceiver models with Symbol shifts and skew per lane,
-training to L0 (with --gen2 and a speed change to 5.0 GT/s), TLPs at full rate, Link Retrain.
+training to L0 (with --gen2 and a speed change to 5.0 GT/s, with --gen3 to 8.0 GT/s and the equalization, 2 DWs
+per lane), TLPs at full rate, Link Retrain.
 """
 
 import random
@@ -204,14 +205,15 @@ class WideDLLSim(SoCMini):
         ]
 
 class MultiLanePHYSim(SoCMini):
-    def __init__(self, nlanes, tlps, gen2=False, timer_scale=100, max_cycles=2**23, rate_stall=0, dead_lanes=0):
-        ndw = nlanes
+    def __init__(self, nlanes, tlps, gen2=False, timer_scale=100, max_cycles=2**23, rate_stall=0, dead_lanes=0, ndw=None,
+        gen3=False, eq_preset=None, fail_8g=False):
+        ndw = (2*nlanes if gen3 else nlanes) if ndw is None else ndw
         sys_clk_freq = int(125e6)
         platform = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq)
         self.crg = CRG(platform.request("sys_clk"))
 
-        # Clocks: link = sys (125 MHz), lanes = sys/2 at 2.5 GT/s, sys at 5.0 GT/s.
+        # Clocks: link = sys (125 MHz), lanes = sys/2 at 2.5 GT/s, sys at 5.0 and 8.0 GT/s.
         self.cd_lane = ClockDomain()
         lane_clk = Signal()
         lane_5g  = Signal()
@@ -231,18 +233,24 @@ class MultiLanePHYSim(SoCMini):
         self.serdes_up = serdes_up = PCIeSerDesModel(nlanes, tx_cd="lane", rx_cd="lane", rx_symbol_shift=shifts_up, rx_word_delay=delays_up, rx_rate_stall=stalls_up)
         self.serdes_dn = serdes_dn = PCIeSerDesModel(nlanes, tx_cd="lane", rx_cd="lane", rx_symbol_shift=shifts_dn, rx_word_delay=delays_dn, rx_rate_stall=stalls_dn)
         serdes_up.connect(serdes_dn)
-        self.comb += lane_5g.eq(serdes_up.applied_rate & serdes_dn.applied_rate)
-        renamer = ClockDomainsRenamer({"pcie_pipe": "lane", "pcie_link": "sys"})
-        kwargs  = dict(timer_scale=timer_scale, gen2_capable=gen2)
+        self.comb += lane_5g.eq((serdes_up.applied_rate != 0) & (serdes_dn.applied_rate != 0))
+        renamer = ClockDomainsRenamer({"pcie_pipe": "lane", "pcie_g3": "lane", "pcie_link": "sys"})
+        kwargs  = dict(timer_scale=timer_scale, gen2_capable=gen2, gen3_capable=gen3, ndw=ndw)
         self.phy_up = phy_up = renamer(PCIeMultiLanePhysicalLayer(serdes_up, sys_clk_freq, upstream=True,  **kwargs))
         self.phy_dn = phy_dn = renamer(PCIeMultiLanePhysicalLayer(serdes_dn, sys_clk_freq, upstream=False, early_idle=True, **kwargs))
         self.comb += [
             phy_dn.link_number.eq(0x05),
             phy_up.lane_disable.eq(dead_lanes),
         ]
+        if fail_8g:
+            # Nothing received at 8.0 GT/s on the upstream side: back to 2.5 GT/s.
+            self.comb += serdes_up.fail_8g.eq(1)
+        if eq_preset is not None:
+            # The root port requests a preset in its Phase 3.
+            self.comb += phy_dn.eq_request_preset.eq(0x10 | eq_preset)
 
         # Data Link Layers.
-        dll_kwargs = dict(ndw=ndw, nlanes=nlanes, tx_depth=4096, rx_depth=4096)
+        dll_kwargs = dict(ndw=ndw, nlanes=nlanes, tx_depth=4096, rx_depth=4096, framing="both" if gen3 else "8b10b")
         self.dll_up = dll_up = DataLinkLayer(sys_clk_freq, **dll_kwargs)
         self.dll_dn = dll_dn = DataLinkLayer(sys_clk_freq, **dll_kwargs)
         for dll, phy in [(dll_up, phy_up), (dll_dn, phy_dn)]:
@@ -252,6 +260,7 @@ class MultiLanePHYSim(SoCMini):
                 dll.phy_sink.connect(phy.sink),
                 phy.source.connect(dll.phy_source),
                 phy.link_error.eq(dll.link_error),
+                dll.gen3.eq(phy.ltssm.rate == 2),
             ]
 
         # TLPs both ways.
@@ -277,6 +286,17 @@ class MultiLanePHYSim(SoCMini):
                 Case(phy.ltssm.state, {code: Display(f"[%08d] {label} {name}", timer) for code, name in names.items()})
             )
 
+        if gen3:
+            # 8.0 GT/s alignment changes.
+            for phy, label in [(phy_up, "UP  "), (phy_dn, "DOWN")]:
+                aligned = Signal(nlanes)
+                status  = Signal(nlanes + 1)
+                self.comb += [aligned.eq(Cat(*[l.aligned for l in phy.g3.lanes_rx])), status.eq(Cat(aligned, phy.g3.lrx.locked))]
+                status_r = Signal(len(status))
+                self.sync += status_r.eq(status)
+                self.sync += If(status != status_r,
+                    Display(f"[%08d] {label} 8.0 GT/s aligned %x locked %d", timer, aligned, phy.g3.lrx.locked))
+
         # Sequence.
         both_l0 = phy_up.ltssm.l0 & phy_dn.ltssm.l0
         ready   = both_l0 & dll_up.dl_active & dll_dn.dl_active
@@ -286,7 +306,7 @@ class MultiLanePHYSim(SoCMini):
         fsm.act("TRAIN",
             If(both_l0,
                 Display("[%08d] L0 reached, link %d, lanes ok %x/%x, width x%d/x%d", timer, phy_up.ltssm.link, phy_up.lanes_ok, phy_dn.lanes_ok, phy_up.width, phy_dn.width),
-                NextState("SPEED-CHANGE" if gen2 else "WAIT-READY")
+                NextState("SPEED-CHANGE" if (gen2 or gen3) else "WAIT-READY")
             )
         )
         fsm.act("SPEED-CHANGE",
@@ -299,12 +319,16 @@ class MultiLanePHYSim(SoCMini):
         fsm.act("SPEED-WAIT",
             If(both_l0,
                 Display("[%08d] SPEED OK: rate %d/%d", timer, phy_up.ltssm.rate, phy_dn.ltssm.rate),
+                *([Display("[%08d] EQ: up preset %d coeffs %d/%d/%d, down preset %d coeffs %d/%d/%d", timer,
+                    phy_up.g3.eqs[0].preset, phy_up.g3.eqs[0].c_pre, phy_up.g3.eqs[0].c_cur, phy_up.g3.eqs[0].c_post,
+                    phy_dn.g3.eqs[0].preset, phy_dn.g3.eqs[0].c_pre, phy_dn.g3.eqs[0].c_cur, phy_dn.g3.eqs[0].c_post)] if gen3 else []),
                 NextState("WAIT-READY")
             )
         )
         fsm.act("WAIT-READY",
             If(ready,
                 Display("[%08d] DL_Active, deskew locked %d/%d", timer, phy_up.deskew.locked, phy_dn.deskew.locked),
+                *([Display("[%08d] 8.0 GT/s Blocks locked %d/%d", timer, phy_up.g3.lrx.locked, phy_dn.g3.lrx.locked)] if gen3 else []),
                 NextState("DATA")
             )
         )
@@ -342,12 +366,15 @@ class MultiLanePHYSim(SoCMini):
 
 def main():
     parser = argparse.ArgumentParser(description="Soft PCIe PHY wide Data Link Layers simulation.")
-    parser.add_argument("--ndw",           default=4, type=int, help="DWs per cycle.")
+    parser.add_argument("--ndw",           default=None, type=int, help="DWs per cycle (default: the lanes).")
     parser.add_argument("--nlanes",        default=4, type=int, help="Link width.")
     parser.add_argument("--tlps",          default=200, type=int, help="TLPs exchanged in each direction.")
     parser.add_argument("--corrupt-every", default=0, type=int, help="Corrupt every Nth TLP from a to b (power of 2).")
     parser.add_argument("--phy",           action="store_true", help="With the multi-lane Physical Layers and transceiver models.")
     parser.add_argument("--gen2",          action="store_true", help="With --phy: speed change to 5.0 GT/s.")
+    parser.add_argument("--gen3",          action="store_true", help="With --phy: speed change to 8.0 GT/s (equalization).")
+    parser.add_argument("--eq-preset",     default=None, type=int, help="With --gen3: preset requested by the root port.")
+    parser.add_argument("--fail-8g",       action="store_true", help="With --gen3: nothing received at 8.0 GT/s (fallback).")
     parser.add_argument("--rate-stall",    default=0, type=int, help="With --phy: receivers stopped after a rate change, differently per lane.")
     parser.add_argument("--dead-lanes",    default="0", help="With --phy: lanes out of service on the upstream side (mask).")
     parser.add_argument("--max-cycles",    default=2**22, type=int, help="Simulation timeout.")
@@ -355,9 +382,11 @@ def main():
     args = parser.parse_args()
     sim_config = SimConfig(default_clk="sys_clk")
     if args.phy:
-        soc = MultiLanePHYSim(args.nlanes, args.tlps, gen2=args.gen2, max_cycles=args.max_cycles, rate_stall=args.rate_stall, dead_lanes=int(args.dead_lanes, 0))
+        soc = MultiLanePHYSim(args.nlanes, args.tlps, gen2=args.gen2, max_cycles=args.max_cycles, rate_stall=args.rate_stall,
+            dead_lanes=int(args.dead_lanes, 0), ndw=args.ndw, gen3=args.gen3, eq_preset=args.eq_preset,
+            fail_8g=args.fail_8g)
     else:
-        soc = WideDLLSim(args.ndw, args.nlanes, args.tlps, args.corrupt_every)
+        soc = WideDLLSim(args.ndw or args.nlanes, args.nlanes, args.tlps, args.corrupt_every)
     builder = Builder(soc, output_dir=args.output_dir, compile_software=False)
     builder.build(sim_config=sim_config, opt_level="O0", interactive=False)
 

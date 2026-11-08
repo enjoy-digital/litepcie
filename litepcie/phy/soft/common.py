@@ -82,6 +82,7 @@ TS2_ID_INV = D(26, 5) # 0xba = ~TS2_ID
 # Symbol 4: Data Rate Identifier.
 RATE_2_5GT        = 0b00000010 # Bit 1: 2.5 GT/s supported.
 RATE_5_0GT        = 0b00000100 # Bit 2: 5.0 GT/s supported.
+RATE_8_0GT        = 0b00001000 # Bit 3: 8.0 GT/s supported.
 RATE_AUTONOMOUS   = 0b01000000 # Bit 6: Autonomous Change / Selectable De-emphasis.
 RATE_SPEED_CHANGE = 0b10000000 # Bit 7: Speed change.
 
