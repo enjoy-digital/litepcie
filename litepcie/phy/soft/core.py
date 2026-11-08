@@ -87,11 +87,10 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         else:
             object.__setattr__(self, "serdes", serdes) # The caller's submodule: reference only.
         self.nlanes = nlanes = serdes.nlanes
-        wide = nlanes > 1
+        # Multi-lane path: x2 and above, and x1 at 8.0 GT/s (2 DWs per cycle).
+        wide = (nlanes > 1) or gen3_capable
         # A DW per lane and per cycle at the Physical Layer's output (2 at 8.0 GT/s), LitePCIe at the same width.
         ndw = 2*nlanes if gen3_capable else nlanes
-        if gen3_capable:
-            assert wide, "8.0 GT/s needs the multi-lane Physical Layer (x2 and above)."
         if wide:
             assert data_width == 32*ndw
         if device_id is None:

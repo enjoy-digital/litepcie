@@ -167,7 +167,7 @@ def main():
     parser.add_argument("--with-endpoint",   action="store_true", help="Full LitePCIe endpoint (SoftPCIEPHY, MMAP, DMA, MSI).")
     parser.add_argument("--ltssm-autostart", action="store_true", help="LTSSM enabled at reset, not disabled by PERST#.")
     parser.add_argument("--hard-ip",         action="store_true", help="Same endpoint on the hard IP (S7PCIEPHY).")
-    parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2", "gen3"], help="Soft PHY maximum speed (gen3: x2 and above, --with-endpoint).")
+    parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2", "gen3"], help="Soft PHY maximum speed (gen3: --with-endpoint).")
     parser.add_argument("--nlanes",          default=1, type=int, choices=[1, 2, 4, 8], help="Lanes (x2: soft PHY only).")
     parser.add_argument("--driver",          action="store_true", help="Generate the PCIe driver.")
     parser.add_argument("--output-dir",      default="build/soft_ypcb", help="Build directory.")

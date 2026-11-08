@@ -110,7 +110,9 @@ class RXLaneDeskew(LiteXModule):
         drops = []
         for i, fifo in enumerate(fifos):
             drop = Signal()
-            self.comb += drop.eq(self.mask[i] & Reduce("OR", [self.mask[j] & (queued[i] >= queued[j] + max_skew + 1) for j in range(nlanes) if j != i]))
+            others = [self.mask[j] & (queued[i] >= queued[j] + max_skew + 1) for j in range(nlanes) if j != i]
+            if others: # x1: nothing to align with.
+                self.comb += drop.eq(self.mask[i] & Reduce("OR", others))
             drops.append(drop)
         any_drop = Signal()
         self.comb += any_drop.eq(Reduce("OR", drops))
@@ -167,7 +169,7 @@ class PCIeMultiLanePhysicalLayer(LiteXModule):
         gen2_capable=False, gen3_capable=False, ts1_min=1024, tx_depth=16, rx_depth=16, early_idle=False, ndw=None,
         gen3_skp_interval=370, **ltssm_kwargs):
         nlanes = serdes.nlanes
-        assert nlanes >= 2
+        assert nlanes >= 2 or gen3_capable # x1: only at 8.0 GT/s (2 DWs per cycle).
         lanes  = serdes.lanes
         self.nlanes = nlanes
         ndw = nlanes if ndw is None else ndw

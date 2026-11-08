@@ -121,7 +121,7 @@ class TestSoftSim(unittest.TestCase):
     def test_gen3(self):
         # Speed change to 8.0 GT/s from 2.5 GT/s with the equalization (the root port requesting preset 8 in its
         # Phase 3, applied by the endpoint), TLPs and a Link Retrain at 8.0 GT/s.
-        for nlanes in [2, 4, 8]:
+        for nlanes in [1, 2, 4, 8]:
             with self.subTest(nlanes=nlanes):
                 output = self.run_sim(f"gen3_{nlanes}", "--phy", "--gen3", "--nlanes", str(nlanes), "--tlps", "64",
                     "--eq-preset", "8", script="sim_wide.py")
@@ -168,9 +168,9 @@ class TestSoftSim(unittest.TestCase):
                 self.assertIn("SIM OK", output)
 
     def test_soc_gen3(self):
-        # LitePCIe SoC on SoftPCIEPHY at 8.0 GT/s (2 DWs per lane: 128 and 512-bit LitePCIe data paths): speed
+        # LitePCIe SoC on SoftPCIEPHY at 8.0 GT/s (2 DWs per lane: 64, 128 and 512-bit LitePCIe data paths): speed
         # change by the root before the enumeration, DMA loopback through the host model.
-        for nlanes in [2, 8]:
+        for nlanes in [1, 2, 8]:
             with self.subTest(nlanes=nlanes):
                 output = self.run_sim(f"soc_gen3_{nlanes}", "--nlanes", str(nlanes), "--gen3", script="sim_soc.py")
                 self.assertIn("Root rate 2", output)
