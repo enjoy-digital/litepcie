@@ -20,7 +20,7 @@ from litex.gen import *
 
 from litex.soc.interconnect import stream
 
-from litepcie.phy.soft.common import STP, SDP, END, EDB, PAD, lane_layout
+from litepcie.phy.soft.common import COM, STP, SDP, END, EDB, PAD, lane_layout
 from litepcie.phy.soft.dll.buffer       import PacketBuffer
 from litepcie.phy.soft.dll.crc          import crc_next, crc_value, LCRC_POLYNOM, LCRC_INIT
 from litepcie.phy.soft.dll.flow_control import tlp_credits
@@ -197,13 +197,15 @@ class WideRXFramer(LiteXModule):
                 sdp = is_k(0, SDP),
                 end = is_k(3, END),
                 edb = is_k(3, EDB),
+                # An Ordered Set (TS1 of a Recovery entered from L0, EIOS) between packets, not an error.
+                os  = Reduce("OR", [is_k(i, COM) for i in range(4)]),
                 # Any other K Symbol than a whole PAD slot is a framing error.
                 bad = (ctrl[1] & ~is_pad[1]) | (ctrl[2] & ~is_pad[2]) | (ctrl[0] & ~is_k(0, STP) & ~is_k(0, SDP) & ~is_pad[0]) |
                       (ctrl[3] & ~is_k(3, END) & ~is_k(3, EDB) & ~is_pad[3]),
             )
         prev_valid = Signal()
         prev_data  = Signal(32*ndw)
-        cur        = [{k: Signal() for k in ["stp", "sdp", "end", "edb", "bad"]} for _ in range(ndw)]
+        cur        = [{k: Signal() for k in ["stp", "sdp", "end", "edb", "bad", "os"]} for _ in range(ndw)]
         process    = Signal()
         self.comb += process.eq(prev_valid & sink.valid)
         decoded = [flags(sink.data[32*i:32*(i+1)], sink.ctrl[4*i:4*(i+1)]) for i in range(ndw)]
@@ -247,7 +249,7 @@ class WideRXFramer(LiteXModule):
                             ).Else(
                                 errors[i].eq(1)
                             )
-                        ).Elif(f["bad"] | f["end"] | f["edb"],
+                        ).Elif((f["bad"] | f["end"] | f["edb"]) & ~f["os"],
                             errors[i].eq(1)
                         )
                     ],

@@ -13,7 +13,7 @@ Read Requests answered with Completions split at the 64-byte Read Completion Bou
 destination buffers compared to the source ones. Ends with "SIM OK".
 
 Usage: python3 bench/soft/sim_soc.py [--dma-size 1024] [--dma-buffers 4] [--mps 256] [--nlanes 4] [--dead-lanes 0xe] [--full-rate] [--trace]
-With --gen3 (x2 and above): the root changes the speed to 8.0 GT/s (equalization) before the script.
+With --gen3: the root changes the speed to 8.0 GT/s (equalization) before the script.
 """
 
 import os
@@ -299,7 +299,8 @@ class SoftPHYSoCSim(SoCMini):
         serdes_ep.connect(serdes_root)
 
         # Device: as the Acorn target.
-        ndw = 2*nlanes if gen3 else nlanes
+        ndw  = 2*nlanes if gen3 else nlanes
+        wide = (nlanes > 1) or gen3 # Multi-lane path, also x1 at 8.0 GT/s.
         self.pcie_phy = phy = SoftPCIEPHY(platform, None,
             data_width  = 64 if nlanes == 1 else 32*ndw,
             speed       = "gen3" if gen3 else "gen1",
@@ -317,14 +318,14 @@ class SoftPHYSoCSim(SoCMini):
             return # First pass: CSR map only.
 
         # Root.
-        root_cls = PCIeMultiLanePhysicalLayer if nlanes > 1 else PCIePhysicalLayer
-        root_kw  = dict(early_idle=True) if nlanes > 1 else {}
+        root_cls = PCIeMultiLanePhysicalLayer if wide else PCIePhysicalLayer
+        root_kw  = dict(early_idle=True) if wide else {}
         if gen3:
             root_kw.update(gen3_capable=True, ndw=ndw)
         self.root_phy = root_phy = root_cls(serdes_root, sys_clk_freq, upstream=False,
             timer_scale=timer_scale, ts1_min=ts1_min, **root_kw)
         dll_kw = dict(ndw=ndw, nlanes=nlanes, rx_depth=2048*ndw, tx_depth=1024*ndw,
-            framing="both" if gen3 else "8b10b") if nlanes > 1 else {}
+            framing="both" if gen3 else "8b10b") if wide else {}
         self.root_dll = root_dll = ClockDomainsRenamer("pcie_link")(DataLinkLayer(sys_clk_freq, **dll_kw))
         if gen3:
             # Speed change directed by the root on its first L0, lanes clock at sys from 5.0 GT/s.
@@ -358,7 +359,7 @@ class SoftPHYSoCSim(SoCMini):
         steps = script(csrs, phy.bar0_mask, dma_size, dma_buffers, mps)
         self.root = root = ClockDomainsRenamer("pcie_link")(ScriptedRoot(port, steps, timer))
         self.comb += root.wait_count.eq(host.msi_count)
-        if nlanes > 1:
+        if wide:
             root_tx = ClockDomainsRenamer("pcie_link")(DWsToBeats(ndw))
             root_rx = ClockDomainsRenamer("pcie_link")(BeatsToDWs(ndw))
             self.submodules += root_tx, root_rx
@@ -501,7 +502,7 @@ def main():
     parser.add_argument("--nlanes",      default=1,    type=int, help="Lanes of the design.")
     parser.add_argument("--dead-lanes",  default="0",  help="Device lanes out of service (mask), for a narrower link.")
     parser.add_argument("--full-rate",   action="store_true", help="Lanes at the 5.0 GT/s rate.")
-    parser.add_argument("--gen3",        action="store_true", help="Speed change to 8.0 GT/s (x2 and above).")
+    parser.add_argument("--gen3",        action="store_true", help="Speed change to 8.0 GT/s.")
     parser.add_argument("--mps",         default=256,  type=int, help="Max Payload Size (128, 256, 512).")
     parser.add_argument("--timer-scale", default=100,  type=int, help="LTSSM timers scale.")
     parser.add_argument("--ts1-min",     default=64,   type=int, help="TS1 transmitted in Polling.Active (specification: 1024).")

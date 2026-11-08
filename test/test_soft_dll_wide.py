@@ -9,7 +9,7 @@ import unittest
 
 from migen import *
 
-from litepcie.phy.soft.common   import STP, SDP, END, EDB, PAD
+from litepcie.phy.soft.common   import COM, STP, SDP, END, EDB, PAD
 from litepcie.phy.soft.dll.wide import WideRXFramer, WideTXFramer, RXPhaseAligner
 
 def tlp_symbols(seq, dws, lcrc=0x11223344, edb=False):
@@ -140,6 +140,24 @@ class TestSoftDLLWide(unittest.TestCase):
                 tlps, dllps, errors = run_rx(4, symbols)
                 self.assertGreaterEqual(len(errors), 1)
                 self.assertEqual(tlps[-1]["seq"], 1)
+
+    def test_rx_framer_ordered_set(self):
+        # Training Sequence between packets (Recovery entered from L0, received before the LTSSM leaves L0):
+        # not a framing error. A COM inside a TLP is one.
+        rng = random.Random(3)
+        ts1 = [(COM.value, 1)] + [(0, 0)]*2 + [(0xff, 0), (0x8e, 0), (0, 0)] + [(0x4a, 0)]*10
+        a   = tlp_symbols(1, random_dws(rng, 4))
+        b   = tlp_symbols(2, random_dws(rng, 4))
+        for ndw in [2, 4]:
+            with self.subTest(ndw=ndw):
+                tlps, dllps, errors = run_rx(ndw, a + ts1*2 + b)
+                self.assertEqual(errors, [])
+                self.assertEqual([t["seq"] for t in tlps], [1, 2])
+        bad = list(a)
+        bad[9] = (COM.value, 1)
+        tlps, dllps, errors = run_rx(4, bad + [(0, 0)]*(4 - len(bad) % 4) + b)
+        self.assertGreaterEqual(len(errors), 1)
+        self.assertEqual([t["seq"] for t in tlps], [2])
 
     def test_tx_rx_loopback(self):
         # TX framer to RX framer, all the TLP lengths around the beat boundaries.
