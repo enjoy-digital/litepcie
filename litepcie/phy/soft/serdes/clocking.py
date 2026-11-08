@@ -36,7 +36,8 @@ class S7PCIeClocking(LiteXModule):
         self.cd_pcie_oob  = ClockDomain() # 50 MHz.
         self.cd_pcie_pipe = ClockDomain() # 62.5/125 MHz (rate).
         if gen3:
-            self.cd_pcie_g3 = ClockDomain() # "pcie_pipe" or 200 MHz (rate).
+            # "pcie_pipe" or 200 MHz (rate). Without reset: the 8.0 GT/s datapath has its own (fanout).
+            self.cd_pcie_g3 = ClockDomain(reset_less=True)
 
         # # #
 
@@ -119,4 +120,3 @@ class S7PCIeClocking(LiteXModule):
                 i_IGNORE1 = 0,
                 o_O       = self.cd_pcie_g3.clk,
             )
-            add_reset(self.cd_pcie_g3, "pcie_g3_rst", ~mmcm.locked)
