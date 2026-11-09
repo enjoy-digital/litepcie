@@ -66,6 +66,13 @@ class TestSoftPHYTransceivers(unittest.TestCase):
             r"\.QPLL0_FBDIV\s*\(\d+'d100\)", r"\.RXELECIDLEMODE\s*\(1'd0\)"]:
             self.assertRegex(verilog, attribute)
 
+    def test_kintex_usp_rate_change_ports(self):
+        # Gen2 on the GTY: divider 2 (TXRATE/RXRATE 010) at 5.0 GT/s.
+        gen2 = self.elaborate("xcku3p-ffvb676-2-e", speed="gen2")
+        self.assertRegex(gen2, r"\.TXRATE\s*\(\(\w+ \? 2'd2 : 1'd0\)\)")
+        self.assertRegex(gen2, r"\.RXRATE\s*\(\(\w+ \? 2'd2 : 1'd0\)\)")
+        self.assertRegex(gen2, r"\.TXRATEDONE\s*\(\w+\)")
+
     def test_unsupported_device(self):
         with self.assertRaises(NotImplementedError):
             self.elaborate("xcku040-ffva1156-2")

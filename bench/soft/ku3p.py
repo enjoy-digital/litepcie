@@ -126,7 +126,7 @@ def main():
     parser.add_argument("--build",           action="store_true", help="Build bitstream.")
     parser.add_argument("--with-endpoint",   action="store_true", help="Full LitePCIe endpoint (SoftPCIEPHY, MMAP, DMA, MSI).")
     parser.add_argument("--ltssm-autostart", action="store_true", help="LTSSM enabled at reset, not disabled by PERST#.")
-    parser.add_argument("--speed",           default="gen1", choices=["gen1"], help="Soft PHY maximum speed.")
+    parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2"], help="Soft PHY maximum speed.")
     parser.add_argument("--nlanes",          default=1, type=int, choices=[1], help="Lanes.")
     parser.add_argument("--driver",          action="store_true", help="Generate the PCIe driver.")
     parser.add_argument("--output-dir",      default="build/soft_ku3p", help="Build directory.")
