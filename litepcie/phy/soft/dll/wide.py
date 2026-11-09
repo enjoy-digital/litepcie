@@ -358,7 +358,8 @@ class TLPRepacker(LiteXModule):
     (with a beat, in order): the buffer is dropped, and the slots up to the next TLP start ignored.
 
     The DWs stay in place in a ring buffer: what is written doesn't depend on what is read (timing),
-    and the output beats are registered."""
+    and the output beats are registered. The buffer is in ndw banks (position modulo ndw) of depth/ndw rows:
+    a beat writes a DW at most per bank, and the DWs read are a row per bank, rotated (area)."""
     def __init__(self, ndw, depth=None):
         self.sink_en    = Signal()    # i: beat present.
         self.sink_ready = Signal()    # o
@@ -379,7 +380,13 @@ class TLPRepacker(LiteXModule):
         fields = dict(data=(0, 32), first=(32, 1), last=(33, 1), edb=(34, 1), seq=(35, 12))
         width  = 47
         field  = lambda s, name: s[fields[name][0]:fields[name][0] + fields[name][1]]
-        buf    = [Signal(width, reset_less=True) for _ in range(depth)]
+        assert depth % ndw == 0 and 2**log2_int(depth, need_pow2=False) == depth
+        nb     = ndw
+        lb     = log2_int(nb)
+        rows   = depth//nb
+        banks  = [[Signal(width, reset_less=True) for _ in range(rows)] for _ in range(nb)]
+        bank_lo = lambda p: p[:lb] if lb else 0
+        bank_hi = lambda p: p[lb:adr] if rows > 1 else 0
         wr     = Signal(adr + 1)
         rd     = Signal(adr + 1)
         used   = Signal(adr + 1)
@@ -417,20 +424,36 @@ class TLPRepacker(LiteXModule):
             dropping_c, offset_c = dropping_n, offset_n
         self.sync += total.eq(Mux(self.flush, 0, offset_c))
 
-        # Write.
+        # Write: a DW at most per bank, the bank's source selected one-hot.
+        positions = [Signal(adr) for _ in range(ndw)]
         for i in range(ndw):
-            position = Signal(adr)
-            self.comb += position.eq(wr[:adr] + offsets[i])
-            self.sync += If(valids[i],
-                Case(position, {j: buf[j].eq(entries[i]) for j in range(depth)})
+            self.comb += positions[i].eq(wr[:adr] + offsets[i])
+        for b in range(nb):
+            sel  = Signal(ndw)
+            data = Signal(width)
+            row  = Signal(max(log2_int(rows), 1))
+            self.comb += [
+                sel.eq(Cat(*[valids[i] & ((bank_lo(positions[i]) == b) if lb else 1) for i in range(ndw)])),
+                data.eq(Reduce("OR", [Replicate(sel[i], width) & entries[i] for i in range(ndw)])),
+                row.eq(Reduce("OR", [Replicate(sel[i], len(row)) & bank_hi(positions[i]) for i in range(ndw)])),
+            ]
+            self.sync += If(sel != 0,
+                Case(row, {r: banks[b][r].eq(data) for r in range(rows)})
             )
 
         # Read: up to the end of the TLP or a full beat.
-        # Read index of each DW (rd + i) kept in its own register: no adder, and less fanout on rd (timing).
-        head    = [Signal(width) for _ in range(ndw)]
-        indexes = [Signal(adr, reset=i % depth) for i in range(ndw)]
+        # The DWs at rd..rd+ndw-1: a row per bank (the one of the position in that window), then a rotation.
+        # Row of each bank and bank of each DW kept in their own registers: no adder, and less fanout on rd
+        # (timing).
+        head      = [Signal(width) for _ in range(ndw)]
+        bank_out  = [Signal(width) for _ in range(nb)]
+        bank_rows = [Signal(max(log2_int(rows), 1)) for _ in range(nb)]
+        indexes   = [Signal(max(lb, 1), reset=i) for i in range(ndw)]
+        for b in range(nb):
+            self.comb += Case(bank_rows[b], {r: bank_out[b].eq(banks[b][r]) for r in range(rows)})
         for i in range(ndw):
-            self.comb += Case(indexes[i], {j: head[i].eq(buf[j]) for j in range(depth)})
+            self.comb += Case(indexes[i], {b: head[i].eq(bank_out[b]) for b in range(nb)}) if lb else head[i].eq(bank_out[0])
+        rd_next = Signal(adr + 1)
         lasts = [field(head[i], "last") for i in range(ndw)]
         count = Signal(max=ndw + 1)
         count_case = count.eq(ndw)
@@ -440,21 +463,24 @@ class TLPRepacker(LiteXModule):
         out_avail = (used >= ndw) | ((used >= count) & (used != 0))
         take      = Signal()
         self.comb += take.eq(out_avail & (~source.valid | source.ready))
+        self.comb += rd_next.eq(rd + count)
         self.comb += self.flushed.eq(beat & self.flush)
         self.sync += [
             If(source.ready, source.valid.eq(0)),
             If(self.flushed,
                 wr.eq(0),
                 rd.eq(0),
-                *[indexes[i].eq(i % depth) for i in range(ndw)],
+                *[indexes[i].eq(i) for i in range(ndw)],
+                *[bank_rows[b].eq(0) for b in range(nb)],
                 dropping.eq(1),
                 source.valid.eq(0),
             ).Else(
                 If(beat, dropping.eq(dropping_c)),
                 wr.eq(wr + total),
                 If(take,
-                    rd.eq(rd + count),
+                    rd.eq(rd_next),
                     *[indexes[i].eq(indexes[i] + count) for i in range(ndw)],
+                    *[bank_rows[b].eq(bank_hi(rd_next) + (b < bank_lo(rd_next))) for b in range(nb)],
                     source.valid.eq(1),
                 )
             ),
