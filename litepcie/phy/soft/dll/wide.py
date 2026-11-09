@@ -359,7 +359,8 @@ class TLPRepacker(LiteXModule):
 
     The DWs stay in place in a ring buffer: what is written doesn't depend on what is read (timing),
     and the output beats are registered. The buffer is in ndw banks (position modulo ndw) of depth/ndw rows:
-    a beat writes a DW at most per bank, and the DWs read are a row per bank, rotated (area)."""
+    the DWs of a beat compacted then rotated to their banks (a DW at most per bank), the DWs read a row per
+    bank, rotated back (area: shifts of log2(ndw) stages)."""
     def __init__(self, ndw, depth=None):
         self.sink_en    = Signal()    # i: beat present.
         self.sink_ready = Signal()    # o
@@ -396,14 +397,14 @@ class TLPRepacker(LiteXModule):
             self.sink_ready.eq(used + 2*ndw <= depth),
         ]
 
-        # Input stage: valid slots and their offset from the write position, which don't depend on it
-        # (timing). While dropping, the slots of a beat are ignored up to the first TLP start.
+        # Input stage: valid slots and their distance to their place once compacted, which don't depend on the
+        # write position (timing). While dropping, the slots of a beat are ignored up to the first TLP start.
         beat       = self.sink_en & self.sink_ready
         dropping   = Signal()
         dropping_c = dropping
         offset_c   = Constant(0, bits_for(ndw))
         valids     = [Signal() for _ in range(ndw)]
-        offsets    = [Signal(bits_for(ndw), reset_less=True) for _ in range(ndw)]
+        dists      = [Signal(max(lb, 1), reset_less=True) for _ in range(ndw)]
         total      = Signal(bits_for(ndw))
         entries    = [Signal(width, reset_less=True) for _ in range(ndw)]
         for i in range(ndw):
@@ -417,42 +418,68 @@ class TLPRepacker(LiteXModule):
             ]
             self.sync += [
                 valids[i].eq(valid & ~self.flush),
-                offsets[i].eq(offset_c),
+                dists[i].eq(i - offset_c),
                 entries[i].eq(Cat(self.sink_data[32*i:32*(i+1)], self.sink_first[i], self.sink_last[i],
                     self.sink_edb[i], self.sink_seq[12*i:12*(i+1)])),
             ]
             dropping_c, offset_c = dropping_n, offset_n
         self.sync += total.eq(Mux(self.flush, 0, offset_c))
 
-        # Write: a DW at most per bank, the bank's source selected one-hot.
-        positions = [Signal(adr) for _ in range(ndw)]
-        for i in range(ndw):
-            self.comb += positions[i].eq(wr[:adr] + offsets[i])
+        # Write: the valid DWs compacted (each one moved down by its distance, a stage per bit from the LSB:
+        # no two DWs meet), then rotated by the write position: DW r to bank (wr + r) modulo nb, in the row
+        # of wr, the next one for the banks below wr's.
+        cv, cd, ce = valids, dists, entries
+        for k in range(lb):
+            step = 1 << k
+            nv = [Signal() for _ in range(ndw)]
+            nd = [Signal(max(lb, 1)) for _ in range(ndw)]
+            ne = [Signal(width) for _ in range(ndw)]
+            for i in range(ndw):
+                stay = cv[i] & ~cd[i][k]
+                move = (cv[i + step] & cd[i + step][k]) if i + step < ndw else 0
+                self.comb += [
+                    nv[i].eq(stay | move),
+                    nd[i].eq(cd[i + step] if i + step < ndw else cd[i]),
+                    ne[i].eq(ce[i + step] if i + step < ndw else ce[i]),
+                    If(stay,
+                        nd[i].eq(cd[i]),
+                        ne[i].eq(ce[i]),
+                    )
+                ]
+            cv, cd, ce = nv, nd, ne
+        wr_lo = bank_lo(wr)
+        for k in range(lb):
+            step = 1 << k
+            nv = [Signal() for _ in range(ndw)]
+            ne = [Signal(width) for _ in range(ndw)]
+            for i in range(ndw):
+                self.comb += [
+                    nv[i].eq(Mux(wr_lo[k], cv[(i - step) % ndw], cv[i])),
+                    ne[i].eq(Mux(wr_lo[k], ce[(i - step) % ndw], ce[i])),
+                ]
+            cv, ce = nv, ne
         for b in range(nb):
-            sel  = Signal(ndw)
-            data = Signal(width)
-            row  = Signal(max(log2_int(rows), 1))
-            self.comb += [
-                sel.eq(Cat(*[valids[i] & ((bank_lo(positions[i]) == b) if lb else 1) for i in range(ndw)])),
-                data.eq(Reduce("OR", [Replicate(sel[i], width) & entries[i] for i in range(ndw)])),
-                row.eq(Reduce("OR", [Replicate(sel[i], len(row)) & bank_hi(positions[i]) for i in range(ndw)])),
-            ]
-            self.sync += If(sel != 0,
-                Case(row, {r: banks[b][r].eq(data) for r in range(rows)})
+            row = Signal(max(log2_int(rows), 1))
+            self.comb += row.eq(bank_hi(wr) + ((b < wr_lo) if lb else 0))
+            self.sync += If(cv[b],
+                Case(row, {r: banks[b][r].eq(ce[b]) for r in range(rows)})
             )
 
         # Read: up to the end of the TLP or a full beat.
-        # The DWs at rd..rd+ndw-1: a row per bank (the one of the position in that window), then a rotation.
-        # Row of each bank and bank of each DW kept in their own registers: no adder, and less fanout on rd
-        # (timing).
-        head      = [Signal(width) for _ in range(ndw)]
+        # The DWs at rd..rd+ndw-1: a row per bank (the one of the position in that window, kept in a register:
+        # no adder), then rotated by rd.
         bank_out  = [Signal(width) for _ in range(nb)]
         bank_rows = [Signal(max(log2_int(rows), 1)) for _ in range(nb)]
-        indexes   = [Signal(max(lb, 1), reset=i) for i in range(ndw)]
         for b in range(nb):
             self.comb += Case(bank_rows[b], {r: bank_out[b].eq(banks[b][r]) for r in range(rows)})
-        for i in range(ndw):
-            self.comb += Case(indexes[i], {b: head[i].eq(bank_out[b]) for b in range(nb)}) if lb else head[i].eq(bank_out[0])
+        rd_lo = bank_lo(rd)
+        head  = bank_out
+        for k in range(lb):
+            step = 1 << k
+            nh = [Signal(width) for _ in range(ndw)]
+            for i in range(ndw):
+                self.comb += nh[i].eq(Mux(rd_lo[k], head[(i + step) % ndw], head[i]))
+            head = nh
         rd_next = Signal(adr + 1)
         lasts = [field(head[i], "last") for i in range(ndw)]
         count = Signal(max=ndw + 1)
@@ -470,7 +497,6 @@ class TLPRepacker(LiteXModule):
             If(self.flushed,
                 wr.eq(0),
                 rd.eq(0),
-                *[indexes[i].eq(i) for i in range(ndw)],
                 *[bank_rows[b].eq(0) for b in range(nb)],
                 dropping.eq(1),
                 source.valid.eq(0),
@@ -479,7 +505,6 @@ class TLPRepacker(LiteXModule):
                 wr.eq(wr + total),
                 If(take,
                     rd.eq(rd_next),
-                    *[indexes[i].eq(indexes[i] + count) for i in range(ndw)],
                     *[bank_rows[b].eq(bank_hi(rd_next) + (b < bank_lo(rd_next))) for b in range(nb)],
                     source.valid.eq(1),
                 )
