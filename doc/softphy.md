@@ -1,6 +1,6 @@
 # Soft PCIe PHY
 
-Status: work in progress, started November 2026. Gen1 and Gen2 run up to x8 on a Kintex-7 GTX board, Gen1 x1 on a
+Status: work in progress, started November 2026. Gen1 and Gen2 run up to x8 on a Kintex-7 GTX board, Gen1 and Gen2 x1 on a
 Kintex UltraScale+ GTY board (see the hardware results). The status table is updated with each pull request.
 
 ## Why
@@ -109,7 +109,7 @@ Clock domains:
 | M8 | Robustness, lane reversal, LiteX-Boards | Not started |
 | M10 | 8.0 GT/s: 128b/130b lane blocks | `gen3.py`: scrambler checked against the table of the specification, gearboxes, Block alignment, framing Tokens (on a DW only). Near-end loopback on the GTX at 8 GT/s (`bench/soft/ypcb_gen3.py`), see the hardware results |
 | M11 | 8.0 GT/s link: LTSSM, equalization, `SoftPCIEPHY(speed="gen3")` | Verilator simulation x2/x4/x8 (`sim_wide.py --phy --gen3`, `sim_soc.py --gen3` up to the 512-bit LitePCIe path), fallback to 2.5 GT/s. GTX run-time PLL switch built, **no 8 GT/s link with a host yet**, see "8.0 GT/s" |
-| M9 | Other transceivers, soft root port | UltraScale+ GTY (`serdes/gty_ultrascale.py`, Kintex UltraScale+ KU3P/KU5P): Gen1 x1 on hardware, see the hardware results. Gen2, 8.0 GT/s and multi-lane not yet on the GTY. Soft root port not started |
+| M9 | Other transceivers, soft root port | UltraScale+ GTY (`serdes/gty_ultrascale.py`, Kintex UltraScale+ KU3P/KU5P): Gen1 and Gen2 x1 on hardware, see the hardware results. 8.0 GT/s and multi-lane not yet on the GTY. Soft root port not started |
 
 ## Verification
 
@@ -216,19 +216,19 @@ The Artix-7 GTP path has not been run on hardware yet, Gen2 and multi-lane inclu
 Alibaba Cloud KU3P board (`xcku3p-ffvb676-2-e`, GTY) on Lane 0 in the x16 slot of a PC, `bench/soft/ku3p.py
 --with-endpoint`, against the hard IP of the same board (`litex_boards.targets.alibaba_xcku3p --with-pcie`):
 
-| | Soft (2.5 GT/s x1) | Hard IP (8 GT/s x8) |
-|---|---:|---:|
-| Enumeration | Yes (rescan, LTSSM enabled after boot) | Yes (at boot) |
-| `scratch_test` over BAR0 | OK | OK |
-| MSI | OK | OK |
-| `dma_test` loopback | 1.72 Gb/s, 0 errors | 9.45 Gb/s, 0 errors |
-| 15 min soak | 1.718 Gb/s, 0 errors, no "too late" | not run |
-| 20 link cycles (enumeration, scratch, DMA) | 20/20, trained in 10 ms or less | not run |
-| CLB LUTs | 9465 | not compared |
-| Setup WNS | 1.104 ns | 0.421 ns |
+| | Soft (2.5 GT/s x1) | Soft (5 GT/s x1) | Hard IP (8 GT/s x8) |
+|---|---:|---:|---:|
+| Enumeration | Yes (rescan, LTSSM enabled after boot) | Yes (rescan) | Yes (at boot) |
+| `scratch_test` over BAR0 | OK | OK | OK |
+| MSI | OK | OK | OK |
+| `dma_test` loopback | 1.72 Gb/s, 0 errors | 3.39 Gb/s, 0 errors | 9.45 Gb/s, 0 errors |
+| 15 min soak | 1.718 Gb/s, 0 errors, no "too late" | 3.393 Gb/s, 0 errors, no "too late" | not run |
+| 20 link cycles (enumeration, scratch, DMA) | 20/20, trained in 10 ms or less | 20/20 at 5 GT/s | not run |
+| CLB LUTs | 9465 | 9825 | not compared |
+| Setup WNS | 1.104 ns | 0.804 ns | 0.421 ns |
 
 - Transceivers: one Quad PLL0 at 10 GHz per quad (output divider 4 at 2.5 GT/s, the rate ports select divider
-  2 at 5.0 GT/s), which avoids the Channel PLL calibration the GTY needs. 40-bit words with 8b/10b in the
+  2 at 5.0 GT/s), which avoids the Channel PLL calibration the GTY needs. The host moves the link to 5 GT/s at once, as on the GTX. 40-bit words with 8b/10b in the
   fabric and the TX/RX buffers on, as on the GTX. The PCIe and line-rate dependent attributes come from the
   Xilinx UltraScale+ PCIe GTY wrapper (same PLL frequency), with its PCS PCIe mode off.
 - Clocking: `IBUFDS_GTE4` divided output through a `BUFG_GT` to an `MMCME4`, the same clock domains as on 7-Series.
