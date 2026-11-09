@@ -67,7 +67,7 @@ class SoftPHYDebug(LiteXModule, AutoCSR):
                 CSRField("snapshot", size=1, offset=1, pulse=True, description="Capture the raw words of Lane 0 (g3_raw_tx/g3_raw_rx)."),
                 CSRField("eidle",    size=1, offset=2, description="Use the transceivers' Electrical Idle detection at 8.0 GT/s."),
                 CSRField("trace",    size=1, offset=3, pulse=True, description="Start the rate trace (g3_trace_*)."),
-                CSRField("lpm",      size=1, offset=4, description="LPM receive equalizer at 8.0 GT/s (DFE otherwise)."),
+                CSRField("lpm",      size=1, offset=4, reset=getattr(serdes, "gen3_lpm_default", 0), description="LPM receive equalizer at 8.0 GT/s (DFE otherwise, reset: the transceiver's default)."),
                 CSRField("capture",  size=1, offset=5, pulse=True, description="Arm the raw capture of Lane 0 (g3_capture_*)."),
                 CSRField("xyden",    size=1, offset=6, description="DFE XYD adaptation at 8.0 GT/s (RXDFEXYDEN, off in the Xilinx wrapper)."),
             ])

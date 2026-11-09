@@ -156,7 +156,10 @@ class USPPCIeSerDes(S7PCIeSerDes):
         if not hasattr(self, "gen3_locks"):
             self.gen3_locks = []
             self.drp_dones  = []
-            self.gen3_lpm   = Signal()
+            # LPM by default at 8.0 GT/s: with DFE the receivers sometimes got no Block lock after a speed change
+            # without equalization (5.0/2.5 to 8.0 GT/s, KU3P in a PC: 52 of 60 against 60 of 60 with LPM).
+            self.gen3_lpm_default = 1
+            self.gen3_lpm   = Signal(reset=self.gen3_lpm_default)
             self.gen3_eidle = Signal()
             self.gen3_xyden = Signal()
             self._drp_sel   = CSRStorage(description="DRP of the transceivers from the CSRs (drp_control*) when set.")
@@ -241,7 +244,7 @@ class USPPCIeSerDes(S7PCIeSerDes):
             i_RXPLLCLKSEL    = Mux(rs.pll_sel, 0b10, 0b11),
             i_TXPMARESET     = rs.pma_reset,
             i_RXPMARESET     = rs.pma_reset,
-            # Receive equalizer: LPM at 2.5/5.0 GT/s, DFE at 8.0 GT/s (as the Xilinx wrapper), LPM with gen3_lpm.
+            # Receive equalizer: LPM at 2.5/5.0 GT/s, at 8.0 GT/s LPM (gen3_lpm, default) or DFE (the Xilinx wrapper's).
             # Electrical Idle inferred at 8.0 GT/s (see lanes.py), the transceiver's with gen3_eidle (debug).
             i_RXELECIDLEMODE = Mux(rs.pll_sel & ~self.gen3_eidle, 0b11, 0b00),
             i_RXLPMEN        = ~rs.pll_sel | self.gen3_lpm,
