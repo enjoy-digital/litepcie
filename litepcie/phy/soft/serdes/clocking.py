@@ -4,10 +4,10 @@
 # Copyright (c) 2026 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Soft PCIe PHY clocking on Xilinx 7-Series.
+"""Soft PCIe PHY clocking on Xilinx 7-Series and UltraScale+.
 
-The 100 MHz PCIe reference clock from the slot feeds the transceivers PLL (IBUFDS_GTE2) and, through
-the buffer's divided output, an MMCM generating the fixed clocks ("pcie_link" 125 MHz, "pcie_oob"
+The 100 MHz PCIe reference clock from the slot feeds the transceivers PLL (IBUFDS_GTE2, IBUFDS_GTE4 on
+UltraScale+) and, through the buffer's divided output (and a BUFG_GT on UltraScale+), an MMCM generating the fixed clocks ("pcie_link" 125 MHz, "pcie_oob"
 50 MHz for the Electrical Idle detection) and the two lane clocks (62.5 MHz for 2.5 GT/s, 125 MHz for
 5.0 GT/s) switched by a glitch-free BUFGCTRL into "pcie_pipe" with the rate. With gen3, a second BUFGCTRL
 gives "pcie_g3": "pcie_pipe" at 2.5/5.0 GT/s, 200 MHz at 8.0 GT/s (the transmit clock of the transceivers and
@@ -23,12 +23,12 @@ from migen.genlib.resetsync import AsyncResetSynchronizer
 
 from litex.gen import *
 
-from litex.soc.cores.clock import S7MMCM
+from litex.soc.cores.clock import S7MMCM, USPMMCM
 
 # S7 PCIe Clocking ---------------------------------------------------------------------------------
 
 class S7PCIeClocking(LiteXModule):
-    def __init__(self, refclk_p, refclk_n, refclk_freq=100e6, reset=0, speedgrade=-1, gen3=False):
+    def __init__(self, refclk_p, refclk_n, refclk_freq=100e6, reset=0, speedgrade=-1, gen3=False, usp=False):
         self.refclk       = Signal()      # o: transceivers reference clock (GTREFCLK).
         self.rate         = Signal(2)     # i ("pcie_link"): 0: 2.5 GT/s, 1: 5.0 GT/s, 2: 8.0 GT/s.
         self.locked       = Signal()      # o
@@ -46,21 +46,42 @@ class S7PCIeClocking(LiteXModule):
         # Reference clock buffer: O to the transceivers, ODIV2 (50 MHz) to the fabric.
         refclk_div2      = Signal()
         refclk_div2_bufg = Signal()
-        self.specials += [
-            Instance("IBUFDS_GTE2",
-                i_CEB   = 0,
-                i_I     = refclk_p,
-                i_IB    = refclk_n,
-                o_O     = self.refclk,
-                o_ODIV2 = refclk_div2,
-            ),
-            Instance("BUFG", i_I=refclk_div2, o_O=refclk_div2_bufg),
-        ]
+        if usp:
+            self.specials += [
+                Instance("IBUFDS_GTE4",
+                    p_REFCLK_HROW_CK_SEL = 0b01, # ODIV2: O/2.
+                    i_CEB   = 0,
+                    i_I     = refclk_p,
+                    i_IB    = refclk_n,
+                    o_O     = self.refclk,
+                    o_ODIV2 = refclk_div2,
+                ),
+                Instance("BUFG_GT",
+                    i_I       = refclk_div2,
+                    i_CE      = 1,
+                    i_CEMASK  = 0,
+                    i_CLR     = 0,
+                    i_CLRMASK = 0,
+                    i_DIV     = 0,
+                    o_O       = refclk_div2_bufg,
+                ),
+            ]
+        else:
+            self.specials += [
+                Instance("IBUFDS_GTE2",
+                    i_CEB   = 0,
+                    i_I     = refclk_p,
+                    i_IB    = refclk_n,
+                    o_O     = self.refclk,
+                    o_ODIV2 = refclk_div2,
+                ),
+                Instance("BUFG", i_I=refclk_div2, o_O=refclk_div2_bufg),
+            ]
 
         # MMCM.
         self.cd_pcie_pipe_gen1 = ClockDomain() # 62.5 MHz (unbuffered MMCM output).
         self.cd_pcie_pipe_gen2 = ClockDomain() # 125 MHz (unbuffered MMCM output).
-        self.mmcm = mmcm = S7MMCM(speedgrade=speedgrade)
+        self.mmcm = mmcm = (USPMMCM if usp else S7MMCM)(speedgrade=speedgrade)
         self.comb += mmcm.reset.eq(reset)
         mmcm.register_clkin(refclk_div2_bufg, refclk_freq/2)
         mmcm.create_clkout(self.cd_pcie_link,      125e6, with_reset=False)
