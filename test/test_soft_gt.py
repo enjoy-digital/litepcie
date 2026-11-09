@@ -4,6 +4,7 @@
 # Copyright (c) 2026 Florent Kermarrec <florent@enjoy-digital.fr>
 # SPDX-License-Identifier: BSD-2-Clause
 
+import re
 import unittest
 
 from migen import *
@@ -69,9 +70,18 @@ class TestSoftPHYTransceivers(unittest.TestCase):
     def test_kintex_usp_rate_change_ports(self):
         # Gen2 on the GTY: divider 2 (TXRATE/RXRATE 010) at 5.0 GT/s.
         gen2 = self.elaborate("xcku3p-ffvb676-2-e", speed="gen2")
-        self.assertRegex(gen2, r"\.TXRATE\s*\(\(\w+ \? 2'd2 : 1'd0\)\)")
-        self.assertRegex(gen2, r"\.RXRATE\s*\(\(\w+ \? 2'd2 : 1'd0\)\)")
+        self.assertRegex(gen2, r"\.TXRATE\s*\(\(\(\w+ == 2'd2\) \? 1'd1 : \(\(\w+ == 1'd1\) \? 2'd2 : 1'd0\)\)\)")
+        self.assertRegex(gen2, r"\.RXRATE\s*\(\(\(\w+ == 2'd2\) \? 1'd1 : \(\(\w+ == 1'd1\) \? 2'd2 : 1'd0\)\)\)")
         self.assertRegex(gen2, r"\.TXRATEDONE\s*\(\w+\)")
+
+    def test_kintex_usp_gen3(self):
+        # 8.0 GT/s on the GTY: Quad PLL1 at 8 GHz in the quad's GTYE4_COMMON, PLL selection by the rate sequencer.
+        gen3 = self.elaborate("xcku3p-ffvb676-2-e", speed="gen3")
+        self.assertEqual(len(re.findall(r"^GTYE4_COMMON #", gen3, re.M)), 1)
+        self.assertRegex(gen3, r"\.QPLL1_FBDIV\s*\(\d+'d80\)")
+        self.assertRegex(gen3, r"\.QPLL1PD\s*\(1'd0\)")
+        self.assertRegex(gen3, r"\.TXSYSCLKSEL\s*\(\(\w+ \? 2'd3 : 2'd2\)\)")
+        self.assertRegex(gen3, r"\.TXRATE\s*\(\(\(\w+ == 2'd2\) \? 1'd1 : ")
 
     def test_unsupported_device(self):
         with self.assertRaises(NotImplementedError):
