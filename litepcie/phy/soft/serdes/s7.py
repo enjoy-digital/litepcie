@@ -430,13 +430,14 @@ class S7PCIeSerDes(PCIeSerDes):
                     o_TXRATEDONE = tx_rate_done,
                     o_RXRATEDONE = rx_rate_done,
                 )
-                # Rate done pulses to "pcie_link", remembered until all lanes reported.
+                # Rate done pulses to "pcie_link", remembered until all lanes reported. Only the ones once the rate
+                # is applied (GT): a PMA reset or a PLL change before it (8.0 GT/s) can give one as well.
                 for pulse, cd in [(tx_rate_done, tx_cd), (rx_rate_done, rx_cd)]:
                     ps   = PulseSynchronizer(cd, "pcie_link")
                     seen = Signal()
                     self.submodules += ps
                     self.comb += ps.i.eq(pulse)
-                    self.sync.pcie_link += If(ps.o, seen.eq(1)).Elif(rate_sequencer.fsm.ongoing("CLOCK"), seen.eq(0))
+                    self.sync.pcie_link += If(~rate_sequencer.fsm.ongoing("GT"), seen.eq(0)).Elif(ps.o, seen.eq(1))
                     rate_dones.append(seen)
             if gen3:
                 params.update(self.add_gen3_lane(i, gt, lane, tx_cd, rx_cd, rxcdr_cfg))
