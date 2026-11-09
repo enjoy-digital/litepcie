@@ -78,6 +78,9 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
                 from litepcie.phy.soft.serdes.gtx_7series import K7PCIeSerDes as SerDes
             elif platform.device.startswith("xc7a"):
                 from litepcie.phy.soft.serdes.gtp_7series import A7PCIeSerDes as SerDes
+            elif platform.device.startswith(("xcku3p", "xcku5p")):
+                # Kintex UltraScale+ with GTY transceivers only.
+                from litepcie.phy.soft.serdes.gty_ultrascale import USPPCIeSerDes as SerDes
             else:
                 raise NotImplementedError(f"No soft PCIe PHY transceiver support for {platform.device}.")
             serdes = SerDes(platform, pads, sys_clk_freq=phy_kwargs.pop("sys_clk_freq", 125e6),
