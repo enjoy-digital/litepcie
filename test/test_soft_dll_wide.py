@@ -98,6 +98,72 @@ class TestSoftDLLWide(unittest.TestCase):
                 self.assertEqual(tlps, exp_t)
                 self.assertEqual(dllps, exp_d)
 
+    def test_rx_framer_select_8b10b_half_width(self):
+        # Gen3-capable link at 2.5/5.0 GT/s: the 8b/10b framer at half the width, beats split in two (input
+        # back to back here: back-pressure), TLPs and DLLPs as with a full width framer.
+        from litepcie.phy.soft.dll.wide import RXFramerSelect
+        for ndw in [4, 8, 16]:
+            with self.subTest(ndw=ndw):
+                rng     = random.Random(100 + ndw)
+                symbols = []
+                exp_t, exp_d = [], []
+                for i in range(80):
+                    if rng.random() < 0.3:
+                        dllp = [rng.randrange(256) for _ in range(6)]
+                        exp_d.append(dllp)
+                        symbols += dllp_symbols(dllp)
+                    else:
+                        dws  = random_dws(rng, rng.randrange(3, 40))
+                        lcrc = rng.getrandbits(32)
+                        exp_t.append(dict(seq=i, dws=dws + [list(lcrc.to_bytes(4, "little"))], edb=0))
+                        symbols += tlp_symbols(i, dws, lcrc)
+                    if rng.random() < 0.3:
+                        symbols += [(0, 0)]*(4*rng.randrange(1, 4))
+                dut   = RXFramerSelect(ndw)
+                beats = to_beats(symbols, ndw) + [(0, 0)]*8
+                tlps, dllps, errors = [], [], []
+                done  = [False]
+                def generator():
+                    yield dut.gen3.eq(0)
+                    for data, ctrl in beats:
+                        yield dut.sink.valid.eq(1)
+                        yield dut.sink.data.eq(data)
+                        yield dut.sink.ctrl.eq(ctrl)
+                        yield
+                        while not (yield dut.sink.ready):
+                            yield
+                    yield dut.sink.valid.eq(0)
+                    for _ in range(512):
+                        yield
+                    done[0] = True
+                def monitor():
+                    cur = None
+                    while not done[0]:
+                        if (yield dut.tlp.valid):
+                            data = (yield dut.tlp.data)
+                            n    = (yield dut.tlp.dws)
+                            if (yield dut.tlp.first):
+                                cur = dict(seq=(yield dut.tlp.seq), dws=[])
+                            cur["dws"] += [[(data >> (32*i + 8*j)) & 0xff for j in range(4)] for i in range(n)]
+                            if (yield dut.tlp.last):
+                                cur["edb"] = (yield dut.tlp.edb)
+                                tlps.append(cur)
+                                cur = None
+                            elif n != ndw:
+                                partial.append(n) # Beats are full but the last one of a TLP.
+                        if (yield dut.dllp_valid):
+                            value = (yield dut.dllp)
+                            dllps.append([(value >> (8*j)) & 0xff for j in range(6)])
+                        if (yield dut.error):
+                            errors.append(1)
+                        yield
+                partial = []
+                run_simulation(dut, [generator(), monitor()])
+                self.assertEqual(errors, [])
+                self.assertEqual(partial, [])
+                self.assertEqual(tlps, exp_t)
+                self.assertEqual(dllps, exp_d)
+
     def test_rx_framer_edb(self):
         tlps, dllps, errors = run_rx(4, tlp_symbols(5, random_dws(random.Random(1), 3), edb=True))
         self.assertEqual(errors, [])

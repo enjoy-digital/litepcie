@@ -640,6 +640,92 @@ class WideLCRC(LiteXModule):
 
 # Framers of both encodings --------------------------------------------------------------------------
 
+class _BeatSplitter(LiteXModule):
+    """Lane words of ndw DWs to two words of ndw//2 DWs (low half first), with back-pressure."""
+    def __init__(self, ndw):
+        h = ndw//2
+        self.sink   = sink   = stream.Endpoint(lane_layout(4*ndw))
+        self.source = source = stream.Endpoint(lane_layout(4*h))
+
+        # # #
+
+        data  = Signal(32*ndw, reset_less=True)
+        ctrl  = Signal(4*ndw,  reset_less=True)
+        valid = Signal()
+        upper = Signal()
+        load  = Signal()
+        self.comb += [
+            source.valid.eq(valid),
+            source.data.eq(Mux(upper, data[32*h:], data[:32*h])),
+            source.ctrl.eq(Mux(upper, ctrl[4*h:],  ctrl[:4*h])),
+            # A new word when empty or when the upper half goes out.
+            sink.ready.eq(~valid | (upper & source.ready)),
+            load.eq(sink.valid & sink.ready),
+        ]
+        self.sync += [
+            If(load,
+                data.eq(sink.data),
+                ctrl.eq(sink.ctrl),
+                valid.eq(1),
+                upper.eq(0),
+            ).Elif(valid & source.ready,
+                If(upper,
+                    valid.eq(0),
+                ).Else(
+                    upper.eq(1),
+                )
+            )
+        ]
+
+class _TLPBeatCombiner(LiteXModule):
+    """TLP beats of h DWs to beats of 2*h DWs, full but the last one as the Data Link Layer expects: a beat that
+    isn't the last of its TLP (so full) waits for the next one. abort (Pulse): the TLP being received is
+    dropped, a beat waiting too."""
+    def __init__(self, h):
+        self.sink   = sink   = stream.Endpoint(tlp_beat_layout(h))
+        self.source = source = stream.Endpoint(tlp_beat_layout(2*h))
+        self.abort  = Signal()
+
+        # # #
+
+        self.comb += sink.ready.eq(1)
+        pend      = Signal()
+        pend_data = Signal(32*h, reset_less=True)
+        pend_seq  = Signal(12,   reset_less=True)
+        pend_first = Signal(reset_less=True)
+        self.sync += [
+            source.valid.eq(0),
+            If(self.abort,
+                pend.eq(0),
+            ).Elif(sink.valid,
+                If(pend,
+                    # Second half: after the waiting one.
+                    source.valid.eq(1),
+                    source.first.eq(pend_first),
+                    source.last.eq(sink.last),
+                    source.data.eq(Cat(pend_data, sink.data)),
+                    source.dws.eq(h + sink.dws),
+                    source.seq.eq(pend_seq),
+                    source.edb.eq(sink.edb),
+                    pend.eq(0),
+                ).Elif(sink.last,
+                    # Last beat of its TLP: alone.
+                    source.valid.eq(1),
+                    source.first.eq(sink.first),
+                    source.last.eq(1),
+                    source.data.eq(sink.data),
+                    source.dws.eq(sink.dws),
+                    source.seq.eq(sink.seq),
+                    source.edb.eq(sink.edb),
+                ).Else(
+                    pend.eq(1),
+                    pend_data.eq(sink.data),
+                    pend_seq.eq(sink.seq),
+                    pend_first.eq(sink.first),
+                )
+            )
+        ]
+
 class RXFramerSelect(LiteXModule):
     """8b/10b (WideRXFramer) and 8.0 GT/s (Gen3RXFramer) framers, the one of the rate selected by gen3 (the
     other one held in reset). Same interface as a framer. x1/x2 at 8.0 GT/s: Tokens on DWs for Gen3RXFramer
@@ -656,13 +742,32 @@ class RXFramerSelect(LiteXModule):
 
         # # #
 
-        self.f8 = f8 = ResetInserter()(WideRXFramer(ndw))
+        # 8b/10b at half the width: at 2.5/5.0 GT/s a lane carries a DW per cycle, half the 8.0 GT/s width (the
+        # beats come at most every other cycle): beats split in two halves, TLP beats of ndw//2 DWs out.
+        ndw8 = ndw//2 if ndw >= 4 else ndw
+        self.f8 = f8 = ResetInserter()(WideRXFramer(ndw8))
         self.f3 = f3 = ResetInserter()(Gen3RXFramer(ndw))
         self.comb += [
             f8.reset.eq(self.gen3),
             f3.reset.eq(~self.gen3),
-            sink.ready.eq(1),
         ]
+        f8_sink = f8.sink
+        f8_tlp  = f8.tlp
+        if ndw8 != ndw:
+            self.split8 = split8 = ResetInserter()(_BeatSplitter(ndw))
+            self.comb8  = comb8  = ResetInserter()(_TLPBeatCombiner(ndw8))
+            self.comb += [
+                split8.reset.eq(self.gen3),
+                split8.source.connect(f8.sink),
+                comb8.reset.eq(self.gen3),
+                f8.tlp.connect(comb8.sink),
+                comb8.abort.eq(f8.tlp_abort),
+            ]
+            f8_sink = split8.sink
+            f8_tlp  = comb8.source
+            self.comb += sink.ready.eq(Mux(self.gen3, 1, split8.sink.ready))
+        else:
+            self.comb += sink.ready.eq(1)
         f3_sink = f3.sink
         if nlanes in [1, 2]:
             self.a3 = a3 = ResetInserter()(Gen3RXTokenAligner(ndw, unit=nlanes))
@@ -672,29 +777,29 @@ class RXFramerSelect(LiteXModule):
             ]
             f3_sink = a3.sink
         # Outputs registered (timing; the TLP beats are always taken).
-        for f, f_sink in [(f8, f8.sink), (f3, f3_sink)]:
+        for f, f_sink, f_tlp in [(f8, f8_sink, f8_tlp), (f3, f3_sink, f3.tlp)]:
             sel = self.gen3 if f is f3 else ~self.gen3
             self.comb += [
                 f_sink.valid.eq(sink.valid & sel),
                 f_sink.first.eq(sink.first),
                 f_sink.last.eq(sink.last),
                 f_sink.data.eq(sink.data),
-                f.tlp.ready.eq(1),
+                f_tlp.ready.eq(1),
             ]
             self.sync += If(sel,
-                tlp.valid.eq(f.tlp.valid),
-                tlp.first.eq(f.tlp.first),
-                tlp.last.eq(f.tlp.last),
-                tlp.data.eq(f.tlp.data),
-                tlp.dws.eq(f.tlp.dws),
-                tlp.seq.eq(f.tlp.seq),
-                tlp.edb.eq(f.tlp.edb),
+                tlp.valid.eq(f_tlp.valid),
+                tlp.first.eq(f_tlp.first),
+                tlp.last.eq(f_tlp.last),
+                tlp.data.eq(f_tlp.data),
+                tlp.dws.eq(f_tlp.dws),
+                tlp.seq.eq(f_tlp.seq),
+                tlp.edb.eq(f_tlp.edb),
                 self.dllp.eq(f.dllp),
                 self.dllp_valid.eq(f.dllp_valid),
                 self.error.eq(f.error),
                 self.tlp_abort.eq(f.tlp_abort),
             )
-        self.comb += f8.sink.ctrl.eq(sink.ctrl)
+        self.comb += f8_sink.ctrl.eq(sink.ctrl)
 
 class TXFramerSelect(LiteXModule):
     """8b/10b (WideTXFramer) and 8.0 GT/s (Gen3TXFramer) framers, the one of the rate selected by gen3 (the
