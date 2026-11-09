@@ -295,10 +295,170 @@ EDB_TOKEN = bytes([0xc0]*4)
 
 TOKEN_IDL, TOKEN_STP, TOKEN_SDP, TOKEN_EDS, TOKEN_EDB, TOKEN_ERR = range(6)
 
+class Gen3RXTokenAligner(LiteXModule):
+    """Data Stream with the Tokens on a DW for Gen3RXFramer at x1 and x2, where the Token after an IDL Token
+    starts on the next Symbol (x1) or Symbol Time (x2) (4.2.2.3.3): the IDL Tokens are removed, the others
+    (STP with its TLP, SDP with its DLLP, EDS, EDB) are multiples of a DW so the next ones are on a DW.
+    unit: bytes of a Symbol Time (1: x1, 2: x2). Output beats are full, or completed with IDL Tokens (zeros, on
+    a DW) when a beat ends between Tokens so that a packet isn't held until the next one (at most a beat out
+    for a beat in).
+
+    Pipelined as Gen3RXFramer: each unit classified as if a Token started there (its length in units), the
+    Tokens reached from every start unit (pointer doubling), then the only loop from a beat to the next: the
+    start in the beat. The kept units are packed into a buffer, a beat out when it has one."""
+    def __init__(self, ndw, unit=1):
+        assert unit in [1, 2]
+        nbytes = 4*ndw
+        nunits = nbytes//unit
+        self.sink   = sink   = stream.Endpoint([("data", 32*ndw)])
+        self.source = source = stream.Endpoint([("data", 32*ndw)])
+
+        # # #
+
+        self.comb += sink.ready.eq(1)
+        pw = 14 # Positions in units: up to a TLP (2047 DWs) past the last unit.
+        iw = bits_for(nunits - 1)
+        uw = 8*unit
+
+        # The beat processed is the previous one, the first byte of the current one its lookahead (STP Length).
+        prev_valid = Signal()
+        prev_data  = Signal(8*nbytes, reset_less=True)
+        self.sync += If(sink.valid,
+            prev_valid.eq(1),
+            prev_data.eq(sink.data),
+        )
+        window = Cat(prev_data, sink.data[0:8])
+
+        # Stage A: units classified: Token length (units) and IDL.
+        a_valid = Signal()
+        a_data  = Signal(8*nbytes, reset_less=True)
+        a_len   = [Signal(pw, reset_less=True) for _ in range(nunits)]
+        a_idl   = [Signal() for _ in range(nunits)]
+        self.sync += [
+            a_valid.eq(prev_valid & sink.valid),
+            a_data.eq(prev_data),
+        ]
+        for j in range(nunits):
+            b0 = window[8*unit*j:8*unit*j + 8]
+            b1 = window[8*unit*j + 8:8*unit*j + 16]
+            length = Cat(b0[4:8], b1[0:7]) # STP: DWs, Token and LCRC included.
+            self.sync += [
+                a_idl[j].eq(b0 == 0x00),
+                If(b0 == 0x00,
+                    a_len[j].eq(1)
+                ).Elif(b0[0:4] == 0xf,
+                    a_len[j].eq(Cat(Constant(0, 2), length) >> (unit - 1))
+                ).Elif((b0 == 0xf0) & (b1 == 0xac),
+                    a_len[j].eq(8//unit)
+                ).Elif((b0 == 0x1f) | (b0 == 0xc0),
+                    a_len[j].eq(4//unit)
+                ).Else(
+                    a_len[j].eq(1) # Not a Token: kept, Gen3RXFramer reports the error.
+                )
+            ]
+
+        # Stage B: pointer doubling. J[s]: position after the Tokens followed from s, M[s]: Tokens reached from s,
+        # I[s]: IDL Tokens among them.
+        valid, data, idls = a_valid, a_data, a_idl
+        J = [Signal(pw, reset_less=True) for _ in range(nunits)]
+        self.comb += [J[j].eq(j + a_len[j]) for j in range(nunits)]
+        M = [Constant(1 << j, nunits) for j in range(nunits)]
+        steps = 1
+        while steps < nunits:
+            J_n = [Signal(pw, reset_less=True) for _ in range(nunits)]
+            M_n = [Signal(nunits, reset_less=True) for _ in range(nunits)]
+            J_a = Array(J)
+            M_a = Array(M)
+            for j in range(nunits):
+                inb = J[j] < nunits
+                self.sync += [
+                    J_n[j].eq(Mux(inb, J_a[J[j][:iw]], J[j])),
+                    M_n[j].eq(M[j] | Mux(inb, M_a[J[j][:iw]], 0)),
+                ]
+            valid_n = Signal()
+            data_n  = Signal(len(data), reset_less=True)
+            idls_n  = [Signal() for _ in range(nunits)]
+            self.sync += [valid_n.eq(valid), data_n.eq(data)] + [idls_n[j].eq(idls[j]) for j in range(nunits)]
+            valid, data, idls = valid_n, data_n, idls_n
+            J, M = J_n, M_n
+            steps *= 2
+
+        # Stage C: start in the beat (the loop), units kept.
+        start = Signal(pw)
+        inb   = start < nunits
+        J_a   = Array(J)
+        M_a   = Array(M)
+        tokens = Signal(nunits)
+        self.comb += tokens.eq(Mux(inb, M_a[start[:iw]], 0))
+        c_valid = Signal()
+        c_data  = Signal(len(data), reset_less=True)
+        c_keep  = Signal(nunits, reset_less=True)
+        c_end   = Signal(reset_less=True) # The beat ends between Tokens.
+        nstart  = Signal(pw)
+        self.comb += nstart.eq(Mux(inb, J_a[start[:iw]], start) - nunits)
+        self.sync += [
+            c_valid.eq(valid),
+            c_data.eq(data),
+            If(valid,
+                start.eq(nstart),
+                c_keep.eq(~(tokens & Cat(*idls))),
+                c_end.eq(nstart == 0),
+            ),
+        ]
+
+        # Stage D: kept units packed (k-th kept unit to position k), with their count.
+        d_valid = Signal()
+        d_end   = Signal(reset_less=True)
+        d_units = [Signal(uw, reset_less=True) for _ in range(nunits)]
+        d_count = Signal(max=nunits + 1, reset_less=True)
+        units   = [c_data[uw*j:uw*(j + 1)] for j in range(nunits)]
+        self.sync += [d_valid.eq(c_valid), d_end.eq(c_end)]
+        for k in range(nunits):
+            # Unit j goes to position k when it's kept and k units are kept before it.
+            cases = []
+            for j in range(k, nunits):
+                before = Reduce("ADD", [c_keep[m] for m in range(j)]) if j else 0
+                cases.append((c_keep[j] & (before == k), units[j]))
+            sel = units[nunits - 1]
+            for cond, val in reversed(cases):
+                sel = Mux(cond, val, sel)
+            self.sync += d_units[k].eq(sel)
+        self.sync += d_count.eq(Reduce("ADD", [c_keep[j] for j in range(nunits)]))
+
+        # Stage E: buffer of up to 2*nunits - 1 units, a beat out when there's one.
+        buf   = [Signal(uw, reset_less=True) for _ in range(2*nunits)]
+        level = Signal(max=2*nunits + 1)
+        d_a   = Array(d_units)
+        total = Signal(max=2*nunits + 1)
+        self.comb += total.eq(level + Mux(d_valid, d_count, 0))
+        filled = []
+        for p in range(2*nunits):
+            v = Signal(uw)
+            self.comb += v.eq(Mux(p < level, buf[p], d_a[(p - level)[:iw]]))
+            filled.append(v)
+        out = Signal()
+        pad = Signal() # Completed with IDL Tokens: whole Tokens only, so on a DW.
+        self.comb += [
+            pad.eq(d_valid & d_end & (total < nunits)), # Also with nothing kept: the framer's lookahead.
+            out.eq((total >= nunits) | pad),
+        ]
+        self.sync += [
+            source.valid.eq(out),
+            If(out,
+                source.data.eq(Cat(*[Mux(pad & (p >= total), 0, filled[p]) for p in range(nunits)])),
+                level.eq(Mux(pad, 0, total - nunits)),
+            ).Else(
+                level.eq(total),
+            ),
+        ]
+        for p in range(2*nunits):
+            nxt = filled[p + nunits] if p + nunits < 2*nunits else 0
+            self.sync += buf[p].eq(Mux(out, nxt, filled[p]))
+
 class Gen3RXFramer(LiteXModule):
     """Data Stream of the Data Blocks to TLP beats and DLLPs, ndw DWs per cycle, same interface as
     WideRXFramer. There are no K Symbols: the Tokens give the location of the next one. Tokens are on a DW
-    from x4 on, this framer doesn't handle the other positions possible at x1 and x2 after IDL Tokens.
+    from x4 on, Gen3RXTokenAligner puts them there at x1 and x2 (after IDL Tokens).
 
     Pipelined (timing): each DW slot classified as if a Token started there (kind, position of the next
     Token), then for every start slot the Tokens reached in the beat and the position after them (pointer
