@@ -348,6 +348,9 @@ class S7PCIeSerDes(PCIeSerDes):
     gt_params(rxcdr_cfg) and gt_update_params(gt, params) for what is specific to the transceiver, and for gen3:
     add_gen3_pll(i) (the 8.0 GT/s PLL of lane i: clk, refclk, lock) and gen3_drp_entries(rxcdr_cfg).
     add_clocking() and pcie_gt_params() (7-Series here) are overridden by the other families (UltraScale+)."""
+    # TXRATE/RXRATE at 5.0 GT/s (and 8.0 GT/s): divider 1 (2.5 GT/s: TXOUT_DIV/RXOUT_DIV).
+    gt_rate_5g = 0b001
+
     def __init__(self, platform, pads, sys_clk_freq, refclk_freq=100e6, rxcdr_cfg=None, pcs_pcie_en=False,
         skp_interval=None, speedgrade=-1, rate_change=False, gen3=False):
         nlanes = len(pads.tx_p)
@@ -408,9 +411,10 @@ class S7PCIeSerDes(PCIeSerDes):
                     MultiReg(rate_sequencer.gt_rate != 0, tx_rate, tx_cd),
                     MultiReg(rate_sequencer.gt_rate != 0, rx_rate, rx_cd),
                 ]
+                gt_rate_bits = lambda r: Cat(r, Constant(0, 2)) if self.gt_rate_5g == 0b001 else Mux(r, self.gt_rate_5g, 0)
                 params.update(
-                    i_TXRATE     = Cat(tx_rate, Constant(0, 2)),
-                    i_RXRATE     = Cat(rx_rate, Constant(0, 2)),
+                    i_TXRATE     = gt_rate_bits(tx_rate),
+                    i_RXRATE     = gt_rate_bits(rx_rate),
                     o_TXRATEDONE = tx_rate_done,
                     o_RXRATEDONE = rx_rate_done,
                 )

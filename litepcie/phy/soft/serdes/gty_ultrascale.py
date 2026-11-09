@@ -20,6 +20,9 @@ from litepcie.phy.soft.serdes.clocking import S7PCIeClocking
 # USP PCIe SerDes ----------------------------------------------------------------------------------
 
 class USPPCIeSerDes(S7PCIeSerDes):
+    # TXRATE/RXRATE at 5.0 GT/s: divider 2 (2.5 GT/s: TXOUT_DIV/RXOUT_DIV of 4).
+    gt_rate_5g = 0b010
+
     def add_clocking(self, pads, refclk_freq, speedgrade, gen3):
         assert not gen3, "8.0 GT/s: not yet on UltraScale+."
         return S7PCIeClocking(pads.clk_p, pads.clk_n, refclk_freq, reset=self.perst, speedgrade=speedgrade,
@@ -84,7 +87,9 @@ class USPPCIeSerDes(S7PCIeSerDes):
             p_RXCDR_CFG0                 = 0x0002,
             p_RXCDR_CFG1                 = 0x0000,
             p_RXCDR_CFG2                 = 0x0249,
+            p_RXCDR_CFG2_GEN2            = 0x259,
             p_RXCDR_CFG3                 = 0x0012,
+            p_RXCDR_CFG3_GEN2            = 0x12,
             p_RXCDR_CFG4                 = 0x5cf6,
             p_RXCDR_CFG5                 = 0xb46b,
             p_RXCDR_LOCK_CFG0            = 0x2201,
