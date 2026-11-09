@@ -10,7 +10,7 @@ from migen import *
 
 from litex.gen import *
 from litex.build.generic_platform import *
-from litex.build.xilinx import Xilinx7SeriesPlatform
+from litex.build.xilinx import Xilinx7SeriesPlatform, XilinxUSPPlatform
 
 from litepcie.phy.soft import SoftPCIEPHY
 
@@ -22,7 +22,8 @@ _io = [("pcie_x1", 0,
 
 class TestSoftPHYTransceivers(unittest.TestCase):
     def elaborate(self, device, speed="gen1"):
-        platform = Xilinx7SeriesPlatform(device, _io, toolchain="vivado")
+        platform_cls = XilinxUSPPlatform if device.startswith("xcku") else Xilinx7SeriesPlatform
+        platform = platform_cls(device, _io, toolchain="vivado")
         class DUT(LiteXModule):
             def __init__(self):
                 self.cd_sys = ClockDomain()
@@ -53,6 +54,17 @@ class TestSoftPHYTransceivers(unittest.TestCase):
         gen1 = self.elaborate("xc7k480t-ffg1156-2")
         self.assertRegex(gen1, r"\.TXRATE\s*\(1'd0\)")
         self.assertNotIn("ratesequencer", gen1.lower())
+
+    def test_kintex_usp_gty(self):
+        verilog = self.elaborate("xcku3p-ffvb676-2-e")
+        self.assertIn("GTYE4_CHANNEL", verilog)
+        self.assertIn("GTYE4_COMMON", verilog)
+        self.assertIn("IBUFDS_GTE4", verilog)
+        self.assertIn("MMCME4_ADV", verilog)
+        for attribute in [r"\.TX_DRIVE_MODE\s*\(\"PIPE\"\)", r"\.PCS_PCIE_EN\s*\(\"FALSE\"\)",
+            r"\.RX_CLK25_DIV\s*\(\d+'d4\)", r"\.TXOUT_DIV\s*\(\d+'d4\)", r"\.RXOUT_DIV\s*\(\d+'d4\)",
+            r"\.QPLL0_FBDIV\s*\(\d+'d100\)", r"\.RXELECIDLEMODE\s*\(1'd0\)"]:
+            self.assertRegex(verilog, attribute)
 
     def test_unsupported_device(self):
         with self.assertRaises(NotImplementedError):

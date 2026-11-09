@@ -346,7 +346,8 @@ class S7DRPPlayer(LiteXModule):
 class S7PCIeSerDes(PCIeSerDes):
     """Subclasses provide add_pll(refclk, refclk_freq), add_gt(i, pll, tx_pads, rx_pads, sys_clk_freq)
     gt_params(rxcdr_cfg) and gt_update_params(gt, params) for what is specific to the transceiver, and for gen3:
-    add_gen3_pll(i) (the 8.0 GT/s PLL of lane i: clk, refclk, lock) and gen3_drp_entries(rxcdr_cfg)."""
+    add_gen3_pll(i) (the 8.0 GT/s PLL of lane i: clk, refclk, lock) and gen3_drp_entries(rxcdr_cfg).
+    add_clocking() and pcie_gt_params() (7-Series here) are overridden by the other families (UltraScale+)."""
     def __init__(self, platform, pads, sys_clk_freq, refclk_freq=100e6, rxcdr_cfg=None, pcs_pcie_en=False,
         skp_interval=None, speedgrade=-1, rate_change=False, gen3=False):
         nlanes = len(pads.tx_p)
@@ -363,8 +364,7 @@ class S7PCIeSerDes(PCIeSerDes):
         # Clocking ---------------------------------------------------------------------------------
         self.gen3 = gen3
         rate_change = rate_change or gen3
-        self.clocking = clocking = S7PCIeClocking(pads.clk_p, pads.clk_n, refclk_freq, reset=self.perst,
-            speedgrade=speedgrade, gen3=gen3)
+        self.clocking = clocking = self.add_clocking(pads, refclk_freq, speedgrade, gen3)
         # Transmit clock of the transceivers.
         self.gt_tx_cd = "pcie_g3" if gen3 else "pcie_pipe"
 
@@ -398,46 +398,7 @@ class S7PCIeSerDes(PCIeSerDes):
             gt = self.add_gt(i, pll, tx_pads, rx_pads, sys_clk_freq)
             gt.add_stream_endpoints()
             rx_elecidle = Signal()
-            params = dict(
-                # Comma alignment on any byte: Ordered Sets at any Symbol position (word phase kept).
-                p_ALIGN_COMMA_WORD = 1,
-                # PIPE drive mode: TX_DEEMPH0/1 are the -6/-3.5 dB de-emphasis selected by TXDEEMPH.
-                p_TX_DRIVE_MODE    = "PIPE",
-                p_TX_DEEMPH0       = 0b10100,
-                p_TX_DEEMPH1       = 0b01011,
-                p_TX_MARGIN_FULL_0 = 0b1001111,
-                p_TX_MARGIN_FULL_1 = 0b1001110,
-                p_TX_MARGIN_FULL_2 = 0b1001101,
-                p_TX_MARGIN_FULL_3 = 0b1001100,
-                p_TX_MARGIN_FULL_4 = 0b1000011,
-                p_TX_MARGIN_LOW_0  = 0b1000101,
-                p_TX_MARGIN_LOW_1  = 0b1000110,
-                p_TX_MARGIN_LOW_2  = 0b1000011,
-                p_TX_MARGIN_LOW_3  = 0b1000010,
-                p_TX_MARGIN_LOW_4  = 0b1000000,
-                i_TXDEEMPH         = lane.tx_deemph,
-                i_TXDIFFCTRL       = 0b1100, # 850 mV.
-                # Electrical Idle: TX, and RX detection with a fabric clock.
-                i_RXELECIDLEMODE   = 0b00,
-                o_RXELECIDLE       = rx_elecidle,
-                i_TXELECIDLE       = lane.tx_elecidle,
-                # PCIe attributes (Xilinx 7-Series PCIe wrapper).
-                p_RX_CLK25_DIV            = 4, # 100 MHz reference clock.
-                p_TX_CLK25_DIV            = 4,
-                p_PCS_PCIE_EN             = "TRUE" if pcs_pcie_en else "FALSE",
-                p_RXCDR_LOCK_CFG          = 0b010101,
-                p_RXCDR_HOLD_DURING_EIDLE = 0b1,
-                p_RX_CM_SEL               = 0b11, # Programmable common mode.
-                p_RXBUF_ADDR_MODE         = "FULL",
-                p_RXBUF_EIDLE_HI_CNT      = 0b0100,
-                p_RXBUF_EIDLE_LO_CNT      = 0b0000,
-                p_RXBUF_RESET_ON_EIDLE    = "TRUE",
-                p_TX_EIDLE_ASSERT_DELAY   = 0b100,
-                p_TX_EIDLE_DEASSERT_DELAY = 0b010,
-                p_TX_RXDETECT_REF         = 0b011,
-                i_TXPOLARITY              = lane.tx_polarity,
-                i_RXPOLARITY              = lane.rx_polarity,
-            )
+            params = self.pcie_gt_params(lane, rx_elecidle, pcs_pcie_en)
             params.update(self.gt_params(rxcdr_cfg))
             if rate_change:
                 # 000: TXOUT_DIV/RXOUT_DIV (2.5 GT/s), 001: divider 1 (5.0 GT/s, 8.0 GT/s with the 8 GHz PLL).
@@ -509,6 +470,51 @@ class S7PCIeSerDes(PCIeSerDes):
                 clocking.rate.eq(0),
                 self.rate_done.eq(1), # 2.5 GT/s only.
             ]
+
+    def add_clocking(self, pads, refclk_freq, speedgrade, gen3):
+        return S7PCIeClocking(pads.clk_p, pads.clk_n, refclk_freq, reset=self.perst, speedgrade=speedgrade, gen3=gen3)
+
+    def pcie_gt_params(self, lane, rx_elecidle, pcs_pcie_en):
+        return dict(
+            # Comma alignment on any byte: Ordered Sets at any Symbol position (word phase kept).
+            p_ALIGN_COMMA_WORD = 1,
+            # PIPE drive mode: TX_DEEMPH0/1 are the -6/-3.5 dB de-emphasis selected by TXDEEMPH.
+            p_TX_DRIVE_MODE    = "PIPE",
+            p_TX_DEEMPH0       = 0b10100,
+            p_TX_DEEMPH1       = 0b01011,
+            p_TX_MARGIN_FULL_0 = 0b1001111,
+            p_TX_MARGIN_FULL_1 = 0b1001110,
+            p_TX_MARGIN_FULL_2 = 0b1001101,
+            p_TX_MARGIN_FULL_3 = 0b1001100,
+            p_TX_MARGIN_FULL_4 = 0b1000011,
+            p_TX_MARGIN_LOW_0  = 0b1000101,
+            p_TX_MARGIN_LOW_1  = 0b1000110,
+            p_TX_MARGIN_LOW_2  = 0b1000011,
+            p_TX_MARGIN_LOW_3  = 0b1000010,
+            p_TX_MARGIN_LOW_4  = 0b1000000,
+            i_TXDEEMPH         = lane.tx_deemph,
+            i_TXDIFFCTRL       = 0b1100, # 850 mV.
+            # Electrical Idle: TX, and RX detection with a fabric clock.
+            i_RXELECIDLEMODE   = 0b00,
+            o_RXELECIDLE       = rx_elecidle,
+            i_TXELECIDLE       = lane.tx_elecidle,
+            # PCIe attributes (Xilinx 7-Series PCIe wrapper).
+            p_RX_CLK25_DIV            = 4, # 100 MHz reference clock.
+            p_TX_CLK25_DIV            = 4,
+            p_PCS_PCIE_EN             = "TRUE" if pcs_pcie_en else "FALSE",
+            p_RXCDR_LOCK_CFG          = 0b010101,
+            p_RXCDR_HOLD_DURING_EIDLE = 0b1,
+            p_RX_CM_SEL               = 0b11, # Programmable common mode.
+            p_RXBUF_ADDR_MODE         = "FULL",
+            p_RXBUF_EIDLE_HI_CNT      = 0b0100,
+            p_RXBUF_EIDLE_LO_CNT      = 0b0000,
+            p_RXBUF_RESET_ON_EIDLE    = "TRUE",
+            p_TX_EIDLE_ASSERT_DELAY   = 0b100,
+            p_TX_EIDLE_DEASSERT_DELAY = 0b010,
+            p_TX_RXDETECT_REF         = 0b011,
+            i_TXPOLARITY              = lane.tx_polarity,
+            i_RXPOLARITY              = lane.rx_polarity,
+        )
 
     def add_timing_constraints(self, sys_clk):
         platform = self.platform
