@@ -549,14 +549,17 @@ class Gen3RXFramer(LiteXModule):
                 )
             ]
 
-        # Stage B: pointer doubling. J[s]: position after the Tokens followed from s (in the beat: not done),
-        # M[s]: Tokens reached from s.
+        # Stage B: pointer doubling. J[s]: position after the Tokens followed from s (in the beat: not done,
+        # else ndw: the position itself is the next of the last Token, from nexts), M[s]: Tokens reached from s.
         valid, data, kinds, nexts, seqs = a_valid, a_data, a_kind, a_next, a_seq
-        J = list(a_next)
+        jw = bits_for(ndw)
+        J  = [Signal(jw) for _ in range(ndw)]
+        for i in range(ndw):
+            self.comb += J[i].eq(Mux(a_next[i] < ndw, a_next[i][:jw], ndw))
         M = [Constant(1 << i, ndw) for i in range(ndw)]
         steps = 1
         while steps < ndw:
-            J_n = [Signal(pw, reset_less=True)  for _ in range(ndw)]
+            J_n = [Signal(jw, reset_less=True)  for _ in range(ndw)]
             M_n = [Signal(ndw, reset_less=True) for _ in range(ndw)]
             J_a = Array(J)
             M_a = Array(M)
@@ -588,14 +591,14 @@ class Gen3RXFramer(LiteXModule):
         c_last  = Signal()     # The carried Token was on the last slot of the previous beat.
         inb     = start < ndw
         tokens  = Signal(ndw)
-        J_a     = Array(J)
         M_a     = Array(M)
         self.comb += tokens.eq(Mux(inb, M_a[start[:iw]], 0))
         last_kind = Signal(3)
         last_seq  = Signal(12)
         last_pos  = Signal(iw)
+        last_next = Signal(pw)
         for i in range(ndw): # Highest Token of the beat.
-            self.comb += If(tokens[i], last_kind.eq(kinds[i]), last_seq.eq(seqs[i]), last_pos.eq(i))
+            self.comb += If(tokens[i], last_kind.eq(kinds[i]), last_seq.eq(seqs[i]), last_pos.eq(i), last_next.eq(nexts[i]))
         d_valid  = Signal()
         d_data   = Signal(len(data), reset_less=True)
         d_tokens = Signal(ndw)
@@ -618,7 +621,7 @@ class Gen3RXFramer(LiteXModule):
                 *[d_kinds[i].eq(kinds[i]) for i in range(ndw)],
                 *[d_nexts[i].eq(nexts[i]) for i in range(ndw)],
                 *[d_seqs[i].eq(seqs[i]) for i in range(ndw)],
-                start.eq(Mux(inb, J_a[start[:iw]], start) - ndw),
+                start.eq(Mux(inb, last_next, start) - ndw),
                 If(tokens != 0,
                     c_kind.eq(last_kind),
                     c_seq.eq(last_seq),
