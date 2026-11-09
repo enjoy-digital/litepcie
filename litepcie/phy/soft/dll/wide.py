@@ -22,7 +22,7 @@ from litex.soc.interconnect import stream
 
 from litepcie.phy.soft.common import COM, STP, SDP, END, EDB, PAD, lane_layout
 from litepcie.phy.soft.dll.buffer       import PacketBuffer
-from litepcie.phy.soft.dll.crc          import crc_next, crc_value, LCRC_POLYNOM, LCRC_INIT
+from litepcie.phy.soft.dll.crc          import crc_next, crc_xor, crc_rewind_equations, crc_value, LCRC_POLYNOM, LCRC_INIT
 from litepcie.phy.soft.dll.flow_control import tlp_credits
 from litepcie.phy.soft.dll.retry        import ReplayBuffer
 
@@ -644,11 +644,19 @@ class WideLCRC(LiteXModule):
         start = Signal(32)
         new   = Signal(32)
         init  = Constant(LCRC_INIT, 32)
-        # A statement per bit: the wide expressions are long.
-        steps = [Signal(32) for _ in range(ndw)]
+        # The CRC over the whole beat, DWs past dws as zeros, then for n DWs the state rewound by the ndw - n
+        # zero DWs (area: a single wide CRC instead of one per DW count). A statement per bit: the wide
+        # expressions are long.
+        masked = Signal(32*ndw)
+        full   = Signal(32)
+        for i in range(ndw):
+            self.comb += masked[32*i:32*(i + 1)].eq(Replicate(self.dws > i, 32) & self.data[32*i:32*(i + 1)])
+        for bit, expression in enumerate(crc_next(32, LCRC_POLYNOM, start, masked)):
+            self.comb += full[bit].eq(expression)
+        rewinds = {}
         for n in range(1, ndw + 1):
-            for bit, expression in enumerate(crc_next(32, LCRC_POLYNOM, start, self.data[:32*n])):
-                self.comb += steps[n - 1][bit].eq(expression)
+            masks = crc_rewind_equations(32, LCRC_POLYNOM, 32*(ndw - n))
+            rewinds[n] = new.eq(Cat(*[crc_xor(full, masks[bit]) for bit in range(32)]))
         self.comb += [
             If(self.first,
                 start.eq(Cat(*crc_next(32, LCRC_POLYNOM, init, self.seq)))
@@ -657,7 +665,7 @@ class WideLCRC(LiteXModule):
             ),
             Case(self.dws, dict(
                 [(0, new.eq(start))] +
-                [(n, new.eq(steps[n - 1])) for n in range(1, ndw + 1)] +
+                list(rewinds.items()) +
                 [("default", new.eq(start))])),
             self.value.eq(crc_value(32, state)),
             self.next_value.eq(crc_value(32, new)),

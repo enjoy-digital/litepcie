@@ -164,6 +164,45 @@ class TestSoftDLLWide(unittest.TestCase):
                 self.assertEqual(tlps, exp_t)
                 self.assertEqual(dllps, exp_d)
 
+    def test_wide_lcrc(self):
+        # Sequence Number and DWs of TLPs of any length (last beat with 1 to ndw DWs, beats without data),
+        # against zlib.crc32.
+        import zlib
+        from litepcie.phy.soft.dll.wide import WideLCRC
+        for ndw in [2, 4, 16]:
+            with self.subTest(ndw=ndw):
+                rng = random.Random(ndw)
+                dut = WideLCRC(ndw)
+                tlps = []
+                for _ in range(30):
+                    seq = rng.randrange(4096)
+                    dws = random_dws(rng, rng.randrange(1, 3*ndw + 2))
+                    tlps.append((seq, dws))
+                values = []
+                def generator():
+                    for seq, dws in tlps:
+                        beats = [dws[i:i + ndw] for i in range(0, len(dws), ndw)]
+                        for i, beat in enumerate(beats):
+                            # A beat without data in the middle of the TLP changes nothing.
+                            if i == 1:
+                                yield dut.ce.eq(1)
+                                yield dut.first.eq(0)
+                                yield dut.dws.eq(0)
+                                yield
+                            yield dut.ce.eq(1)
+                            yield dut.first.eq(i == 0)
+                            yield dut.seq.eq(((seq & 0xff) << 8) | (seq >> 8))
+                            yield dut.data.eq(sum(int.from_bytes(bytes(dw), "little") << (32*j) for j, dw in enumerate(beat)))
+                            yield dut.dws.eq(len(beat))
+                            yield
+                        yield dut.ce.eq(0)
+                        yield
+                        values.append((yield dut.value))
+                run_simulation(dut, generator())
+                for (seq, dws), value in zip(tlps, values):
+                    ref = zlib.crc32(seq.to_bytes(2, "big") + bytes(sum(dws, [])))
+                    self.assertEqual(value, ref)
+
     def test_rx_framer_edb(self):
         tlps, dllps, errors = run_rx(4, tlp_symbols(5, random_dws(random.Random(1), 3), edb=True))
         self.assertEqual(errors, [])
