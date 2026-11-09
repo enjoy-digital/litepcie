@@ -669,24 +669,46 @@ class Gen3RXFramer(LiteXModule):
         process = d_valid
 
         # DLLPs: 2 bytes in the Token's DW, 4 in the next one. Queued, one per cycle.
-        # Index of each one: the write pointer plus the DLLPs before it in the beat (power of 2 queue).
-        nq = max(8, ndw)
-        qw = log2_int(nq)
+        # A DLLP takes 2 DWs: one at most starts in each pair of slots, nw of them per beat. Index of each
+        # one: the write pointer plus the DLLPs before it in the beat, in nw banks (index modulo nw) of
+        # nq/nw rows: a beat writes a DLLP at most per bank (area).
+        nw   = ndw//2
+        nq   = max(8, ndw)
+        qw   = log2_int(nq)
+        lb   = log2_int(nw)
+        rows = nq//nw
+        assert ndw >= 2 and 2**log2_int(ndw, need_pow2=False) == ndw
+        pair_v = [dllp_v[2*p] | dllp_v[2*p + 1] for p in range(nw)]
+        pair_d = [Mux(dllp_v[2*p],
+            Cat(slots[2*p][16:32],     slots[2*p + 1]),
+            Cat(slots[2*p + 1][16:32], slots[2*p + 2])) for p in range(nw)]
+        banks = [[Signal(48, reset_less=True) for _ in range(rows)] for _ in range(nw)]
         # Written a cycle later (timing): wr_e is the write pointer once they are.
-        dllps = Array(Signal(48) for _ in range(nq))
         wr, wr_e, rd = Signal(qw), Signal(qw), Signal(qw)
-        for i in range(ndw):
-            e_valid = Signal()
-            e_index = Signal(qw)
-            e_dllp  = Signal(48, reset_less=True)
+        e_valid = [Signal() for _ in range(nw)]
+        e_index = [Signal(qw) for _ in range(nw)]
+        e_dllp  = [Signal(48, reset_less=True) for _ in range(nw)]
+        for p in range(nw):
             self.sync += [
-                e_valid.eq(process & dllp_v[i]),
-                e_index.eq(wr + (popcount(Cat(*dllp_v[:i])) if i else 0)),
-                e_dllp.eq(Cat(slots[i][16:32], slots[i + 1])),
+                e_valid[p].eq(process & pair_v[p]),
+                e_index[p].eq(wr + (popcount(Cat(*pair_v[:p])) if p else 0)),
+                e_dllp[p].eq(pair_d[p]),
             ]
-            self.sync += If(e_valid, dllps[e_index].eq(e_dllp))
+        for b in range(nw):
+            sel  = Signal(nw)
+            data = Signal(48)
+            row  = Signal(max(log2_int(rows), 1))
+            self.comb += [
+                sel.eq(Cat(*[e_valid[p] & ((e_index[p][:lb] == b) if lb else 1) for p in range(nw)])),
+                data.eq(Reduce("OR", [Replicate(sel[p], 48) & e_dllp[p] for p in range(nw)])),
+                row.eq(Reduce("OR", [Replicate(sel[p], len(row)) & e_index[p][lb:] for p in range(nw)])),
+            ]
+            self.sync += If(sel != 0,
+                Case(row, {r: banks[b][r].eq(data) for r in range(rows)})
+            )
+        dllps = Array(banks[q % nw][q//nw] for q in range(nq))
         self.sync += [
-            If(process, wr.eq(wr + popcount(Cat(*dllp_v)))),
+            If(process, wr.eq(wr + popcount(Cat(*pair_v)))),
             wr_e.eq(wr),
             self.dllp_valid.eq(rd != wr_e),
             If(rd != wr_e,
