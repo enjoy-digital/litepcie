@@ -642,9 +642,10 @@ class WideLCRC(LiteXModule):
 
 class RXFramerSelect(LiteXModule):
     """8b/10b (WideRXFramer) and 8.0 GT/s (Gen3RXFramer) framers, the one of the rate selected by gen3 (the
-    other one held in reset). Same interface as a framer."""
-    def __init__(self, ndw):
-        from litepcie.phy.soft.gen3 import Gen3RXFramer
+    other one held in reset). Same interface as a framer. x1/x2 at 8.0 GT/s: Tokens on DWs for Gen3RXFramer
+    through Gen3RXTokenAligner (a Token can follow an IDL Token on any Symbol or Symbol Time)."""
+    def __init__(self, ndw, nlanes=None):
+        from litepcie.phy.soft.gen3 import Gen3RXFramer, Gen3RXTokenAligner
         self.gen3       = Signal()   # i
         self.sink       = sink = stream.Endpoint(lane_layout(4*ndw))
         self.tlp        = tlp  = stream.Endpoint(tlp_beat_layout(ndw))
@@ -662,14 +663,22 @@ class RXFramerSelect(LiteXModule):
             f3.reset.eq(~self.gen3),
             sink.ready.eq(1),
         ]
+        f3_sink = f3.sink
+        if nlanes in [1, 2]:
+            self.a3 = a3 = ResetInserter()(Gen3RXTokenAligner(ndw, unit=nlanes))
+            self.comb += [
+                a3.reset.eq(~self.gen3),
+                a3.source.connect(f3.sink),
+            ]
+            f3_sink = a3.sink
         # Outputs registered (timing; the TLP beats are always taken).
-        for f in [f8, f3]:
+        for f, f_sink in [(f8, f8.sink), (f3, f3_sink)]:
             sel = self.gen3 if f is f3 else ~self.gen3
             self.comb += [
-                f.sink.valid.eq(sink.valid & sel),
-                f.sink.first.eq(sink.first),
-                f.sink.last.eq(sink.last),
-                f.sink.data.eq(sink.data),
+                f_sink.valid.eq(sink.valid & sel),
+                f_sink.first.eq(sink.first),
+                f_sink.last.eq(sink.last),
+                f_sink.data.eq(sink.data),
                 f.tlp.ready.eq(1),
             ]
             self.sync += If(sel,
@@ -736,7 +745,7 @@ class TXFramerSelect(LiteXModule):
 
 class WideDLLRX(LiteXModule):
     """As DLLRX, on beats of ndw DWs. Same interface towards the Data Link Layer core."""
-    def __init__(self, ndw, depth=2048, packets=32, framing="8b10b"):
+    def __init__(self, ndw, depth=2048, packets=32, framing="8b10b", nlanes=None):
         self.reset        = Signal()
         self.gen3         = Signal() # i: 8.0 GT/s framing (framing="both").
         self.sink         = sink   = stream.Endpoint(lane_layout(4*ndw))
@@ -755,11 +764,18 @@ class WideDLLRX(LiteXModule):
 
         # Framing.
         if framing == "gen3":
-            from litepcie.phy.soft.gen3 import Gen3RXFramer
+            from litepcie.phy.soft.gen3 import Gen3RXFramer, Gen3RXTokenAligner
             self.framer = framer = Gen3RXFramer(ndw)
-            self.comb += sink.connect(framer.sink, omit={"ctrl"})
+            if nlanes in [1, 2]:
+                self.aligner = aligner = Gen3RXTokenAligner(ndw, unit=nlanes)
+                self.comb += [
+                    sink.connect(aligner.sink, omit={"ctrl", "first", "last"}),
+                    aligner.source.connect(framer.sink),
+                ]
+            else:
+                self.comb += sink.connect(framer.sink, omit={"ctrl"})
         elif framing == "both":
-            self.framer = framer = RXFramerSelect(ndw)
+            self.framer = framer = RXFramerSelect(ndw, nlanes=nlanes)
             self.comb += [sink.connect(framer.sink), framer.gen3.eq(self.gen3)]
         else:
             self.framer = framer = WideRXFramer(ndw)

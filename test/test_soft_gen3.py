@@ -286,6 +286,116 @@ class TestSoftGen3Framing(unittest.TestCase):
         self.assertGreaterEqual(len(errors), 1)
         self.assertEqual([t["seq"] for t in tlps], [2])
 
+    def random_stream(self, rng, n, unit, with_tokens=False):
+        """Tokens with IDL Tokens of any count of Symbol Times between them (x1: a byte, x2: two bytes)."""
+        symbols, kept, exp_t, exp_d, tokens = [], [], [], [], []
+        for i in range(n):
+            if rng.random() < 0.5:
+                idl = [0]*(unit*rng.randrange(1, 9))
+                symbols += idl
+            r = rng.random()
+            if r < 0.3:
+                dllp = [rng.randrange(256) for _ in range(6)]
+                exp_d.append(dllp)
+                tok = list(SDP_TOKEN) + dllp
+            else:
+                dws  = mwr_dws(rng, rng.randrange(0, 40))
+                lcrc = [rng.randrange(256) for _ in range(4)]
+                nullified = r > 0.9
+                exp_t.append(dict(seq=i, dws=dws + [lcrc], edb=int(nullified)))
+                tok = list(stp_token(len(dws) + 2, i)) + sum(dws, []) + lcrc
+                if nullified:
+                    tok += list(EDB_TOKEN)
+            symbols += tok
+            kept    += tok
+            tokens.append(tok)
+        if with_tokens:
+            return symbols, kept, exp_t, exp_d, tokens
+        return symbols, kept, exp_t, exp_d
+
+    def test_rx_token_aligner(self):
+        # IDL Tokens removed, the other Tokens on DWs; input with holes.
+        from litepcie.phy.soft.gen3 import Gen3RXTokenAligner
+        for ndw, unit in [(2, 1), (4, 2)]:
+            with self.subTest(ndw=ndw, unit=unit):
+                rng = random.Random(ndw)
+                symbols, kept, _, _, tokens = self.random_stream(rng, 80, unit, with_tokens=True)
+                dut = Gen3RXTokenAligner(ndw, unit=unit)
+                out = []
+                beats = to_stream(symbols, ndw) + [0]*16
+                def generator():
+                    for word in beats:
+                        while rng.random() < 0.3:
+                            yield dut.sink.valid.eq(0)
+                            yield
+                        yield dut.sink.valid.eq(1)
+                        yield dut.sink.data.eq(word)
+                        yield
+                    yield dut.sink.valid.eq(0)
+                    for _ in range(32):
+                        yield
+                def monitor():
+                    for _ in range(4*len(beats) + 64):
+                        if (yield dut.source.valid):
+                            out.extend(((yield dut.source.data)).to_bytes(4*ndw, "little"))
+                        yield
+                run_simulation(dut, [generator(), monitor()])
+                # Beats completed with IDL Tokens between Tokens: removed again for the comparison.
+                rest = list(out)
+                for tok in tokens:
+                    while rest and rest[:4] == [0]*4 and tok[:4] != [0]*4:
+                        rest = rest[4:]
+                    self.assertEqual(rest[:len(tok)], tok)
+                    rest = rest[len(tok):]
+
+    def test_rx_framer_x1_x2(self):
+        # x1/x2: Tokens after IDL Tokens on any Symbol (Time), through the aligner.
+        from litepcie.phy.soft.gen3 import Gen3RXTokenAligner, Gen3RXFramer
+        for ndw, unit in [(2, 1), (4, 2)]:
+            with self.subTest(ndw=ndw, unit=unit):
+                rng = random.Random(10 + ndw)
+                symbols, kept, exp_t, exp_d = self.random_stream(rng, 60, unit)
+                class DUT(Module):
+                    def __init__(self):
+                        self.submodules.aligner = Gen3RXTokenAligner(ndw, unit=unit)
+                        self.submodules.framer  = Gen3RXFramer(ndw)
+                        self.comb += self.aligner.source.connect(self.framer.sink)
+                dut = DUT()
+                tlps, dllps, errors = [], [], []
+                done = [False]
+                def generator():
+                    yield dut.aligner.sink.valid.eq(1)
+                    for word in to_stream(symbols, ndw) + [0]*16:
+                        yield dut.aligner.sink.data.eq(word)
+                        yield
+                    for _ in range(256):
+                        yield
+                    done[0] = True
+                def monitor():
+                    cur = None
+                    yield dut.framer.tlp.ready.eq(1)
+                    while not done[0]:
+                        f = dut.framer
+                        if (yield f.tlp.valid):
+                            data = (yield f.tlp.data)
+                            n    = (yield f.tlp.dws)
+                            if (yield f.tlp.first):
+                                cur = dict(seq=(yield f.tlp.seq), dws=[])
+                            cur["dws"] += [[(data >> (32*i + 8*j)) & 0xff for j in range(4)] for i in range(n)]
+                            if (yield f.tlp.last):
+                                cur["edb"] = (yield f.tlp.edb)
+                                tlps.append(cur)
+                                cur = None
+                        if (yield f.dllp_valid):
+                            dllps.append(list(((yield f.dllp)).to_bytes(6, "little")))
+                        if (yield f.error):
+                            errors.append(1)
+                        yield
+                run_simulation(dut, [generator(), monitor()])
+                self.assertEqual(errors, [])
+                self.assertEqual(tlps, exp_t)
+                self.assertEqual(dllps, exp_d)
+
     def test_tx_rx_loopback(self):
         from litepcie.phy.soft.gen3 import Gen3TXFramer, Gen3RXFramer
         for ndw in [8, 16]:
