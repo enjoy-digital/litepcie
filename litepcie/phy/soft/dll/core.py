@@ -63,7 +63,7 @@ class DataLinkLayer(LiteXModule):
 
         # RX/TX ------------------------------------------------------------------------------------
         if ndw > 1:
-            self.rx = rx = WideDLLRX(ndw, depth=rx_depth, packets=64, framing=framing)
+            self.rx = rx = WideDLLRX(ndw, depth=rx_depth, packets=64, framing=framing, nlanes=nlanes)
             self.tx = tx = WideDLLTX(ndw, nlanes, depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer, framing=framing)
             self.comb += [rx.gen3.eq(self.gen3), tx.gen3.eq(self.gen3)]
         else:
