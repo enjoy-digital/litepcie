@@ -1,0 +1,120 @@
+name: doc
+
+# Manual of the project (doc/manual, doc/diagrams; part of the manual kit, the same in every core):
+# - check: on every push and pull request, figures up to date and manual sources consistent (links,
+#   anchors, images, table widths), no LaTeX needed.
+# - nightly: builds the PDF and HTML manual from master and publishes them on the rolling
+#   "manual-nightly" pre-release (not in the source tree). Skipped when master has not changed since
+#   the last publication, always run by hand (workflow_dispatch).
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc fonts-crosextra-carlito
+          python3 -m pip install --user cairosvg
+
+      - name: Check Figures
+        run: python3 doc/diagrams/build.py --check
+
+      - name: Check Manual
+        run: python3 doc/manual/build.py --check
+
+      - name: Check Manual Kit
+        run: python3 doc/manual/tools/kit.py status
+
+  nightly:
+    if: >-
+      github.repository_owner == 'enjoy-digital' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: manual-nightly
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      # Skip the scheduled build when master is the commit of the last publication.
+      - name: Check For Changes
+        id: changes
+        run: |
+          head=$(git rev-parse HEAD)
+          last=$(gh release view "$TAG" --json body --jq .body 2>/dev/null | grep -oE '[0-9a-f]{40}' | head -n1 || true)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$head" = "$last" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "master unchanged since the last manual ($head), nothing to do."
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache APT Packages
+        if: steps.changes.outputs.build == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-cache
+          key: apt-doc-ubuntu24-v1
+
+      - name: Install Tools
+        if: steps.changes.outputs.build == 'true'
+        run: |
+          mkdir -p ~/apt-cache
+          sudo apt-get update
+          sudo apt-get install -y -o dir::cache::archives="$HOME/apt-cache" \
+            pandoc texlive-xetex texlive-latex-extra texlive-fonts-recommended texlive-fonts-extra \
+            lmodern fonts-crosextra-carlito fonts-liberation librsvg2-bin
+          sudo chown -R "$USER" ~/apt-cache
+
+      - name: Build Manual
+        if: steps.changes.outputs.build == 'true'
+        run: python3 doc/manual/build.py --check --pdf --html --fail-if-warnings
+
+      - name: Keep Manual As Artifact
+        if: steps.changes.outputs.build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual
+          path: |
+            build/doc/*.pdf
+            build/doc/*.html
+          retention-days: 14
+
+      - name: Publish Nightly Release
+        if: steps.changes.outputs.build == 'true'
+        run: |
+          head=$(git rev-parse HEAD)
+          name=$(python3 doc/manual/build.py --print name)
+          title=$(python3 doc/manual/build.py --print title)
+          notes="$title manual, generated $(date -u +%Y-%m-%d) from master $head.
+
+          - PDF: https://github.com/${{ github.repository }}/releases/download/$TAG/$name.pdf
+          - HTML (self-contained, download and open): https://github.com/${{ github.repository }}/releases/download/$TAG/$name.html
+
+          Rebuilt every night when master changes (.github/workflows/doc.yml)."
+          git tag -f "$TAG" "$head"
+          git push -f origin "refs/tags/$TAG"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --prerelease --title "$title manual (nightly)" --notes "$notes"
+          else
+            gh release create "$TAG" --prerelease --title "$title manual (nightly)" --notes "$notes"
+          fi
+          gh release upload "$TAG" "build/doc/$name.pdf" "build/doc/$name.html" --clobber
