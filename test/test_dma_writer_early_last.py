@@ -121,3 +121,7 @@ class TestDMAWriterEarlyLast(unittest.TestCase):
         # Packets of one full request (128 bytes): last ends the first split of each descriptor.
         self.early_last_test([128]*4)
 
+    def test_early_last_within_request(self):
+        # Packets shorter than a request, with the stream stopping after the last one: each
+        # packet has to be written without waiting for the data of the next one.
+        self.early_last_test([64, 32, 96])

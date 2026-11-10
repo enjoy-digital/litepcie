@@ -640,6 +640,21 @@ class LitePCIeDMAWriter(LiteXModule):
         # When Enabled, connect Data Converter to Data FIFO.
         self.comb += If(enable, self.data_conv.source.connect(data_fifo.sink))
 
+        # Lasts in Data FIFO -----------------------------------------------------------------------
+        # A last in the Data FIFO terminates the current descriptor early: the Request can then
+        # start with less data than its length (the data of the next packet may never come).
+        data_fifo_lasts = Signal(max=data_fifo_depth + 2)
+        self.sync += [
+            If(data_fifo.reset,
+                data_fifo_lasts.eq(0)
+            ).Else(
+                data_fifo_lasts.eq(data_fifo_lasts
+                    + (data_fifo.sink.valid   & data_fifo.sink.ready   & data_fifo.sink.last)
+                    - (data_fifo.source.valid & data_fifo.source.ready & data_fifo.source.last)
+                )
+            )
+        ]
+
         # FSM --------------------------------------------------------------------------------------
         req_count = Signal.like(splitter.source.length)
         request_words    = Signal(24)
@@ -654,9 +669,13 @@ class LitePCIeDMAWriter(LiteXModule):
             If(~enable,
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
-            # Else wait for a Descriptor and to have enough Data to generate the Request.
-            ).Elif(splitter.source.valid & (data_fifo.level >= request_words),
-                NextState("MEM-WR"),
+            # Else wait for a Descriptor and to have enough Data to generate the Request (or a last).
+            ).Elif(splitter.source.valid,
+                If(data_fifo.level >= request_words,
+                    NextState("MEM-WR"),
+                ).Elif(data_fifo.source.valid & (data_fifo_lasts != 0) & ~splitter.source.last_disable,
+                    NextState("MEM-WR"),
+                )
             )
         )
         # Report Idle Status.
