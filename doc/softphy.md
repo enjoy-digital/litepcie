@@ -1,7 +1,8 @@
 # Soft PCIe PHY
 
-Status: work in progress, started November 2026. Gen1 and Gen2 run up to x8 on a Kintex-7 GTX board, Gen1 and Gen2 x1 on a
-Kintex UltraScale+ GTY board (see the hardware results). The status table is updated with each pull request.
+Status: work in progress, started November 2026. Gen1 and Gen2 run up to x8 on a Kintex-7 GTX board, Gen1 and Gen2 x1
+and Gen3 up to x8 on a Kintex UltraScale+ GTY board (see the hardware results). The status table is updated with each
+pull request.
 
 ## Why
 
@@ -108,8 +109,8 @@ Clock domains:
 | M7 | x2 to x8: wide Data Link Layers, multi-lane Physical Layer, deskew | Verilator simulation (`bench/soft/sim_wide.py`: Data Link Layers with corruption; `--phy`: training with lane skew, speed change, Link Retrain; `sim_endpoint.py --nlanes`). Runs on hardware on the GTX, see the hardware results. Width negotiated down to x1, see the hardware results. No lane reversal yet |
 | M8 | Robustness, lane reversal, LiteX-Boards | Not started |
 | M10 | 8.0 GT/s: 128b/130b lane blocks | `gen3.py`: scrambler checked against the table of the specification, gearboxes, Block alignment, framing Tokens (on a DW only). Near-end loopback on the GTX at 8 GT/s (`bench/soft/ypcb_gen3.py`), see the hardware results |
-| M11 | 8.0 GT/s link: LTSSM, equalization, `SoftPCIEPHY(speed="gen3")` | Verilator simulation x2/x4/x8 (`sim_wide.py --phy --gen3`, `sim_soc.py --gen3` up to the 512-bit LitePCIe path), fallback to 2.5 GT/s. GTX run-time PLL switch built, **no 8 GT/s link with a host yet**, see "8.0 GT/s" |
-| M9 | Other transceivers, soft root port | UltraScale+ GTY (`serdes/gty_ultrascale.py`, Kintex UltraScale+ KU3P/KU5P): Gen1 and Gen2 x1 on hardware, see the hardware results. 8.0 GT/s and multi-lane not yet on the GTY. Soft root port not started |
+| M11 | 8.0 GT/s link: LTSSM, equalization, `SoftPCIEPHY(speed="gen3")` | Verilator simulation x2/x4/x8 (`sim_wide.py --phy --gen3`, `sim_soc.py --gen3` up to the 512-bit LitePCIe path), fallback to 2.5 GT/s. x1/x4/x8 with a host on the GTY, no 8 GT/s link with a host on the GTX yet, see the hardware results and "8.0 GT/s" |
+| M9 | Other transceivers, soft root port | UltraScale+ GTY (`serdes/gty_ultrascale.py`, Kintex UltraScale+ KU3P/KU5P): Gen1 and Gen2 x1, Gen3 x1/x4/x8 on hardware, see the hardware results. Gen1/Gen2 multi-lane not yet on the GTY. Soft root port not started |
 
 ## Verification
 
@@ -358,7 +359,7 @@ latency isn't matched between lanes: the host's receivers have accepted it up to
 
 ## 8.0 GT/s
 
-`SoftPCIEPHY(speed="gen3")` (x2 and above, GTX) trains at 2.5 GT/s, the root port then changes the speed to
+`SoftPCIEPHY(speed="gen3")` (x1 to x8, GTX and GTY) trains at 2.5 GT/s, the root port then changes the speed to
 8.0 GT/s, from 2.5 or 5.0 GT/s, with the transmitter equalization. Checked against the 4.0 draft of the
 specification (rev 0.3) for what 8.0 GT/s needs.
 
@@ -415,8 +416,8 @@ back to 2.5 GT/s without a new training), `python3 bench/soft/sim_soc.py --gen3 
 ## Bring-up on the Acorn (M2.5/M3)
 
 `--with-endpoint` builds the full endpoint (SoftPCIEPHY, LitePCIe MMAP, DMA, MSI, `--driver` for the
-kernel driver); add `--with-debug --with-ltssm-tracer` for bring-up (CSRs `pcie_endpoint_phy_debug_*` and
-`pcie_endpoint_phy_ltssm_tracer_*`, steps below). Once L0 and DL_Active are reached, Linux should enumerate
+kernel driver); add `--with-debug --with-ltssm-tracer` for bring-up (CSRs `pcie_phy_debug_*` and
+`pcie_phy_ltssm_tracer_*`, steps below). Once L0 and DL_Active are reached, Linux should enumerate
 it as a `10ee:7021` device.
 
 

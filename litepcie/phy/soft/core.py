@@ -5,7 +5,8 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 """SoftPCIEPHY: the soft PCIe PHY with the LitePCIe PHY contract (see the hard-IP PHYs): Physical
-Layer, Data Link Layer and Transaction Layer glue on FPGA transceivers. 2.5 GT/s x1 for now."""
+Layer, Data Link Layer and Transaction Layer glue on FPGA transceivers. x1 to x8, 2.5/5.0/8.0 GT/s
+(see doc/softphy.md for the validated configurations)."""
 
 from migen import *
 from migen.genlib.cdc import MultiReg
@@ -55,7 +56,7 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
                 ("``0b1``", "Link Up (Data Link Layer active)."),
             ]),
             CSRField("rate",  size=2, description="Link rate (``0b00``: 2.5 GT/s, ``0b01``: 5 GT/s, ``0b10``: 8 GT/s)."),
-            CSRField("width", size=2, description="Negotiated link width (``0b00``: x1)."),
+            CSRField("width", size=2, description="Negotiated link width (``0b00``: x1, ``0b01``: x2, ``0b10``: x4, ``0b11``: x8)."),
             CSRField("ltssm", size=6, description="LTSSM state (UltraScale encoding, L0 = 0x10)."),
         ])
         self._msi_enable        = CSRStatus(description="MSI Enable Status. ``1``: MSI is enabled.")
@@ -149,6 +150,14 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         self.specials += MultiReg(link_speed, tl.cfg.link_speed, "pcie")
         if wide:
             self.specials += MultiReg(phy.width, tl.link_width, "pcie")
+            # Link Status CSR: log2 of the negotiated width (as the hard-IP PHYs).
+            link_width       = Signal(2)
+            link_width_cases = {}
+            for w in [1, 2, 4, 8]:
+                if w <= nlanes:
+                    link_width_cases[w] = link_width.eq(log2_int(w))
+            self.comb += Case(phy.width, link_width_cases)
+            self.specials += MultiReg(link_width, self._link_status.fields.width, "sys")
         self.comb += [
             # TLPs held in the Data Link Layer buffers while "pcie" is in reset.
             tl.sink.valid.eq(dll.source.valid & ~pcie_rst),
