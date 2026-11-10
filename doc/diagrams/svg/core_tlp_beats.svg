@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="230" viewBox="0 0 760 230">
+<defs>
+  <marker id="arrow-ctrl" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 Z" fill="#5b5b5b"/></marker>
+  <marker id="arrow-ctrl-rev" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto">
+    <path d="M8,0 L0,4 L8,8 Z" fill="#5b5b5b"/></marker>
+  <marker id="arrow-stream" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="9" refY="4.5" orient="auto">
+    <path d="M0,0 L9,4.5 L0,9 Z" fill="#606060"/></marker>
+  <marker id="arrow-accent" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="9" refY="4.5" orient="auto">
+    <path d="M0,0 L9,4.5 L0,9 Z" fill="#2eaadc"/></marker>
+  <marker id="arrow-accent-rev" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="0" refY="4.5" orient="auto">
+    <path d="M9,0 L0,4.5 L9,9 Z" fill="#2eaadc"/></marker>
+  <marker id="arrow-stream-rev" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="0" refY="4.5" orient="auto">
+    <path d="M9,0 L0,4.5 L9,9 Z" fill="#606060"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="230" y="20" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="250" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="250" dy="0">H0</tspan></text>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="270" y="20" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="290" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="290" dy="0">H1</tspan></text>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="324" y="20" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="344" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="344" dy="0">H2</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="364" y="20" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="384" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="384" dy="0">D0</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="418" y="20" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="438" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="438" dy="0">D1</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="458" y="20" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="478" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="478" dy="0">D2</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="512" y="20" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="532" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="532" dy="0">D3</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="552" y="20" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="572" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="572" dy="0">D4</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="606" y="20" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="626" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="626" dy="0">D5</tspan></text>
+<g fill="#d0d0d0" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="646" y="20" width="40" height="36" rx="0" ry="0"/>
+</g>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="230" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="250" y="98" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="250" dy="0">H0</tspan></text>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="270" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="290" y="98" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="290" dy="0">H1</tspan></text>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="310" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="330" y="98" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="330" dy="0">H2</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="350" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="370" y="98" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="370" dy="0">D0</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="404" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="424" y="98" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="424" dy="0">D1</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="444" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="464" y="98" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="464" dy="0">D2</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="484" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="504" y="98" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="504" dy="0">D3</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="524" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="544" y="98" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="544" dy="0">D4</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="578" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="598" y="98" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="598" dy="0">D5</tspan></text>
+<g fill="#d0d0d0" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="618" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<g fill="#d0d0d0" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="658" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<g fill="#d0d0d0" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="698" y="80" width="40" height="36" rx="0" ry="0"/>
+</g>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="230" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="250" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="250" dy="0">H0</tspan></text>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="270" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="290" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="290" dy="0">H1</tspan></text>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="310" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="330" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="330" dy="0">H2</tspan></text>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="350" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="370" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="370" dy="0">H3</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="404" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="424" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="424" dy="0">D0</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="444" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="464" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="464" dy="0">D1</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="484" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="504" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="504" dy="0">D2</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="524" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="544" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="544" dy="0">D3</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="578" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="598" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="598" dy="0">D4</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="618" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<text x="638" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="638" dy="0">D5</tspan></text>
+<g fill="#d0d0d0" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="658" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<g fill="#d0d0d0" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="698" y="140" width="40" height="36" rx="0" ry="0"/>
+</g>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="230" y="194" width="40" height="26" rx="0" ry="0"/>
+</g>
+<text x="250" y="207" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="250" dy="0">H</tspan></text>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="380" y="194" width="40" height="26" rx="0" ry="0"/>
+</g>
+<text x="400" y="207" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="400" dy="0">D</tspan></text>
+<g fill="#d0d0d0" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<rect x="530" y="194" width="40" height="26" rx="0" ry="0"/>
+</g>
+<text x="20" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="14" fill="#000000" text-anchor="start" dominant-baseline="central"><tspan x="20" dy="0">64-bit, 3DW header</tspan></text>
+<text x="20" y="98" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="14" fill="#000000" text-anchor="start" dominant-baseline="central"><tspan x="20" dy="0">128-bit, 3DW header</tspan></text>
+<text x="20" y="158" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="14" fill="#000000" text-anchor="start" dominant-baseline="central"><tspan x="20" dy="0">128-bit, 4DW header</tspan></text>
+<text x="280" y="207" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="start" dominant-baseline="central"><tspan x="280" dy="0">header DW</tspan></text>
+<text x="430" y="207" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="start" dominant-baseline="central"><tspan x="430" dy="0">payload DW</tspan></text>
+<text x="580" y="207" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="13" fill="#000000" text-anchor="start" dominant-baseline="central"><tspan x="580" dy="0">not valid (be at 0)</tspan></text>
+</svg>
