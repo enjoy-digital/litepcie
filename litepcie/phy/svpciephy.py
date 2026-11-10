@@ -854,10 +854,10 @@ class SVPCIEPHY(LiteXModule):
         tl_cfg_add = Signal(4)
         tl_cfg_ctl = Signal(32)
 
-        def convert_size(command, size):
+        def convert_size(command, size, max_size):
             cases = {}
             for n in range(6):
-                cases[n] = size.eq(128 << n)
+                cases[n] = size.eq(min(128 << n, max_size))
             return Case(command, cases)
 
         bus_number      = Signal(8)
@@ -916,8 +916,9 @@ class SVPCIEPHY(LiteXModule):
         ]
 
         self.sync.pcie += [
-            convert_size(dcommand[5:8],   self.max_payload_size),
-            convert_size(dcommand[12:15], self.max_request_size),
+            # Clamped to 512 bytes: the core request/completion buffers are sized for it (tlp/common.py).
+            convert_size(dcommand[5:8],   self.max_payload_size, max_size=512),
+            convert_size(dcommand[12:15], self.max_request_size, max_size=512),
             self.id.eq(Cat(function_number, device_number, bus_number)),
         ]
         # Only one function is enabled on the hard IP, so the function number is always 0.

@@ -37,22 +37,22 @@ class TestC5PCIEPHY(unittest.TestCase):
         dut = _C5Config()
 
         def generator():
-            # Device Control: Max Payload = 512 bytes, Max Read Request = 1024 bytes.
-            dcommand = (2 << 5) | (3 << 12)
+            # Device Control: Max Payload = 256 bytes, Max Read Request = 512 bytes.
+            dcommand = (1 << 5) | (2 << 12)
             yield dut.tl_cfg_add.eq(0x0)
             yield dut.tl_cfg_ctl.eq(dcommand)
             yield dut.tl_cfg_ctl_wr.eq(1)
             for _ in range(3):
                 yield
-            self.assertEqual((yield dut.max_payload_size), 512)
-            self.assertEqual((yield dut.max_request_size), 1024)
+            self.assertEqual((yield dut.max_payload_size), 256)
+            self.assertEqual((yield dut.max_request_size), 512)
 
             # Holding the toggle steady must not recapture changing bus contents.
             yield dut.tl_cfg_ctl.eq(0)
             for _ in range(3):
                 yield
-            self.assertEqual((yield dut.max_payload_size), 512)
-            self.assertEqual((yield dut.max_request_size), 1024)
+            self.assertEqual((yield dut.max_payload_size), 256)
+            self.assertEqual((yield dut.max_request_size), 512)
 
             # The next toggle carries the bus/device register.
             bus_number    = 0x5a
@@ -65,6 +65,21 @@ class TestC5PCIEPHY(unittest.TestCase):
             self.assertEqual((yield dut.bus_number), bus_number)
             self.assertEqual((yield dut.device_number), device_number)
             self.assertEqual((yield dut.id), (bus_number << 8) | (device_number << 3))
+
+        run_simulation(dut, generator())
+
+    def test_config_sizes_clamped_to_512(self):
+        dut = _C5Config()
+
+        def generator():
+            # Device Control: Max Payload = 1024 bytes, Max Read Request = 4096 bytes.
+            yield dut.tl_cfg_add.eq(0x0)
+            yield dut.tl_cfg_ctl.eq((3 << 5) | (5 << 12))
+            yield dut.tl_cfg_ctl_wr.eq(1)
+            for _ in range(3):
+                yield
+            self.assertEqual((yield dut.max_payload_size), 512)
+            self.assertEqual((yield dut.max_request_size), 512)
 
         run_simulation(dut, generator())
 
