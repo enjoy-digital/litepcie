@@ -1,0 +1,763 @@
+{
+ "argv": [
+  "doc/manual/registers_gen.yml"
+ ],
+ "banks": {
+  "pcie_dma0": [
+   {
+    "access": "rw",
+    "description": "DMA Writer Control. Write ``1`` to enable DMA Writer.",
+    "fields": [],
+    "name": "writer_enable",
+    "offset": 0,
+    "reset": 0,
+    "size": 2
+   },
+   {
+    "access": "rw",
+    "description": "64-bit DMA descriptor to be written to the table.",
+    "fields": [
+     {
+      "description": "32-bit LSB Address of the descriptor (bytes-aligned).",
+      "name": "address_lsb",
+      "offset": 0,
+      "reset": 0,
+      "size": 32,
+      "values": []
+     },
+     {
+      "description": "24-bit Length  of the descriptor (in bytes).",
+      "name": "length",
+      "offset": 32,
+      "reset": 0,
+      "size": 24,
+      "values": []
+     },
+     {
+      "description": "IRQ Disable Control of the descriptor.",
+      "name": "irq_disable",
+      "offset": 56,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Last Disable Control of the descriptor.",
+      "name": "last_disable",
+      "offset": 57,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     }
+    ],
+    "name": "writer_table_value",
+    "offset": 4,
+    "reset": 0,
+    "size": 58
+   },
+   {
+    "access": "rw",
+    "description": "Write and 32-bit MSB Address of the descriptor (bytes-aligned)",
+    "fields": [
+     {
+      "description": "32-bit MSB Address of the descriptor (bytes-aligned), in 64-bit mode.",
+      "name": "address_msb",
+      "offset": 0,
+      "reset": 0,
+      "size": 32,
+      "values": []
+     }
+    ],
+    "name": "writer_table_we",
+    "offset": 12,
+    "reset": 0,
+    "size": 32
+   },
+   {
+    "access": "rw",
+    "description": "Mode Selection. ``0``: **Prog** mode / ``1``: **Loop** mode. **Prog** mode should be used to program the table by software and for cases where automatic refill of the table is not needed: A descriptor is only executed once and when all the descriptors have been executed (ie the table is empty), the DMA just stops until the next software refill. **Loop** mode should be used once the table has been filled by software in **Prog** mode and allow continuous Scatter-Gather DMA: Each descriptor sent to the DMA is refilled to the table.",
+    "fields": [],
+    "name": "writer_table_loop_prog_n",
+    "offset": 16,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "Loop monitoring for software synchronization.",
+    "fields": [
+     {
+      "description": "Index of the last descriptor executed in the DMA descriptor table.",
+      "name": "index",
+      "offset": 0,
+      "reset": 0,
+      "size": 16,
+      "values": []
+     },
+     {
+      "description": "Loops of the DMA descriptor table since started.",
+      "name": "count",
+      "offset": 16,
+      "reset": 0,
+      "size": 16,
+      "values": []
+     }
+    ],
+    "name": "writer_table_loop_status",
+    "offset": 20,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "Number descriptors in the table.",
+    "fields": [],
+    "name": "writer_table_level",
+    "offset": 24,
+    "reset": null,
+    "size": 9
+   },
+   {
+    "access": "rw",
+    "description": "A write to this register resets the table.",
+    "fields": [],
+    "name": "writer_table_reset",
+    "offset": 28,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "DMA Reader Control. Write ``1`` to enable DMA Reader.",
+    "fields": [],
+    "name": "reader_enable",
+    "offset": 32,
+    "reset": 0,
+    "size": 2
+   },
+   {
+    "access": "rw",
+    "description": "64-bit DMA descriptor to be written to the table.",
+    "fields": [
+     {
+      "description": "32-bit LSB Address of the descriptor (bytes-aligned).",
+      "name": "address_lsb",
+      "offset": 0,
+      "reset": 0,
+      "size": 32,
+      "values": []
+     },
+     {
+      "description": "24-bit Length  of the descriptor (in bytes).",
+      "name": "length",
+      "offset": 32,
+      "reset": 0,
+      "size": 24,
+      "values": []
+     },
+     {
+      "description": "IRQ Disable Control of the descriptor.",
+      "name": "irq_disable",
+      "offset": 56,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Last Disable Control of the descriptor.",
+      "name": "last_disable",
+      "offset": 57,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     }
+    ],
+    "name": "reader_table_value",
+    "offset": 36,
+    "reset": 0,
+    "size": 58
+   },
+   {
+    "access": "rw",
+    "description": "Write and 32-bit MSB Address of the descriptor (bytes-aligned)",
+    "fields": [
+     {
+      "description": "32-bit MSB Address of the descriptor (bytes-aligned), in 64-bit mode.",
+      "name": "address_msb",
+      "offset": 0,
+      "reset": 0,
+      "size": 32,
+      "values": []
+     }
+    ],
+    "name": "reader_table_we",
+    "offset": 44,
+    "reset": 0,
+    "size": 32
+   },
+   {
+    "access": "rw",
+    "description": "Mode Selection. ``0``: **Prog** mode / ``1``: **Loop** mode. **Prog** mode should be used to program the table by software and for cases where automatic refill of the table is not needed: A descriptor is only executed once and when all the descriptors have been executed (ie the table is empty), the DMA just stops until the next software refill. **Loop** mode should be used once the table has been filled by software in **Prog** mode and allow continuous Scatter-Gather DMA: Each descriptor sent to the DMA is refilled to the table.",
+    "fields": [],
+    "name": "reader_table_loop_prog_n",
+    "offset": 48,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "Loop monitoring for software synchronization.",
+    "fields": [
+     {
+      "description": "Index of the last descriptor executed in the DMA descriptor table.",
+      "name": "index",
+      "offset": 0,
+      "reset": 0,
+      "size": 16,
+      "values": []
+     },
+     {
+      "description": "Loops of the DMA descriptor table since started.",
+      "name": "count",
+      "offset": 16,
+      "reset": 0,
+      "size": 16,
+      "values": []
+     }
+    ],
+    "name": "reader_table_loop_status",
+    "offset": 52,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "Number descriptors in the table.",
+    "fields": [],
+    "name": "reader_table_level",
+    "offset": 56,
+    "reset": null,
+    "size": 9
+   },
+   {
+    "access": "rw",
+    "description": "A write to this register resets the table.",
+    "fields": [],
+    "name": "reader_table_reset",
+    "offset": 60,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "DMA Loopback Enable Control. Write ``1`` to enable DMA internal loopback (DMA Reader to DMA Writer).",
+    "fields": [],
+    "name": "loopback_enable",
+    "offset": 64,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "",
+    "fields": [],
+    "name": "synchronizer_bypass",
+    "offset": 68,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "",
+    "fields": [
+     {
+      "description": "",
+      "name": "mode",
+      "offset": 0,
+      "reset": 0,
+      "size": 2,
+      "values": [
+       [
+        "``0b00``",
+        "Synchronization disabled."
+       ],
+       [
+        "``0b01``",
+        "Reader and Writer to PPS Synchronization enabled."
+       ],
+       [
+        "``0b10``",
+        "PPS Synchronization enabled."
+       ],
+       [
+        "``0b11``",
+        "Reserved."
+       ]
+      ]
+     }
+    ],
+    "name": "synchronizer_enable",
+    "offset": 72,
+    "reset": 0,
+    "size": 2
+   },
+   {
+    "access": "rw",
+    "description": "",
+    "fields": [
+     {
+      "description": "DMA Reader FIFO depth (in 64-bit words).",
+      "name": "depth",
+      "offset": 0,
+      "reset": 1024,
+      "size": 24,
+      "values": []
+     },
+     {
+      "description": "Software Scratchpad.",
+      "name": "scratch",
+      "offset": 24,
+      "reset": 0,
+      "size": 4,
+      "values": []
+     },
+     {
+      "description": "",
+      "name": "level_mode",
+      "offset": 31,
+      "reset": 0,
+      "size": 1,
+      "values": [
+       [
+        "``0b0``",
+        "Report Instantaneous level."
+       ],
+       [
+        "``0b1``",
+        "Report `Minimal` level since last clear."
+       ]
+      ]
+     }
+    ],
+    "name": "buffering_reader_fifo_control",
+    "offset": 76,
+    "reset": 1024,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "DMA Reader FIFO level (in 64-bit words).",
+      "name": "level",
+      "offset": 0,
+      "reset": 0,
+      "size": 24,
+      "values": []
+     }
+    ],
+    "name": "buffering_reader_fifo_status",
+    "offset": 80,
+    "reset": null,
+    "size": 24
+   },
+   {
+    "access": "rw",
+    "description": "",
+    "fields": [
+     {
+      "description": "DMA Writer FIFO depth (in 64-bit words).",
+      "name": "depth",
+      "offset": 0,
+      "reset": 1024,
+      "size": 24,
+      "values": []
+     },
+     {
+      "description": "Software Scratchpad.",
+      "name": "scratch",
+      "offset": 24,
+      "reset": 0,
+      "size": 4,
+      "values": []
+     },
+     {
+      "description": "",
+      "name": "level_mode",
+      "offset": 31,
+      "reset": 0,
+      "size": 1,
+      "values": [
+       [
+        "``0b0``",
+        "Report Instantaneous level."
+       ],
+       [
+        "``0b1``",
+        "Report `Maximal` level since last clear."
+       ]
+      ]
+     }
+    ],
+    "name": "buffering_writer_fifo_control",
+    "offset": 84,
+    "reset": 1024,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "DMA Writer FIFO level (in 64-bit words).",
+      "name": "level",
+      "offset": 0,
+      "reset": 0,
+      "size": 24,
+      "values": []
+     }
+    ],
+    "name": "buffering_writer_fifo_status",
+    "offset": 88,
+    "reset": null,
+    "size": 24
+   },
+   {
+    "access": "wo",
+    "description": "",
+    "fields": [],
+    "name": "writer_monitor_reset",
+    "offset": 92,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "wo",
+    "description": "",
+    "fields": [],
+    "name": "writer_monitor_latch",
+    "offset": 96,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "Number of monitor overflows.",
+    "fields": [],
+    "name": "writer_monitor_overflows",
+    "offset": 100,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "wo",
+    "description": "",
+    "fields": [],
+    "name": "reader_monitor_reset",
+    "offset": 104,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "wo",
+    "description": "",
+    "fields": [],
+    "name": "reader_monitor_latch",
+    "offset": 108,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "Number of monitor underflows.",
+    "fields": [],
+    "name": "reader_monitor_underflows",
+    "offset": 112,
+    "reset": null,
+    "size": 16
+   }
+  ],
+  "pcie_msix": [
+   {
+    "access": "rw",
+    "description": "MSI-X Enable Control. Write bit(s) to ``1`` to enable corresponding MSI-X IRQ(s).",
+    "fields": [],
+    "name": "enable",
+    "offset": 0,
+    "reset": 0,
+    "size": 64
+   },
+   {
+    "access": "ro",
+    "description": "MSI-X PBA Table.",
+    "fields": [],
+    "name": "pba",
+    "offset": 8,
+    "reset": null,
+    "size": 64
+   }
+  ],
+  "pcie_phy": [
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "",
+      "name": "status",
+      "offset": 0,
+      "reset": 0,
+      "size": 1,
+      "values": [
+       [
+        "``0b0``",
+        "Link Down."
+       ],
+       [
+        "``0b1``",
+        "Link Up."
+       ]
+      ]
+     },
+     {
+      "description": "",
+      "name": "rate",
+      "offset": 1,
+      "reset": 0,
+      "size": 1,
+      "values": [
+       [
+        "``0b0``",
+        "2.5 Gb/s."
+       ],
+       [
+        "``0b1``",
+        "5.0 Gb/s."
+       ]
+      ]
+     },
+     {
+      "description": "",
+      "name": "width",
+      "offset": 2,
+      "reset": 0,
+      "size": 2,
+      "values": [
+       [
+        "``0b00``",
+        "1-Lane link."
+       ],
+       [
+        "``0b01``",
+        "2-Lane link."
+       ],
+       [
+        "``0b10``",
+        "4-Lane link."
+       ],
+       [
+        "``0b11``",
+        "8-Lane link."
+       ]
+      ]
+     },
+     {
+      "description": "LTSSM State",
+      "name": "ltssm",
+      "offset": 4,
+      "reset": 0,
+      "size": 6,
+      "values": []
+     }
+    ],
+    "name": "link_status",
+    "offset": 0,
+    "reset": null,
+    "size": 10
+   },
+   {
+    "access": "ro",
+    "description": "MSI Enable Status. ``1``: MSI is enabled.",
+    "fields": [],
+    "name": "msi_enable",
+    "offset": 4,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "MSI-X Enable Status. ``1``: MSI-X is enabled.",
+    "fields": [],
+    "name": "msix_enable",
+    "offset": 8,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "Bus Mastering Status. ``1``: Bus Mastering enabled.",
+    "fields": [],
+    "name": "bus_master_enable",
+    "offset": 12,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "Negiotiated Max Request Size (in bytes).",
+    "fields": [],
+    "name": "max_request_size",
+    "offset": 16,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "Negiotiated Max Payload Size (in bytes).",
+    "fields": [],
+    "name": "max_payload_size",
+    "offset": 20,
+    "reset": null,
+    "size": 16
+   }
+  ],
+  "ptm_requester": [
+   {
+    "access": "rw",
+    "description": "",
+    "fields": [
+     {
+      "description": "",
+      "name": "enable",
+      "offset": 0,
+      "reset": 0,
+      "size": 1,
+      "values": [
+       [
+        "``0b0``",
+        "PTM Requester Disabled."
+       ],
+       [
+        "``0b1``",
+        "PTM Requester Enabled."
+       ]
+      ]
+     },
+     {
+      "description": "",
+      "name": "trigger",
+      "offset": 1,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     }
+    ],
+    "name": "control",
+    "offset": 0,
+    "reset": 0,
+    "size": 2
+   },
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "",
+      "name": "valid",
+      "offset": 0,
+      "reset": 0,
+      "size": 1,
+      "values": [
+       [
+        "``0b0``",
+        "PTM Context Invalid."
+       ],
+       [
+        "``0b1``",
+        "PTM Context Valid."
+       ]
+      ]
+     },
+     {
+      "description": "",
+      "name": "busy",
+      "offset": 1,
+      "reset": 0,
+      "size": 1,
+      "values": [
+       [
+        "``0b0``",
+        "PTM Request Done."
+       ],
+       [
+        "``0b1``",
+        "PTM Request Ongoing."
+       ]
+      ]
+     }
+    ],
+    "name": "status",
+    "offset": 4,
+    "reset": null,
+    "size": 2
+   },
+   {
+    "access": "ro",
+    "description": "PHY TX logic delay (in ns).",
+    "fields": [],
+    "name": "phy_tx_delay",
+    "offset": 8,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "PHY RX logic delay (in ns).",
+    "fields": [],
+    "name": "phy_rx_delay",
+    "offset": 12,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "Last PTM Master Time (in ns).",
+    "fields": [],
+    "name": "master_time",
+    "offset": 16,
+    "reset": null,
+    "size": 64
+   },
+   {
+    "access": "ro",
+    "description": "Last PTM Link Delay (in ns).",
+    "fields": [],
+    "name": "link_delay",
+    "offset": 24,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "Last PTM T1 Time (in ns).",
+    "fields": [],
+    "name": "t1_time",
+    "offset": 28,
+    "reset": null,
+    "size": 64
+   },
+   {
+    "access": "ro",
+    "description": "Last PTM T4 Time (in ns).",
+    "fields": [],
+    "name": "t4_time",
+    "offset": 36,
+    "reset": null,
+    "size": 64
+   }
+  ]
+ },
+ "config": "gen_msix_ptm",
+ "target": "gen"
+}
