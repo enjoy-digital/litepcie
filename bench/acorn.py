@@ -21,8 +21,6 @@ from litex.soc.interconnect.csr import *
 from litex.soc.integration.soc import *
 from litex.soc.integration.builder import *
 
-from litepcie.phy import s7pciephy
-
 # CRG ----------------------------------------------------------------------------------------------
 
 class _CRG(LiteXModule):
@@ -142,12 +140,9 @@ class LitePCIeSoC(SoCMini):
         platform.toolchain.pre_placement_commands.append("set_false_path -from [get_clocks litepciesoc_clkout] -to [get_clocks userclk2]")
 
         # LitePCIe sources -------------------------------------------------------------------------
-        # LitePCIe core
+        # LitePCIe core (includes the PHY logic around the Hard IP).
         platform.add_source("build/gateware/litepcie_core.v")
-        # Xilinx PHY
-        phy_path = os.path.dirname(s7pciephy.__file__)
-        platform.add_source(os.path.join(phy_path, "xilinx_s7_gen2", "pcie_pipe_clock.v"))
-        platform.add_source(os.path.join(phy_path, "xilinx_s7_gen2", "pcie_s7_support.v"))
+        # Xilinx PCIe Hard IP.
         config = {
                 "Bar0_Scale"         : "Megabytes",
                 "Bar0_Size"          : 128, # FIXME: Use core_config["phy_bar0_size"].
