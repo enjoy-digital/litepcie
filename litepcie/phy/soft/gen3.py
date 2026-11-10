@@ -549,14 +549,17 @@ class Gen3RXFramer(LiteXModule):
                 )
             ]
 
-        # Stage B: pointer doubling. J[s]: position after the Tokens followed from s (in the beat: not done),
-        # M[s]: Tokens reached from s.
+        # Stage B: pointer doubling. J[s]: position after the Tokens followed from s (in the beat: not done,
+        # else ndw: the position itself is the next of the last Token, from nexts), M[s]: Tokens reached from s.
         valid, data, kinds, nexts, seqs = a_valid, a_data, a_kind, a_next, a_seq
-        J = list(a_next)
+        jw = bits_for(ndw)
+        J  = [Signal(jw) for _ in range(ndw)]
+        for i in range(ndw):
+            self.comb += J[i].eq(Mux(a_next[i] < ndw, a_next[i][:jw], ndw))
         M = [Constant(1 << i, ndw) for i in range(ndw)]
         steps = 1
         while steps < ndw:
-            J_n = [Signal(pw, reset_less=True)  for _ in range(ndw)]
+            J_n = [Signal(jw, reset_less=True)  for _ in range(ndw)]
             M_n = [Signal(ndw, reset_less=True) for _ in range(ndw)]
             J_a = Array(J)
             M_a = Array(M)
@@ -588,14 +591,14 @@ class Gen3RXFramer(LiteXModule):
         c_last  = Signal()     # The carried Token was on the last slot of the previous beat.
         inb     = start < ndw
         tokens  = Signal(ndw)
-        J_a     = Array(J)
         M_a     = Array(M)
         self.comb += tokens.eq(Mux(inb, M_a[start[:iw]], 0))
         last_kind = Signal(3)
         last_seq  = Signal(12)
         last_pos  = Signal(iw)
+        last_next = Signal(pw)
         for i in range(ndw): # Highest Token of the beat.
-            self.comb += If(tokens[i], last_kind.eq(kinds[i]), last_seq.eq(seqs[i]), last_pos.eq(i))
+            self.comb += If(tokens[i], last_kind.eq(kinds[i]), last_seq.eq(seqs[i]), last_pos.eq(i), last_next.eq(nexts[i]))
         d_valid  = Signal()
         d_data   = Signal(len(data), reset_less=True)
         d_tokens = Signal(ndw)
@@ -618,7 +621,7 @@ class Gen3RXFramer(LiteXModule):
                 *[d_kinds[i].eq(kinds[i]) for i in range(ndw)],
                 *[d_nexts[i].eq(nexts[i]) for i in range(ndw)],
                 *[d_seqs[i].eq(seqs[i]) for i in range(ndw)],
-                start.eq(Mux(inb, J_a[start[:iw]], start) - ndw),
+                start.eq(Mux(inb, last_next, start) - ndw),
                 If(tokens != 0,
                     c_kind.eq(last_kind),
                     c_seq.eq(last_seq),
@@ -669,24 +672,46 @@ class Gen3RXFramer(LiteXModule):
         process = d_valid
 
         # DLLPs: 2 bytes in the Token's DW, 4 in the next one. Queued, one per cycle.
-        # Index of each one: the write pointer plus the DLLPs before it in the beat (power of 2 queue).
-        nq = max(8, ndw)
-        qw = log2_int(nq)
+        # A DLLP takes 2 DWs: one at most starts in each pair of slots, nw of them per beat. Index of each
+        # one: the write pointer plus the DLLPs before it in the beat, in nw banks (index modulo nw) of
+        # nq/nw rows: a beat writes a DLLP at most per bank (area).
+        nw   = ndw//2
+        nq   = max(8, ndw)
+        qw   = log2_int(nq)
+        lb   = log2_int(nw)
+        rows = nq//nw
+        assert ndw >= 2 and 2**log2_int(ndw, need_pow2=False) == ndw
+        pair_v = [dllp_v[2*p] | dllp_v[2*p + 1] for p in range(nw)]
+        pair_d = [Mux(dllp_v[2*p],
+            Cat(slots[2*p][16:32],     slots[2*p + 1]),
+            Cat(slots[2*p + 1][16:32], slots[2*p + 2])) for p in range(nw)]
+        banks = [[Signal(48, reset_less=True) for _ in range(rows)] for _ in range(nw)]
         # Written a cycle later (timing): wr_e is the write pointer once they are.
-        dllps = Array(Signal(48) for _ in range(nq))
         wr, wr_e, rd = Signal(qw), Signal(qw), Signal(qw)
-        for i in range(ndw):
-            e_valid = Signal()
-            e_index = Signal(qw)
-            e_dllp  = Signal(48, reset_less=True)
+        e_valid = [Signal() for _ in range(nw)]
+        e_index = [Signal(qw) for _ in range(nw)]
+        e_dllp  = [Signal(48, reset_less=True) for _ in range(nw)]
+        for p in range(nw):
             self.sync += [
-                e_valid.eq(process & dllp_v[i]),
-                e_index.eq(wr + (popcount(Cat(*dllp_v[:i])) if i else 0)),
-                e_dllp.eq(Cat(slots[i][16:32], slots[i + 1])),
+                e_valid[p].eq(process & pair_v[p]),
+                e_index[p].eq(wr + (popcount(Cat(*pair_v[:p])) if p else 0)),
+                e_dllp[p].eq(pair_d[p]),
             ]
-            self.sync += If(e_valid, dllps[e_index].eq(e_dllp))
+        for b in range(nw):
+            sel  = Signal(nw)
+            data = Signal(48)
+            row  = Signal(max(log2_int(rows), 1))
+            self.comb += [
+                sel.eq(Cat(*[e_valid[p] & ((e_index[p][:lb] == b) if lb else 1) for p in range(nw)])),
+                data.eq(Reduce("OR", [Replicate(sel[p], 48) & e_dllp[p] for p in range(nw)])),
+                row.eq(Reduce("OR", [Replicate(sel[p], len(row)) & e_index[p][lb:] for p in range(nw)])),
+            ]
+            self.sync += If(sel != 0,
+                Case(row, {r: banks[b][r].eq(data) for r in range(rows)})
+            )
+        dllps = Array(banks[q % nw][q//nw] for q in range(nq))
         self.sync += [
-            If(process, wr.eq(wr + popcount(Cat(*dllp_v)))),
+            If(process, wr.eq(wr + popcount(Cat(*pair_v)))),
             wr_e.eq(wr),
             self.dllp_valid.eq(rd != wr_e),
             If(rd != wr_e,

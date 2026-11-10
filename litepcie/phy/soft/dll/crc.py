@@ -53,6 +53,21 @@ def crc_next(width, poly, state, data):
     bits = [state[i] for i in range(width)] + [data[i] for i in range(len(data))]
     return [crc_xor(bits, mask) for mask in crc_equations(width, poly, len(data))]
 
+def crc_rewind_equations(width, poly, nbits):
+    """Masks over the state bits giving, for each bit, the state before nbits zero data bits: the
+    inverse of the state transition (invertible, the polynom has its X^0 term)."""
+    mask  = (1 << width) - 1
+    rows  = [m & mask for m in crc_equations(width, poly, nbits)]
+    # Gaussian elimination of [rows | identity] over GF(2).
+    aug = [(rows[i], 1 << i) for i in range(width)]
+    for col in range(width):
+        pivot = next(r for r in range(col, width) if (aug[r][0] >> col) & 1)
+        aug[col], aug[pivot] = aug[pivot], aug[col]
+        for r in range(width):
+            if r != col and (aug[r][0] >> col) & 1:
+                aug[r] = (aug[r][0] ^ aug[col][0], aug[r][1] ^ aug[col][1])
+    return [aug[i][1] for i in range(width)]
+
 def crc_value(width, state_bits):
     """CRC value from the state bits: complemented remainder, bit-reversed."""
     return Cat(*[~state_bits[width - 1 - i] for i in range(width)])

@@ -22,7 +22,7 @@ from litex.soc.interconnect import stream
 
 from litepcie.phy.soft.common import COM, STP, SDP, END, EDB, PAD, lane_layout
 from litepcie.phy.soft.dll.buffer       import PacketBuffer
-from litepcie.phy.soft.dll.crc          import crc_next, crc_value, LCRC_POLYNOM, LCRC_INIT
+from litepcie.phy.soft.dll.crc          import crc_next, crc_xor, crc_rewind_equations, crc_value, LCRC_POLYNOM, LCRC_INIT
 from litepcie.phy.soft.dll.flow_control import tlp_credits
 from litepcie.phy.soft.dll.retry        import ReplayBuffer
 
@@ -358,7 +358,9 @@ class TLPRepacker(LiteXModule):
     (with a beat, in order): the buffer is dropped, and the slots up to the next TLP start ignored.
 
     The DWs stay in place in a ring buffer: what is written doesn't depend on what is read (timing),
-    and the output beats are registered."""
+    and the output beats are registered. The buffer is in ndw banks (position modulo ndw) of depth/ndw rows:
+    the DWs of a beat compacted then rotated to their banks (a DW at most per bank), the DWs read a row per
+    bank, rotated back (area: shifts of log2(ndw) stages)."""
     def __init__(self, ndw, depth=None):
         self.sink_en    = Signal()    # i: beat present.
         self.sink_ready = Signal()    # o
@@ -379,7 +381,13 @@ class TLPRepacker(LiteXModule):
         fields = dict(data=(0, 32), first=(32, 1), last=(33, 1), edb=(34, 1), seq=(35, 12))
         width  = 47
         field  = lambda s, name: s[fields[name][0]:fields[name][0] + fields[name][1]]
-        buf    = [Signal(width, reset_less=True) for _ in range(depth)]
+        assert depth % ndw == 0 and 2**log2_int(depth, need_pow2=False) == depth
+        nb     = ndw
+        lb     = log2_int(nb)
+        rows   = depth//nb
+        banks  = [[Signal(width, reset_less=True) for _ in range(rows)] for _ in range(nb)]
+        bank_lo = lambda p: p[:lb] if lb else 0
+        bank_hi = lambda p: p[lb:adr] if rows > 1 else 0
         wr     = Signal(adr + 1)
         rd     = Signal(adr + 1)
         used   = Signal(adr + 1)
@@ -389,14 +397,14 @@ class TLPRepacker(LiteXModule):
             self.sink_ready.eq(used + 2*ndw <= depth),
         ]
 
-        # Input stage: valid slots and their offset from the write position, which don't depend on it
-        # (timing). While dropping, the slots of a beat are ignored up to the first TLP start.
+        # Input stage: valid slots and their distance to their place once compacted, which don't depend on the
+        # write position (timing). While dropping, the slots of a beat are ignored up to the first TLP start.
         beat       = self.sink_en & self.sink_ready
         dropping   = Signal()
         dropping_c = dropping
         offset_c   = Constant(0, bits_for(ndw))
         valids     = [Signal() for _ in range(ndw)]
-        offsets    = [Signal(bits_for(ndw), reset_less=True) for _ in range(ndw)]
+        dists      = [Signal(max(lb, 1), reset_less=True) for _ in range(ndw)]
         total      = Signal(bits_for(ndw))
         entries    = [Signal(width, reset_less=True) for _ in range(ndw)]
         for i in range(ndw):
@@ -410,27 +418,69 @@ class TLPRepacker(LiteXModule):
             ]
             self.sync += [
                 valids[i].eq(valid & ~self.flush),
-                offsets[i].eq(offset_c),
+                dists[i].eq(i - offset_c),
                 entries[i].eq(Cat(self.sink_data[32*i:32*(i+1)], self.sink_first[i], self.sink_last[i],
                     self.sink_edb[i], self.sink_seq[12*i:12*(i+1)])),
             ]
             dropping_c, offset_c = dropping_n, offset_n
         self.sync += total.eq(Mux(self.flush, 0, offset_c))
 
-        # Write.
-        for i in range(ndw):
-            position = Signal(adr)
-            self.comb += position.eq(wr[:adr] + offsets[i])
-            self.sync += If(valids[i],
-                Case(position, {j: buf[j].eq(entries[i]) for j in range(depth)})
+        # Write: the valid DWs compacted (each one moved down by its distance, a stage per bit from the LSB:
+        # no two DWs meet), then rotated by the write position: DW r to bank (wr + r) modulo nb, in the row
+        # of wr, the next one for the banks below wr's.
+        cv, cd, ce = valids, dists, entries
+        for k in range(lb):
+            step = 1 << k
+            nv = [Signal() for _ in range(ndw)]
+            nd = [Signal(max(lb, 1)) for _ in range(ndw)]
+            ne = [Signal(width) for _ in range(ndw)]
+            for i in range(ndw):
+                stay = cv[i] & ~cd[i][k]
+                move = (cv[i + step] & cd[i + step][k]) if i + step < ndw else 0
+                self.comb += [
+                    nv[i].eq(stay | move),
+                    nd[i].eq(cd[i + step] if i + step < ndw else cd[i]),
+                    ne[i].eq(ce[i + step] if i + step < ndw else ce[i]),
+                    If(stay,
+                        nd[i].eq(cd[i]),
+                        ne[i].eq(ce[i]),
+                    )
+                ]
+            cv, cd, ce = nv, nd, ne
+        wr_lo = bank_lo(wr)
+        for k in range(lb):
+            step = 1 << k
+            nv = [Signal() for _ in range(ndw)]
+            ne = [Signal(width) for _ in range(ndw)]
+            for i in range(ndw):
+                self.comb += [
+                    nv[i].eq(Mux(wr_lo[k], cv[(i - step) % ndw], cv[i])),
+                    ne[i].eq(Mux(wr_lo[k], ce[(i - step) % ndw], ce[i])),
+                ]
+            cv, ce = nv, ne
+        for b in range(nb):
+            row = Signal(max(log2_int(rows), 1))
+            self.comb += row.eq(bank_hi(wr) + ((b < wr_lo) if lb else 0))
+            self.sync += If(cv[b],
+                Case(row, {r: banks[b][r].eq(ce[b]) for r in range(rows)})
             )
 
         # Read: up to the end of the TLP or a full beat.
-        # Read index of each DW (rd + i) kept in its own register: no adder, and less fanout on rd (timing).
-        head    = [Signal(width) for _ in range(ndw)]
-        indexes = [Signal(adr, reset=i % depth) for i in range(ndw)]
-        for i in range(ndw):
-            self.comb += Case(indexes[i], {j: head[i].eq(buf[j]) for j in range(depth)})
+        # The DWs at rd..rd+ndw-1: a row per bank (the one of the position in that window, kept in a register:
+        # no adder), then rotated by rd.
+        bank_out  = [Signal(width) for _ in range(nb)]
+        bank_rows = [Signal(max(log2_int(rows), 1)) for _ in range(nb)]
+        for b in range(nb):
+            self.comb += Case(bank_rows[b], {r: bank_out[b].eq(banks[b][r]) for r in range(rows)})
+        rd_lo = bank_lo(rd)
+        head  = bank_out
+        for k in range(lb):
+            step = 1 << k
+            nh = [Signal(width) for _ in range(ndw)]
+            for i in range(ndw):
+                self.comb += nh[i].eq(Mux(rd_lo[k], head[(i + step) % ndw], head[i]))
+            head = nh
+        rd_next = Signal(adr + 1)
         lasts = [field(head[i], "last") for i in range(ndw)]
         count = Signal(max=ndw + 1)
         count_case = count.eq(ndw)
@@ -440,21 +490,22 @@ class TLPRepacker(LiteXModule):
         out_avail = (used >= ndw) | ((used >= count) & (used != 0))
         take      = Signal()
         self.comb += take.eq(out_avail & (~source.valid | source.ready))
+        self.comb += rd_next.eq(rd + count)
         self.comb += self.flushed.eq(beat & self.flush)
         self.sync += [
             If(source.ready, source.valid.eq(0)),
             If(self.flushed,
                 wr.eq(0),
                 rd.eq(0),
-                *[indexes[i].eq(i % depth) for i in range(ndw)],
+                *[bank_rows[b].eq(0) for b in range(nb)],
                 dropping.eq(1),
                 source.valid.eq(0),
             ).Else(
                 If(beat, dropping.eq(dropping_c)),
                 wr.eq(wr + total),
                 If(take,
-                    rd.eq(rd + count),
-                    *[indexes[i].eq(indexes[i] + count) for i in range(ndw)],
+                    rd.eq(rd_next),
+                    *[bank_rows[b].eq(bank_hi(rd_next) + (b < bank_lo(rd_next))) for b in range(nb)],
                     source.valid.eq(1),
                 )
             ),
@@ -618,11 +669,19 @@ class WideLCRC(LiteXModule):
         start = Signal(32)
         new   = Signal(32)
         init  = Constant(LCRC_INIT, 32)
-        # A statement per bit: the wide expressions are long.
-        steps = [Signal(32) for _ in range(ndw)]
+        # The CRC over the whole beat, DWs past dws as zeros, then for n DWs the state rewound by the ndw - n
+        # zero DWs (area: a single wide CRC instead of one per DW count). A statement per bit: the wide
+        # expressions are long.
+        masked = Signal(32*ndw)
+        full   = Signal(32)
+        for i in range(ndw):
+            self.comb += masked[32*i:32*(i + 1)].eq(Replicate(self.dws > i, 32) & self.data[32*i:32*(i + 1)])
+        for bit, expression in enumerate(crc_next(32, LCRC_POLYNOM, start, masked)):
+            self.comb += full[bit].eq(expression)
+        rewinds = {}
         for n in range(1, ndw + 1):
-            for bit, expression in enumerate(crc_next(32, LCRC_POLYNOM, start, self.data[:32*n])):
-                self.comb += steps[n - 1][bit].eq(expression)
+            masks = crc_rewind_equations(32, LCRC_POLYNOM, 32*(ndw - n))
+            rewinds[n] = new.eq(Cat(*[crc_xor(full, masks[bit]) for bit in range(32)]))
         self.comb += [
             If(self.first,
                 start.eq(Cat(*crc_next(32, LCRC_POLYNOM, init, self.seq)))
@@ -631,7 +690,7 @@ class WideLCRC(LiteXModule):
             ),
             Case(self.dws, dict(
                 [(0, new.eq(start))] +
-                [(n, new.eq(steps[n - 1])) for n in range(1, ndw + 1)] +
+                list(rewinds.items()) +
                 [("default", new.eq(start))])),
             self.value.eq(crc_value(32, state)),
             self.next_value.eq(crc_value(32, new)),
@@ -639,6 +698,92 @@ class WideLCRC(LiteXModule):
         self.sync += If(self.ce, state.eq(new))
 
 # Framers of both encodings --------------------------------------------------------------------------
+
+class _BeatSplitter(LiteXModule):
+    """Lane words of ndw DWs to two words of ndw//2 DWs (low half first), with back-pressure."""
+    def __init__(self, ndw):
+        h = ndw//2
+        self.sink   = sink   = stream.Endpoint(lane_layout(4*ndw))
+        self.source = source = stream.Endpoint(lane_layout(4*h))
+
+        # # #
+
+        data  = Signal(32*ndw, reset_less=True)
+        ctrl  = Signal(4*ndw,  reset_less=True)
+        valid = Signal()
+        upper = Signal()
+        load  = Signal()
+        self.comb += [
+            source.valid.eq(valid),
+            source.data.eq(Mux(upper, data[32*h:], data[:32*h])),
+            source.ctrl.eq(Mux(upper, ctrl[4*h:],  ctrl[:4*h])),
+            # A new word when empty or when the upper half goes out.
+            sink.ready.eq(~valid | (upper & source.ready)),
+            load.eq(sink.valid & sink.ready),
+        ]
+        self.sync += [
+            If(load,
+                data.eq(sink.data),
+                ctrl.eq(sink.ctrl),
+                valid.eq(1),
+                upper.eq(0),
+            ).Elif(valid & source.ready,
+                If(upper,
+                    valid.eq(0),
+                ).Else(
+                    upper.eq(1),
+                )
+            )
+        ]
+
+class _TLPBeatCombiner(LiteXModule):
+    """TLP beats of h DWs to beats of 2*h DWs, full but the last one as the Data Link Layer expects: a beat that
+    isn't the last of its TLP (so full) waits for the next one. abort (Pulse): the TLP being received is
+    dropped, a beat waiting too."""
+    def __init__(self, h):
+        self.sink   = sink   = stream.Endpoint(tlp_beat_layout(h))
+        self.source = source = stream.Endpoint(tlp_beat_layout(2*h))
+        self.abort  = Signal()
+
+        # # #
+
+        self.comb += sink.ready.eq(1)
+        pend      = Signal()
+        pend_data = Signal(32*h, reset_less=True)
+        pend_seq  = Signal(12,   reset_less=True)
+        pend_first = Signal(reset_less=True)
+        self.sync += [
+            source.valid.eq(0),
+            If(self.abort,
+                pend.eq(0),
+            ).Elif(sink.valid,
+                If(pend,
+                    # Second half: after the waiting one.
+                    source.valid.eq(1),
+                    source.first.eq(pend_first),
+                    source.last.eq(sink.last),
+                    source.data.eq(Cat(pend_data, sink.data)),
+                    source.dws.eq(h + sink.dws),
+                    source.seq.eq(pend_seq),
+                    source.edb.eq(sink.edb),
+                    pend.eq(0),
+                ).Elif(sink.last,
+                    # Last beat of its TLP: alone.
+                    source.valid.eq(1),
+                    source.first.eq(sink.first),
+                    source.last.eq(1),
+                    source.data.eq(sink.data),
+                    source.dws.eq(sink.dws),
+                    source.seq.eq(sink.seq),
+                    source.edb.eq(sink.edb),
+                ).Else(
+                    pend.eq(1),
+                    pend_data.eq(sink.data),
+                    pend_seq.eq(sink.seq),
+                    pend_first.eq(sink.first),
+                )
+            )
+        ]
 
 class RXFramerSelect(LiteXModule):
     """8b/10b (WideRXFramer) and 8.0 GT/s (Gen3RXFramer) framers, the one of the rate selected by gen3 (the
@@ -656,13 +801,32 @@ class RXFramerSelect(LiteXModule):
 
         # # #
 
-        self.f8 = f8 = ResetInserter()(WideRXFramer(ndw))
+        # 8b/10b at half the width: at 2.5/5.0 GT/s a lane carries a DW per cycle, half the 8.0 GT/s width (the
+        # beats come at most every other cycle): beats split in two halves, TLP beats of ndw//2 DWs out.
+        ndw8 = ndw//2 if ndw >= 4 else ndw
+        self.f8 = f8 = ResetInserter()(WideRXFramer(ndw8))
         self.f3 = f3 = ResetInserter()(Gen3RXFramer(ndw))
         self.comb += [
             f8.reset.eq(self.gen3),
             f3.reset.eq(~self.gen3),
-            sink.ready.eq(1),
         ]
+        f8_sink = f8.sink
+        f8_tlp  = f8.tlp
+        if ndw8 != ndw:
+            self.split8 = split8 = ResetInserter()(_BeatSplitter(ndw))
+            self.comb8  = comb8  = ResetInserter()(_TLPBeatCombiner(ndw8))
+            self.comb += [
+                split8.reset.eq(self.gen3),
+                split8.source.connect(f8.sink),
+                comb8.reset.eq(self.gen3),
+                f8.tlp.connect(comb8.sink),
+                comb8.abort.eq(f8.tlp_abort),
+            ]
+            f8_sink = split8.sink
+            f8_tlp  = comb8.source
+            self.comb += sink.ready.eq(Mux(self.gen3, 1, split8.sink.ready))
+        else:
+            self.comb += sink.ready.eq(1)
         f3_sink = f3.sink
         if nlanes in [1, 2]:
             self.a3 = a3 = ResetInserter()(Gen3RXTokenAligner(ndw, unit=nlanes))
@@ -672,29 +836,29 @@ class RXFramerSelect(LiteXModule):
             ]
             f3_sink = a3.sink
         # Outputs registered (timing; the TLP beats are always taken).
-        for f, f_sink in [(f8, f8.sink), (f3, f3_sink)]:
+        for f, f_sink, f_tlp in [(f8, f8_sink, f8_tlp), (f3, f3_sink, f3.tlp)]:
             sel = self.gen3 if f is f3 else ~self.gen3
             self.comb += [
                 f_sink.valid.eq(sink.valid & sel),
                 f_sink.first.eq(sink.first),
                 f_sink.last.eq(sink.last),
                 f_sink.data.eq(sink.data),
-                f.tlp.ready.eq(1),
+                f_tlp.ready.eq(1),
             ]
             self.sync += If(sel,
-                tlp.valid.eq(f.tlp.valid),
-                tlp.first.eq(f.tlp.first),
-                tlp.last.eq(f.tlp.last),
-                tlp.data.eq(f.tlp.data),
-                tlp.dws.eq(f.tlp.dws),
-                tlp.seq.eq(f.tlp.seq),
-                tlp.edb.eq(f.tlp.edb),
+                tlp.valid.eq(f_tlp.valid),
+                tlp.first.eq(f_tlp.first),
+                tlp.last.eq(f_tlp.last),
+                tlp.data.eq(f_tlp.data),
+                tlp.dws.eq(f_tlp.dws),
+                tlp.seq.eq(f_tlp.seq),
+                tlp.edb.eq(f_tlp.edb),
                 self.dllp.eq(f.dllp),
                 self.dllp_valid.eq(f.dllp_valid),
                 self.error.eq(f.error),
                 self.tlp_abort.eq(f.tlp_abort),
             )
-        self.comb += f8.sink.ctrl.eq(sink.ctrl)
+        self.comb += f8_sink.ctrl.eq(sink.ctrl)
 
 class TXFramerSelect(LiteXModule):
     """8b/10b (WideTXFramer) and 8.0 GT/s (Gen3TXFramer) framers, the one of the rate selected by gen3 (the

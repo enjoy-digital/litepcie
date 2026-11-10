@@ -75,7 +75,9 @@ class ReplayBuffer(LiteXModule):
         d_tx_w     = Record(tx_layout)
         d_tx_r     = Record(tx_layout)
         d_ack_r    = Record(ack_layout)
-        d_sent     = Array(Signal() for _ in range(descriptors))
+        d_sent     = Signal(descriptors) # Set by the transmitter, cleared on write (a bit vector, not an Array: area).
+        sent_set   = Signal()
+        sent_clr   = Signal()
         d_tx_mem   = Memory(len(d_tx_w), descriptors)
         d_ack_mem  = Memory(len(d_ack_r), descriptors)
         d_tx_wr    = d_tx_mem.get_port(write_capable=True, mode=READ_FIRST)
@@ -142,7 +144,6 @@ class ReplayBuffer(LiteXModule):
                     pending.eq(pending + 1)
                 ),
                 If(sink.last,
-                    d_sent[wr_desc[:desc_width]].eq(0),
                     wr_desc.eq(wr_desc + 1),
                     next_seq.eq(next_seq + 1),
                     pending.eq(0),
@@ -162,7 +163,7 @@ class ReplayBuffer(LiteXModule):
         progress    = Signal()
         self.comb += [
             ack_diff.eq(ack_target - d_ack_r.seq),
-            ack_ok.eq(acking & (ack_desc != wr_desc) & d_sent[ack_desc[:desc_width]] & (ack_diff < 2048)),
+            ack_ok.eq(acking & (ack_desc != wr_desc) & Array(d_sent)[ack_desc[:desc_width]] & (ack_diff < 2048)),
             ack_free.eq(ack_ok & (ack_desc != tx_desc)),
         ]
         self.sync += [
@@ -253,11 +254,18 @@ class ReplayBuffer(LiteXModule):
             cur_start.eq(d_tx_r.start),
             cur_len.eq(d_tx_r.length),
             cur_seq.eq(d_tx_r.seq),
-            cur_sent.eq(d_sent[desc]),
+            cur_sent.eq(Array(d_sent)[desc]),
             self.fc_type.eq(d_tx_r.type),
             self.fc_data.eq(d_tx_r.data),
         ]
         self.fsm = fsm = FSM(reset_state="IDLE")
+        self.comb += sent_clr.eq(~self.reset & accepted & sink.last)
+        for d in range(descriptors):
+            self.sync += If(sent_set & (desc == d),
+                d_sent[d].eq(1)
+            ).Elif(sent_clr & (wr_desc[:desc_width] == d),
+                d_sent[d].eq(0)
+            )
         self.sync += [
             If(~fsm.ongoing("IDLE") | self.reset | replay | (tx_desc == wr_desc),
                 settle.eq(0)
@@ -283,7 +291,7 @@ class ReplayBuffer(LiteXModule):
                 ),
             ).Elif(self.enable & settled & (cur_sent | self.fc_ok),
                 self.fc_consume.eq(~cur_sent),
-                NextValue(d_sent[desc], 1),
+                sent_set.eq(1),
                 NextValue(rd_ptr, cur_start),
                 NextValue(remaining, cur_len),
                 NextValue(source.first, 1),

@@ -276,6 +276,29 @@ class TestSoftGen3Framing(unittest.TestCase):
                 self.assertEqual(tlps, exp_t)
                 self.assertEqual(dllps, exp_d)
 
+    def test_rx_framer_dllp_bursts(self):
+        # Back to back DLLPs from any DW (up to a DLLP per pair of slots in a beat), then IDL Tokens to empty the
+        # queue, a TLP between the bursts.
+        for ndw in [2, 4, 8, 16]:
+            with self.subTest(ndw=ndw):
+                rng = random.Random(100 + ndw)
+                symbols, exp_t, exp_d = [], [], []
+                for i in range(40):
+                    symbols += [0]*(4*rng.randrange(0, ndw))
+                    for _ in range(rng.randrange(1, max(8, ndw)//2 + 1)):
+                        dllp = [rng.randrange(256) for _ in range(6)]
+                        exp_d.append(dllp)
+                        symbols += list(SDP_TOKEN) + dllp
+                    symbols += [0]*(4*4*max(8, ndw))
+                    dws  = mwr_dws(rng, rng.randrange(1, 8))
+                    lcrc = [rng.randrange(256) for _ in range(4)]
+                    exp_t.append(dict(seq=i, dws=dws + [lcrc], edb=0))
+                    symbols += list(stp_token(len(dws) + 2, i)) + sum(dws, []) + lcrc
+                tlps, dllps, errors = self.run_rx(ndw, symbols)
+                self.assertEqual(errors, [])
+                self.assertEqual(tlps, exp_t)
+                self.assertEqual(dllps, exp_d)
+
     def test_rx_framer_bad_token(self):
         # A wrong Frame CRC is a framing error: the Length isn't used.
         rng   = random.Random(1)
