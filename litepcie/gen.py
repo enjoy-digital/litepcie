@@ -220,6 +220,8 @@ class LitePCIeCore(SoCMini):
             if core_config["phy"] not in (S7PCIEPHY, USPPCIEPHY):
                 raise ValueError("PTM requires a 7-series or Gen2 UltraScale+ PCIe PHY")
             phy_kwargs["with_ptm"] = True
+        if core_config.get("msi_x", False) and core_config["phy"] is S7PCIEPHY:
+            phy_kwargs["msi_type"] = "msi-x"
         pcie_pads = platform.request("pcie")
         if core_config["phy"] is SVPCIEPHY:
             # The Transceiver Reconfiguration Controller is clocked by sys and must be free-running:
@@ -404,10 +406,15 @@ class LitePCIeCore(SoCMini):
 
         # PCIe MSI ---------------------------------------------------------------------------------
         if core_config.get("msi_x", False):
-            assert core_config["msi_irqs"] <= 32
+            # DMA IRQs on vectors 0-15 and user IRQs on vectors 16-31 (as with MSI): S7PCIEPHY advertises
+            # 32 MSI-X vectors and the driver requests up to 32.
+            assert core_config["msi_irqs"] <= 16
             msi_x_default_enable = int(core_config.get("msi_x_default_enable", False))
-            self.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=64, default_enable=msi_x_default_enable)
-            self.comb += self.pcie_msi.irqs[32:32+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
+            self.pcie_msi = LitePCIeMSIX(self.pcie_endpoint, width=64,
+                default_enable = msi_x_default_enable,
+                csr_ordering   = core_config.get("csr_ordering", "big"),
+            )
+            self.comb += self.pcie_msi.irqs[16:16+core_config["msi_irqs"]].eq(platform.request("msi_irqs"))
         else:
             assert core_config["msi_irqs"] <= 16
             if core_config.get("msi_multivector", False):

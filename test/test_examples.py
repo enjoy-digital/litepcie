@@ -65,3 +65,23 @@ class TestExamples(unittest.TestCase):
     def test_ac701_gen(self):
         errors = self.gen_test("ac701")
         self.assertEqual(errors, 0)
+
+    def test_ac701_msix_gen(self):
+        with tempfile.TemporaryDirectory(prefix="litepcie-ac701-msix-") as tmpdir:
+            config = Path(tmpdir) / "ac701_msix.yml"
+            config.write_text(Path("examples/ac701.yml").read_text().replace(
+                '"msi_irqs"                : 16,', '"msi_irqs" : 16, "msi_x" : True,'))
+            build_dir = Path(tmpdir) / "build"
+            subprocess.run([sys.executable, "litepcie/gen.py", str(config),
+                "--output-dir", str(build_dir),
+                "--header-dir", str(tmpdir),
+            ], check=True)
+            # Hard IP configured for MSI-X (32 vectors), user IRQs on vectors 16-31.
+            tcl = (build_dir / "gateware/litepcie_core.tcl").read_text()
+            self.assertIn("CONFIG.MSIx_Enabled {True}", tcl)
+            self.assertIn("CONFIG.MSIx_Table_Size {20}", tcl)
+            verilog = (build_dir / "gateware/litepcie_core.v").read_text()
+            self.assertIn("main_pcie_msi_irqs[31:16] = msi_irqs;", verilog)
+            # Vectors 0-31 in the PBA word at 0x1808 (upper half of the 64-bit CSR with big ordering).
+            self.assertIn("main_pcie_msi_pba_status = {main_pcie_msi_vector[31:0], main_pcie_msi_vector[63:32]};", verilog)
+            self.assertIn("#define CSR_PCIE_MSI_PBA_ADDR (CSR_BASE + 0x1808L)", (Path(tmpdir) / "csr.h").read_text())
