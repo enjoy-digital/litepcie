@@ -30,7 +30,7 @@ class GW5APCIEPHY(LiteXModule):
         # Streams ---------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
-        self.msi    = stream.Endpoint(msi_layout()) # FIXME: Connect.
+        self.msi    = stream.Endpoint(msi_layout())
 
         # Registers --------------------------------------------------------------------------------
         self._link_status = CSRStatus(fields=[
