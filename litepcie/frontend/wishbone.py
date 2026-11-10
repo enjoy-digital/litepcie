@@ -46,10 +46,10 @@ class LitePCIeWishboneMaster(LiteXModule):
         # Get Slave port from Crossbar.
         port = endpoint.crossbar.get_slave_port(address_decoder)
 
-        # Read Request State.
+        # Request State.
         request_adr       = Signal(32)
         dwords_remaining  = Signal(10)
-        read_word_adr     = Signal.like(self.bus.adr)
+        word_adr          = Signal.like(self.bus.adr)
         request_last_be   = Signal(4)
         request_req_id    = Signal(16)
         request_tc        = Signal(3)
@@ -58,6 +58,12 @@ class LitePCIeWishboneMaster(LiteXModule):
         dword_index       = Signal(10)
         byte_count        = Signal(12)
         read_dat          = Signal(32)
+
+        # Write Request State: current beat shifted by one DW per Wishbone write.
+        dwords_per_beat = len(port.sink.dat)//32
+        write_dat       = Signal(len(port.sink.dat))
+        write_dword     = Signal(max=max(dwords_per_beat, 2))
+        write_upper     = qword_aligned and (dwords_per_beat > 1)
 
         first_byte_count = Signal(3)
         last_byte_count  = Signal(3)
@@ -75,7 +81,7 @@ class LitePCIeWishboneMaster(LiteXModule):
             ),
         ]
 
-        # Register the active read address and byte enables before driving
+        # Register the active address and byte enables before driving
         # Wishbone. Burst-length/index arithmetic must not sit on the path
         # through the bus decoder to every CSR write enable.
         current_be = Signal(4)
@@ -101,14 +107,17 @@ class LitePCIeWishboneMaster(LiteXModule):
         self.fsm = fsm = FSM(reset_state="IDLE")
         fsm.act("IDLE",
             If(port.sink.valid & port.sink.first,
+                NextValue(dwords_remaining, port.sink.len),
+                NextValue(word_adr,         port.sink.adr[2:32] + (base_address >> 2)),
+                NextValue(current_be,       port.sink.first_be),
+                NextValue(request_last_be,  port.sink.last_be),
                 If(port.sink.we,
-                    NextState("DO-WRITE")
+                    # Qword aligned payloads start in the upper DW of the beat when the address is
+                    # Qword aligned (see map_wishbone_dat).
+                    NextValue(write_dword, ~port.sink.adr[2] if write_upper else 0),
+                    NextState("WRITE-DATA")
                 ).Else(
                     NextValue(request_adr,      port.sink.adr),
-                    NextValue(dwords_remaining, port.sink.len),
-                    NextValue(read_word_adr,    port.sink.adr[2:32] + (base_address >> 2)),
-                    NextValue(current_be,       port.sink.first_be),
-                    NextValue(request_last_be,  port.sink.last_be),
                     NextValue(request_req_id,   port.sink.req_id),
                     NextValue(request_tc,       port.sink.tc),
                     NextValue(request_attr,     port.sink.attr),
@@ -122,28 +131,43 @@ class LitePCIeWishboneMaster(LiteXModule):
             )
         )
         self.comb += [
-            self.bus.sel.eq(Mux(fsm.ongoing("DO-READ"), current_be, 0xf)),
-            If(fsm.ongoing("DO-READ"),
-                self.bus.adr.eq(read_word_adr),
-            ).Else(
-                self.bus.adr.eq(port.sink.adr[2:] + (base_address >> 2)),
-            ),
+            self.bus.sel.eq(current_be),
+            self.bus.adr.eq(word_adr),
+            self.bus.dat_w.eq(write_dat[:32]),
         ]
-        self.sync += [
-            map_wishbone_dat(
-                address       = port.sink.adr,
-                data          = port.sink.dat,
-                wishbone_dat  = self.bus.dat_w,
-                qword_aligned = qword_aligned,
-            ),
-        ]
+        # Load the current beat of the Write Request (in the upper DW when starting there).
+        fsm.act("WRITE-DATA",
+            If(port.sink.valid,
+                NextValue(write_dat, port.sink.dat),
+                *([If(write_dword != 0, NextValue(write_dat, port.sink.dat[32:]))] if write_upper else []),
+                NextState("DO-WRITE")
+            )
+        )
+        # Write each DW of the Request with its Byte Enables (DWs without any are skipped).
         fsm.act("DO-WRITE",
-            self.bus.stb.eq(1),
+            self.bus.stb.eq(current_be != 0),
             self.bus.we.eq(1),
-            self.bus.cyc.eq(1),
-            If(self.bus.ack,
-                port.sink.ready.eq(1),
-                NextState("IDLE")
+            self.bus.cyc.eq(current_be != 0),
+            If(self.bus.ack | (current_be == 0),
+                *([NextValue(write_dat, write_dat[32:])] if dwords_per_beat > 1 else []),
+                If(dwords_remaining == 1,
+                    port.sink.ready.eq(1),
+                    NextState("IDLE"),
+                ).Else(
+                    # Zero is the PCIe encoding of 1024 DWORDs; decrementing
+                    # the 10-bit count naturally preserves that encoding.
+                    NextValue(dwords_remaining, dwords_remaining - 1),
+                    NextValue(word_adr, word_adr + 1),
+                    NextValue(current_be, Mux(dwords_remaining == 2, request_last_be, 0xf)),
+                    # Next beat when the DWs of the current one have been written.
+                    If(write_dword == (dwords_per_beat - 1),
+                        port.sink.ready.eq(1),
+                        NextValue(write_dword, 0),
+                        NextState("WRITE-DATA"),
+                    ).Else(
+                        NextValue(write_dword, write_dword + 1),
+                    )
+                )
             )
         )
         fsm.act("DO-READ",
@@ -180,7 +204,7 @@ class LitePCIeWishboneMaster(LiteXModule):
                     # the 10-bit count naturally preserves that encoding.
                     NextValue(dwords_remaining, dwords_remaining - 1),
                     NextValue(dword_index, dword_index + 1),
-                    NextValue(read_word_adr, read_word_adr + 1),
+                    NextValue(word_adr, word_adr + 1),
                     NextValue(current_be, Mux(dwords_remaining == 2, request_last_be, 0xf)),
                     NextValue(byte_count, byte_count - current_byte_count),
                     NextState("DO-READ"),
