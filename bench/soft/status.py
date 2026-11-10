@@ -32,11 +32,11 @@ def main():
     bus = RemoteClient(csr_csv=args.csr_csv, host=args.host, port=args.port)
     bus.open()
     regs = bus.regs
-    # CSR names: Physical Layer alone (pcie_phy_*), or under the endpoint.
-    name = "pcie_endpoint_phy_debug_" if hasattr(regs, "pcie_endpoint_phy_debug_control") else "pcie_phy_"
+    # CSR names: Physical Layer alone (pcie_phy_*), or full PHY with its debug (pcie_phy_debug_*).
+    name = "pcie_phy_debug_" if hasattr(regs, "pcie_phy_debug_control") else "pcie_phy_"
     reg  = lambda n: getattr(regs, name + n)
     tracer = None
-    for n in ["pcie_endpoint_phy_ltssm_tracer_history", "pcie_phy_tracer_history"]:
+    for n in ["pcie_phy_ltssm_tracer_history", "pcie_phy_tracer_history"]:
         tracer = getattr(regs, n, tracer)
 
     for command in args.commands:
@@ -66,8 +66,8 @@ def main():
                 print(f"dll: state {dll & 3}, pending {(dll >> 2) & 1}, fc_ok {(dll >> 3) & 1}, tx_ready {(dll >> 4) & 1}, rx_valid {(dll >> 5) & 1}, rx_ready {(dll >> 6) & 1}")
                 for counter in ["dll_replays", "dll_rx_errors", "dll_link_errors", "dll_tx_tlps", "dll_rx_tlps"]:
                     print(f"{counter}: {reg(counter).read()}")
-            if hasattr(regs, "pcie_endpoint_phy_link_status"):
-                print(f"dl_active: {regs.pcie_endpoint_phy_link_status.read() & 1}")
+            if hasattr(regs, "pcie_phy_link_status"):
+                print(f"dl_active: {regs.pcie_phy_link_status.read() & 1}")
         elif command == "trace":
             while True:
                 entry = tracer.read()
