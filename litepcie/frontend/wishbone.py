@@ -273,18 +273,25 @@ class LitePCIeWishboneSlave(LiteXModule):
                 NextState("RECEIVE-READ-COMPLETION")
             )
         )
+        # Read error on timeout or error Completion (UR/CA status): err with all-ones data.
+        read_error = Signal()
+        self.comb += read_error.eq(timeout.done | (port.sink.valid & port.sink.first & port.sink.err))
         fsm.act("RECEIVE-READ-COMPLETION",
             timeout.wait.eq(1),
             port.sink.ready.eq(1),
             If((port.sink.valid & port.sink.first) | timeout.done,
-                map_wishbone_dat(
-                    address       = port.sink.adr,
-                    data          = port.sink.dat,
-                    wishbone_dat  = self.bus.dat_r,
-                    qword_aligned = qword_aligned,
+                If(read_error,
+                    self.bus.dat_r.eq(2**data_width - 1),
+                ).Else(
+                    map_wishbone_dat(
+                        address       = port.sink.adr,
+                        data          = port.sink.dat,
+                        wishbone_dat  = self.bus.dat_r,
+                        qword_aligned = qword_aligned,
+                    ),
                 ),
                 self.bus.ack.eq(1),
-                self.bus.err.eq(timeout.done),
+                self.bus.err.eq(read_error),
                 NextState("IDLE")
             )
         )
