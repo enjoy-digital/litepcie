@@ -41,7 +41,7 @@ class S7RateSequencer(LiteXModule):
     is cleared as soon as rate differs from the applied one. To or from 8.0 GT/s (gen3), before the rate:
     PMA resets held, PLL selection (pll_sel), DRP writes of the rate's attributes (drp_start/drp_done),
     PMA resets released (as the Xilinx wrapper's rate sequence)."""
-    def __init__(self, clk_freq=125e6, clock_wait=64, gen3=False):
+    def __init__(self, clk_freq=125e6, clock_wait=64, gen3=False, gen3_same_gt_rate=True):
         self.rate      = Signal(2) # i
         self.done      = Signal() # o
         self.clk_rate  = Signal(2) # o: lane clock selection.
@@ -66,7 +66,8 @@ class S7RateSequencer(LiteXModule):
         release_cycles  = int(50e-6*clk_freq)
         target          = Signal(2)
         same_gt_rate    = Signal() # TXRATE/RXRATE unchanged (5.0 <-> 8.0 GT/s: divider 1): no rate done.
-        self.comb += same_gt_rate.eq((target != 0) == (applied != 0))
+        if gen3_same_gt_rate:
+            self.comb += same_gt_rate.eq((target != 0) == (applied != 0))
         self.fsm = fsm = FSM(reset_state="IDLE")
         self.comb += self.done.eq(fsm.ongoing("IDLE") & (applied == self.rate))
         fsm.act("IDLE",
@@ -348,8 +349,9 @@ class S7PCIeSerDes(PCIeSerDes):
     gt_params(rxcdr_cfg) and gt_update_params(gt, params) for what is specific to the transceiver, and for gen3:
     add_gen3_pll(i) (the 8.0 GT/s PLL of lane i: clk, refclk, lock) and gen3_drp_entries(rxcdr_cfg).
     add_clocking() and pcie_gt_params() (7-Series here) are overridden by the other families (UltraScale+)."""
-    # TXRATE/RXRATE at 5.0 GT/s (and 8.0 GT/s): divider 1 (2.5 GT/s: TXOUT_DIV/RXOUT_DIV).
-    gt_rate_5g = 0b001
+    # TXRATE/RXRATE per rate (2.5/5.0/8.0 GT/s), None: 000 (TXOUT_DIV/RXOUT_DIV) at 2.5 GT/s, 001 (divider 1) at
+    # 5.0 and 8.0 GT/s (the 8 GHz PLL), the 7-Series case.
+    gt_rates = None
 
     def __init__(self, platform, pads, sys_clk_freq, refclk_freq=100e6, rxcdr_cfg=None, pcs_pcie_en=False,
         skp_interval=None, speedgrade=-1, rate_change=False, gen3=False):
@@ -373,7 +375,8 @@ class S7PCIeSerDes(PCIeSerDes):
 
         # Rate change ------------------------------------------------------------------------------
         if rate_change:
-            self.rate_sequencer = rate_sequencer = ClockDomainsRenamer("pcie_link")(S7RateSequencer(gen3=gen3))
+            self.rate_sequencer = rate_sequencer = ClockDomainsRenamer("pcie_link")(S7RateSequencer(gen3=gen3,
+                gen3_same_gt_rate=self.gt_rates is None))
             self.comb += [
                 rate_sequencer.rate.eq(self.rate),
                 self.rate_done.eq(rate_sequencer.done),
@@ -405,26 +408,36 @@ class S7PCIeSerDes(PCIeSerDes):
             params.update(self.gt_params(rxcdr_cfg))
             if rate_change:
                 # 000: TXOUT_DIV/RXOUT_DIV (2.5 GT/s), 001: divider 1 (5.0 GT/s, 8.0 GT/s with the 8 GHz PLL).
-                tx_rate, rx_rate = Signal(), Signal()
                 tx_rate_done, rx_rate_done = Signal(), Signal()
-                self.specials += [
-                    MultiReg(rate_sequencer.gt_rate != 0, tx_rate, tx_cd),
-                    MultiReg(rate_sequencer.gt_rate != 0, rx_rate, rx_cd),
-                ]
-                gt_rate_bits = lambda r: Cat(r, Constant(0, 2)) if self.gt_rate_5g == 0b001 else Mux(r, self.gt_rate_5g, 0)
+                if self.gt_rates is None:
+                    tx_rate, rx_rate = Signal(), Signal()
+                    self.specials += [
+                        MultiReg(rate_sequencer.gt_rate != 0, tx_rate, tx_cd),
+                        MultiReg(rate_sequencer.gt_rate != 0, rx_rate, rx_cd),
+                    ]
+                    gt_rate_bits = lambda r: Cat(r, Constant(0, 2))
+                else:
+                    tx_rate, rx_rate = Signal(2), Signal(2)
+                    self.specials += [
+                        MultiReg(rate_sequencer.gt_rate, tx_rate, tx_cd),
+                        MultiReg(rate_sequencer.gt_rate, rx_rate, rx_cd),
+                    ]
+                    g = self.gt_rates
+                    gt_rate_bits = lambda r: Mux(r == 2, g[2], Mux(r == 1, g[1], g[0]))
                 params.update(
                     i_TXRATE     = gt_rate_bits(tx_rate),
                     i_RXRATE     = gt_rate_bits(rx_rate),
                     o_TXRATEDONE = tx_rate_done,
                     o_RXRATEDONE = rx_rate_done,
                 )
-                # Rate done pulses to "pcie_link", remembered until all lanes reported.
+                # Rate done pulses to "pcie_link", remembered until all lanes reported. Only the ones once the rate
+                # is applied (GT): a PMA reset or a PLL change before it (8.0 GT/s) can give one as well.
                 for pulse, cd in [(tx_rate_done, tx_cd), (rx_rate_done, rx_cd)]:
                     ps   = PulseSynchronizer(cd, "pcie_link")
                     seen = Signal()
                     self.submodules += ps
                     self.comb += ps.i.eq(pulse)
-                    self.sync.pcie_link += If(ps.o, seen.eq(1)).Elif(rate_sequencer.fsm.ongoing("CLOCK"), seen.eq(0))
+                    self.sync.pcie_link += If(~rate_sequencer.fsm.ongoing("GT"), seen.eq(0)).Elif(ps.o, seen.eq(1))
                     rate_dones.append(seen)
             if gen3:
                 params.update(self.add_gen3_lane(i, gt, lane, tx_cd, rx_cd, rxcdr_cfg))

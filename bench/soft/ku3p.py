@@ -84,7 +84,7 @@ class SoftPHYSoC(SoCMini):
         if with_endpoint:
             # Full LitePCIe endpoint: driver, MMAP, DMA and MSI as with the hard-IP PHYs.
             self.pcie_phy = pcie_phy = SoftPCIEPHY(platform, pads,
-                data_width   = 64 if nlanes == 1 else 32*nlanes,
+                data_width   = 64 if nlanes == 1 else 32*nlanes*(2 if speed == "gen3" else 1),
                 bar0_size    = 0x20000,
                 speed        = speed,
                 sys_clk_freq = sys_clk_freq,
@@ -97,7 +97,7 @@ class SoftPHYSoC(SoCMini):
             serdes, phy = pcie_phy.serdes, pcie_phy.phy_layer
         else:
             # Physical Layer alone: L0 against the host, received Symbols dropped.
-            assert nlanes == 1
+            assert nlanes == 1 and speed != "gen3"
             gen2_capable = speed == "gen2"
             self.serdes = serdes = USPPCIeSerDes(platform, pads, sys_clk_freq, speedgrade=-2, rate_change=gen2_capable)
             self.phy    = phy    = PCIePhysicalLayer(serdes, 125e6, upstream=True, gen2_capable=gen2_capable)
@@ -106,10 +106,12 @@ class SoftPHYSoC(SoCMini):
             self.comb += phy.source.ready.eq(1)
         self.gt_status = GTStatus(serdes)
 
-        # Clocks check: lane clock and Lane 0 recovered clock.
+        # Clocks check: lane clock, Lane 0 recovered clock, 8.0 GT/s datapath (200 MHz at 8.0 GT/s).
         from litex.soc.cores.freqmeter import FreqMeter
         self.freq_pipe = FreqMeter(period=sys_clk_freq, clk=ClockSignal("pcie_pipe"))
         self.freq_rx0  = FreqMeter(period=sys_clk_freq, clk=ClockSignal("pcie_rx0"))
+        if speed == "gen3":
+            self.freq_g3 = FreqMeter(period=sys_clk_freq, clk=ClockSignal("pcie_g3"))
 
         # Leds -------------------------------------------------------------------------------------
         leds = platform.request_all("user_led")
@@ -126,8 +128,8 @@ def main():
     parser.add_argument("--build",           action="store_true", help="Build bitstream.")
     parser.add_argument("--with-endpoint",   action="store_true", help="Full LitePCIe endpoint (SoftPCIEPHY, MMAP, DMA, MSI).")
     parser.add_argument("--ltssm-autostart", action="store_true", help="LTSSM enabled at reset, not disabled by PERST#.")
-    parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2"], help="Soft PHY maximum speed.")
-    parser.add_argument("--nlanes",          default=1, type=int, choices=[1], help="Lanes.")
+    parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2", "gen3"], help="Soft PHY maximum speed (gen3: --with-endpoint).")
+    parser.add_argument("--nlanes",          default=1, type=int, choices=[1, 4, 8], help="Lanes.")
     parser.add_argument("--driver",          action="store_true", help="Generate the PCIe driver.")
     parser.add_argument("--output-dir",      default="build/soft_ku3p", help="Build directory.")
     args = parser.parse_args()
