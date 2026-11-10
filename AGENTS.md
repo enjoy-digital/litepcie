@@ -12,7 +12,7 @@ verify a change, contribute back). Index of the whole wiki for agents: https://g
 - `litepcie/phy/`: hard-IP wrappers (`s7pciephy.py`, `uspciephy.py`, `usppciephy.py`, `c5pciephy.py`, `svpciephy.py`, `gw5apciephy.py`, `lfcpnxpciephy.py`).
 - `litepcie/phy/soft/`: soft PHY on FPGA transceivers through LiteICLink (work in progress, `doc/softphy.md`).
 - `litepcie/tlp/`, `litepcie/core/` (endpoint, MSI/MSI-X, crossbar), `litepcie/frontend/` (DMA, MMAP, PTM).
-- `litepcie/software/` (Linux kernel driver, user tools); `litepcie/gen.py` (`litepcie_gen examples/<board>.yml`); `doc/ptm.md`; `bench/`.
+- `litepcie/software/` (Linux kernel driver, user tools); `litepcie/gen.py` (`litepcie_gen examples/<board>.yml`); `doc/manual/` (the manual, `python3 doc/manual/build.py --check`); `bench/`.
 
 ## Verify a change
 

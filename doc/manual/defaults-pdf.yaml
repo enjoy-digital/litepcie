@@ -1,0 +1,16 @@
+# pandoc defaults for the PDF build of the manual (part of the manual kit). build.py adds
+# the chapters of manual.yaml, the output file and absolute paths: run build.py, not pandoc.
+from: markdown+pipe_tables+grid_tables+fenced_code_attributes+implicit_figures+link_attributes+raw_tex
+to: latex
+template: @MANUAL@/template/eisvogel.latex
+pdf-engine: xelatex
+toc: true
+toc-depth: 3
+number-sections: true
+listings: true
+top-level-division: chapter
+metadata-file: metadata.yaml
+filters:
+  - @MANUAL@/tools/breakcode.lua
+  - @MANUAL@/tools/svg2pdf.lua
+resource-path: []

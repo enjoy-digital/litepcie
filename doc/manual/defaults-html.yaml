@@ -1,0 +1,17 @@
+# pandoc defaults for the standalone HTML build of the manual (part of the manual kit). build.py adds
+# the chapters of manual.yaml, the output file and absolute paths: run build.py, not pandoc.
+from: markdown+pipe_tables+grid_tables+fenced_code_attributes+implicit_figures+link_attributes+raw_html
+to: html5
+template: @MANUAL@/template/manual.html5
+standalone: true
+self-contained: true
+toc: true
+toc-depth: 2
+number-sections: true
+section-divs: true
+css: [@BUILD@/style.css]
+metadata-file: metadata.yaml
+filters:
+  - @MANUAL@/tools/appendix.lua
+highlight-style: breezedark
+resource-path: []

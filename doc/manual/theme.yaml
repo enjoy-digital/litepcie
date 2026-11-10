@@ -1,0 +1,77 @@
+---
+# Theme of the manual (part of the manual kit, identical in every project): the look of
+# enjoy-digital.fr for the eisvogel PDF. build.py merges it with metadata.yaml and replaces
+# @MANUAL@ (doc/manual), @BUILD@ (build/doc), @GRAVUR_BOLD@/@GRAVUR_LIGHT@ (display font, Gravur
+# when fetched) and @SHORTTITLE@ (the title, for the running head, which is truncated with an
+# ellipsis when the chapter title would run into the right header). xelatex runs in a temporary
+# directory: fonts and title page assets need absolute paths.
+
+book: true
+classoption: [oneside, openany]
+titlepage: true
+titlepage-color: "F3F6F9"
+titlepage-text-color: "1A2633"
+titlepage-rule-color: "2EAADC"
+titlepage-rule-height: 2
+titlepage-background: "@BUILD@/cover.pdf"
+titlepage-logo: "@MANUAL@/figures/enjoy_digital_gray.png"
+logo-width: 48mm
+titlepage-logo-right: "@MANUAL@/figures/litex_logo_dark.png"
+logo-right-height: 19mm
+toc-own-page: true
+colorlinks: true
+linkcolor: edlink
+urlcolor: edlink
+listings-disable-line-numbers: true
+code-block-font-size: \small
+table-use-row-colors: true
+header-left: "\\runninghead"
+footer-left: "Enjoy-Digital"
+footer-center: "\\manualdate"
+header-includes: |
+    \definecolor{edcyan}{HTML}{2EAADC}
+    \definecolor{edlink}{HTML}{136F9C}
+    \definecolor{edink}{HTML}{1A2633}
+    \definecolor{edtext}{HTML}{2E3A46}
+    \newcommand{\manualdate}{\footnotesize Generated @DATE@}
+    \definecolor{edgrey}{HTML}{666666}
+    \definecolor{edinline}{HTML}{0E5578}
+    \newfontfamily\gravur@GRAVUR_BOLD@
+    \newfontfamily\gravurlight@GRAVUR_LIGHT@
+    \providecommand{\manualtitlefont}{}
+    \renewcommand{\manualtitlefont}{\gravur}
+    \AtBeginDocument{
+      \color{edtext}
+      \definecolor{heading-color}{HTML}{1A2633}
+      \definecolor{caption-color}{HTML}{666666}
+      \definecolor{table-row-color}{HTML}{F2F8FB}
+      \definecolor{table-rule-color}{HTML}{2EAADC}
+      \definecolor{listing-background}{HTML}{0D1117}
+      \definecolor{listing-rule}{HTML}{2EAADC}
+      \definecolor{listing-text-color}{HTML}{E6EDF3}
+      \definecolor{listing-keyword}{HTML}{8FDCF7}
+      \definecolor{listing-keyword-2}{HTML}{8FDCF7}
+      \definecolor{listing-keyword-3}{HTML}{8FDCF7}
+      \definecolor{listing-identifier}{HTML}{E6EDF3}
+      \definecolor{listing-string}{HTML}{A5D6A7}
+      \definecolor{listing-comment}{HTML}{8B949E}
+      \definecolor{blockquote-border}{HTML}{2EAADC}
+      \lstset{frame=l, framerule=2.5pt, rulecolor=\color{edcyan}, xleftmargin=6pt, framexleftmargin=4pt, framextopmargin=5pt, framexbottommargin=5pt, aboveskip=10pt, belowskip=8pt}
+    }
+    \usepackage[fit]{truncate}
+    \newcommand{\runninghead}{\truncate{0.40\textwidth}{\ifnum\value{chapter}>0 \leftmark\else @SHORTTITLE@\fi}}
+    \AtBeginDocument{\renewcommand*{\partpagestyle}{ChapterStyle}\automark[chapter]{chapter}}
+    \addtokomafont{disposition}{\gravur}
+    \addtokomafont{part}{\color{edink}}
+    \addtokomafont{partnumber}{\color{edcyan}}
+    \addtokomafont{chapter}{\color{edink}}
+    \addtokomafont{chapterprefix}{\color{edcyan}}
+    \renewcommand*{\chapterformat}{\color{edcyan}\thechapter\autodot\enskip}
+    \renewcommand*{\sectionformat}{\color{edcyan}\thesection\autodot\enskip}
+    \renewcommand*{\subsectionformat}{\color{edcyan}\thesubsection\autodot\enskip}
+    \makeatletter
+    \def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+    \def\maxheight{\ifdim\Gin@nat@height>0.8\textheight 0.8\textheight\else\Gin@nat@height\fi}
+    \setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+    \makeatother
+---

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<!-- HTML template of the manual (pandoc, part of the manual kit), styled after enjoy-digital.fr (style.css). -->
+<html xmlns="http://www.w3.org/1999/xhtml" lang="$lang$" xml:lang="$lang$">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+$for(author-meta)$
+  <meta name="author" content="$author-meta$" />
+$endfor$
+  <title>$pagetitle$$if(project)$ ($project$ manual)$endif$</title>
+$for(css)$
+  <link rel="stylesheet" href="$css$" />
+$endfor$
+$if(highlighting-css)$
+  <style type="text/css">
+$highlighting-css$
+  </style>
+$endif$
+$for(header-includes)$
+$endfor$
+</head>
+<body>
+<div class="topbar">
+  <div class="band-inner">
+    <img class="brand" src="enjoy_digital_gray.png" alt="Enjoy-Digital" />
+    <span class="kicker">/manual</span>
+    <img class="brand-litex" src="litex_logo_dark.png" alt="LiteX" />
+  </div>
+</div>
+<header class="band">
+  <div class="band-inner">
+    <h1 class="title">$title$</h1>
+$if(subtitle)$
+    <p class="subtitle">$subtitle$</p>
+$endif$
+    <p class="date">Generated $date$</p>
+$if(license)$
+    <p class="date">$license$</p>
+$endif$
+$if(contact)$
+    <p class="date">Contact: <a href="mailto:$contact$">$contact$</a>$if(website)$ · <a href="https://$website$">$website$</a>$endif$</p>
+$endif$
+  </div>
+</header>
+<div class="layout">
+$if(toc)$
+<nav id="TOC" role="doc-toc">
+<p class="toc-title">Contents</p>
+$table-of-contents$
+</nav>
+$endif$
+<main class="prose">
+$body$
+</main>
+</div>
+<footer class="foot">$title$$if(project)$ ($project$)$endif$ · Enjoy-Digital · generated $date$$if(license-short)$ · $license-short$$endif$ · <a href="mailto:$contact$">$contact$</a></footer>
+</body>
+</html>

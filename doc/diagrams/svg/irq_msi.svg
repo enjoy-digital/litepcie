@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="210" viewBox="0 0 760 210">
+<defs>
+  <marker id="arrow-ctrl" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 Z" fill="#5b5b5b"/></marker>
+  <marker id="arrow-ctrl-rev" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto">
+    <path d="M8,0 L0,4 L8,8 Z" fill="#5b5b5b"/></marker>
+  <marker id="arrow-stream" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="9" refY="4.5" orient="auto">
+    <path d="M0,0 L9,4.5 L0,9 Z" fill="#606060"/></marker>
+  <marker id="arrow-accent" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="9" refY="4.5" orient="auto">
+    <path d="M0,0 L9,4.5 L0,9 Z" fill="#2eaadc"/></marker>
+  <marker id="arrow-accent-rev" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="0" refY="4.5" orient="auto">
+    <path d="M9,0 L0,4.5 L9,9 Z" fill="#2eaadc"/></marker>
+  <marker id="arrow-stream-rev" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="0" refY="4.5" orient="auto">
+    <path d="M9,0 L0,4.5 L9,9 Z" fill="#606060"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<polyline points="150,75 210,75" fill="none" stroke="#606060" stroke-width="2.0" marker-end="url(#arrow-stream)"/>
+<text x="180" y="63" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="12" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="180" dy="0">irqs</tspan></text>
+<polyline points="360,75 430,75" fill="none" stroke="#2eaadc" stroke-width="2.0" marker-end="url(#arrow-accent)"/>
+<text x="395" y="63" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="12" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="395" dy="0">msi stream</tspan></text>
+<polyline points="560,75 620,75" fill="none" stroke="#606060" stroke-width="2.0" marker-end="url(#arrow-stream)"/>
+<text x="590" y="63" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="12" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="590" dy="0">MSI</tspan></text>
+<polyline points="680,110 680,160 285,160 285,110" fill="none" stroke="#5b5b5b" stroke-width="1.0" stroke-dasharray="1,3" marker-end="url(#arrow-ctrl)"/>
+<text x="487" y="175" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="12" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="487" dy="0">read vector, write clear (BAR0)</tspan></text>
+<g fill="#000000" stroke="#000000" stroke-width="3.0" opacity="0.05" stroke-linejoin="round" aria-hidden="true">
+<path d="M21.2,42 L139.2,42 L151.2,54 L151.2,112 Q151.2,112 151.2,112 L33.2,112 L21.2,100 L21.2,42 Q21.2,42 21.2,42 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="1.5" opacity="0.08" stroke-linejoin="round" aria-hidden="true">
+<path d="M21.2,42 L139.2,42 L151.2,54 L151.2,112 Q151.2,112 151.2,112 L33.2,112 L21.2,100 L21.2,42 Q21.2,42 21.2,42 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="0" opacity="0.12" stroke-linejoin="round" aria-hidden="true">
+<path d="M21,41.5 L139,41.5 L151,53.5 L151,111.5 Q151,111.5 151,111.5 L33,111.5 L21,99.5 L21,41.5 Q21,41.5 21,41.5 Z"/>
+</g>
+<g fill="#fafafa" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<path d="M20,40 L138,40 L150,52 L150,110 Q150,110 150,110 L32,110 L20,98 L20,40 Q20,40 20,40 Z"/>
+</g>
+<text x="85" y="66" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="85" dy="0">DMA and</tspan><tspan x="85" dy="18">user IRQs</tspan></text>
+<g fill="#000000" stroke="#000000" stroke-width="3.0" opacity="0.05" stroke-linejoin="round" aria-hidden="true">
+<path d="M211.2,42 L349.2,42 L361.2,54 L361.2,112 Q361.2,112 361.2,112 L223.2,112 L211.2,100 L211.2,42 Q211.2,42 211.2,42 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="1.5" opacity="0.08" stroke-linejoin="round" aria-hidden="true">
+<path d="M211.2,42 L349.2,42 L361.2,54 L361.2,112 Q361.2,112 361.2,112 L223.2,112 L211.2,100 L211.2,42 Q211.2,42 211.2,42 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="0" opacity="0.12" stroke-linejoin="round" aria-hidden="true">
+<path d="M211,41.5 L349,41.5 L361,53.5 L361,111.5 Q361,111.5 361,111.5 L223,111.5 L211,99.5 L211,41.5 Q211,41.5 211,41.5 Z"/>
+</g>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<path d="M210,40 L348,40 L360,52 L360,110 Q360,110 360,110 L222,110 L210,98 L210,40 Q210,40 210,40 Z"/>
+</g>
+<text x="285" y="66" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="285" dy="0">LitePCIeMSI</tspan><tspan x="285" dy="18">enable, vector</tspan></text>
+<g fill="#000000" stroke="#000000" stroke-width="3.0" opacity="0.05" stroke-linejoin="round" aria-hidden="true">
+<path d="M431.2,42 L549.2,42 L561.2,54 L561.2,112 Q561.2,112 561.2,112 L443.2,112 L431.2,100 L431.2,42 Q431.2,42 431.2,42 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="1.5" opacity="0.08" stroke-linejoin="round" aria-hidden="true">
+<path d="M431.2,42 L549.2,42 L561.2,54 L561.2,112 Q561.2,112 561.2,112 L443.2,112 L431.2,100 L431.2,42 Q431.2,42 431.2,42 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="0" opacity="0.12" stroke-linejoin="round" aria-hidden="true">
+<path d="M431,41.5 L549,41.5 L561,53.5 L561,111.5 Q561,111.5 561,111.5 L443,111.5 L431,99.5 L431,41.5 Q431,41.5 431,41.5 Z"/>
+</g>
+<g fill="#e6f5fb" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<path d="M430,40 L548,40 L560,52 L560,110 Q560,110 560,110 L442,110 L430,98 L430,40 Q430,40 430,40 Z"/>
+</g>
+<text x="495" y="66" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="495" dy="0">PHY</tspan><tspan x="495" dy="18">MSI request</tspan></text>
+<g fill="#000000" stroke="#000000" stroke-width="3.0" opacity="0.05" stroke-linejoin="round" aria-hidden="true">
+<path d="M621.2,42 L729.2,42 L741.2,54 L741.2,112 Q741.2,112 741.2,112 L633.2,112 L621.2,100 L621.2,42 Q621.2,42 621.2,42 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="1.5" opacity="0.08" stroke-linejoin="round" aria-hidden="true">
+<path d="M621.2,42 L729.2,42 L741.2,54 L741.2,112 Q741.2,112 741.2,112 L633.2,112 L621.2,100 L621.2,42 Q621.2,42 621.2,42 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="0" opacity="0.12" stroke-linejoin="round" aria-hidden="true">
+<path d="M621,41.5 L729,41.5 L741,53.5 L741,111.5 Q741,111.5 741,111.5 L633,111.5 L621,99.5 L621,41.5 Q621,41.5 621,41.5 Z"/>
+</g>
+<g fill="#b8b8b8" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<path d="M620,40 L728,40 L740,52 L740,110 Q740,110 740,110 L632,110 L620,98 L620,40 Q620,40 620,40 Z"/>
+</g>
+<text x="680" y="75" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="680" dy="0">Host driver</tspan></text>
+</svg>

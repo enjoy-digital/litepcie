@@ -1,0 +1,1484 @@
+{
+ "argv": [
+  "--with-endpoint",
+  "--speed",
+  "gen3",
+  "--nlanes",
+  "4"
+ ],
+ "banks": {
+  "pcie_dma0": [
+   {
+    "access": "rw",
+    "description": "DMA Writer Control. Write ``1`` to enable DMA Writer.",
+    "fields": [],
+    "name": "writer_enable",
+    "offset": 0,
+    "reset": 0,
+    "size": 2
+   },
+   {
+    "access": "rw",
+    "description": "64-bit DMA descriptor to be written to the table.",
+    "fields": [
+     {
+      "description": "32-bit LSB Address of the descriptor (bytes-aligned).",
+      "name": "address_lsb",
+      "offset": 0,
+      "reset": 0,
+      "size": 32,
+      "values": []
+     },
+     {
+      "description": "24-bit Length  of the descriptor (in bytes).",
+      "name": "length",
+      "offset": 32,
+      "reset": 0,
+      "size": 24,
+      "values": []
+     },
+     {
+      "description": "IRQ Disable Control of the descriptor.",
+      "name": "irq_disable",
+      "offset": 56,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Last Disable Control of the descriptor.",
+      "name": "last_disable",
+      "offset": 57,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     }
+    ],
+    "name": "writer_table_value",
+    "offset": 4,
+    "reset": 0,
+    "size": 58
+   },
+   {
+    "access": "rw",
+    "description": "Write and 32-bit MSB Address of the descriptor (bytes-aligned)",
+    "fields": [
+     {
+      "description": "32-bit MSB Address of the descriptor (bytes-aligned), in 64-bit mode.",
+      "name": "address_msb",
+      "offset": 0,
+      "reset": 0,
+      "size": 32,
+      "values": []
+     }
+    ],
+    "name": "writer_table_we",
+    "offset": 12,
+    "reset": 0,
+    "size": 32
+   },
+   {
+    "access": "rw",
+    "description": "Mode Selection. ``0``: **Prog** mode / ``1``: **Loop** mode. **Prog** mode should be used to program the table by software and for cases where automatic refill of the table is not needed: A descriptor is only executed once and when all the descriptors have been executed (ie the table is empty), the DMA just stops until the next software refill. **Loop** mode should be used once the table has been filled by software in **Prog** mode and allow continuous Scatter-Gather DMA: Each descriptor sent to the DMA is refilled to the table.",
+    "fields": [],
+    "name": "writer_table_loop_prog_n",
+    "offset": 16,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "Loop monitoring for software synchronization.",
+    "fields": [
+     {
+      "description": "Index of the last descriptor executed in the DMA descriptor table.",
+      "name": "index",
+      "offset": 0,
+      "reset": 0,
+      "size": 16,
+      "values": []
+     },
+     {
+      "description": "Loops of the DMA descriptor table since started.",
+      "name": "count",
+      "offset": 16,
+      "reset": 0,
+      "size": 16,
+      "values": []
+     }
+    ],
+    "name": "writer_table_loop_status",
+    "offset": 20,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "Number descriptors in the table.",
+    "fields": [],
+    "name": "writer_table_level",
+    "offset": 24,
+    "reset": null,
+    "size": 9
+   },
+   {
+    "access": "rw",
+    "description": "A write to this register resets the table.",
+    "fields": [],
+    "name": "writer_table_reset",
+    "offset": 28,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "DMA Reader Control. Write ``1`` to enable DMA Reader.",
+    "fields": [],
+    "name": "reader_enable",
+    "offset": 32,
+    "reset": 0,
+    "size": 2
+   },
+   {
+    "access": "rw",
+    "description": "64-bit DMA descriptor to be written to the table.",
+    "fields": [
+     {
+      "description": "32-bit LSB Address of the descriptor (bytes-aligned).",
+      "name": "address_lsb",
+      "offset": 0,
+      "reset": 0,
+      "size": 32,
+      "values": []
+     },
+     {
+      "description": "24-bit Length  of the descriptor (in bytes).",
+      "name": "length",
+      "offset": 32,
+      "reset": 0,
+      "size": 24,
+      "values": []
+     },
+     {
+      "description": "IRQ Disable Control of the descriptor.",
+      "name": "irq_disable",
+      "offset": 56,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Last Disable Control of the descriptor.",
+      "name": "last_disable",
+      "offset": 57,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     }
+    ],
+    "name": "reader_table_value",
+    "offset": 36,
+    "reset": 0,
+    "size": 58
+   },
+   {
+    "access": "rw",
+    "description": "Write and 32-bit MSB Address of the descriptor (bytes-aligned)",
+    "fields": [
+     {
+      "description": "32-bit MSB Address of the descriptor (bytes-aligned), in 64-bit mode.",
+      "name": "address_msb",
+      "offset": 0,
+      "reset": 0,
+      "size": 32,
+      "values": []
+     }
+    ],
+    "name": "reader_table_we",
+    "offset": 44,
+    "reset": 0,
+    "size": 32
+   },
+   {
+    "access": "rw",
+    "description": "Mode Selection. ``0``: **Prog** mode / ``1``: **Loop** mode. **Prog** mode should be used to program the table by software and for cases where automatic refill of the table is not needed: A descriptor is only executed once and when all the descriptors have been executed (ie the table is empty), the DMA just stops until the next software refill. **Loop** mode should be used once the table has been filled by software in **Prog** mode and allow continuous Scatter-Gather DMA: Each descriptor sent to the DMA is refilled to the table.",
+    "fields": [],
+    "name": "reader_table_loop_prog_n",
+    "offset": 48,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "Loop monitoring for software synchronization.",
+    "fields": [
+     {
+      "description": "Index of the last descriptor executed in the DMA descriptor table.",
+      "name": "index",
+      "offset": 0,
+      "reset": 0,
+      "size": 16,
+      "values": []
+     },
+     {
+      "description": "Loops of the DMA descriptor table since started.",
+      "name": "count",
+      "offset": 16,
+      "reset": 0,
+      "size": 16,
+      "values": []
+     }
+    ],
+    "name": "reader_table_loop_status",
+    "offset": 52,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "Number descriptors in the table.",
+    "fields": [],
+    "name": "reader_table_level",
+    "offset": 56,
+    "reset": null,
+    "size": 9
+   },
+   {
+    "access": "rw",
+    "description": "A write to this register resets the table.",
+    "fields": [],
+    "name": "reader_table_reset",
+    "offset": 60,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "DMA Loopback Enable Control. Write ``1`` to enable DMA internal loopback (DMA Reader to DMA Writer).",
+    "fields": [],
+    "name": "loopback_enable",
+    "offset": 64,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "",
+    "fields": [
+     {
+      "description": "DMA Reader FIFO depth (in 256-bit words).",
+      "name": "depth",
+      "offset": 0,
+      "reset": 1024,
+      "size": 24,
+      "values": []
+     },
+     {
+      "description": "Software Scratchpad.",
+      "name": "scratch",
+      "offset": 24,
+      "reset": 0,
+      "size": 4,
+      "values": []
+     },
+     {
+      "description": "",
+      "name": "level_mode",
+      "offset": 31,
+      "reset": 0,
+      "size": 1,
+      "values": [
+       [
+        "``0b0``",
+        "Report Instantaneous level."
+       ],
+       [
+        "``0b1``",
+        "Report `Minimal` level since last clear."
+       ]
+      ]
+     }
+    ],
+    "name": "buffering_reader_fifo_control",
+    "offset": 68,
+    "reset": 1024,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "DMA Reader FIFO level (in 256-bit words).",
+      "name": "level",
+      "offset": 0,
+      "reset": 0,
+      "size": 24,
+      "values": []
+     }
+    ],
+    "name": "buffering_reader_fifo_status",
+    "offset": 72,
+    "reset": null,
+    "size": 24
+   },
+   {
+    "access": "rw",
+    "description": "",
+    "fields": [
+     {
+      "description": "DMA Writer FIFO depth (in 256-bit words).",
+      "name": "depth",
+      "offset": 0,
+      "reset": 1024,
+      "size": 24,
+      "values": []
+     },
+     {
+      "description": "Software Scratchpad.",
+      "name": "scratch",
+      "offset": 24,
+      "reset": 0,
+      "size": 4,
+      "values": []
+     },
+     {
+      "description": "",
+      "name": "level_mode",
+      "offset": 31,
+      "reset": 0,
+      "size": 1,
+      "values": [
+       [
+        "``0b0``",
+        "Report Instantaneous level."
+       ],
+       [
+        "``0b1``",
+        "Report `Maximal` level since last clear."
+       ]
+      ]
+     }
+    ],
+    "name": "buffering_writer_fifo_control",
+    "offset": 76,
+    "reset": 1024,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "DMA Writer FIFO level (in 256-bit words).",
+      "name": "level",
+      "offset": 0,
+      "reset": 0,
+      "size": 24,
+      "values": []
+     }
+    ],
+    "name": "buffering_writer_fifo_status",
+    "offset": 80,
+    "reset": null,
+    "size": 24
+   }
+  ],
+  "pcie_msi": [
+   {
+    "access": "rw",
+    "description": "MSI Enable Control. Write bit(s) to ``1`` to enable corresponding MSI IRQ(s).",
+    "fields": [],
+    "name": "enable",
+    "offset": 0,
+    "reset": 0,
+    "size": 32
+   },
+   {
+    "access": "rw",
+    "description": "MSI Clear Control. Write bit(s) to ``1`` to clear corresponding MSI IRQ(s).",
+    "fields": [],
+    "name": "clear",
+    "offset": 4,
+    "reset": 0,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "MSI Vector Status. Current MSI IRQs vector value.",
+    "fields": [],
+    "name": "vector",
+    "offset": 8,
+    "reset": null,
+    "size": 32
+   }
+  ],
+  "pcie_phy": [
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "",
+      "name": "status",
+      "offset": 0,
+      "reset": 0,
+      "size": 1,
+      "values": [
+       [
+        "``0b0``",
+        "Link Down."
+       ],
+       [
+        "``0b1``",
+        "Link Up (Data Link Layer active)."
+       ]
+      ]
+     },
+     {
+      "description": "Link rate (``0b00``: 2.5 GT/s, ``0b01``: 5 GT/s, ``0b10``: 8 GT/s).",
+      "name": "rate",
+      "offset": 1,
+      "reset": 0,
+      "size": 2,
+      "values": []
+     },
+     {
+      "description": "Negotiated link width (``0b00``: x1, ``0b01``: x2, ``0b10``: x4, ``0b11``: x8).",
+      "name": "width",
+      "offset": 3,
+      "reset": 0,
+      "size": 2,
+      "values": []
+     },
+     {
+      "description": "LTSSM state (UltraScale encoding, L0 = 0x10).",
+      "name": "ltssm",
+      "offset": 5,
+      "reset": 0,
+      "size": 6,
+      "values": []
+     }
+    ],
+    "name": "link_status",
+    "offset": 0,
+    "reset": null,
+    "size": 11
+   },
+   {
+    "access": "ro",
+    "description": "MSI Enable Status. ``1``: MSI is enabled.",
+    "fields": [],
+    "name": "msi_enable",
+    "offset": 4,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "MSI-X Enable Status (not implemented, always 0).",
+    "fields": [],
+    "name": "msix_enable",
+    "offset": 8,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "Bus Mastering Status. ``1``: Bus Mastering enabled.",
+    "fields": [],
+    "name": "bus_master_enable",
+    "offset": 12,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "Negotiated Max Request Size (in bytes).",
+    "fields": [],
+    "name": "max_request_size",
+    "offset": 16,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "Negotiated Max Payload Size (in bytes).",
+    "fields": [],
+    "name": "max_payload_size",
+    "offset": 20,
+    "reset": null,
+    "size": 16
+   }
+  ],
+  "pcie_phy_debug": [
+   {
+    "access": "rw",
+    "description": "",
+    "fields": [
+     {
+      "description": "LTSSM enable, write to apply. Without autostart (reset value), cleared by PERST#: a host reset comes back with the LTSSM disabled, so a design making a host hang cannot do it again at the next boot.",
+      "name": "enable",
+      "offset": 0,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Link Retrain (Recovery).",
+      "name": "retrain",
+      "offset": 1,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Directed speed change, if the partner advertises a higher rate (Gen2 designs).",
+      "name": "speed_change",
+      "offset": 2,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     }
+    ],
+    "name": "control",
+    "offset": 168,
+    "reset": 0,
+    "size": 3
+   },
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "Lanes receiving Training Sequences with their Lane Number.",
+      "name": "ok",
+      "offset": 0,
+      "reset": 0,
+      "size": 8,
+      "values": []
+     },
+     {
+      "description": "Lanes deskewed.",
+      "name": "locked",
+      "offset": 8,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Negotiated link width.",
+      "name": "width",
+      "offset": 9,
+      "reset": 0,
+      "size": 5,
+      "values": []
+     }
+    ],
+    "name": "lanes",
+    "offset": 172,
+    "reset": null,
+    "size": 14
+   },
+   {
+    "access": "rw",
+    "description": "Lanes kept out of the link (Electrical Idle, receiver ignored).",
+    "fields": [],
+    "name": "lane_disable",
+    "offset": 176,
+    "reset": 0,
+    "size": 8
+   },
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "LTSSM state (Xilinx UltraScale encoding, L0 = 0x10).",
+      "name": "ltssm",
+      "offset": 0,
+      "reset": 0,
+      "size": 6,
+      "values": []
+     },
+     {
+      "description": "LTSSM in L0.",
+      "name": "l0",
+      "offset": 8,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Configuration done (L0 or Recovery).",
+      "name": "link_up",
+      "offset": 9,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Transceivers initialized.",
+      "name": "serdes_ready",
+      "offset": 10,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "RX Electrical Idle.",
+      "name": "rx_elecidle",
+      "offset": 11,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "RX polarity inverted.",
+      "name": "rx_polarity",
+      "offset": 12,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "LTSSM enabled (cleared by PERST#, see control).",
+      "name": "enabled",
+      "offset": 13,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "PERST# asserted.",
+      "name": "perst",
+      "offset": 14,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Link rate (``0b0``: 2.5 GT/s, ``0b1``: 5 GT/s, see gen3).",
+      "name": "rate",
+      "offset": 15,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Negotiated Link Number.",
+      "name": "link",
+      "offset": 16,
+      "reset": 0,
+      "size": 8,
+      "values": []
+     },
+     {
+      "description": "Lane Number.",
+      "name": "lane",
+      "offset": 24,
+      "reset": 0,
+      "size": 5,
+      "values": []
+     },
+     {
+      "description": "Link rate 8.0 GT/s.",
+      "name": "gen3",
+      "offset": 29,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     }
+    ],
+    "name": "status",
+    "offset": 180,
+    "reset": null,
+    "size": 30
+   },
+   {
+    "access": "rw",
+    "description": "",
+    "fields": [
+     {
+      "description": "8.0 GT/s with the transmitters on, LTSSM disabled (with loopback: checks the transceivers' rate switch and the Blocks without a partner).",
+      "name": "force",
+      "offset": 0,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Capture the raw words of Lane 0 (g3_raw_tx/g3_raw_rx).",
+      "name": "snapshot",
+      "offset": 1,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Use the transceivers' Electrical Idle detection at 8.0 GT/s.",
+      "name": "eidle",
+      "offset": 2,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Start the rate trace (g3_trace_*).",
+      "name": "trace",
+      "offset": 3,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "LPM receive equalizer at 8.0 GT/s (DFE otherwise, reset: the transceiver's default).",
+      "name": "lpm",
+      "offset": 4,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Arm the raw capture of Lane 0 (g3_capture_*).",
+      "name": "capture",
+      "offset": 5,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "DFE XYD adaptation at 8.0 GT/s (RXDFEXYDEN, off in the Xilinx wrapper).",
+      "name": "xyden",
+      "offset": 6,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     }
+    ],
+    "name": "g3_control",
+    "offset": 184,
+    "reset": 0,
+    "size": 7
+   },
+   {
+    "access": "ro",
+    "description": "Raw word transmitted on Lane 0 (snapshot).",
+    "fields": [],
+    "name": "g3_raw_tx",
+    "offset": 188,
+    "reset": null,
+    "size": 40
+   },
+   {
+    "access": "ro",
+    "description": "Raw word received on Lane 0 (snapshot, bit 39: valid).",
+    "fields": [],
+    "name": "g3_raw_rx",
+    "offset": 196,
+    "reset": null,
+    "size": 40
+   },
+   {
+    "access": "ro",
+    "description": "Lane 0 at 8.0 GT/s (16-bit counters): Blocks, undefined Sync Headers, EIEOS, slips (bits 63:48).",
+    "fields": [],
+    "name": "g3_counts",
+    "offset": 204,
+    "reset": null,
+    "size": 64
+   },
+   {
+    "access": "ro",
+    "description": "Lane 0 raw words received at 8.0 GT/s.",
+    "fields": [],
+    "name": "g3_words",
+    "offset": 212,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "Lanes aligned on EIEOS (8.0 GT/s).",
+      "name": "locked",
+      "offset": 0,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Block alignment of each lane.",
+      "name": "aligned",
+      "offset": 1,
+      "reset": 0,
+      "size": 8,
+      "values": []
+     },
+     {
+      "description": "Transceivers' rate applied.",
+      "name": "rate_done",
+      "offset": 9,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "8.0 GT/s PLLs locked.",
+      "name": "pll_lock",
+      "offset": 10,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Rate sequence timeouts.",
+      "name": "timeouts",
+      "offset": 16,
+      "reset": 0,
+      "size": 8,
+      "values": []
+     }
+    ],
+    "name": "g3_status",
+    "offset": 216,
+    "reset": null,
+    "size": 24
+   },
+   {
+    "access": "rw",
+    "description": "Raw capture: cycles of 200 MHz after the trigger.",
+    "fields": [],
+    "name": "g3_capture_delay",
+    "offset": 220,
+    "reset": 0,
+    "size": 24
+   },
+   {
+    "access": "rw",
+    "description": "Raw capture: word to read.",
+    "fields": [],
+    "name": "g3_capture_index",
+    "offset": 224,
+    "reset": 0,
+    "size": 10
+   },
+   {
+    "access": "ro",
+    "description": "Raw capture: word (bit 39: valid).",
+    "fields": [],
+    "name": "g3_capture_data",
+    "offset": 228,
+    "reset": null,
+    "size": 40
+   },
+   {
+    "access": "ro",
+    "description": "Raw capture done.",
+    "fields": [],
+    "name": "g3_capture_done",
+    "offset": 236,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "Rate trace entry to read.",
+    "fields": [],
+    "name": "g3_trace_index",
+    "offset": 240,
+    "reset": 0,
+    "size": 10
+   },
+   {
+    "access": "ro",
+    "description": "Rate trace entry: timestamp (bits 47:26, 8.192 us), TS received in the state (25:22), last EC received (21:20) and its count (19:16), lock (15), LTSSM Electrical Idle (14), transceiver Electrical Idle (13), sequencer state (12:10), sequencer done (9), PLL selection (8), rate (7:6), LTSSM state (5:0).",
+    "fields": [],
+    "name": "g3_trace_data",
+    "offset": 244,
+    "reset": null,
+    "size": 48
+   },
+   {
+    "access": "ro",
+    "description": "Rate trace entries.",
+    "fields": [],
+    "name": "g3_trace_count",
+    "offset": 252,
+    "reset": null,
+    "size": 11
+   },
+   {
+    "access": "ro",
+    "description": "Training Sequences received.",
+    "fields": [],
+    "name": "rx_ts",
+    "offset": 256,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "Corrupted Training Sequences received.",
+    "fields": [],
+    "name": "rx_ts_errors",
+    "offset": 260,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "8b/10b errors received (words).",
+    "fields": [],
+    "name": "rx_errors",
+    "offset": 264,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "Elastic buffer overflows.",
+    "fields": [],
+    "name": "rx_overflows",
+    "offset": 268,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "DLLP starts (SDP) received in L0.",
+    "fields": [],
+    "name": "rx_dllp",
+    "offset": 272,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "TLP starts (STP) received in L0.",
+    "fields": [],
+    "name": "rx_tlp",
+    "offset": 276,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "Partner Data Rate Identifier.",
+    "fields": [],
+    "name": "rx_rate",
+    "offset": 280,
+    "reset": null,
+    "size": 8
+   },
+   {
+    "access": "rw",
+    "description": "Transceiver loopback mode (0: none, 2: near-end PMA).",
+    "fields": [],
+    "name": "loopback",
+    "offset": 284,
+    "reset": 0,
+    "size": 3
+   },
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "DLCMSM: 0 DL_Inactive, 1/2 DL_Init, 3 DL_Active.",
+      "name": "state",
+      "offset": 0,
+      "reset": 0,
+      "size": 2,
+      "values": []
+     },
+     {
+      "description": "TLPs transmitted and not acknowledged.",
+      "name": "pending",
+      "offset": 2,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Flow control allows the next TLP.",
+      "name": "fc_ok",
+      "offset": 3,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Replay buffer accepts a word.",
+      "name": "tx_ready",
+      "offset": 4,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "A received TLP is waiting for the Transaction Layer.",
+      "name": "rx_valid",
+      "offset": 5,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "The Transaction Layer accepts it.",
+      "name": "rx_ready",
+      "offset": 6,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     }
+    ],
+    "name": "dll_status",
+    "offset": 288,
+    "reset": null,
+    "size": 7
+   },
+   {
+    "access": "ro",
+    "description": "TLP replays.",
+    "fields": [],
+    "name": "dll_replays",
+    "offset": 292,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "LCRC, sequence and framing errors.",
+    "fields": [],
+    "name": "dll_rx_errors",
+    "offset": 296,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "REPLAY_NUM rollovers (Recovery requested).",
+    "fields": [],
+    "name": "dll_link_errors",
+    "offset": 300,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "TLPs accepted from the Transaction Layer.",
+    "fields": [],
+    "name": "dll_tx_tlps",
+    "offset": 304,
+    "reset": null,
+    "size": 32
+   },
+   {
+    "access": "ro",
+    "description": "TLPs delivered to the Transaction Layer.",
+    "fields": [],
+    "name": "dll_rx_tlps",
+    "offset": 308,
+    "reset": null,
+    "size": 32
+   }
+  ],
+  "pcie_phy_ltssm_tracer": [
+   {
+    "access": "ro",
+    "description": "History of LTSSM states",
+    "fields": [
+     {
+      "description": "New LTSSM state",
+      "name": "new",
+      "offset": 0,
+      "reset": 0,
+      "size": 6,
+      "values": []
+     },
+     {
+      "description": "Old LTSSM state",
+      "name": "old",
+      "offset": 6,
+      "reset": 0,
+      "size": 6,
+      "values": []
+     },
+     {
+      "description": "Overflow",
+      "name": "ovfl",
+      "offset": 30,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "Is data valid",
+      "name": "valid",
+      "offset": 31,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     }
+    ],
+    "name": "history",
+    "offset": 312,
+    "reset": null,
+    "size": 32
+   }
+  ],
+  "pcie_phy_serdes": [
+   {
+    "access": "rw",
+    "description": "RXCDR_CFG written at 8.0 GT/s (rate change).",
+    "fields": [],
+    "name": "gen3_rxcdr_cfg",
+    "offset": 24,
+    "reset": 202914198000919117952,
+    "size": 72
+   },
+   {
+    "access": "rw",
+    "description": "DRP of the transceivers from the CSRs (drp_control*) when set.",
+    "fields": [],
+    "name": "drp_sel",
+    "offset": 36,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "DRP Address (9 bits).",
+    "fields": [],
+    "name": "drp_control0_addr",
+    "offset": 40,
+    "reset": 0,
+    "size": 9
+   },
+   {
+    "access": "rw",
+    "description": "DRP Data In (16 bits) for write operation.",
+    "fields": [],
+    "name": "drp_control0_di",
+    "offset": 44,
+    "reset": 0,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "DRP Data Out (16 bits) for read operation.",
+    "fields": [],
+    "name": "drp_control0_do",
+    "offset": 48,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "rw",
+    "description": "DRP Write Enable.",
+    "fields": [],
+    "name": "drp_control0_we",
+    "offset": 52,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "Write to initiate DRP operation.",
+    "fields": [],
+    "name": "drp_control0_start",
+    "offset": 56,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "DRP operation is complete.",
+    "fields": [],
+    "name": "drp_control0_done",
+    "offset": 60,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "Lane of the DRP program.",
+    "fields": [],
+    "name": "drp_player_lane",
+    "offset": 64,
+    "reset": 0,
+    "size": 4
+   },
+   {
+    "access": "rw",
+    "description": "Write 1 to arm the program (runs at the next start).",
+    "fields": [],
+    "name": "drp_player_arm",
+    "offset": 68,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "Program entry to write.",
+    "fields": [],
+    "name": "drp_player_prog_index",
+    "offset": 72,
+    "reset": 0,
+    "size": 8
+   },
+   {
+    "access": "rw",
+    "description": "Program entry, written to prog_index on write.",
+    "fields": [],
+    "name": "drp_player_prog_data",
+    "offset": 76,
+    "reset": 0,
+    "size": 48
+   },
+   {
+    "access": "rw",
+    "description": "Result to read.",
+    "fields": [],
+    "name": "drp_player_result_index",
+    "offset": 84,
+    "reset": 0,
+    "size": 8
+   },
+   {
+    "access": "ro",
+    "description": "Result at result_index.",
+    "fields": [],
+    "name": "drp_player_result_data",
+    "offset": 88,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "",
+    "fields": [
+     {
+      "description": "",
+      "name": "armed",
+      "offset": 0,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "",
+      "name": "running",
+      "offset": 1,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "",
+      "name": "done",
+      "offset": 2,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "start fell before the end.",
+      "name": "stopped",
+      "offset": 3,
+      "reset": 0,
+      "size": 1,
+      "values": []
+     },
+     {
+      "description": "",
+      "name": "pc",
+      "offset": 8,
+      "reset": 0,
+      "size": 8,
+      "values": []
+     },
+     {
+      "description": "Results stored.",
+      "name": "count",
+      "offset": 20,
+      "reset": 0,
+      "size": 9,
+      "values": []
+     }
+    ],
+    "name": "drp_player_status",
+    "offset": 92,
+    "reset": null,
+    "size": 29
+   },
+   {
+    "access": "rw",
+    "description": "DRP Address (9 bits).",
+    "fields": [],
+    "name": "drp_control1_addr",
+    "offset": 96,
+    "reset": 0,
+    "size": 9
+   },
+   {
+    "access": "rw",
+    "description": "DRP Data In (16 bits) for write operation.",
+    "fields": [],
+    "name": "drp_control1_di",
+    "offset": 100,
+    "reset": 0,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "DRP Data Out (16 bits) for read operation.",
+    "fields": [],
+    "name": "drp_control1_do",
+    "offset": 104,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "rw",
+    "description": "DRP Write Enable.",
+    "fields": [],
+    "name": "drp_control1_we",
+    "offset": 108,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "Write to initiate DRP operation.",
+    "fields": [],
+    "name": "drp_control1_start",
+    "offset": 112,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "DRP operation is complete.",
+    "fields": [],
+    "name": "drp_control1_done",
+    "offset": 116,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "DRP Address (9 bits).",
+    "fields": [],
+    "name": "drp_control2_addr",
+    "offset": 120,
+    "reset": 0,
+    "size": 9
+   },
+   {
+    "access": "rw",
+    "description": "DRP Data In (16 bits) for write operation.",
+    "fields": [],
+    "name": "drp_control2_di",
+    "offset": 124,
+    "reset": 0,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "DRP Data Out (16 bits) for read operation.",
+    "fields": [],
+    "name": "drp_control2_do",
+    "offset": 128,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "rw",
+    "description": "DRP Write Enable.",
+    "fields": [],
+    "name": "drp_control2_we",
+    "offset": 132,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "Write to initiate DRP operation.",
+    "fields": [],
+    "name": "drp_control2_start",
+    "offset": 136,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "DRP operation is complete.",
+    "fields": [],
+    "name": "drp_control2_done",
+    "offset": 140,
+    "reset": null,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "DRP Address (9 bits).",
+    "fields": [],
+    "name": "drp_control3_addr",
+    "offset": 144,
+    "reset": 0,
+    "size": 9
+   },
+   {
+    "access": "rw",
+    "description": "DRP Data In (16 bits) for write operation.",
+    "fields": [],
+    "name": "drp_control3_di",
+    "offset": 148,
+    "reset": 0,
+    "size": 16
+   },
+   {
+    "access": "ro",
+    "description": "DRP Data Out (16 bits) for read operation.",
+    "fields": [],
+    "name": "drp_control3_do",
+    "offset": 152,
+    "reset": null,
+    "size": 16
+   },
+   {
+    "access": "rw",
+    "description": "DRP Write Enable.",
+    "fields": [],
+    "name": "drp_control3_we",
+    "offset": 156,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "rw",
+    "description": "Write to initiate DRP operation.",
+    "fields": [],
+    "name": "drp_control3_start",
+    "offset": 160,
+    "reset": 0,
+    "size": 1
+   },
+   {
+    "access": "ro",
+    "description": "DRP operation is complete.",
+    "fields": [],
+    "name": "drp_control3_done",
+    "offset": 164,
+    "reset": null,
+    "size": 1
+   }
+  ]
+ },
+ "config": "soft_ypcb_gen3",
+ "target": "soft/ypcb"
+}

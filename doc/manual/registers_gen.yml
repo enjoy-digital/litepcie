@@ -1,0 +1,45 @@
+#
+# This file is part of LitePCIe.
+#
+# Copyright (c) 2026 Florent Kermarrec <florent@enjoy-digital.fr>
+# SPDX-License-Identifier: BSD-2-Clause
+
+# Standalone core configuration of the register appendix (doc/manual/registers.py), not a board
+# example: 7-Series x1 with MSI-X, PTM and every DMA plug-in the generator exposes, so that the
+# appendix documents their registers.
+{
+    # PHY ----------------------------------------------------------------------
+    "phy"                     : "S7PCIEPHY",
+    "phy_device"              : "xc7a",
+    "phy_lanes"               : 1,
+    "phy_pcie_data_width"     : 64,
+    "phy_data_width"          : 64,
+    "phy_bar0_size"           : 0x40000,
+
+    # Clocking -----------------------------------------------------------------
+    "clk_freq"                : 125e6,
+    "clk_external"            : False,
+
+    # Endpoint -----------------------------------------------------------------
+    "ep_max_pending_requests" : 8,
+    "ep_address_width"        : 64,
+
+    # MMAP Master --------------------------------------------------------------
+    "mmap"                    : True,
+    "mmap_base"               : 0x00020000,
+    "mmap_size"               : 0x00020000,
+
+    # DMA channels -------------------------------------------------------------
+    "dma_channels"            : 1,
+    "dma_buffering"           : 1024,
+    "dma_loopback"            : True,
+    "dma_synchronizer"        : True,
+    "dma_monitor"             : True,
+
+    # MSI-X IRQs ---------------------------------------------------------------
+    "msi_irqs"                : 16,
+    "msi_x"                   : True,
+
+    # PTM ----------------------------------------------------------------------
+    "ptm"                     : True,
+}
