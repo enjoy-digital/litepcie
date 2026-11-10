@@ -281,23 +281,6 @@ class USPPCIEPHY(LiteXModule):
         s_axis_cc_tvalid_raw = Signal()
         s_axis_cc_tready_raw = Signal(4)
 
-        if self.mode == "Endpoint":
-            msi_ports = dict(
-                o_cfg_interrupt_msi_enable    = msi_enable_sys,
-                i_cfg_interrupt_msi_int_valid = cfg_msi.valid,
-                i_cfg_interrupt_msi_int       = cfg_msi.dat,
-                o_cfg_interrupt_msi_sent      = cfg_msi.ready,
-                o_cfg_interrupt_msi_fail      = Open(),
-            )
-        else:
-            msi_ports = dict(
-                o_cfg_interrupt_msi_enable    = Open(),
-                i_cfg_interrupt_msi_int_valid = 0,
-                i_cfg_interrupt_msi_int       = 0,
-                o_cfg_interrupt_msi_sent      = Open(),
-                o_cfg_interrupt_msi_fail      = Open(),
-            )
-
         if self.mode == "RootPort":
             cfg_msg_received      = Signal()
             cfg_msg_received_type = Signal(5)
@@ -509,7 +492,6 @@ class USPPCIEPHY(LiteXModule):
             o_cfg_vf_tph_st_mode               = Open(24),
         )
 
-        self.pcie_phy_params.update(msi_ports)
         self.pcie_phy_params.update(cfg_msg_ports)
 
         # Direct pcie_usp instantiation (wrapper-less path).
