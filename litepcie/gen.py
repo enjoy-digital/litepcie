@@ -24,6 +24,7 @@ Current version of the generator is limited to:
 - Xilinx 7-Series.
 - Xilinx Ultrascale.
 - Altera Cyclone V.
+- Altera Stratix V.
 - Gowin GW5AT.
 - Lattice LFCPNX.
 """
@@ -49,6 +50,7 @@ from litepcie.phy.c5pciephy     import C5PCIEPHY
 from litepcie.phy.lfcpnxpciephy import LFCPNXPCIEPHY
 from litepcie.phy.gw5apciephy   import GW5APCIEPHY
 from litepcie.phy.s7pciephy     import S7PCIEPHY
+from litepcie.phy.svpciephy     import SVPCIEPHY
 from litepcie.phy.uspciephy     import USPCIEPHY
 from litepcie.phy.usppciephy    import USPPCIEPHY
 
@@ -218,8 +220,17 @@ class LitePCIeCore(SoCMini):
             if core_config["phy"] not in (S7PCIEPHY, USPPCIEPHY):
                 raise ValueError("PTM requires a 7-series or Gen2 UltraScale+ PCIe PHY")
             phy_kwargs["with_ptm"] = True
-        self.pcie_phy = core_config["phy"](platform, platform.request("pcie"),
-            pcie_data_width = core_config.get("phy_pcie_data_width", 64),
+        pcie_pads = platform.request("pcie")
+        if core_config["phy"] is SVPCIEPHY:
+            # The Transceiver Reconfiguration Controller is clocked by sys and must be free-running:
+            # sys can not be derived from the PCIe clock of the Hard IP.
+            if not clk_external:
+                raise ValueError("SVPCIEPHY requires clk_external: True (100-125 MHz free-running clock)")
+            pcie_pads.perst_n    = pcie_pads.rst_n
+            phy_kwargs["nlanes"] = core_config["phy_lanes"]
+        else:
+            phy_kwargs["pcie_data_width"] = core_config.get("phy_pcie_data_width", 64)
+        self.pcie_phy = core_config["phy"](platform, pcie_pads,
             data_width      = core_config["phy_data_width"],
             bar0_size       = core_config["phy_bar0_size"],
             **phy_kwargs)
@@ -475,6 +486,10 @@ def main():
         from litex.build.altera import AlteraPlatform
         platform = AlteraPlatform("", io=[])
         core_config["phy"] = C5PCIEPHY
+    elif core_config["phy"] == "SVPCIEPHY":
+        from litex.build.altera import AlteraPlatform
+        platform = AlteraPlatform(core_config["phy_device"], io=[])
+        core_config["phy"] = SVPCIEPHY
     elif core_config["phy"] == "LFCPNXPCIEPHY":
         from litex.build.lattice import LatticePlatform
         platform = LatticePlatform(core_config["phy_device"], io=[], toolchain="radiant")
