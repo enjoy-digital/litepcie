@@ -699,7 +699,8 @@ class LitePCIeDMAWriter(LiteXModule):
         )
 
         # IRQ --------------------------------------------------------------------------------------
-        self.comb += If(splitter.source.valid & splitter.source.ready & splitter.source.last,
+        # Raised when a descriptor has been executed: on its last split or on early termination.
+        self.comb += If(splitter.source.valid & splitter.source.ready & (splitter.source.last | splitter.terminate),
             self.irq.eq(~splitter.source.irq_disable)
         )
 
