@@ -267,7 +267,7 @@ class HostModel(LiteXModule):
 class SoftPHYSoCSim(SoCMini):
     mem_map = {"csr": 0x00000000}
 
-    def __init__(self, csrs=None, dma_size=1024, dma_buffers=4, mps=256, timer_scale=100, ts1_min=64, max_cycles=2**24, nlanes=1, dead_lanes=0, full_rate=False, gen3=False):
+    def __init__(self, csrs=None, dma_size=1024, dma_buffers=4, mps=256, timer_scale=100, ts1_min=64, max_cycles=2**24, nlanes=1, dead_lanes=0, full_rate=False, gen3=False, mmio_reads=0, speed_down_at=0):
         sys_clk_freq = int(125e6)
         platform     = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq, csr_data_width=32, ident="soft sim", ident_version=False)
@@ -331,8 +331,16 @@ class SoftPHYSoCSim(SoCMini):
             # Speed change directed by the root on its first L0, lanes clock at sys from 5.0 GT/s.
             l0_seen = Signal()
             self.sync.pcie_link += If(root_phy.ltssm.l0, l0_seen.eq(1))
+            # Speed change down to 2.5 GT/s at speed_down_at (Target Link Speed of the root lowered).
+            down_pulse = Signal()
+            down_at = speed_down_at
+            if down_at:
+                self.comb += down_pulse.eq(timer == down_at + 1)
+                self.sync += If(timer == down_at, root_phy.ltssm.max_rate.eq(0), Display("[%08d] Root: speed change down", timer))
+            g3_seen = Signal()
+            self.sync += If(root_phy.ltssm.rate == 2, g3_seen.eq(1))
             self.comb += [
-                root_phy.speed_change.eq(root_phy.ltssm.l0 & ~l0_seen),
+                root_phy.speed_change.eq((root_phy.ltssm.l0 & ~l0_seen) | down_pulse),
                 lane_fast.eq((serdes_ep.applied_rate != 0) & (serdes_root.applied_rate != 0)),
                 root_dll.gen3.eq(root_phy.ltssm.rate == 2),
             ]
@@ -353,10 +361,10 @@ class SoftPHYSoCSim(SoCMini):
         self.host  = host = ClockDomainsRenamer("pcie_link")(HostModel(timer, dma_dws, dst_offset, dma_dws))
         class Port: pass
         port = Port()
-        port.dl_active = root_dll.dl_active & ((root_phy.ltssm.rate == 2) if gen3 else 1)
+        port.dl_active = root_dll.dl_active & (((root_phy.ltssm.rate == 2) | g3_seen) if gen3 else 1)
         port.sink      = stream.Endpoint([("data", 32)])
         port.source    = stream.Endpoint([("data", 32)])
-        steps = script(csrs, phy.bar0_mask, dma_size, dma_buffers, mps)
+        steps = script(csrs, phy.bar0_mask, dma_size, dma_buffers, mps, mmio_reads)
         self.root = root = ClockDomainsRenamer("pcie_link")(ScriptedRoot(port, steps, timer))
         self.comb += root.wait_count.eq(host.msi_count)
         if wide:
@@ -424,7 +432,7 @@ def mwr32(adr, data):
 def mrd32(adr, tag):
     return dws(0x00, 0, 0, 1,  0, 0, tag, 0x0f,  *be32(adr))
 
-def script(csrs, bar0_mask, dma_size, dma_buffers, mps):
+def script(csrs, bar0_mask, dma_size, dma_buffers, mps, mmio_reads=0):
     t = iter(range(10000))
     tag = lambda: next(t) & 0xff
     s = []
@@ -473,6 +481,10 @@ def script(csrs, bar0_mask, dma_size, dma_buffers, mps):
     csr_wr("pcie_dma0_writer_enable", 1)
     csr_wr("pcie_dma0_reader_enable", 1)
 
+    # BAR0 reads while the DMA runs (the driver polls the DMA status registers).
+    for i in range(mmio_reads):
+        csr_rd("ctrl_scratch", 0xa5a50001)
+
     # All the Writer buffers done at least once (one MSI per buffer on each of the Reader and Writer),
     # then stopped; a read flushes the posted writes.
     s.append(dict(name="Waiting for the DMA MSIs", tx=[], rx=[], wait=2*dma_buffers + 2))
@@ -504,6 +516,8 @@ def main():
     parser.add_argument("--full-rate",   action="store_true", help="Lanes at the 5.0 GT/s rate.")
     parser.add_argument("--gen3",        action="store_true", help="Speed change to 8.0 GT/s.")
     parser.add_argument("--mps",         default=256,  type=int, help="Max Payload Size (128, 256, 512).")
+    parser.add_argument("--mmio-reads",  default=0,    type=int, help="BAR0 reads while the DMA runs.")
+    parser.add_argument("--speed-down-at", default=0,  type=int, help="With --gen3: speed change down to 2.5 GT/s at this cycle (0: none).")
     parser.add_argument("--timer-scale", default=100,  type=int, help="LTSSM timers scale.")
     parser.add_argument("--ts1-min",     default=64,   type=int, help="TS1 transmitted in Polling.Active (specification: 1024).")
     parser.add_argument("--max-cycles",  default=2**22, type=int, help="Simulation timeout (sys clock cycles).")
@@ -519,6 +533,8 @@ def main():
         dma_size    = args.dma_size,
         dma_buffers = args.dma_buffers,
         mps         = args.mps,
+        mmio_reads  = args.mmio_reads,
+        speed_down_at = args.speed_down_at,
         timer_scale = args.timer_scale,
         ts1_min     = args.ts1_min,
         max_cycles  = args.max_cycles,

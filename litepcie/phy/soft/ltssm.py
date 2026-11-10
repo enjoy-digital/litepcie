@@ -129,6 +129,8 @@ class PCIeLTSSM(LiteXModule):
         self.link_error  = Signal()           # i (Pulse): Data Link Layer error requiring Recovery.
         self.link_number = Signal(8)          # i (downstream): Link Number proposed.
         self.speed_change = Signal()          # i (Pulse): Directed speed change (gen2_capable).
+        self.max_rate    = Signal(2, reset=2) # i: Highest rate advertised (0: 2.5, 1: 5.0, 2: 8.0 GT/s), the Target
+                                              # Link Speed of a downstream port; speed_change below it goes down.
         self.rate_done   = Signal(reset=1)    # i: Link rate change applied (gen2_capable).
         self.lanes_locked = Signal(reset=1)   # i: Multi-lane: all the lanes deskewed (the Training Sequences
                                               # followed are the ones of Lane 0).
@@ -266,7 +268,9 @@ class PCIeLTSSM(LiteXModule):
 
         # Common TX fields.
         self.comb += [
-            self.tx_ts_rate.eq(RATE_2_5GT | (RATE_5_0GT if gen2_capable else 0) | (RATE_8_0GT if gen3_capable else 0) |
+            self.tx_ts_rate.eq(RATE_2_5GT |
+                (Mux(self.max_rate >= 1, RATE_5_0GT, 0) if gen2_capable else 0) |
+                (Mux(self.max_rate >= 2, RATE_8_0GT, 0) if gen3_capable else 0) |
                 Mux(directed, RATE_SPEED_CHANGE, 0)),
             self.scrambling_enable.eq(1),
             self.skp_enable.eq(1),
@@ -481,8 +485,9 @@ class PCIeLTSSM(LiteXModule):
                self.hot_reset_req,
                 NextState("Recovery.RcvrLock")
             ),
-            *([If(self.speed_change & (((self.rx_rate & RATE_5_0GT != 0) & (self.rate == 0)) |
-                ((self.rx_rate & RATE_8_0GT != 0) & (self.rate != 2) if gen3_capable else 0)),
+            *([If(self.speed_change & (((self.rx_rate & RATE_5_0GT != 0) & (self.rate == 0) & (self.max_rate >= 1)) |
+                ((self.rx_rate & RATE_8_0GT != 0) & (self.rate != 2) & (self.max_rate >= 2) if gen3_capable else 0) |
+                (self.rate > self.max_rate)),
                 NextValue(directed, 1),
                 NextState("Recovery.RcvrLock")
             )] if gen2_capable else [])
@@ -626,7 +631,8 @@ class PCIeLTSSM(LiteXModule):
             *([
             If(speed_seen & (tx_after >= 32),
                 # Highest common rate, de-emphasis selected by the root port's TS2.
-                NextValue(next_rate, Mux(self.rx_rate[3] if gen3_capable else 0, 2, self.rx_rate[2])),
+                NextValue(next_rate, Mux((self.rx_rate[3] & self.tx_ts_rate[3]) if gen3_capable else 0, 2,
+                    self.rx_rate[2] & self.tx_ts_rate[2])),
                 NextValue(successful, 1),
                 NextValue(self.select_deemph, self.rx_rate[6] if upstream else 0),
                 NextState("Recovery.Speed")
