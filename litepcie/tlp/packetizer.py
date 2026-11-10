@@ -28,19 +28,30 @@ class LitePCIeTLPHeaderInserter3DWs4DWs(LiteXModule):
         # Header Inserters Sel.
         _3DWS_SEL = 0b0
         _4DWS_SEL = 0b1
+        fmt_sel    = Signal()
         header_sel = Signal()
         self.comb += Case(fmt, {
-            fmt_dict["mem_rd32"] : header_sel.eq(_3DWS_SEL),
-            fmt_dict["mem_rd64"] : header_sel.eq(_4DWS_SEL),
-            fmt_dict["mem_wr32"] : header_sel.eq(_3DWS_SEL),
-            fmt_dict["mem_wr64"] : header_sel.eq(_4DWS_SEL),
-            fmt_dict[ "cfg_rd0"] : header_sel.eq(_3DWS_SEL),
-            fmt_dict[ "cfg_wr0"] : header_sel.eq(_3DWS_SEL),
-            fmt_dict[    "cpld"] : header_sel.eq(_3DWS_SEL),
-            fmt_dict[     "cpl"] : header_sel.eq(_3DWS_SEL),
-            fmt_dict[ "ptm_req"] : header_sel.eq(_4DWS_SEL),
-            fmt_dict[ "ptm_res"] : header_sel.eq(_4DWS_SEL),
+            fmt_dict["mem_rd32"] : fmt_sel.eq(_3DWS_SEL),
+            fmt_dict["mem_rd64"] : fmt_sel.eq(_4DWS_SEL),
+            fmt_dict["mem_wr32"] : fmt_sel.eq(_3DWS_SEL),
+            fmt_dict["mem_wr64"] : fmt_sel.eq(_4DWS_SEL),
+            fmt_dict[ "cfg_rd0"] : fmt_sel.eq(_3DWS_SEL),
+            fmt_dict[ "cfg_wr0"] : fmt_sel.eq(_3DWS_SEL),
+            fmt_dict[    "cpld"] : fmt_sel.eq(_3DWS_SEL),
+            fmt_dict[     "cpl"] : fmt_sel.eq(_3DWS_SEL),
+            fmt_dict[ "ptm_req"] : fmt_sel.eq(_4DWS_SEL),
+            fmt_dict[ "ptm_res"] : fmt_sel.eq(_4DWS_SEL),
         })
+
+        # Selection kept from the first beat to the last one of the output: the inserters can end a
+        # TLP with a beat of the saved tail while the sink already holds the next TLP (other fmt).
+        busy  = Signal()
+        sel_r = Signal()
+        self.comb += header_sel.eq(Mux(busy, sel_r, fmt_sel))
+        self.sync += If(source.valid & source.ready,
+            If(source.first, sel_r.eq(fmt_sel)),
+            busy.eq(~source.last),
+        )
 
         # Header Inserters Mux.
         self.comb += Case(header_sel, {
