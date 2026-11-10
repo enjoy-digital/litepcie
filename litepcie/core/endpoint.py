@@ -26,6 +26,9 @@ class LitePCIeEndpoint(LiteXModule):
         self.phy                  = phy
         self.max_pending_requests = max_pending_requests
 
+        # The PHY is a module of the SoC with its own CSRs: do not collect them a second time here.
+        self.autocsr_exclude = {"phy"}
+
         # # #
 
         # Parameters.
