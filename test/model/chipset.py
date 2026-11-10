@@ -143,7 +143,7 @@ class Chipset(LiteXModule):
         return self.rd(rd_cls=RD64, adr=adr, length=length, tc=tc, attr=attr,
             first_be=first_be, last_be=last_be, timeout=timeout)
 
-    def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0, with_split=False):
+    def cmp(self, req_id, data, byte_count=None, lower_address=0, tag=0, with_split=False, status=0):
         if with_split:
             # Split the completion in packets of a Read Completion Boundary size (the last one
             # carrying the remainder), each with the remaining byte count and the advancing lower
@@ -157,7 +157,8 @@ class Chipset(LiteXModule):
                 self.cmp(req_id, data[offset:offset + n_dws],
                     byte_count    = remaining,
                     lower_address = (lower_address + 4*offset) & 0x7f,
-                    tag           = tag)
+                    tag           = tag,
+                    status        = status)
                 offset    += n_dws
                 remaining -= n_bytes
         else:
@@ -177,7 +178,8 @@ class Chipset(LiteXModule):
                 cpl.byte_count = len(data)*4
             else:
                 cpl.byte_count = byte_count
-            cpl.tag = tag
+            cpl.tag    = tag
+            cpl.status = status
             if len(data) == 0:
                 dwords = cpl.encode_dwords()
             else:
