@@ -5,7 +5,8 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 """SoftPCIEPHY: the soft PCIe PHY with the LitePCIe PHY contract (see the hard-IP PHYs): Physical
-Layer, Data Link Layer and Transaction Layer glue on FPGA transceivers. 2.5 GT/s x1 for now."""
+Layer, Data Link Layer and Transaction Layer glue on FPGA transceivers. x1 to x8, 2.5/5.0/8.0 GT/s
+(see doc/softphy.md for the validated configurations)."""
 
 from migen import *
 from migen.genlib.cdc import MultiReg
