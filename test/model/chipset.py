@@ -60,13 +60,13 @@ class Chipset(LiteXModule):
     def disable(self):
         self.en = False
 
-    def wr(self, wr_cls, adr, data):
+    def wr(self, wr_cls, adr, data, first_be=0xf, last_be=None):
         wr = wr_cls()
         wr.fmt          = 0b10 if isinstance(wr, WR32) else 0b11
         wr.type         = 0b00000
         wr.length       = len(data)
-        wr.first_be     = 0xf
-        wr.last_be      = 0xf if len(data) > 1 else 0x0
+        wr.first_be     = first_be
+        wr.last_be      = (0xf if len(data) > 1 else 0x0) if last_be is None else last_be
         wr.address      = (adr << 2)
         wr.requester_id = self.root_id
         dwords = wr.encode_dwords(data)
@@ -75,11 +75,11 @@ class Chipset(LiteXModule):
             print_chipset(parse_dwords(dwords))
         yield from self.phy.send_blocking(dwords)
 
-    def wr32(self, adr, data):
-        return self.wr(wr_cls=WR32, adr=adr, data=data)
+    def wr32(self, adr, data, first_be=0xf, last_be=None):
+        return self.wr(wr_cls=WR32, adr=adr, data=data, first_be=first_be, last_be=last_be)
 
-    def wr64(self, adr, data):
-        return self.wr(wr_cls=WR64, adr=adr, data=data)
+    def wr64(self, adr, data, first_be=0xf, last_be=None):
+        return self.wr(wr_cls=WR64, adr=adr, data=data, first_be=first_be, last_be=last_be)
 
     def rd(self, rd_cls, adr, length=1, tc=0, first_be=0xf, last_be=None, attr=0, timeout=None):
         """Read from the Endpoint and wait for the completion(s).
