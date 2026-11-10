@@ -41,10 +41,10 @@ class _C5Config(LiteXModule):
 
         # # #
 
-        def convert_size(command, size):
+        def convert_size(command, size, max_size):
             cases = {}
             for n in range(6):
-                cases[n] = size.eq(128 << n)
+                cases[n] = size.eq(min(128 << n, max_size))
             return Case(command, cases)
 
         dcommand     = Signal(16)
@@ -64,8 +64,9 @@ class _C5Config(LiteXModule):
                     self.bus_number.eq(self.tl_cfg_ctl[5:13]),
                 ),
             ),
-            convert_size(dcommand[5:8],   self.max_payload_size),
-            convert_size(dcommand[12:15], self.max_request_size),
+            # Clamped to 512 bytes: the core request/completion buffers are sized for it (tlp/common.py).
+            convert_size(dcommand[5:8],   self.max_payload_size, max_size=512),
+            convert_size(dcommand[12:15], self.max_request_size, max_size=512),
             self.id.eq(Cat(self.function_number, self.device_number, self.bus_number)),
         ]
 
