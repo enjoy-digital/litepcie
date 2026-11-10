@@ -102,13 +102,15 @@ req_first_be={first_be}; req_last_be={last_be}; req_tag={tag}; req_valid=1;
 do @(posedge clk); while(!req_ready);
 @(negedge clk); req_valid=0; repeat(2) @(negedge clk);
 '''
-        # A following write must still use the incoming address and all byte enables.
+        # A following single DW write (First DW BE 0xf, as a host sends it) must use its own address
+        # and byte enables, not the registered controls of the previous read.
         write_address = 0x3000 + 4*tag
         expected_wb.append((
             ((write_address >> 2) + (base_address >> 2)) & address_mask,
             15, 1, 0x9abcdef0,
         ))
-        bench += f'''req_we=1; req_adr=32'h{write_address:x}; req_len=1; req_dat=64'h123456789abcdef0; req_valid=1;
+        bench += f'''req_we=1; req_adr=32'h{write_address:x}; req_len=1; req_first_be=15; req_last_be=0;
+req_dat=64'h123456789abcdef0; req_valid=1;
 do @(posedge clk); while(!req_ready);
 @(negedge clk); req_valid=0; repeat(2) @(negedge clk);
 '''
