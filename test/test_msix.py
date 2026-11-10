@@ -126,5 +126,31 @@ class TestMSIX(unittest.TestCase):
         self.assertEqual(pba, [0b01])
         self.assertEqual(requests, [(0xfee01000, 0x11)])
 
+    def test_msix_pba_qword_layout(self):
+        # The host reads the PBA as little-endian QWORDs (bit N = vector N): vectors 0-31 must be in
+        # the 32-bit CSR word at the PBA offset, i.e. the upper half of the CSR with big ordering.
+        for csr_ordering in ["big", "little"]:
+            with self.subTest(csr_ordering=csr_ordering):
+                endpoint = SimpleNamespace(
+                    phy      = SimpleNamespace(id=0x400),
+                    crossbar = SimpleNamespace(get_master_port=lambda: SimpleNamespace(channel=0,
+                        source = stream.Endpoint(request_layout(64, address_width=64)),
+                        sink   = stream.Endpoint(completion_layout(64)),
+                    )),
+                )
+                dut = LitePCIeMSIX(endpoint, width=64, default_enable=1, csr_ordering=csr_ordering)
+                pba = []
+                def stimulus():
+                    yield dut.irqs.eq((1 << 33) | (1 << 0))
+                    yield
+                    yield dut.irqs.eq(0)
+                    yield
+                    pba.append((yield dut.pba.status))
+                run_simulation(dut, stimulus())
+                words = [pba[0] >> 32, pba[0] & 0xffffffff] # Words at PBA offset + 0 / + 4.
+                if csr_ordering == "little":
+                    words.reverse()
+                self.assertEqual(words, [1 << 0, 1 << 1])
+
 if __name__ == "__main__":
     unittest.main()

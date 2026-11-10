@@ -84,8 +84,9 @@ class LitePCIeMSIMultiVector(LiteXModule):
 # LitePCIeMSIX -------------------------------------------------------------------------------------
 
 class LitePCIeMSIX(LiteXModule):
-    def __init__(self, endpoint, width=32, default_enable=0):
+    def __init__(self, endpoint, width=32, default_enable=0, csr_ordering="big"):
         assert width <= 64
+        assert csr_ordering in ["big", "little"]
         self.irqs           = Signal(width)
         self.enable         = CSRStorage(width, description="""MSI-X Enable Control.\n
            Write bit(s) to ``1`` to enable corresponding MSI-X IRQ(s).""",
@@ -112,7 +113,12 @@ class LitePCIeMSIX(LiteXModule):
         # Memorize and clear IRQ Vector ------------------------------------------------------------
         self.comb += enable.eq(self.enable.storage)
         self.sync += vector.eq(enable & ((vector & ~clear) | self.irqs))
-        self.comb += self.pba.status.eq(vector)
+        # The host reads the PBA as little-endian QWORDs (bit N = vector N, vectors 0-31 at the lower
+        # DWORD): with big CSR ordering, the upper 32-bit word of a 64-bit CSR is at the lower address.
+        if (width > 32) and (csr_ordering == "big"):
+            self.comb += self.pba.status.eq(Cat(vector[32:], vector[:32]))
+        else:
+            self.comb += self.pba.status.eq(vector)
 
         # Generate MSI-X ---------------------------------------------------------------------------
         msix_valid          = Signal()
