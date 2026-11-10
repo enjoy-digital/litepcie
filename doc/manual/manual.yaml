@@ -1,0 +1,26 @@
+# Manual of this project: output name and chapters, in order (read by build.py; the pandoc defaults
+# files and the theme are generic, from the manual kit).
+name: litepcie_manual
+chapters:
+  - 00_front.md
+  - 01_introduction.md
+  - 02_pcie_primer.md
+  - 03_core_architecture.md
+  - 04_dma.md
+  - 05_mmap_irq.md
+  - 06_ptm.md
+  - 07_hard_phys.md
+  - 08_soft_phy.md
+  - 10_boards.md
+  - 11_getting_started.md
+  - 12_integration.md
+  - 13_software.md
+  - 14_examples.md
+  - 15_simulation.md
+  - 16_debugging.md
+  - Z_appendix.md
+  - A_registers.md
+  - B_build_options.md
+  - C_glossary.md
+  - D_performance.md
+  - E_maintenance.md

@@ -1,0 +1,16 @@
+---
+# Project metadata of the manual (title page, headers, document properties). The theme (colours,
+# fonts, LaTeX options) is in theme.yaml; build.py merges both and replaces @DATE@.
+title: "PCI Express Core & PHYs"
+project: "LitePCIe"
+subtitle: "LitePCIe: Endpoint, Root Port, DMA and Linux Driver on FPGA Hard IPs and Transceivers. Design, Integration and Reference Manual"
+author: [Enjoy-Digital]
+date: "@DATE@"
+license: "Copyright © 2015-2026 Enjoy-Digital. Licensed under the BSD-2-Clause license."
+license-short: "BSD-2-Clause"
+contact: "hello@enjoy-digital.fr"
+website: "enjoy-digital.fr"
+subject: "LitePCIe"
+lang: en-US
+header-right: "PCI Express Core \\& PHYs · BSD-2-Clause · \\href{mailto:hello@enjoy-digital.fr}{hello@enjoy-digital.fr}"
+---
