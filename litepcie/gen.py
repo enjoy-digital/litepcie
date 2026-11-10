@@ -309,7 +309,6 @@ class LitePCIeCore(SoCMini):
 
         # DMA Channels configured separately.
         if isinstance(core_config.get("dma_channels"), dict):
-            print(core_config.get("dma_channels"))
             for name, params in core_config["dma_channels"].items():
                 dma_params = DMAParams(
                     data_width   = params.get("dma_data_width",    core_config["phy_data_width"]),
