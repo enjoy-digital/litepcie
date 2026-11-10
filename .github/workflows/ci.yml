@@ -5,10 +5,18 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Fast and slow tests in two parallel jobs: a run takes as long as the slower one.
+        tests:
+          - { name: "Tests",      marker: "not slow" }
+          - { name: "Slow Tests", marker: "slow"     }
+    name: ${{ matrix.tests.name }}
     steps:
       # Checkout Repository
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       # Install Tools
       - name: Install Tools
@@ -16,7 +24,7 @@ jobs:
           sudo apt-get install -y wget build-essential tcl iverilog
 
       - name: Set up Python 3.9
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.9"
           cache: "pip"
@@ -24,7 +32,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          python3 -m pip install setuptools requests pexpect meson pytest
+          python3 -m pip install setuptools requests pexpect meson pytest pytest-xdist
 
       # Install (n)Migen / LiteX / Cores
       - name: Install LiteX
@@ -36,9 +44,6 @@ jobs:
       - name: Install Project
         run: python3 setup.py develop --user
 
-      # Test
-      - name: Run Tests
-        run: python3 -m pytest -v -m "not slow"
-
-      - name: Run Slow Tests
-        run: python3 -m pytest -v -m "slow"
+      # Test (in parallel on the cores of the runner, slowest tests listed for follow-up)
+      - name: Run ${{ matrix.tests.name }}
+        run: python3 -m pytest -v -n auto --durations=15 -m "${{ matrix.tests.marker }}"

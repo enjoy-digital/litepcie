@@ -17,7 +17,8 @@ verify a change, contribute back). Index of the whole wiki for agents: https://g
 ## Verify a change
 
 ```sh
-python3 -m pytest -v -m "not slow"                                 # what CI runs first (then -m "slow")
+python3 -m pytest -v -n auto -m "not slow"                         # CI job "Tests" (pytest-xdist)
+python3 -m pytest -v -n auto -m "slow"                             # CI job "Slow Tests" (in parallel)
 litepcie_gen examples/acorn.yml                                    # generator smoke test
 python3 -m litex_boards.targets.<board> --with-pcie --build --no-compile
 ```
