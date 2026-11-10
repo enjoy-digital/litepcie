@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="340" viewBox="0 0 760 340">
+<defs>
+  <marker id="arrow-ctrl" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 Z" fill="#5b5b5b"/></marker>
+  <marker id="arrow-ctrl-rev" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto">
+    <path d="M8,0 L0,4 L8,8 Z" fill="#5b5b5b"/></marker>
+  <marker id="arrow-stream" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="9" refY="4.5" orient="auto">
+    <path d="M0,0 L9,4.5 L0,9 Z" fill="#606060"/></marker>
+  <marker id="arrow-accent" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="9" refY="4.5" orient="auto">
+    <path d="M0,0 L9,4.5 L0,9 Z" fill="#2eaadc"/></marker>
+  <marker id="arrow-accent-rev" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="0" refY="4.5" orient="auto">
+    <path d="M9,0 L0,4.5 L9,9 Z" fill="#2eaadc"/></marker>
+  <marker id="arrow-stream-rev" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="0" refY="4.5" orient="auto">
+    <path d="M9,0 L0,4.5 L9,9 Z" fill="#606060"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<polyline points="170,56 170,330" fill="none" stroke="#5b5b5b" stroke-width="1.0" stroke-dasharray="4,3"/>
+<polyline points="590,56 590,330" fill="none" stroke="#5b5b5b" stroke-width="1.0" stroke-dasharray="4,3"/>
+<polyline points="170,82 590,82" fill="none" stroke="#2eaadc" stroke-width="2.0" marker-end="url(#arrow-accent)"/>
+<text x="380" y="72" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="380" dy="0">MemWr, 256 bytes</tspan></text>
+<polyline points="170,118 590,118" fill="none" stroke="#5b5b5b" stroke-width="1.0" marker-end="url(#arrow-ctrl)"/>
+<text x="380" y="111" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="380" dy="0">MemRd, tag 3, 256 bytes</tspan></text>
+<polyline points="170,154 590,154" fill="none" stroke="#5b5b5b" stroke-width="1.0" marker-end="url(#arrow-ctrl)"/>
+<text x="380" y="147" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="380" dy="0">MemRd, tag 4, 256 bytes</tspan></text>
+<polyline points="590,202 170,202" fill="none" stroke="#2eaadc" stroke-width="2.0" marker-end="url(#arrow-accent)"/>
+<text x="380" y="192" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="380" dy="0">CplD, tag 3, 128 bytes</tspan></text>
+<polyline points="590,238 170,238" fill="none" stroke="#2eaadc" stroke-width="2.0" marker-end="url(#arrow-accent)"/>
+<text x="380" y="228" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="380" dy="0">CplD, tag 4, 128 bytes</tspan></text>
+<polyline points="590,274 170,274" fill="none" stroke="#2eaadc" stroke-width="2.0" marker-end="url(#arrow-accent)"/>
+<text x="380" y="264" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="380" dy="0">CplD, tag 3, 128 bytes</tspan></text>
+<polyline points="590,310 170,310" fill="none" stroke="#2eaadc" stroke-width="2.0" marker-end="url(#arrow-accent)"/>
+<text x="380" y="300" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="380" dy="0">CplD, tag 4, 128 bytes</tspan></text>
+<g fill="#000000" stroke="#000000" stroke-width="3.0" opacity="0.05" stroke-linejoin="round" aria-hidden="true">
+<path d="M101.2,22 L232.2,22 L241.2,31 L241.2,58 Q241.2,58 241.2,58 L110.2,58 L101.2,49 L101.2,22 Q101.2,22 101.2,22 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="1.5" opacity="0.08" stroke-linejoin="round" aria-hidden="true">
+<path d="M101.2,22 L232.2,22 L241.2,31 L241.2,58 Q241.2,58 241.2,58 L110.2,58 L101.2,49 L101.2,22 Q101.2,22 101.2,22 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="0" opacity="0.12" stroke-linejoin="round" aria-hidden="true">
+<path d="M101,21.5 L232,21.5 L241,30.5 L241,57.5 Q241,57.5 241,57.5 L110,57.5 L101,48.5 L101,21.5 Q101,21.5 101,21.5 Z"/>
+</g>
+<g fill="#bfe6f5" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<path d="M100,20 L231,20 L240,29 L240,56 Q240,56 240,56 L109,56 L100,47 L100,20 Q100,20 100,20 Z"/>
+</g>
+<text x="170" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="170" dy="0">Device</tspan></text>
+<g fill="#000000" stroke="#000000" stroke-width="3.0" opacity="0.05" stroke-linejoin="round" aria-hidden="true">
+<path d="M521.2,22 L652.2,22 L661.2,31 L661.2,58 Q661.2,58 661.2,58 L530.2,58 L521.2,49 L521.2,22 Q521.2,22 521.2,22 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="1.5" opacity="0.08" stroke-linejoin="round" aria-hidden="true">
+<path d="M521.2,22 L652.2,22 L661.2,31 L661.2,58 Q661.2,58 661.2,58 L530.2,58 L521.2,49 L521.2,22 Q521.2,22 521.2,22 Z"/>
+</g>
+<g fill="#000000" stroke="#000000" stroke-width="0" opacity="0.12" stroke-linejoin="round" aria-hidden="true">
+<path d="M521,21.5 L652,21.5 L661,30.5 L661,57.5 Q661,57.5 661,57.5 L530,57.5 L521,48.5 L521,21.5 Q521,21.5 521,21.5 Z"/>
+</g>
+<g fill="#b8b8b8" stroke="#5b5b5b" stroke-width="0.9" stroke-linejoin="round">
+<path d="M520,20 L651,20 L660,29 L660,56 Q660,56 660,56 L529,56 L520,47 L520,20 Q520,20 520,20 Z"/>
+</g>
+<text x="590" y="38" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="15" fill="#000000" text-anchor="middle" dominant-baseline="central"><tspan x="590" dy="0">Root complex</tspan></text>
+<text x="602" y="82" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="14" fill="#444444" text-anchor="start" dominant-baseline="central"><tspan x="602" dy="0">posted: no reply</tspan></text>
+<text x="602" y="118" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="14" fill="#444444" text-anchor="start" dominant-baseline="central"><tspan x="602" dy="0">non-posted</tspan></text>
+<text x="158" y="202" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="14" fill="#444444" text-anchor="end" dominant-baseline="central"><tspan x="158" dy="0">byte count 256</tspan></text>
+<text x="158" y="238" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="14" fill="#444444" text-anchor="end" dominant-baseline="central"><tspan x="158" dy="0">byte count 256</tspan></text>
+<text x="158" y="274" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="14" fill="#444444" text-anchor="end" dominant-baseline="central"><tspan x="158" dy="0">byte count 128</tspan></text>
+<text x="158" y="310" font-family="Carlito, Calibri, &#x27;Liberation Sans&#x27;, Arial, sans-serif" font-size="14" fill="#444444" text-anchor="end" dominant-baseline="central"><tspan x="158" dy="0">byte count 128</tspan></text>
+</svg>
