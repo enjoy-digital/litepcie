@@ -34,6 +34,7 @@ PHY:
   - Xilinx Ultrascale(+) (up to PCIe Gen3 X16).
   - Xilinx 7-Series (up to PCIe Gen2 X8).
   - Intel Cyclone5  (up to PCIe Gen2 X4).
+  - Intel Stratix5   (up to PCIe Gen2 X8).
   - Soft PHY on FPGA transceivers through LiteICLink (work in progress, [doc/softphy.md](doc/softphy.md)).
   - 64/128/256/512-bit datapath.
   - Clock domain crossing.
@@ -64,7 +65,6 @@ LitePCIe is already used in commercial and open-source designs:
 [> Possible improvements
 ------------------------
 - add standardized interfaces (AXI, Avalon-ST)
-- add Intel Stratix support
 - add Lattice support
 - add more documentation
 - ... See below Support and consulting :)
