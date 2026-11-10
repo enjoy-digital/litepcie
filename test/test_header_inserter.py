@@ -542,5 +542,79 @@ class TestLitePCIeTLPHeaderInserter(unittest.TestCase):
         self._random_vectors(512, ntests=80)
 
 
+class TestLitePCIeTLPHeaderInserterBackToBack(unittest.TestCase):
+    """TLPs with 3DW and 4DW headers back to back: the next TLP (other fmt) is at the sink while the
+    inserter still ends the current one."""
+    def _run_back_to_back(self, data_width, packets, ready_ratio=1.0, seed=0):
+        rng = random.Random(seed)
+        dut = _HeaderInserterDUT(data_width=data_width)
+        ndws = _dws_per_beat(data_width)
+        got  = []
+        done = [False]
+
+        @passive
+        def monitor(dut):
+            cur = None
+            while True:
+                yield dut.source.ready.eq(int(rng.random() < ready_ratio))
+                yield
+                if (yield dut.source.valid) and (yield dut.source.ready):
+                    if (yield dut.source.first):
+                        if cur is not None:
+                            got.append(("no last", cur))
+                        cur = []
+                    if cur is None:
+                        got.append(("no first",))
+                        continue
+                    cur += _unpack_dat_to_dwords((yield dut.source.dat), ndws)
+                    if (yield dut.source.last):
+                        got.append(cur)
+                        cur = None
+
+        def stimulus(dut):
+            for header_dws, header_4dws, payload_dws, payload_be in packets:
+                for beat in _build_tlp_raw_input_beats(data_width, payload_dws, payload_be):
+                    yield dut.sink.header.eq(_pack_dwords_to_dat(header_4dws))
+                    yield dut.sink.fmt.eq(_fmt_for_header_dws(header_dws))
+                    yield dut.sink.first.eq(beat["first"])
+                    yield dut.sink.last.eq(beat["last"])
+                    yield dut.sink.dat.eq(_pack_dwords_to_dat(beat["dws"]))
+                    yield dut.sink.be.eq(_pack_be_nibbles_to_be(beat["be"]))
+                    yield dut.sink.valid.eq(1)
+                    yield
+                    while not (yield dut.sink.ready):
+                        yield
+            yield dut.sink.valid.eq(0)
+            for _ in range(100):
+                yield
+
+        run_simulation(dut, [stimulus(dut), monitor(dut)], vcd_name=None)
+
+        self.assertEqual(len(got), len(packets), msg=f"data_width={data_width}: {len(got)} TLPs out of {len(packets)}")
+        for i, ((header_dws, header_4dws, payload_dws, _), out) in enumerate(zip(packets, got)):
+            exp = header_4dws[:header_dws] + list(payload_dws)
+            self.assertIsInstance(out, list, msg=f"data_width={data_width} TLP {i}: {out}")
+            self.assertEqual(out[:len(exp)], exp, msg=f"data_width={data_width} TLP {i}")
+
+    def _packets(self, data_width, n, seed):
+        rng = random.Random(seed)
+        beat_dws = _dws_per_beat(data_width)
+        packets  = []
+        for i in range(n):
+            header_dws  = [4, 3][i % 2] if rng.random() < 0.7 else rng.choice([3, 4])
+            header_4dws = [rng.getrandbits(32) for _ in range(4)]
+            npayload    = rng.choice([0, 1, beat_dws - 4, beat_dws - 3, beat_dws, 4*beat_dws, rng.randrange(0, 3*beat_dws)])
+            npayload    = max(npayload, 0)
+            payload     = [rng.getrandbits(32) for _ in range(npayload)]
+            packets.append((header_dws, header_4dws, payload, [0xf]*npayload))
+        return packets
+
+    def test_back_to_back(self):
+        for data_width in [64, 128, 256, 512]:
+            for ready_ratio in [1.0, 0.6]:
+                with self.subTest(data_width=data_width, ready_ratio=ready_ratio):
+                    self._run_back_to_back(data_width, self._packets(data_width, 40, data_width), ready_ratio, seed=data_width)
+
+
 if __name__ == "__main__":
     unittest.main()
