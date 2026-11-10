@@ -22,7 +22,7 @@ The other tools depend on what you run. The table below lists them.
 
 | Task | Tools |
 |------------------------------|------------------------------------------------------------------|
-| Tests without hardware | Python 3, pytest; Icarus Verilog for the Verilog tests |
+| Tests without hardware | Python 3, pytest, pytest-xdist; Icarus Verilog for the Verilog tests |
 | Soft PHY system simulations | Verilator and a C++ compiler |
 | AMD 7-Series, UltraScale(+) | Vivado |
 | Intel Cyclone V, Stratix V | Quartus |
@@ -42,10 +42,11 @@ cable.](ypcb_in_slot.jpg){width=70%}
 
 The test suite checks every module of the core, the PHY datapaths and the DMA against Python
 models of the host, with no board and no FPGA tool. The selection below skips the long tests, as
-the continuous integration does first.
+the "Tests" job of the continuous integration does. With `pytest-xdist` installed, `-n auto` runs
+the tests on every core.
 
 ```sh
-python3 -m pytest -v -m "not slow"
+python3 -m pytest -v -n auto -m "not slow"
 ```
 
 The KC705 target and the generator can then run without Vivado. Without `--build`, the target

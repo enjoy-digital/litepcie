@@ -89,10 +89,10 @@ the markers the tests use.
 | `examples` | Elaboration of the bench targets and of the generator |
 
 ```sh
-# Fast suite, as the continuous integration runs it first
-python3 -m pytest -v -m "not slow"
-# Long tests, with the Verilator simulations when Verilator is installed
-python3 -m pytest -v -m slow
+# Fast suite, as the CI job "Tests" runs it (-n auto: one worker per core, pytest-xdist)
+python3 -m pytest -v -n auto -m "not slow"
+# Long tests, as the CI job "Slow Tests" runs them; Verilator simulations when it is installed
+python3 -m pytest -v -n auto -m slow
 # One area
 python3 -m pytest -v test/test_soft_*.py
 ```
@@ -162,10 +162,14 @@ return to Detect after the first L0. It is skipped when Verilator is not install
 
 The CI workflow (`.github/workflows/ci.yml`) runs on every push and pull request. It installs Icarus
 Verilog, LiteX with its cores through `litex_setup.py`, and the project, on Ubuntu 22.04 with
-Python 3.9. It then runs two steps:
+Python 3.9, in two jobs that run in parallel:
 
-1. the fast suite (`-m "not slow"`);
-2. the long tests (`-m slow`).
+1. "Tests", the fast suite (`-m "not slow"`);
+2. "Slow Tests", the long tests (`-m slow`).
+
+Each job spreads its tests over the cores of the runner (`pytest-xdist`, `-n auto`) and lists its
+15 slowest tests at the end of its log. A run lasts as long as the slower job, which is bound by its
+longest single simulations rather than by the number of tests.
 
 The workflow does not install Verilator, so `test_soft_sim.py` skips the soft PHY system
 simulations there. Run them locally, with Verilator installed, before changing the soft PHY.
