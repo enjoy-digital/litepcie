@@ -42,7 +42,9 @@ class LFCPNXPCIEPHY(LiteXModule):
         # Streams ---------------------------------------------------------------------------------
         self.sink   = stream.Endpoint(phy_layout(data_width))
         self.source = stream.Endpoint(phy_layout(data_width))
-        self.msi    = stream.Endpoint(msi_layout()) # FIXME: Connect.
+        # Not connected: the raw TLP wrapper has no MSI request interface (its MSI capability is
+        # disabled through LMMI below), interrupts are sent as MSI-X (LitePCIeMSIX).
+        self.msi    = stream.Endpoint(msi_layout())
 
         # Registers --------------------------------------------------------------------------------
         self._link_status = CSRStatus(fields=[
