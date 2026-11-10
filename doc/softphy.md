@@ -236,6 +236,30 @@ Alibaba Cloud KU3P board (`xcku3p-ffvb676-2-e`, GTY) on Lane 0 in the x16 slot o
 - No receiver error during the soak and the link cycles. The root port's correctable errors stayed clear during
   one minute of DMA after clearing them (they were set before the soft PHY was loaded).
 
+8.0 GT/s on the same board (`--speed gen3 --nlanes 1/4/8`):
+
+| | Soft 8 GT/s x1 | Soft 8 GT/s x4 | Soft 8 GT/s x8 |
+|---|---|---|---|
+| Training, enumeration | Yes, equalization Phase 0-3 | Yes, equalization Phase 0-3 | Yes, equalization Phase 0-3 |
+| `scratch_test`, MSI | OK | OK | OK |
+| Root port errors, link idle | none | none | none in 3 minutes |
+| DMA loopback | 6.29 Gb/s (`dma_test`, before the packetizer fix) | about 30 Gb/s (`dma_test`, before the packetizer fix, the host hung) | 23.8 Gb/s received, data checked (with the packetizer fix) |
+| Retrain Link from 5.0/2.5 GT/s | | | 60 of 60 |
+| CLB LUTs | | | about 83k (with the wide DLL area changes) |
+
+- Transceivers: Quad PLL1 at 8 GHz next to the Quad PLL0 of each quad, the rate ports at divider 1, PLL
+  selection, PMA resets and the DRP writes of the Xilinx wrapper's rate sequence (CDR and drive mode) through the
+  same rate sequencer as on the GTX.
+- Receive equalizer at 8.0 GT/s: LPM by default. With DFE (the Xilinx wrapper's), the receivers sometimes got
+  no Block lock after a speed change without equalization (5.0 or 2.5 to 8.0 GT/s): 52 of 60 Retrain Link
+  rounds against 60 of 60 with LPM. DFE stays selectable for bring-up (`g3_control.lpm` of the debug CSRs).
+- DMA at x8 (and the earlier x1/x4 runs): the TLP packetizer could lose the last beat of a 4DWs Memory Write
+  followed by a 3DWs Completion (DMA with BAR0 reads, 4DWs requests on UltraScale+): fixed in the packetizer.
+  The 8 GT/s x8 data check is a test program on the driver's library that checks each received buffer against
+  the pattern and clears it: 1.78M buffers in 5 s, none wrong. `dma_test` doesn't keep up at that rate (about
+  15 Gb/s, buffers of zeros reported), as at x8 on the GTX. x8 needs the wide Data Link Layer area changes to fit
+  the `xcku3p`.
+
 ## Resources and timing against the hard IP
 
 Same SoC on the Acorn CLE-215+ (`xc7a200t-fbg484-3`, Vivado 2024.1, `bench/soft/acorn.py --with-endpoint`):
