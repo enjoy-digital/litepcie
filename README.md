@@ -48,7 +48,7 @@ Core:
 Frontend:
   - DMA (with Scatter-Gather).
   - MMAP (AXI/Wishbone Slave/Master).
-  - PTM on Xilinx 7-Series, with experimental multi-lane and UltraScale+ Gen2/Gen3/Gen4 support ([integration](doc/ptm.md)).
+  - PTM on Xilinx 7-Series, with experimental multi-lane and UltraScale+ Gen2/Gen3/Gen4 support ([integration](doc/manual/06_ptm.md)).
 
 Software:
   - Linux Driver (MMAP and DMA).
@@ -66,11 +66,30 @@ LitePCIe is already used in commercial and open-source designs:
 ------------------------
 - add standardized interfaces (AXI, Avalon-ST)
 - add Lattice support
-- add more documentation
 - ... See below Support and consulting :)
 
 If you want to support these features, please contact us at florent [AT]
 enjoy-digital.fr.
+
+[> Documentation
+----------------
+The **PCI Express Core & PHYs manual** is the reference of LitePCIe: a nightly
+[PDF](https://github.com/enjoy-digital/litepcie/releases/download/manual-nightly/litepcie_manual.pdf)
+and [HTML page](https://github.com/enjoy-digital/litepcie/releases/download/manual-nightly/litepcie_manual.html)
+are published on the [manual-nightly](https://github.com/enjoy-digital/litepcie/releases/tag/manual-nightly)
+release. Sources in [doc/manual](doc/manual/README.md) (build: `python3 doc/manual/build.py`, outputs in
+`build/doc/`):
+
+- **Understand**: [introduction](doc/manual/01_introduction.md), [PCI Express in a nutshell](doc/manual/02_pcie_primer.md).
+- **The core**: [architecture](doc/manual/03_core_architecture.md), [scatter-gather DMA](doc/manual/04_dma.md),
+  [memory-mapped bridges and interrupts](doc/manual/05_mmap_irq.md), [PTM](doc/manual/06_ptm.md).
+- **The PHYs**: [hard-IP PHYs](doc/manual/07_hard_phys.md), [soft PHY](doc/manual/08_soft_phy.md) (in development,
+  detailed notes in [doc/softphy.md](doc/softphy.md)).
+- **Use it**: [supported FPGAs and boards](doc/manual/10_boards.md), [getting started](doc/manual/11_getting_started.md),
+  [integration](doc/manual/12_integration.md), [Linux driver and tools](doc/manual/13_software.md),
+  [examples](doc/manual/14_examples.md), [simulation](doc/manual/15_simulation.md), [debugging](doc/manual/16_debugging.md).
+- **Appendices**: [registers](doc/manual/A_registers.md), [build options](doc/manual/B_build_options.md),
+  [glossary](doc/manual/C_glossary.md), [performance and resources](doc/manual/D_performance.md).
 
 [> Getting started
 ------------------

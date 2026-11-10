@@ -42,7 +42,7 @@ State of the work and hardware results: [`doc/softphy.md`](../../../doc/softphy.
 - **Link analyzer:** the receive path (deskew, descrambling, framing) on spare transceivers could follow a
   PCIe link passively.
 - **Timing:** Symbol-level timestamps at the PHY could improve PTM and time synchronization
-  ([`doc/ptm.md`](../../../doc/ptm.md)).
+  ([PTM chapter of the manual](../../../doc/manual/06_ptm.md)).
 
 ## Simulation and CI
 
