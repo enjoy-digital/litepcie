@@ -220,6 +220,8 @@ class LitePCIeCore(SoCMini):
             if core_config["phy"] not in (S7PCIEPHY, USPPCIEPHY):
                 raise ValueError("PTM requires a 7-series or Gen2 UltraScale+ PCIe PHY")
             phy_kwargs["with_ptm"] = True
+        if core_config.get("msi_x", False) and core_config["phy"] is S7PCIEPHY:
+            phy_kwargs["msi_type"] = "msi-x"
         pcie_pads = platform.request("pcie")
         if core_config["phy"] is SVPCIEPHY:
             # The Transceiver Reconfiguration Controller is clocked by sys and must be free-running:
