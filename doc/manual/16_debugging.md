@@ -111,7 +111,7 @@ it in the `LnkSta` line of `lspci -vv`, for the device and for its root port. On
 |------------------------|-------------------------------------------------------------------------------------|
 | `status` | Link up, as the PHY reports it |
 | `rate` | Negotiated rate, raw value of the PHY |
-| `width` | Negotiated width, raw value of the PHY |
+| `width` | Negotiated width, base 2 logarithm of the lanes (`3` for x8, `4` for x16); one bit per width on UltraScale |
 | `ltssm` | LTSSM state, in the encoding of the hard IP |
 
 A link that does not come up, or that drops, needs the history of the LTSSM. The LTSSM tracer
@@ -150,7 +150,8 @@ the `DevCtl` line of `lspci -vv`.
 
 The MPS stays at the 128-byte reset value unless both ends of the link are programmed with a larger
 one. A host that leaves it at 128 bytes lowers the DMA throughput, as
-[Performance and resources](#performance) computes. The 7-Series PHY caps both sizes at 512 bytes.
+[Performance and resources](#performance) computes. The Xilinx, Intel and soft PHYs cap both sizes
+at 512 bytes, so a larger host value reads as 512.
 A root port design programs its own MPS through `with_cfg_mgmt`, as [Integration](#integration)
 explains.
 
@@ -206,15 +207,17 @@ registers advance. Check the chain from the host to the design.
 
 The driver chooses MSI-X when the design has an MSI-X controller (the `pcie_msi_pba` register),
 otherwise MSI. On 7-Series and CertusPro-NX, the MSI-X table and PBA offsets set in the hard IP
-(`0x2000` and `0x1808`) must match the register map of the design. The generator places
-`pcie_msi_table` and `pcie_msi_pba` there; with `add_pcie`, check `csr.csv` and reserve the
-locations as [Interrupt types](#integ-msi) shows.
+(`0x2000` and `0x1808`) must match the register map of the design. The generator and `add_pcie`
+with `msi_type="msi-x"` place `pcie_msi_table` and `pcie_msi_pba` there, and `add_pcie` stops with
+an error when it cannot ([Interrupt types](#integ-msi)); `csr.csv` shows the result.
 
 An MSI-X vector with a non-zero upper address is treated as masked unless the endpoint has 64-bit
 addresses.
 
-Two PHYs have their own limits. The Gowin GW5A PHY raises an MSI request on the rising edge of the
-request valid, so two MSIs back to back may stall.
+Three PHYs have their own limits. The Gowin GW5A PHY raises an MSI request on the rising edge of
+the request valid, so two MSIs back to back may stall (issue #244). The UltraScale and UltraScale+
+PHYs send an MSI vector chosen from the Multiple Message Enable of the host, not the vector of the
+request (issue #243): a multi-vector MSI does not reach the right handler there.
 
 The Lattice CertusPro-NX hard IP has no MSI request pins: use MSI-X (`msi_type="msi-x"` in
 `add_pcie`, the default of the generator for this PHY), since the default MSI type gets no
@@ -276,7 +279,7 @@ registers, and a DRP program played right after the change to 8.0 GT/s runs the 
 - **BAR read before the device is enabled.** On warm reboots with the design kept, the first BAR
   read before the device was enabled timed out at the host, as an Advisory Non-Fatal Error. It was
   not seen after a fresh load; the cause is not found.
-- **No 8.0 GT/s link with a host.** On the YPCB-00338-1P1, the speed change and the rate sequence
+- **No 8.0 GT/s link with a host on the GTX.** On the YPCB-00338-1P1, the speed change and the rate sequence
   complete, but no Training Sequence is received at 8.0 GT/s. The eye is open in near-end loopback
   and closed from the root port, which points to the channel of this board at 8.0 GT/s.
 
@@ -298,7 +301,7 @@ registers, and a DRP program played right after the change to 8.0 GT/s runs the 
 | No interrupt | MSI not enabled, wrong MSI type | `msi_enable`, `pcie_msi_enable` | MMAP and IRQ |
 | MSIs stall (GW5A) | Edge-triggered request | Space the interrupts | Hard-IP PHYs |
 | No interrupt (CertusPro-NX) | MSI requested | Use MSI-X | Hard-IP PHYs |
-| No MSI-X interrupt (`add_pcie`) | Table not at `0x2000` | `pcie_msi_table` in `csr.csv` | Integration |
+| `SoCError` on MSI-X (`add_pcie`) | Paging, location taken | Paging `0x800`, no `csr_map` at 3 or 4 | Integration |
 | Soft PHY stuck before L0 | Lock, polarity, lanes | `status.py status`, counters | Soft PHY |
 
 Work through the rows from the top: each one assumes the checks above it pass. The chapters named

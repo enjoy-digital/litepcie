@@ -72,7 +72,9 @@ NOTES = {
         "In a design built with MSI-X, these registers are in the `pcie_msi` bank; they are listed",
         "under `pcie_msix` here only to keep them apart from the MSI ones. The vector table is the",
         "`pcie_msi_table` memory, four 32-bit words per vector. The driver uses MSI-X when the",
-        "`pba` register exists.",
+        "`pba` register exists. With 64 vectors and the big register ordering, the controller",
+        "swaps the two halves of `pba`: the word at offset `0x0008` holds vectors 0 to 31, as the",
+        "host reads the Pending Bit Array.",
     ],
     "pcie_dma": [
         "One bank per DMA channel, `pcie_dma0` to `pcie_dmaN`, all with the layout below. The",

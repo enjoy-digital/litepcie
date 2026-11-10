@@ -193,14 +193,15 @@ controller needs a free-running clock, and takes no `phy_pcie_data_width`. The p
 | `dma_loopback` | `True` | Loopback plug-in |
 | `dma_synchronizer` | `False` | Synchronizer plug-in |
 | `dma_monitor` | `False` | Monitor plug-in |
-| `msi_irqs` | required | User interrupt inputs: up to 16 with MSI, 32 with MSI-X |
+| `msi_irqs` | required | User interrupt inputs, up to 16 |
 | `msi_multivector` | `False` | Multi-vector MSI instead of single-vector |
 | `msi_x` | `False` | MSI-X instead of MSI; `True` by default on CertusPro-NX |
 | `msi_x_default_enable` | `False` | MSI-X vectors enabled at reset |
 
 When `dma_channels` is a dictionary, each entry names a channel and takes the `dma_` keys above as
 its own settings (`examples/kcu105.yml`). The DMA interrupts take the first vectors; the user
-interrupts start at vector 16 with MSI and 32 with MSI-X.
+interrupts take vectors 16 to 31, with MSI as with MSI-X. With `msi_x` on 7-Series, the generator
+also configures the hard IP for MSI-X, which then advertises 32 vectors.
 
 Where to go next: [Example designs and targets](#examples) for the designs these options build,
 and [Simulation and verification](#simulation) for the simulation scripts.

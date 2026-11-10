@@ -27,7 +27,7 @@ soft PHY. The table below gives the PHY class, the rates and the widths of each 
 | Intel Stratix V | `SVPCIEPHY` | Gen1, Gen2 | x1, x4, x8 | Validated |
 | Gowin GW5A | `GW5APCIEPHY` | Gen2 | x1, x4 | Validated |
 | Lattice CertusPro-NX | `LFCPNXPCIEPHY` | Gen3 | x4 | Validated |
-| Kintex-7, UltraScale+ | `SoftPCIEPHY` | Gen1, Gen2 | x1 to x8 | In development |
+| Kintex-7, UltraScale+ | `SoftPCIEPHY` | Gen1, Gen2, Gen3 | x1 to x8 | In development |
 
 "Validated" means that a design with this PHY runs on hardware against a Linux host. The
 UltraScale+ HBM devices use `USPHBMPCIEPHY`, a variant of `USPPCIEPHY`. The soft PHY row is
@@ -120,7 +120,8 @@ resources](#performance).
 
 The Alibaba Cloud XCKU3P card is a low cost Kintex UltraScale+ card with an x8 PCIe edge
 connector and two SFP cages. It runs the hard IP at Gen3 x8 with the LiteX-Boards target of the
-next section, and the soft PHY on its GTY transceivers at Gen1 and Gen2 x1 (`bench/soft/ku3p.py`).
+next section, and the soft PHY on its GTY transceivers at Gen1 and Gen2 x1 and at Gen3 x1, x4
+and x8 (`bench/soft/ku3p.py`).
 
 ![The Alibaba Cloud XCKU3P card, a Kintex UltraScale+ card with a PCIe x8
 edge.](alibaba_xcku3p.jpg){width=70%}

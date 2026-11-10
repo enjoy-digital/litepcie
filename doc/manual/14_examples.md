@@ -20,7 +20,7 @@ toolchain, which is how the tests check them.
 | `acorn` | Acorn CLE-215+ | generated core | Gen2 x4 | none |
 | `soft/acorn` | Acorn CLE-215+ | soft PHY, GTP | Gen1 x1 | UART or JTAG |
 | `soft/ypcb` | YPCB-00338-1P1 | soft PHY, GTX | Gen1 to Gen3, x1 to x8 | JTAGBone |
-| `soft/ku3p` | Alibaba XCKU3P | soft PHY, GTY | Gen1, Gen2 x1 | JTAGBone |
+| `soft/ku3p` | Alibaba XCKU3P | soft PHY, GTY | Gen1, Gen2 x1; Gen3 x1, x4, x8 | JTAGBone |
 | `soft/ypcb_gen3` | YPCB-00338-1P1 | GTX lane test | 8.0 GT/s loopback | JTAGBone |
 
 The bridge column gives the second access path to the registers, besides BAR0: it still answers

@@ -14,8 +14,8 @@ Readers who only need a working link on a supported FPGA should start with a har
 | Item | Value |
 |--------------------|------------------------------------------------------------------|
 | Class | `SoftPCIEPHY` |
-| Rates | `gen1` (2.5 GT/s), `gen2` (5.0 GT/s), `gen3` (8.0 GT/s, no host link yet) |
-| Lanes | 1, 2, 4, 8 on GTX and GTP; 1 on GTY |
+| Rates | `gen1` (2.5 GT/s), `gen2` (5.0 GT/s), `gen3` (8.0 GT/s, host link on GTY only) |
+| Lanes | 1, 2, 4, 8 on GTX and GTP; 1 on GTY, and 1, 4, 8 at 8.0 GT/s |
 | Transceivers | Artix-7 GTP, Kintex-7 GTX, Kintex UltraScale+ GTY (KU3P, KU5P) |
 | Core width | x1 below 8.0 GT/s: 64 to 512 bits; else 32 bits per lane, 64 at 8.0 GT/s |
 | Reference clock | 100 MHz, from the slot |
@@ -32,7 +32,8 @@ GTX) and the Alibaba XCKU3P (Kintex UltraScale+ GTY) in a PC slot, with the driv
 | Gen1 and Gen2 x1, GTY | On hardware: enumeration, BAR0, MSI, DMA |
 | Width negotiated down to x1 | On hardware, GTX |
 | Artix-7 GTP | Built, not run on hardware |
-| 8.0 GT/s | Simulated x1 to x8; GTX x4 near-end loopback; no host link |
+| 8.0 GT/s, GTY | On hardware x1, x4, x8: enumeration, BAR0, MSI, DMA |
+| 8.0 GT/s, GTX | Simulated x1 to x8; x4 near-end loopback; no host link |
 | Lane reversal, power management | Not implemented |
 | Root port on the soft PHY | Downstream LTSSM simulated; not on hardware |
 
@@ -151,18 +152,22 @@ takes this multi-lane path too, with a 64-bit core.
 
 The physical layer sends the Ordered Sets on all lanes at once, stripes the packets, and deskews
 the lanes on the COM Symbols of the training sequences. The width is negotiated in Configuration:
-the largest of x1, x2, x4 and x8 with the lanes that answer, from Lane 0.
+the largest of x1, x2, x4 and x8 with the lanes that answer, from Lane 0. The width field of the
+`pcie_phy_link_status` register gives the negotiated width as its base 2 logarithm, as most
+hard-IP PHYs: `0b00` for x1, `0b01` for x2, `0b10` for x4 and `0b11` for x8.
 
 ### 5.0 and 8.0 GT/s {#soft-speed}
 
 With `speed="gen2"`, the link trains at 2.5 GT/s and the root port then moves it to 5.0 GT/s. The
 fallback to 2.5 GT/s after a failed change is simulated only.
 
-With `speed="gen3"` (GTX, x1 to x8), the link also trains at 2.5 GT/s first. The lanes add the
-128b/130b blocks, their scrambling and alignment, and the equalization of the transmitter.
+With `speed="gen3"` (GTX and GTY, x1 to x8), the link also trains at 2.5 GT/s first. The lanes add
+the 128b/130b blocks, their scrambling and alignment, and the equalization of the transmitter.
 
-In near-end loopback on the GTX, four lanes ran 10 minutes at 8.0 GT/s without error. With a host,
-no training sequence is received at 8.0 GT/s yet; `doc/softphy.md` records the investigation.
+On the Alibaba XCKU3P (GTY), x1, x4 and x8 links train at 8.0 GT/s with a host, through the four
+phases of the equalization, and enumerate. In near-end loopback on the GTX, four lanes ran 10
+minutes at 8.0 GT/s without error; with a host, no training sequence is received at 8.0 GT/s on
+the GTX yet. `doc/softphy.md` records both.
 
 ## Measured results {#soft-results}
 
@@ -181,6 +186,8 @@ Above about 13 Gb/s, the software check of the test loses whole buffers on both 
 figures therefore measure the link, but do not prove the data on their own.
 
 On the Alibaba XCKU3P, the soft PHY gives 1.72 Gb/s at 2.5 GT/s x1 and 3.39 Gb/s at 5.0 GT/s x1.
+At 8.0 GT/s x8, a test program on the library of the driver received 23.8 Gb/s and checked the
+data of every buffer.
 
 ## How to try it {#soft-try}
 
@@ -204,7 +211,7 @@ comparison. The targets are in `bench/soft/`.
 | Target | Board | Rates and lanes | Main options |
 |------------|-------------------|--------------------|---------------------------|
 | `ypcb.py` | YPCB-00338-1P1, GTX | Gen1 to Gen3, x1 to x8 | `--speed`, `--nlanes`, `--hard-ip` |
-| `ku3p.py` | Alibaba XCKU3P, GTY | Gen1, Gen2, x1 | `--speed` |
+| `ku3p.py` | Alibaba XCKU3P, GTY | Gen1, Gen2 x1; Gen3 x1, x4, x8 | `--speed`, `--nlanes` |
 | `acorn.py` | Acorn CLE-215+, GTP | Gen1, x1 | `--with-debug`, `--hard-ip` |
 
 The bring-up registers keep the LTSSM disabled at reset and while PERST# is asserted. A design
@@ -229,16 +236,15 @@ LTSSM starts on its own.
 
 The points below are the known gaps; `doc/softphy.md` tracks them with the status of each step.
 
-- No 8.0 GT/s link with a host yet; at 8.0 GT/s, the width is the full width of the design.
+- No 8.0 GT/s link with a host on the GTX yet; at 8.0 GT/s, the width is the full width of the
+  design.
 - No lane reversal, and no retimer SKP Ordered Sets of other lengths.
 - No link power management: no ASPM, L0s, L1 or L2, and no PME_TO_Ack at shutdown.
 - No MSI-X; the MSI-X enable register always reads 0.
-- The width field of the link status register always reads 0 (x1). With `add_debug()`,
-  `status.py` reports the negotiated width.
 - Receiver detection is stubbed: a partner is always present.
 - A blocked non-posted request blocks the TLPs behind it: there is a single transmit queue.
 - The data link layer timers are fixed values, not yet checked against the specification tables.
-- Artix-7 GTP not run on hardware; the GTY runs at x1 only.
+- Artix-7 GTP not run on hardware; the GTY runs at x1 only at 2.5 and 5.0 GT/s.
 
 ## In the code {#soft-code}
 

@@ -40,9 +40,10 @@ bus.](mmap_bar0.svg)
 
 The bridge serves the two kinds of request differently:
 
-- **Write**: the bridge writes the first DW of the request with all four byte enables set and
-  discards the rest of the payload. Host software must write the registers with aligned 32-bit
-  accesses: a 64-bit write loses its second DW, and a byte write rewrites the whole DW.
+- **Write**: the bridge writes each DW of the request in turn, to consecutive bus addresses. The
+  first DW takes the first byte enables of the request, the last DW its last byte enables, and the
+  DWs in between all four. A DW without any byte enable is skipped, so a zero-length write writes
+  nothing. A 64-bit write therefore writes two registers, and a byte write changes only its byte.
 - **Read**: the bridge reads each DW of the request in turn, with the byte enables of the
   request, and returns one CplD per DW. Reads of several DWs and zero-length reads are supported.
 
@@ -76,8 +77,9 @@ A read becomes a MemRd; the cycle ends with the data of its completion. The clas
 
 A cycle that gets no answer within 65536 clock cycles ends with the Wishbone error signal. A
 processor on the SoC bus therefore never hangs on a host that does not answer. A read that the
-host answers with an error completion, such as Unsupported Request, ends normally with
-meaningless data: the error signal reports only the timeout.
+host answers with an error completion, Unsupported Request or Completer Abort, ends the same way:
+the cycle ends with the acknowledge and error signals, and the read data are all-ones, as for a
+timeout.
 
 | Parameter | Default | Meaning |
 |-----------------|----------|-------------------------------------------------|
@@ -141,8 +143,9 @@ its only register. The class is `LitePCIeMSIMultiVector`.
 
 The host must grant one vector per interrupt, and the PHY must pass the vector number to its hard
 IP. The soft PHY does both, with its `msi_vectors` parameter. The 7-Series and Stratix V PHYs
-configure their hard IP for a single vector, and the UltraScale, UltraScale+ and Cyclone V PHYs do
-not pass the vector number on. On these PHYs, use MSI or MSI-X.
+configure their hard IP for a single vector, and the UltraScale, UltraScale+ (issue #243) and
+Cyclone V PHYs do not pass the vector number on. On these PHYs, use the single-vector MSI, or
+MSI-X where the PHY has it.
 
 ### MSI-X {#irq-msix}
 
@@ -176,6 +179,12 @@ address.
 | `endpoint` | none | The endpoint, for its crossbar master port |
 | `width` | 32 | Number of vectors, up to 64 |
 | `default_enable` | 0 | 1: all interrupts enabled at reset |
+| `csr_ordering` | `"big"` | Ordering of the registers wider than 32 bits |
+
+The host reads the PBA as little endian 64-bit words: bit N is vector N, vectors 0 to 31 in the
+32-bit word at the PBA offset. With 64 vectors and the default big ordering, the upper half of a
+64-bit register is at the lower address, so the controller swaps the two halves of the PBA. Pass
+the `csr_ordering` of the SoC; the generator passes its own.
 
 The hard IP advertises where the table and the PBA are in BAR0, so the register map must put them
 there. In MSI-X mode (`msi_type="msi-x"` on the PHY), the 7-Series PHY advertises 32 vectors, the
@@ -184,8 +193,9 @@ offsets.
 
 These offsets follow from the register map, as the table below shows: the CSR region starts at
 BAR0 offset 0, each register bank takes a page of `0x800` bytes (the LiteX default), and the PBA
-is the third 32-bit word of the `pcie_msi` bank. The generator fixes this map. A LiteX SoC must
-set the two locations in its `csr_map` and keep the default paging and 32-bit register width.
+is the third 32-bit word of the `pcie_msi` bank. The generator and LiteX `add_pcie` with
+`msi_type="msi-x"` both reserve the two locations. `add_pcie` stops with an error when the
+register paging does not divide the offsets or when another bank already holds a location.
 
 | Bank | Location | BAR0 offset | Content |
 |----------------------|----------|-------------|---------------------------------------|
@@ -207,22 +217,23 @@ reads to know which bit belongs to which engine.
 | DMA1 Writer | `PCIE_DMA1_WRITER_INTERRUPT` | 3 |
 
 The generator follows the same order and adds the user interrupts of its `msi_irqs` input after
-them: from bit 16 with MSI (16 user interrupts at most), from bit 32 with MSI-X (32 at most).
+them: from bit 16, with MSI as with MSI-X (16 user interrupts at most).
 [Integration](#integration) gives the details of the generator.
 
 ## PHY support {#irq-phy-support}
 
 MSI and multi-vector MSI need the MSI interface of the hard IP; MSI-X needs only the crossbar and
-a hard IP that advertises the MSI-X capability. Three cases have restrictions:
+a hard IP that advertises the MSI-X capability. On 7-Series, the generator option `msi_x` also
+puts the hard IP in MSI-X mode. Three cases have restrictions:
 
 - **Gowin GW5A**: the PHY requests an MSI on the rising edge of the stream `valid`, so two
-  messages back to back may stall.
+  messages back to back may stall (issue #244).
 - **Lattice CertusPro-NX**: the hard IP wrapper has no MSI request interface, and the PHY
   disables its MSI capability. Use MSI-X: `add_pcie` with its default MSI type gets no
   interrupts on this PHY. The generator selects MSI-X for it by default.
-- **7-Series with the generator**: the `msi_x` option builds the MSI-X controller but leaves the
-  PHY in MSI mode, so the hard IP does not advertise MSI-X. Use MSI with the generator on this
-  PHY.
+- **UltraScale and UltraScale+**: the PHYs have no MSI-X capability. Their MSI path ignores the
+  vector of the request and sends one vector chosen from the Multiple Message Enable of the host
+  (issue #243): use the single-vector MSI there.
 
 ## Registers {#mmap-irq-registers}
 

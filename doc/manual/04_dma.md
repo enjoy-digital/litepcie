@@ -160,10 +160,10 @@ cross one.
 
 ## Writer {#dma-writer}
 
-The Writer sends a write request only when its data FIFO holds the whole payload of the request.
-The stream from user logic fills the FIFO; the Writer then sends the request header and its
-payload without a gap. The FIFO holds four requests of 512 bytes. The class is
-`LitePCIeDMAWriter`.
+The Writer sends a write request only when its data FIFO holds the whole payload of the request,
+or a `last` of the user stream (see below). The stream from user logic fills the FIFO; the Writer
+then sends the request header and its payload without a gap. The FIFO holds four requests of 512
+bytes. The class is `LitePCIeDMAWriter`.
 
 The Writer raises its interrupt when the last request of a descriptor leaves, unless the
 descriptor disables it. While the Writer is disabled, it accepts and drops the user stream, and
@@ -172,13 +172,13 @@ its FIFO and splitter stay in reset.
 A descriptor that a `last` of the user stream cuts short (`last_disable` at 0) behaves
 differently, which matters for packet-based user logic:
 
-- The write request that holds the `last` keeps its full length. The Writer repeats the last word
-  up to its end, and nothing tells the host how many bytes are valid: the stream must carry its
-  own length or framing.
-- That request leaves only when the FIFO holds a whole request of data, so the end of a packet
-  waits for the start of the next one.
-- The Writer raises no interrupt for this descriptor, even when the descriptor enables it; the
-  loop status still moves. With packets, follow the Writer through its loop status.
+- The write request that holds the `last` leaves as soon as the `last` is in the FIFO, with the
+  data received so far: the end of a packet does not wait for the next one.
+- That request keeps its full length. The Writer repeats the last word up to its end, and nothing
+  tells the host how many bytes are valid: the stream must carry its own length or framing. The
+  `progress_bytes` signal of the Writer also counts the full length of the request.
+- The Writer raises its interrupt for this descriptor, unless the descriptor disables it, and the
+  loop status moves, as for a descriptor that runs to its end.
 
 ## Reader {#dma-reader}
 

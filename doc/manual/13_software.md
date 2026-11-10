@@ -76,14 +76,16 @@ file per DMA channel.
 |-----------------------|-------------|-------------------------------------------------------|
 | Xilinx 7-Series | `0x10ee` | `0x7021` to `0x7028` (Gen2 x1 to x8) |
 | Xilinx UltraScale | `0x10ee` | `0x8021` to `0x8028` (Gen2), `0x8031` to `0x8038` (Gen3) |
-| Xilinx UltraScale+ | `0x10ee` | `0x9021` to `0x902f` (Gen2), `0x9031` to `0x903f` (Gen3), `0x9041` to `0x9048` (Gen4) |
+| Xilinx UltraScale+ | `0x10ee` | `0x9021` to `0x9028`, `0x9036` (Gen2), `0x9031` to `0x9038`, `0x9046` (Gen3), `0x9041` to `0x9048`, `0x9056` (Gen4) |
 | Lattice CertusPro-NX | `0x1204` | `0x9c25` |
 | Gowin GW5A | `0x22c2` | `0x1100` |
 | Intel Stratix V | `0x1172` | `0xe001` |
 
-The last digit of the Xilinx IDs is the number of lanes, with `f` for x16. The soft PHY uses the
-7-Series IDs by default. A design with other IDs needs them in `config.h` and in the device table
-of `main.c`, in `litepcie/software/kernel`.
+Up to x8, the last digit of the Xilinx IDs is the number of lanes. An UltraScale+ x16 design gets
+`0x9036`, `0x9046` or `0x9056`, because the wrapper adds 16 to a decimal base, as [Device
+IDs](#hard-device-ids) explains. The soft PHY uses the 7-Series IDs by default. A design with
+other IDs needs them in `config.h` and in the device table of `main.c`, in
+`litepcie/software/kernel`.
 
 Some features of the driver depend on the registers of the SoC, tested at compile time in
 `csr.h`. The table lists them.
@@ -242,7 +244,7 @@ discusses the measured limits.
 `-z` like `litepcie_util`.
 
 `rescan.py` removes the LitePCIe devices from the bus, rescans it and reloads the driver, after a
-new bitstream for example. It knows the Xilinx, Lattice and Gowin IDs of the table above;
+new bitstream for example. It knows every ID of the table above;
 `--device vendor:device`, repeated as needed, replaces that list. It unloads the module first
 (`--no-rmmod` to skip) and reloads it with `modprobe`, which needs an installed module;
 `--no-modprobe` skips that step, and `init.sh` then loads the module again.

@@ -161,7 +161,7 @@ Fields of `g3_control`:
 | `snapshot` | 1 | Capture the raw words of Lane 0 (g3_raw_tx/g3_raw_rx). |
 | `eidle` | 2 | Use the transceivers' Electrical Idle detection at 8.0 GT/s. |
 | `trace` | 3 | Start the rate trace (g3_trace_*). |
-| `lpm` | 4 | LPM receive equalizer at 8.0 GT/s (DFE otherwise). |
+| `lpm` | 4 | LPM receive equalizer at 8.0 GT/s (DFE otherwise, reset: the transceiver's default). |
 | `capture` | 5 | Arm the raw capture of Lane 0 (g3_capture_*). |
 | `xyden` | 6 | DFE XYD adaptation at 8.0 GT/s (RXDFEXYDEN, off in the Xilinx wrapper). |
 
@@ -266,7 +266,9 @@ Defined by `LitePCIeMSIX` (`litepcie/core/msi.py`).
 In a design built with MSI-X, these registers are in the `pcie_msi` bank; they are listed
 under `pcie_msix` here only to keep them apart from the MSI ones. The vector table is the
 `pcie_msi_table` memory, four 32-bit words per vector. The driver uses MSI-X when the
-`pba` register exists.
+`pba` register exists. With 64 vectors and the big register ordering, the controller
+swaps the two halves of `pba`: the word at offset `0x0008` holds vectors 0 to 31, as the
+host reads the Pending Bit Array.
 
 Bank `pcie_msix`.
 

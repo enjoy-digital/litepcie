@@ -43,7 +43,10 @@ against 32 Gb/s on the link, is not identified.
 |---------------------------------------------------|------------------------------------|---------------------|
 | 2.5 GT/s x1 | 1.72 Gb/s | |
 | 5.0 GT/s x1 | 3.39 Gb/s | |
-| 8.0 GT/s x8 | | 9.45 Gb/s |
+| 8.0 GT/s x8 | 23.8 Gb/s, data checked | 9.45 Gb/s |
+
+The soft PHY figure at 8.0 GT/s x8 comes from a test program on the library of the driver that
+checks each received buffer, since `dma_test` does not keep up at that rate.
 
 A link narrowed by width negotiation is a little slower than a design of that width: 2.97 Gb/s
 for an x8 design trained at x1, against 3.39 Gb/s for an x1 design. The beats of a wider design are

@@ -145,17 +145,16 @@ built for 512 bytes, so the PHYs limit both values:
 
 | PHY | Max Payload Size | Max Read Request Size |
 |-----------------------------|-------------------------|-------------------------|
-| Xilinx PHYs, soft PHY | Host value, up to 512 bytes | Host value, up to 512 bytes |
+| Xilinx PHYs, Intel PHYs, soft PHY | Host value, up to 512 bytes | Host value, up to 512 bytes |
 | Gowin GW5A, CertusPro-NX | Fixed, 128 bytes | Fixed, 128 bytes |
-| Cyclone V, Stratix V | Host value | Host value |
 
-The two Intel PHYs pass the host values on without a limit. The host keeps the Max Payload Size
-within what the hard IP advertises (256 bytes on Stratix V), but it may program a Max Read
-Request Size above 512 bytes: keep it at 512 bytes or less on these PHYs.
+A host value above 512 bytes reads as 512 bytes: a Max Read Request Size of 4096 bytes, for
+example, gives read requests of 512 bytes. The host keeps the Max Payload Size within what the
+hard IP advertises (256 bytes on Stratix V).
 
 The Cyclone V PHY sets `qword_aligned`, because its Avalon-ST interface places payloads on 64-bit
-boundaries. The memory-mapped bridges then pick the right half of the beat; the generator passes
-the attribute to them. The Stratix V PHY undoes this alignment itself.
+boundaries. The memory-mapped bridges then pick the right half of the beat; the generator and
+LiteX `add_pcie` pass the attribute to them. The Stratix V PHY undoes this alignment itself.
 
 ## TLP layer {#core-tlp}
 

@@ -87,7 +87,8 @@ LiteX SoC has by default. It names the parts `pcie_endpoint`, `pcie_mmap`, `pcie
 
 `add_pcie` lives in LiteX (`litex/soc/integration/soc.py`); the DMA options are those of
 `LitePCIeDMA`, described in [Scatter-gather DMA](#dma). It also adds a false path between the
-system clock and the clock of the PHY.
+system clock and the clock of the PHY, and passes the `qword_aligned` attribute of the PHY to
+the Wishbone master bridge (Cyclone V).
 
 ### The explicit chain {#integ-explicit}
 
@@ -192,25 +193,22 @@ otherwise.
 | `msi-x` | `LitePCIeMSIX` | MSI-X table and PBA in BAR0, sent as MemWr TLPs |
 
 On 7-Series, the hard IP advertises the MSI-X capability only with `msi_type="msi-x"` on the PHY
-as well. The 7-Series and CertusPro-NX hard IPs announce the MSI-X table at offset `0x2000` of
-BAR0 and the PBA at `0x1808`. The generator reserves the register locations that put them there;
-`add_pcie` does not, so a LiteX SoC with MSI-X reserves them in its `csr_map`:
+as well; the generator sets it with its `msi_x` option. The 7-Series and CertusPro-NX hard IPs
+announce the MSI-X table at offset `0x2000` of BAR0 and the PBA at `0x1808`. The generator and
+`add_pcie` with `msi_type="msi-x"` both reserve the register locations that put them there: the
+MSI-X registers at `0x1800` (PBA at `0x1808`) and the MSI-X table at `0x2000`, locations 3 and 4
+with the default register paging of `0x800` bytes. `csr.csv` shows `pcie_msi_pba` at `0x1808`
+and `pcie_msi_table` at `0x2000`.
 
-```python
-class PCIeSoC(SoCMini):
-    # MSI-X registers at 0x1800 (PBA at 0x1808), MSI-X table at 0x2000.
-    csr_map = {"pcie_msi": 3, "pcie_msi_table": 4}
-```
-
-With the default register paging of `0x800` bytes, locations 3 and 4 start at `0x1800` and
-`0x2000`. Check the result in `csr.csv`: `pcie_msi_pba` at `0x1808` and `pcie_msi_table` at
-`0x2000`.
-Without the reservation, the registers land where the allocation puts them and the host writes
-the MSI-X table at the wrong place.
+`add_pcie` stops with an error (`SoCError`) when it cannot place them: a register paging that
+does not divide `0x1800` and `0x2000`, or a location already taken by another bank, through a
+`csr_map` of the SoC for example.
 
 The CertusPro-NX hard IP has no MSI request interface: use MSI-X there, since `add_pcie` with the
 default type gets no interrupt. On GW5A, two MSIs requested back to back may stall, because the
-request is pulsed on the rising edge of its valid signal. [Memory-mapped bridges and
+request is pulsed on the rising edge of its valid signal (issue #244). On UltraScale and
+UltraScale+, the MSI sent does not follow the vector of the request (issue #243): keep the
+default single-vector MSI there. [Memory-mapped bridges and
 interrupts](#mmap-irq) describes the controllers.
 
 ## Clocks and constraints {#integ-clocks}
@@ -277,7 +275,8 @@ is also the vector number. The table gives the map of `bench/kc705.py`.
 `add_pcie` builds the same map and adds the interrupts of `msis` to it, sorted by name with the
 DMA ones: choose the names of user interrupts knowing that they shift the numbers. The driver
 handles up to 8 DMA channels and 32 vectors. The standalone core places the DMA interrupts first,
-and the `msi_irqs` inputs of user logic from input 16 with MSI, or 32 with MSI-X.
+and the `msi_irqs` inputs of user logic from input 16, with MSI as with MSI-X (16 inputs at
+most).
 
 ## Root port designs {#integ-rootport}
 

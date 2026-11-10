@@ -444,7 +444,7 @@
       "values": []
      },
      {
-      "description": "Negotiated link width (``0b00``: x1).",
+      "description": "Negotiated link width (``0b00``: x1, ``0b01``: x2, ``0b10``: x4, ``0b11``: x8).",
       "name": "width",
       "offset": 3,
       "reset": 0,
@@ -732,7 +732,7 @@
       "values": []
      },
      {
-      "description": "LPM receive equalizer at 8.0 GT/s (DFE otherwise).",
+      "description": "LPM receive equalizer at 8.0 GT/s (DFE otherwise, reset: the transceiver's default).",
       "name": "lpm",
       "offset": 4,
       "reset": 0,

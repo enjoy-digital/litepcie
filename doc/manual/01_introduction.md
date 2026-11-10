@@ -81,7 +81,7 @@ details of each family.
 | Intel Stratix V | `SVPCIEPHY` | Gen2 | x1, x4, x8 | Validated on hardware |
 | Gowin GW5A | `GW5APCIEPHY` | Gen2 | x1, x4 | Validated on hardware |
 | Lattice CertusPro-NX | `LFCPNXPCIEPHY` | Gen3 | x4 | Validated on hardware |
-| Xilinx GTP, GTX, GTY | `SoftPCIEPHY` | Gen2 | x1 to x8 | In development |
+| Xilinx GTP, GTX, GTY | `SoftPCIEPHY` | Gen3 | x1 to x8 | In development |
 
 For the Xilinx and Stratix V PHYs, the rate and the lanes are the values the wrapper accepts. The
 Cyclone V, GW5A and CertusPro-NX wrappers do not set the rate, the vendor IP configuration does:
@@ -89,7 +89,7 @@ the Cyclone V rate is the one the repository README gives, and the GW5A and Cert
 come from the device ID names of the driver (Gen2 x4 and Gen3 x4).
 
 The soft PHY runs Gen1 and Gen2 links with a host, up to x8 on Kintex-7 GTX and x1 on Kintex
-UltraScale+ GTY. Its Gen3 datapath runs in simulation. [Soft PHY](#soft-phy) details each
+UltraScale+ GTY, and Gen3 links at x1, x4 and x8 on the GTY. [Soft PHY](#soft-phy) details each
 state.
 
 ## Status {#intro-status}

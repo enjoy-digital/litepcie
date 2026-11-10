@@ -58,8 +58,8 @@ else. The table below lists what the endpoint and the frontends read from a PHY.
 | `data_width` | Width of the core streams, in bits |
 | `id` | Bus, device and function numbers given by the host |
 | `bar0_mask` | Address mask of BAR0, from `bar0_size` |
-| `max_payload_size` | MPS programmed by the host, in bytes |
-| `max_request_size` | MRRS programmed by the host, in bytes |
+| `max_payload_size` | MPS programmed by the host, in bytes, at most 512 |
+| `max_request_size` | MRRS programmed by the host, in bytes, at most 512 |
 | `endianness` | Byte order of the TLP DWs at the PHY |
 | `qword_aligned` | Payload placed on a 64-bit boundary |
 
@@ -79,8 +79,9 @@ and the generator pass `phy.endianness`; a design that builds the endpoint by ha
 same, or the TLP fields of a little endian PHY come out byte swapped.
 
 The second attribute, `qword_aligned`, is set on Cyclone V only. The Wishbone bridge then takes
-the 32-bit data from the right half of a 64-bit beat, when the design passes it
-`qword_aligned=phy.qword_aligned`.
+the 32-bit data from the right half of a 64-bit beat, when it is built with
+`qword_aligned=phy.qword_aligned`. LiteX `add_pcie` and the generator pass it; a design that
+builds the bridge by hand must do the same.
 
 ## Common datapath {#hard-datapath}
 
@@ -180,8 +181,9 @@ link needs the 128-bit interface; the class rejects the combinations that the IP
 | `with_perst_refclk_gating` | False | Reference clock buffer off during PERST# |
 
 With `msi-x`, the IP advertises a 32-entry MSI-X table at offset `0x2000` of BAR0 and its pending
-bit array at `0x1808`. These offsets match the register map of the generator. With the two MSI
-types, the IP advertises a single MSI vector.
+bit array at `0x1808`. These offsets match the register map of the generator and of LiteX
+`add_pcie` with `msi_type="msi-x"`; the generator selects `msi-x` with its `msi_x` option. With
+the two MSI types, the IP advertises a single MSI vector.
 
 The hard IP advertises a maximum payload of 512 bytes, 256 bytes at x8. In root port mode, the IP
 declares the root port type and the host bridge class. The configuration management interface
@@ -246,7 +248,8 @@ The rate, the BAR and the identifiers are therefore set in that system. The wrap
 
 The Avalon-ST interface places each payload on a 64-bit boundary, so the PHY declares a qword
 aligned payload. The wrapper reads the bus and device numbers and the Device Control register from
-the configuration outputs of the hard IP. It has no status registers.
+the configuration outputs of the hard IP. It reports the MPS and MRRS of the Device Control
+register clamped to 512 bytes, the size of the buffers of the core. It has no status registers.
 
 ## Intel Stratix V {#hard-sv}
 
@@ -270,6 +273,9 @@ The class accepts the rate, lane and width combinations of the Intel user guide,
 
 The reconfiguration controller needs a free-running clock of 100 to 125 MHz. The generator
 therefore requires an external clock for this PHY (`clk_external`).
+
+The PHY reads the MPS and MRRS from the Device Control register and clamps both to 512 bytes,
+the size of the buffers of the core, as the Xilinx PHYs do.
 
 ### Qword alignment {#hard-sv-qword}
 
@@ -348,11 +354,11 @@ both tools and network access.
 The driver binds to a device by its vendor and device IDs ([Linux driver and tools](#software)).
 The Xilinx wrappers derive the device ID from the family, the rate and the lane count.
 
-| PHY | Vendor ID | Device ID, x1 to x8 |
+| PHY | Vendor ID | Device ID |
 |-------------------|-----------|-----------------------------------------------|
 | 7-Series | `0x10ee` | `0x7021` to `0x7028` |
 | UltraScale | `0x10ee` | `0x8021` to `0x8028` (Gen2), `0x8031` to `0x8038` (Gen3) |
-| UltraScale+ | `0x10ee` | `0x9021` to `0x9028`, `0x9031` to `0x9038`, `0x9041` to `0x9048` (Gen2 to Gen4) |
+| UltraScale+ | `0x10ee` | `0x9021` to `0x9028`, `0x9031` to `0x9038`, `0x9041` to `0x9048` (Gen2 to Gen4), `0x9036`, `0x9046`, `0x9056` (x16) |
 | Stratix V | `0x1172` | `0xe001`, a parameter |
 | GW5A | `0x22c2` | `0x1100` in the driver table |
 | CertusPro-NX | `0x1204` | `0x9c25` in the driver table |
@@ -361,9 +367,8 @@ The wrapper adds the lane count to a decimal base (7020, 8020, 8030, 9020, 9030 
 reads the result as hexadecimal digits: 9030 plus 8 gives 9038, so the device ID is `0x9038`. Up
 to x8, the last digit is the lane count.
 
-At UltraScale+ x16, the same sum gives `0x9036`, `0x9046` and `0x9056` (Gen2 to Gen4). The driver
-table lists `0x902f` and `0x903f` instead, so it does not bind to an x16 design. Set
-`PF0_DEVICE_ID` with `update_config`, or add the ID to the driver table.
+At UltraScale+ x16, the same sum gives `0x9036`, `0x9046` and `0x9056` (Gen2 to Gen4): 9020 plus
+16 is 9036. The driver and `rescan.py` list these IDs, as every ID of the table above.
 
 The GW5A and CertusPro-NX IDs are set by the downloaded IP configuration, not by the wrapper.
 
@@ -401,14 +406,15 @@ below are the known gaps, by family.
 - **7-Series.** Gen2 at most: the hard block stops at 5.0 GT/s. With `msi-multi-vector`, the IP
   still advertises one MSI vector.
 - **UltraScale and UltraScale+.** The wrappers configure MSI and no MSI-X capability; they have no
-  MSI-X enable register. At x16, the device ID is not in the driver table
-  ([Device IDs](#hard-device-ids)).
-- **Cyclone V.** No status registers. The generator does not support this PHY yet. LiteX
-  `add_pcie` does not pass the qword alignment to the Wishbone bridge: pass it by hand.
+  MSI-X enable register. The MSI sent ignores the vector of the request: it is chosen from the
+  Multiple Message Enable of the host, with a decoding that looks wrong from 4 vectors on (issue
+  #243). The single-vector MSI is not affected; a multi-vector MSI is.
+- **Cyclone V.** No status registers. The generator does not support this PHY yet.
 - **Stratix V.** No x1, no Gen3, no MSI-X, no AER, no configuration via protocol (CvP). BAR0 answers
   32-bit accesses only: a byte read aborts and returns `0xff`. Byte enables are qword granular.
 - **GW5A interrupts.** The MSI request rises on the rising edge of the valid signal. Two MSIs back
-  to back keep valid high, so the second one gets no edge and the interrupts may stall.
+  to back keep valid high, so the second one gets no edge and the interrupts may stall (issue
+  #244).
 - **GW5A byte order.** It is declared big endian, which the code does not confirm. MPS and MRRS
   are reported as 128 bytes, not read from the configuration space.
 - **CertusPro-NX interrupts.** The IP has no MSI request pins: use MSI-X. In a LiteX SoC,
