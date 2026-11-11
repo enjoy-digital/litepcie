@@ -39,8 +39,9 @@ from litepcie.phy.soft.dll.core     import DataLinkLayer
 # IOs ----------------------------------------------------------------------------------------------
 
 _io = [
-    ("sys_clk", 0, Pins(1)),
-    ("sys_rst", 0, Pins(1)),
+    ("sys_clk",  0, Pins(1)),
+    ("sys_rst",  0, Pins(1)),
+    ("lane_clk", 0, Pins(1)), # Independent lane clock (--link-freq != 125 MHz).
 ]
 
 # Platform -----------------------------------------------------------------------------------------
@@ -253,19 +254,27 @@ class PCIeLinkSim(SoCMini):
     corrupt_every: a raw lane word corrupted after every Nth TLP from the upstream, drop_dllp_every:
     every Nth DLLP from the downstream dropped (Acks lost: replay timer)."""
     def __init__(self, timer_scale=100, packets=64, max_cycles=2**24, ts1_min=1024, with_dll=False,
-        corrupt_every=0, drop_dllp_every=0, debug=False, gen2=False, fail_5g=False):
-        sys_clk_freq = int(125e6)
+        corrupt_every=0, drop_dllp_every=0, debug=False, gen2=False, fail_5g=False, link_freq=125e6):
+        # link_freq != 125 MHz: the lane clock (2.5 GT/s, 62.5 MHz) is an independent clock instead of sys/2, to
+        # check the Physical Layer/Data Link Layer with a link clock closer to the lane clock (ECP5).
+        independent_lane = (link_freq != 125e6)
+        assert not (independent_lane and gen2), "Gen2 needs the 125 MHz link clock."
+        sys_clk_freq = int(link_freq)
         platform     = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq)
 
-        # Clocks: link clocks = sys (125 MHz), lane clock = sys/2 (62.5 MHz, 2.5 GT/s).
+        # Clocks: link clocks = sys (link_freq, 125 MHz), lane clock = sys/2 (62.5 MHz, 2.5 GT/s).
         self.crg = CRG(platform.request("sys_clk"))
         self.cd_lane = ClockDomain()
-        lane_clk = Signal()
-        self.sync += lane_clk.eq(~lane_clk)
-        # Lane clock = sys (125 MHz, 5.0 GT/s) once both sides applied the rate.
         lane_5g = Signal()
-        self.comb += self.cd_lane.clk.eq(Mux(lane_5g, ClockSignal("sys"), lane_clk))
+        if independent_lane:
+            # Independent lane clock (separate Verilator clocker, see main).
+            self.comb += self.cd_lane.clk.eq(platform.request("lane_clk"))
+        else:
+            lane_clk = Signal()
+            self.sync += lane_clk.eq(~lane_clk)
+            # Lane clock = sys (125 MHz, 5.0 GT/s) once both sides applied the rate.
+            self.comb += self.cd_lane.clk.eq(Mux(lane_5g, ClockSignal("sys"), lane_clk))
         self.specials += AsyncResetSynchronizer(self.cd_lane, ResetSignal("sys"))
 
         # Timer.
@@ -523,11 +532,24 @@ def main():
     parser.add_argument("--corrupt-every", default=0, type=int, help="Corrupt a lane word after every Nth upstream TLP (--with-dll).")
     parser.add_argument("--drop-dllp-every", default=0, type=int, help="Drop every Nth downstream DLLP (--with-dll).")
     parser.add_argument("--debug",       action="store_true",  help="Display the DLLPs and Data Link Layer states (--with-dll).")
+    parser.add_argument("--link-freq",   default=125e6,   type=float, help="Link clock (Hz), != 125 MHz: independent lane clock (Gen1).")
     parser.add_argument("--max-cycles",  default=2**24, type=int, help="Simulation timeout (sys clock cycles).")
     parser.add_argument("--output-dir",  default="build/soft_sim", help="Build directory.")
     args = parser.parse_args()
 
-    sim_config = SimConfig(default_clk="sys_clk")
+    if args.link_freq == 125e6:
+        sim_config = SimConfig(default_clk="sys_clk")
+    else:
+        # Verilator clockers have integer ps periods and step at their GCD: keep the lane/link period ratio
+        # (62.5 MHz / link_freq) as a small fraction of a round period (the frequencies are relative, the
+        # Physical/Data Link Layer timers take link_freq).
+        from fractions import Fraction
+        ratio  = Fraction(62.5e6/args.link_freq).limit_denominator(32) # lane freq / link freq = link period / lane period.
+        unit   = 2500 # ps.
+        sim_config = SimConfig()
+        # Link clock: the shorter period (link_freq > 62.5 MHz).
+        sim_config.add_clocker("sys_clk",  freq_hz=1e12/(ratio.numerator*unit))
+        sim_config.add_clocker("lane_clk", freq_hz=1e12/(ratio.denominator*unit))
     soc = PCIeLinkSim(
         gen2    = args.gen2,
         fail_5g = args.fail_5g,
@@ -539,6 +561,7 @@ def main():
         corrupt_every   = args.corrupt_every,
         drop_dllp_every = args.drop_dllp_every,
         debug           = args.debug,
+        link_freq       = args.link_freq,
     )
     builder = Builder(soc, output_dir=args.output_dir, compile_software=False)
     builder.build(sim_config=sim_config,
