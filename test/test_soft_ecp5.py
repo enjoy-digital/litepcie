@@ -53,7 +53,7 @@ class TestECP5PCIeDetect(unittest.TestCase):
         dut = ECP5PCIeDetect(clk_freq=125e6, timeout=timeout)
         present_s = Signal(reset=present)
         model = DCUDetectModel(dut.det_en, dut.ct, dut.dcu_done, dut.dcu_con, present_s)
-        result = {"done": 0, "connected": None, "det_en_before_ct": None, "ct_cycles": 0, "det_en_after": None}
+        result = {"done": 0, "connected": None, "det_en_before_ct": None, "ct_cycles": 0, "det_en_after": None, "counters": None}
 
         def stim():
             yield
@@ -73,6 +73,7 @@ class TestECP5PCIeDetect(unittest.TestCase):
                     result["connected"] = (yield dut.connected)
                     yield
                     result["det_en_after"] = (yield dut.det_en)
+                    result["counters"] = ((yield dut.n_requests), (yield dut.n_done), (yield dut.n_timeouts))
                     break
                 yield
 
@@ -89,6 +90,7 @@ class TestECP5PCIeDetect(unittest.TestCase):
         self.assertEqual(r["ct_cycles"], 4)
         # Detection mode released at the end (normal TX operation resumes).
         self.assertEqual(r["det_en_after"], 0)
+        self.assertEqual(r["counters"], (1, 1, 0)) # requested, completed by the handshake, no timeout.
 
     def test_no_receiver(self):
         r = self.run_detect(present=0)
@@ -100,6 +102,7 @@ class TestECP5PCIeDetect(unittest.TestCase):
         r = self.run_detect(present=1, with_dcu=False, timeout=2e-6)
         self.assertEqual(r["done"], 1)
         self.assertEqual(r["connected"], 0)
+        self.assertEqual(r["counters"], (1, 0, 1))
 
 class TestECP5PCIeSerDes(unittest.TestCase):
     def elaborate(self, **kwargs):

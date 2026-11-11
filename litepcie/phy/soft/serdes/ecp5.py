@@ -50,6 +50,10 @@ class ECP5PCIeDetect(LiteXModule):
         self.ct        = Signal() # o: FFC_PCIE_CT.
         self.dcu_done  = Signal() # i: FFS_PCIE_DONE (asynchronous).
         self.dcu_con   = Signal() # i: FFS_PCIE_CON  (asynchronous).
+        # Bring-up counters (wrap at 256): detections requested, completed by the DCU handshake, aborted on timeout.
+        self.n_requests = Signal(8)
+        self.n_done     = Signal(8)
+        self.n_timeouts = Signal(8)
 
         # # #
 
@@ -70,6 +74,7 @@ class ECP5PCIeDetect(LiteXModule):
             NextValue(count, lead_cycles - 1),
             NextValue(timeout, timeout_cycles),
             If(self.request,
+                NextValue(self.n_requests, self.n_requests + 1),
                 NextState("DETECT-MODE")
             )
         )
@@ -106,6 +111,7 @@ class ECP5PCIeDetect(LiteXModule):
             self.det_en.eq(1),
             If(dcu_done,
                 NextValue(self.connected, dcu_con),
+                NextValue(self.n_done, self.n_done + 1),
                 NextState("FINISH")
             ).Elif(timeout == 0,
                 NextState("FAIL")
@@ -115,6 +121,7 @@ class ECP5PCIeDetect(LiteXModule):
         )
         fsm.act("FAIL",
             NextValue(self.connected, 0),
+            NextValue(self.n_timeouts, self.n_timeouts + 1),
             NextState("FINISH")
         )
         fsm.act("FINISH",
@@ -244,6 +251,31 @@ class ECP5PCIeSerDes(PCIeSerDes, AutoCSR):
         self.rx_ready = Signal() # o ("sys"): DCU receiver locked (status).
         self.comb += self.rx_ready.eq(gt.rx_ready)
 
+        # DCU status for bring-up ("sys"): PLL/CDR lock, loss of signal and the init FSM state, coded as the
+        # position in init_states.
+        init_states = ["RESET-ALL", "WAIT-TX-PLL-LOCK", "RESET-TX-PCS", "WAIT-RX-SIGNAL", "RESET-RX-CDR",
+            "WAIT-RX-CDR-LOCK", "RESET-RX-PCS", "READY"]
+        self._dcu_status = CSRStatus(fields=[
+            CSRField("tx_lol",     size=1, offset=0, description="DCU TX PLL loss of lock (0: locked)."),
+            CSRField("rx_lol",     size=1, offset=1, description="DCU receiver CDR loss of lock."),
+            CSRField("rx_los",     size=1, offset=2, description="DCU receiver loss of signal."),
+            CSRField("tx_ready",   size=1, offset=3, description="DCU transmitter initialized."),
+            CSRField("rx_ready",   size=1, offset=4, description="DCU receiver initialized."),
+            CSRField("init_state", size=3, offset=5, description="DCU init FSM state (0 RESET-ALL ... 7 READY).",
+                values=[(f"``0b{code:03b}``", name) for code, name in enumerate(init_states)]),
+        ])
+        init_state = Signal(3)
+        for code, name in enumerate(init_states):
+            self.comb += If(gt.init.fsm.ongoing(name), init_state.eq(code))
+        self.comb += [
+            self._dcu_status.fields.tx_lol.eq(gt.init.tx_lol),
+            self._dcu_status.fields.rx_lol.eq(gt.init.rx_lol),
+            self._dcu_status.fields.rx_los.eq(gt.init.rx_los),
+            self._dcu_status.fields.tx_ready.eq(gt.tx_ready),
+            self._dcu_status.fields.rx_ready.eq(gt.rx_ready),
+            self._dcu_status.fields.init_state.eq(init_state),
+        ]
+
         # Datapaths ---------------------------------------------------------------------------------
         err = ClockDomainsRenamer(rx_cd)(RXErrorSubstitution(gt.decoders, clock_domain=rx_cd))
         self.submodules += err
@@ -268,6 +300,19 @@ class ECP5PCIeSerDes(PCIeSerDes, AutoCSR):
             detect.dcu_con.eq(gt.pcie_con),
         ]
         self.specials += MultiReg(detect.connected, lane.rx_detected, "pcie_pipe")
+        # Detection counters for bring-up ("sys", sampled as they change: debug precision).
+        self._detect_status = CSRStatus(fields=[
+            CSRField("requests",  size=8, offset=0,  description="Receiver detections requested by the LTSSM."),
+            CSRField("done",      size=8, offset=8,  description="Detections completed by the DCU handshake."),
+            CSRField("timeouts",  size=8, offset=16, description="Detections aborted by the timeout."),
+            CSRField("connected", size=1, offset=24, description="Result of the last detection (1: receiver present)."),
+        ])
+        self.specials += [
+            MultiReg(detect.n_requests, self._detect_status.fields.requests),
+            MultiReg(detect.n_done,     self._detect_status.fields.done),
+            MultiReg(detect.n_timeouts, self._detect_status.fields.timeouts),
+            MultiReg(detect.connected,  self._detect_status.fields.connected),
+        ]
 
         # 2.5 GT/s only.
         self.comb += self.rate_done.eq(1)
