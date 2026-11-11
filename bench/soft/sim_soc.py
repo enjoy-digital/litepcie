@@ -26,6 +26,7 @@ from migen.genlib.resetsync import AsyncResetSynchronizer
 from litex.gen import *
 
 from litex.build.io import CRG
+from litex.build.generic_platform import Pins
 from litex.build.sim.config import SimConfig
 
 from litex.soc.interconnect import stream
@@ -267,22 +268,31 @@ class HostModel(LiteXModule):
 class SoftPHYSoCSim(SoCMini):
     mem_map = {"csr": 0x00000000}
 
-    def __init__(self, csrs=None, dma_size=1024, dma_buffers=4, mps=256, timer_scale=100, ts1_min=64, max_cycles=2**24, nlanes=1, dead_lanes=0, full_rate=False, gen3=False, mmio_reads=0, speed_down_at=0):
+    def __init__(self, csrs=None, dma_size=1024, dma_buffers=4, mps=256, timer_scale=100, ts1_min=64, max_cycles=2**24, nlanes=1, dead_lanes=0, full_rate=False, gen3=False, mmio_reads=0, speed_down_at=0, independent_link=False):
         sys_clk_freq = int(125e6)
         platform     = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq, csr_data_width=32, ident="soft sim", ident_version=False)
 
         # Clocks: "pcie_link" = sys (125 MHz), "pcie_pipe" = sys/2 (62.5 MHz, 2.5 GT/s) or sys (5.0 GT/s).
+        # independent_link: "pcie_link" (and "pcie_pipe", derived from it) on a clock unrelated to sys, as on hardware
+        # (sys from a local oscillator, pcie_link from the host's reference clock): the crossings between the
+        # LitePCIe SoC and the PHY see two asynchronous clocks (the frequencies are set by main).
         self.crg = CRG(platform.request("sys_clk"))
         self.cd_pcie_link = ClockDomain()
         self.cd_pcie_pipe = ClockDomain()
+        if independent_link:
+            platform.add_extension([("link_clk", 0, Pins(1))])
+            link_clk = platform.request("link_clk")
+        else:
+            link_clk = ClockSignal("sys")
         lane_clk = Signal()
-        self.sync += lane_clk.eq(~lane_clk)
-        lane_fast = Signal() # 8.0 GT/s: lanes at sys too (the rates differ by their words).
+        lane_sync = getattr(self.sync, "pcie_link" if independent_link else "sys")
+        lane_sync += lane_clk.eq(~lane_clk)
+        lane_fast = Signal() # 8.0 GT/s: lanes at the link clock too (the rates differ by their words).
         self.comb += [
-            self.cd_pcie_link.clk.eq(ClockSignal("sys")),
+            self.cd_pcie_link.clk.eq(link_clk),
             self.cd_pcie_link.rst.eq(ResetSignal("sys")),
-            self.cd_pcie_pipe.clk.eq(ClockSignal("sys") if full_rate else Mux(lane_fast, ClockSignal("sys"), lane_clk)),
+            self.cd_pcie_pipe.clk.eq(link_clk if full_rate else Mux(lane_fast, link_clk, lane_clk)),
         ]
         self.specials += AsyncResetSynchronizer(self.cd_pcie_pipe, ResetSignal("sys"))
         # 8.0 GT/s datapath: the lane clock in simulation.
@@ -521,6 +531,7 @@ def main():
     parser.add_argument("--timer-scale", default=100,  type=int, help="LTSSM timers scale.")
     parser.add_argument("--ts1-min",     default=64,   type=int, help="TS1 transmitted in Polling.Active (specification: 1024).")
     parser.add_argument("--max-cycles",  default=2**22, type=int, help="Simulation timeout (sys clock cycles).")
+    parser.add_argument("--sys-link-ratio", default=None, type=float, help="sys/pcie_link frequency ratio, on unrelated clocks (ex: 0.8333).")
     parser.add_argument("--output-dir",  default="build/soft_sim_soc", help="Build directory.")
     args = parser.parse_args()
 
@@ -538,9 +549,20 @@ def main():
         timer_scale = args.timer_scale,
         ts1_min     = args.ts1_min,
         max_cycles  = args.max_cycles,
+        independent_link = args.sys_link_ratio is not None,
     )
+    if args.sys_link_ratio is None:
+        sim_config = SimConfig(default_clk="sys_clk")
+    else:
+        # Verilator clockers have integer ps periods: keep sys/link as a small fraction of round periods.
+        from fractions import Fraction
+        ratio      = Fraction(args.sys_link_ratio).limit_denominator(16) # sys freq / link freq = link period / sys period.
+        unit       = 2400 # ps.
+        sim_config = SimConfig()
+        sim_config.add_clocker("sys_clk",  freq_hz=1e12/(ratio.denominator*unit))
+        sim_config.add_clocker("link_clk", freq_hz=1e12/(ratio.numerator*unit))
     builder = Builder(soc, output_dir=args.output_dir, compile_software=False)
-    builder.build(sim_config=SimConfig(default_clk="sys_clk"), opt_level="O0", interactive=False, trace=args.trace)
+    builder.build(sim_config=sim_config, opt_level="O0", interactive=False, trace=args.trace)
 
 if __name__ == "__main__":
     main()
