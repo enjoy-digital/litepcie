@@ -86,6 +86,7 @@ The four Verilator simulations of `bench/soft/` share the options below.
 | `--output-dir` | `build/soft_sim_<name>` | Build directory (`build/soft_sim` for `sim.py`) |
 | `--timer-scale` | 100 | Divide the LTSSM timers (1: specification timers); not on `sim_wide.py` |
 | `--ts1-min` | 64 (`sim.py`: 1024) | TS1 sent in Polling.Active (specification: 1024); not on `sim_wide.py` |
+| `--link-freq` | 125e6 | Link clock in Hz; another value makes the lane clock independent (Gen1); `sim.py` and `sim_endpoint.py` only |
 
 `sim.py` also takes `--trace-start` and `--trace-end`, the cycles where the VCD starts and ends.
 
