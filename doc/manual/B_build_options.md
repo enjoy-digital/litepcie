@@ -114,6 +114,7 @@ The four Verilator simulations of `bench/soft/` share the options below.
 | `--full-rate` | `sim_soc` | off | Lanes at the 5.0 GT/s rate |
 | `--gen3` | `sim_soc` | off | Speed change to 8.0 GT/s before the script |
 | `--mps` | `sim_soc` | 256 | Max Payload Size: 128, 256 or 512 |
+| `--sys-link-ratio` | `sim_soc` | none | Core clock to link clock frequency ratio, on unrelated clocks (for example 0.8333) |
 
 ### `sim_wide.py` {#opt-sim-wide}
 
