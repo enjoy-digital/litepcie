@@ -110,7 +110,7 @@ Clock domains:
 | M8 | Robustness, lane reversal, LiteX-Boards | Not started |
 | M10 | 8.0 GT/s: 128b/130b lane blocks | `gen3.py`: scrambler checked against the table of the specification, gearboxes, Block alignment, framing Tokens (on a DW only). Near-end loopback on the GTX at 8 GT/s (`bench/soft/ypcb_gen3.py`), see the hardware results |
 | M11 | 8.0 GT/s link: LTSSM, equalization, `SoftPCIEPHY(speed="gen3")` | Verilator simulation x2/x4/x8 (`sim_wide.py --phy --gen3`, `sim_soc.py --gen3` up to the 512-bit LitePCIe path), fallback to 2.5 GT/s. x1/x4/x8 with a host on the GTY, no 8 GT/s link with a host on the GTX yet, see the hardware results and "8.0 GT/s" |
-| M9 | Other transceivers, soft root port | UltraScale+ GTY (`serdes/gty_ultrascale.py`, Kintex UltraScale+ KU3P/KU5P): Gen1 and Gen2 x1, Gen3 x1/x4/x8 on hardware, see the hardware results. Gen1/Gen2 multi-lane not yet on the GTY. Soft root port not started |
+| M9 | Other transceivers, soft root port | UltraScale+ GTY (`serdes/gty_ultrascale.py`, Kintex UltraScale+ KU3P/KU5P): Gen1 and Gen2 x1, Gen3 x1/x4/x8 on hardware, see the hardware results. Gen1/Gen2 multi-lane not yet on the GTY. Lattice ECP5 DCU (`serdes/ecp5.py`, LFE5UM-45F): Gen1 x1 on hardware, see the hardware results. Soft root port not started |
 
 ## Verification
 
@@ -134,6 +134,9 @@ Clock domains:
 - `bench/soft/sim.py --with-dll [--corrupt-every N] [--drop-dllp-every N] [--debug]`: the same
   link with the Data Link Layers: flow control initialization, DL_Active, TLPs both ways checked,
   replays and receiver errors reported.
+- ECP5 (`serdes/ecp5.py`): `test/test_soft_ecp5.py` (receiver detection sequencer, DCU attributes in the generated Verilog), `test/test_soft_ecp5_lane.py`
+  (lane on a behavioral DCU model `serdes/ecp5_model.py`: bit offsets, polarity, Electrical Idle, detection) and `bench/soft/sim.py --serdes ecp5 --link-freq 75e6`
+  (two adapters back to back, training, TLPs, replays on corrupted words, Recovery; `-m slow test/test_soft_sim.py`).
 - Later milestones add ppm/SSC and lane skew in the Verilator simulation, and the hardware bring-up with the LTSSM tracer, LiteScope and the root port's
   `lspci -vv` link status.
 
@@ -260,6 +263,51 @@ Alibaba Cloud KU3P board (`xcku3p-ffvb676-2-e`, GTY) on Lane 0 in the x16 slot o
   the pattern and clears it: 1.78M buffers in 5 s, none wrong. `dma_test` doesn't keep up at that rate (about
   15 Gb/s, buffers of zeros reported), as at x8 on the GTX. x8 needs the wide Data Link Layer area changes to fit
   the `xcku3p`.
+
+### Lattice ECP5 (LFE5UM, DCU)
+
+ECP5 Versa (`LFE5UM-45F-8BG381I`: the non-5G part, DCU up to 3.2 Gb/s, so Gen1 only) on Lane 0 of a PC's x16 slot (a Fujitsu FUTRO S920 thin client: mainboard D3313-G1, BIOS V4.6.5.4 R1.16.0, AMD GX-222GC;
+its root port is Gen1 only, 2.5 GT/s up to x4; Linux 6.12.10), the unmodified LitePCIe driver and `litepcie_util`:
+
+| | Soft (2.5 GT/s x1) |
+|---|---:|
+| Enumeration | Yes (at boot, bitstream in the SPI flash, see below) |
+| BAR0 register access | OK (`scratch_test`; a read takes 1.65 µs, a write with its readback 8.4 µs) |
+| MSI | OK (the driver counts the interrupts of the DMA test) |
+| `dma_test` loopback | 1.66 Gb/s, 0 errors (8 s run, one DMA channel, 64-bit addresses) |
+| LUT4 / FF / EBR (whole bring-up SoC with DMA and analyzer) | 24400 (55%) / 10793 (24%) / 56 of 108 |
+| `pcie_link` | 75 MHz (the Data Link Layer does not close timing at 125 MHz on this device), closes at 83 MHz |
+| `sys` | 62.5 MHz (the DMA logic of the endpoint does not close timing reliably at 75 MHz), closes at 75 MHz |
+| BAR0 stress without DMA, 15 min | 106.5M write and readback and 426.0M memory words, 0 mismatches |
+| `dma_test` soak, 15 min | 1.66 Gb/s, 22.8M buffers, 0 errors; no replay, no receiver error, no AER |
+| 20 link cycles (unload, remove, Retrain Link, rescan, load, scratch and DMA test) | 20 of 20, the link back in 0.6 s |
+
+- Transceiver: one DCU channel through LiteICLink's `SerDesECP5` (`pcie=True`: `PCIE_MODE`, 2.5 Gb/s rate attributes, receiver detection ports), raw
+  10BSER mode with 40-bit words and the 8b/10b in the fabric, as on the Xilinx transceivers. The lane clock `pcie_pipe` (62.5 MHz) is the DCU's
+  TX clock divided by 2; `pcie_link` comes from a PLL fed by the DCU's 125 MHz TX clock (the EXTREFB output cannot be routed to a fabric PLL by nextpnr), so both
+  derive from the host's reference clock.
+- Receiver detection: `ECP5PCIeDetect` runs the DCU handshake of Lattice TN1261 (detect mode at least 120 ns before a 4-cycle strobe, then
+  `FFS_PCIE_DONE` and `FFS_PCIE_CON`) for the LTSSM's Detect state.
+- Electrical Idle: `FFC_EI_EN` is a direct DCU input, so the adapter delays it (`tx_idle_delay`, 2 lane clock cycles) to follow the EIOS in the transmit pipeline.
+- The hardware runs used the analog attribute set `pcie_analog="wizard"`, the adapter's default.
+- Board and host: the board's J4 jumper has to ground the PRSNT net (pins 3 and 5) so that the clock manager passes the slot's 100 MHz reference clock.
+  The host's BIOS hides the slot's root port when no card links during POST, so the bitstream is loaded from the SPI flash
+  (`ecppack --freq 62.0`, LTSSM enabled at start-up) and the host is cold-booted. Reconfiguring the FPGA under a running link froze the host.
+- The host servicing the DMA ring matters: with other commands running on a slow host during the soak, `dma_test` reported lost buffers (the driver logs "Writing too late"). The data check then counts whole buffers as errors, as on the other boards.
+- Not done: 5 GT/s (not possible on the non-5G part), ASPM, a second host.
+
+### Prior work
+
+The ECP5 adapter builds on the following work, which deserves credit:
+
+- [Yumewatari](https://github.com/whitequark/Yumewatari) (whitequark, 0BSD): the first open source ECP5 DCU/PCIe PHY. LiteICLink's `SerDesECP5` already relies on its DCU
+  documentation; the PCIe-mode attributes, the analog values of Lattice's PCI Express wizard (`pcie_analog="wizard"`) and the receiver detection sequence
+  (`ECP5PCIeDetect`) are taken from it.
+- [katsuo-pcie](https://github.com/zyp/katsuo-pcie) and [litepcie-katsuo-poc](https://github.com/zyp/litepcie-katsuo-poc) (Vegard Storheil Eriksen, MIT; LitePCIe issue #20): a PCIe
+  stack in Amaranth that enumerates on the ECP5 Versa, showing that the DCU can do it with LitePCIe above it. Its DCU settings confirmed the PCIe-mode attributes. No code was taken from it.
+- [ECP5-PCIe](https://github.com/ECP5-PCIe/ECP5-PCIe): an earlier Amaranth effort on the same board family, read for background (it carries no license, no code was taken).
+- Lattice documentation: TN1261 (ECP5 and ECP5-5G SERDES/PCS Usage Guide: receiver detection) and the ECP5 Versa board guide.
+- The soft PHY and `SerDesECP5` themselves are Florent Kermarrec's (EnjoyDigital); the ECP5 work only adds the lane adapter, the DCU model and the options above.
 
 ## Resources and timing against the hard IP
 
@@ -443,5 +491,7 @@ in a PC slot, with UARTBone (default) or JTAGBone and the `pcie_phy` debug CSRs:
   4.2.6 (LTSSM), 4.2.7 (clock tolerance compensation), chapter 3 (Data Link Layer), 7.5/7.8
   (configuration space, PCI Express Capability).
 - LiteICLink transceiver wrappers: https://github.com/enjoy-digital/liteiclink
+- Lattice TN1261, ECP5 and ECP5-5G SERDES/PCS Usage Guide (PCI Express receiver detection), Yumewatari (https://github.com/whitequark/Yumewatari) and
+  katsuo-pcie (https://github.com/zyp/katsuo-pcie) for the ECP5 DCU, see "Prior work" above.
 - USB3 PIPE (same approach for USB 3.0): https://github.com/enjoy-digital/usb3_pipe
 - LitePCIe issues #20, #83, #151, #164, #165.

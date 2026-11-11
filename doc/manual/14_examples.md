@@ -21,6 +21,7 @@ toolchain, which is how the tests check them.
 | `soft/acorn` | Acorn CLE-215+ | soft PHY, GTP | Gen1 x1 | UART or JTAG |
 | `soft/ypcb` | YPCB-00338-1P1 | soft PHY, GTX | Gen1 to Gen3, x1 to x8 | JTAGBone |
 | `soft/ku3p` | Alibaba XCKU3P | soft PHY, GTY | Gen1, Gen2 x1; Gen3 x1, x4, x8 | JTAGBone |
+| `soft/versa` | Lattice ECP5 Versa | soft PHY, ECP5 DCU | Gen1 x1 | UARTBone |
 | `soft/ypcb_gen3` | YPCB-00338-1P1 | GTX lane test | 8.0 GT/s loopback | JTAGBone |
 
 The bridge column gives the second access path to the registers, besides BAR0: it still answers
@@ -100,9 +101,9 @@ its default.
 
 ## Soft PHY targets {#ex-soft}
 
-The soft PHY targets bring up the soft PHY on boards that also have a hard IP. They are bring-up
+The soft PHY targets bring up the soft PHY, on boards that also have a hard IP and on the Versa, which has none. They are bring-up
 designs: the soft PHY is in development, and [Soft PHY](#soft-phy) gives its status. Each target
-builds one of three designs.
+builds one of three designs; the Versa target builds the full endpoint only.
 
 | Design | Option | Content |
 |-----------------------|------------------------------------|--------------------------------------------------|
@@ -114,8 +115,8 @@ The physical layer alone trains the link to L0 against the root port. The host t
 up with the data link layer inactive, which proves the training without the upper layers. The full
 endpoint enumerates like a hard-IP design and works with the same driver.
 
-The YPCB-00338-1P1 and Alibaba XCKU3P targets always build the soft PHY debug registers and the
-LTSSM tracer; the Acorn target adds them to the full endpoint only with `--with-debug` and
+The YPCB-00338-1P1, Alibaba XCKU3P and Lattice ECP5 Versa targets always build the soft PHY debug registers and the
+LTSSM tracer. The Acorn target adds them to the full endpoint only with `--with-debug` and
 `--with-ltssm-tracer`.
 
 Wherever the debug registers are built, the LTSSM stays disabled at reset and while PERST# is

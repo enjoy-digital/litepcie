@@ -159,6 +159,11 @@ Gen1 only.
 python3 bench/soft/sim.py --link-freq 75e6
 ```
 
+`sim.py --serdes ecp5` replaces the transceiver models by two ECP5 adapters on models of the DCU,
+with a link clock other than 125 MHz (Gen1). It trains the link and exchanges TLPs in both
+directions. With `--with-dll --corrupt-every 5 --drop-dllp-every 7` it also checks the replays on
+corrupted words and on lost acknowledgements.
+
 Every script ends with `SIM OK`, or with a timeout or mismatch message. `--timer-scale` divides the
 LTSSM timers to shorten the runs; `--timer-scale 1` uses the timers of the specification.
 `--trace` writes a VCD in the build directory, except on `sim_wide.py`. [Simulation

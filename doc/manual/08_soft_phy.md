@@ -15,8 +15,8 @@ Readers who only need a working link on a supported FPGA should start with a har
 |--------------------|------------------------------------------------------------------|
 | Class | `SoftPCIEPHY` |
 | Rates | `gen1` (2.5 GT/s), `gen2` (5.0 GT/s), `gen3` (8.0 GT/s, host link on GTY only) |
-| Lanes | 1, 2, 4, 8 on GTX and GTP; 1 on GTY, and 1, 4, 8 at 8.0 GT/s |
-| Transceivers | Artix-7 GTP, Kintex-7 GTX, Kintex UltraScale+ GTY (KU3P, KU5P) |
+| Lanes | 1, 2, 4, 8 on GTX and GTP; 1 on GTY and on the ECP5 DCU, and 1, 4, 8 at 8.0 GT/s |
+| Transceivers | Artix-7 GTP, Kintex-7 GTX, Kintex UltraScale+ GTY (KU3P, KU5P), Lattice ECP5 DCU (LFE5UM) |
 | Core width | x1 below 8.0 GT/s: 64 to 512 bits; else 32 bits per lane, 64 at 8.0 GT/s |
 | Reference clock | 100 MHz, from the slot |
 | IDs | Vendor `0x10ee`, device `0x7020` plus the lane count, by default |
@@ -24,13 +24,15 @@ Readers who only need a working link on a supported FPGA should start with a har
 | Role | Endpoint; the downstream role exists in simulation only |
 
 The table below gives the state of each part. The hardware runs used the YPCB-00338-1P1 (Kintex-7
-GTX) and the Alibaba XCKU3P (Kintex UltraScale+ GTY) in a PC slot, with the driver and the tools.
+GTX), the Alibaba XCKU3P (Kintex UltraScale+ GTY) and the Lattice ECP5 Versa (ECP5 DCU) in a PC slot, with the
+driver and the tools.
 
 | Scope | State |
 |------------------------------------|------------------------------------------------------|
 | Gen1 and Gen2, x1 to x8, GTX | On hardware: enumeration, BAR0, MSI, DMA |
 | Gen1 and Gen2 x1, GTY | On hardware: enumeration, BAR0, MSI, DMA |
 | Width negotiated down to x1 | On hardware, GTX |
+| Gen1 x1, ECP5 DCU | On hardware: enumeration, BAR0, MSI, DMA |
 | Artix-7 GTP | Built, not run on hardware |
 | 8.0 GT/s, GTY | On hardware x1, x4, x8: enumeration, BAR0, MSI, DMA |
 | 8.0 GT/s, GTX | Simulated x1 to x8; x4 near-end loopback; no host link |
@@ -93,7 +95,7 @@ clock.](soft_clocks.svg)
 | `pcie_pipe_rxN` | Recovered from the partner | Receive lane datapath of lane N |
 | `pcie_pipe` | 62.5 MHz at 2.5 GT/s, 125 MHz at 5.0 GT/s | Lane datapaths, Ordered Sets |
 | `pcie_g3` | `pcie_pipe`, or 200 MHz at 8.0 GT/s | 128b/130b lane datapath (GTX, `gen3`) |
-| `pcie_link` | 125 MHz, always running | LTSSM, data link layer |
+| `pcie_link` | 125 MHz, always running; 75 MHz on the ECP5 | LTSSM, data link layer |
 | `pcie` | Same clock as `pcie_link` | Transaction layer glue, held in reset until DL_Active |
 | `pcie_oob` | 50 MHz | Out-of-band clock input of the transceivers |
 
@@ -169,6 +171,81 @@ phases of the equalization, and enumerate. In near-end loopback on the GTX, four
 minutes at 8.0 GT/s without error; with a host, no training sequence is received at 8.0 GT/s on
 the GTX yet. `doc/softphy.md` records both.
 
+## Lattice ECP5 {#soft-ecp5}
+
+The ECP5 adapter runs the soft PHY on one channel of a DCU of an LFE5UM FPGA, at 2.5 GT/s and one
+lane. These FPGAs have no PCI Express block, and the non-5G part reaches 3.2 Gbps on its
+transceivers. The soft PHY is the only PCI Express design for them.
+
+The adapter, `ECP5PCIeSerDes`, wraps `SerDesECP5` of LiteICLink in its PCI Express mode, with
+40-bit words and the 8b/10b in the fabric.
+
+### Clocking {#soft-ecp5-clocks}
+
+The transmit PLL of the DCU runs from the 100 MHz reference clock of the host. The lane clock is
+the transmit clock of the DCU divided by two.
+
+A fabric PLL fed by the 125 MHz transmit clock of the DCU makes the link clock. Both clocks
+therefore follow the reference clock of the host, as on the Xilinx transceivers. The link clock is
+held in reset while the PLL of the DCU is not running.
+
+| Domain | Frequency | Source |
+|----------------------|------------------------------|--------------------------------------------|
+| `pcie_pipe` | 62.5 MHz | Transmit clock of the DCU divided by two |
+| `pcie_pipe_rx0` | Recovered from the partner | Receive clock of the DCU |
+| `pcie_link` | 75 MHz in the bench target | PLL on the transmit clock of the DCU |
+| `sys` | Set by the target | Local oscillator, independent |
+
+The data link layer does not close timing at 125 MHz on this device, so the bench target runs the
+link clock at 75 MHz. The timers of the soft PHY take the link frequency as a parameter.
+
+The reference clock input cannot feed a fabric PLL in the nextpnr flow. This is why the PLL takes
+the transmit clock of the DCU.
+
+### Receiver detection {#soft-ecp5-detect}
+
+The ECP5 adapter detects the receiver, which the other adapters stub. When the LTSSM enters
+Detect, `ECP5PCIeDetect` runs the handshake of the DCU on its transmit clock and reports the
+result. If the DCU does not answer within 250 µs, the detection ends and reports no receiver.
+
+### Electrical idle {#soft-ecp5-idle}
+
+The electrical idle input of the DCU acts at once, before the end of the electrical idle ordered
+set has left the transmit pipeline. The adapter delays the request, on both edges, by
+`tx_idle_delay` lane clock cycles, so that the idle reaches the line with the data. The default is
+2 cycles; a register allows tuning it on hardware.
+
+### Registers {#soft-ecp5-registers}
+
+| Register | Content |
+|--------------------|----------------------------------------------------------------------|
+| `dcu_status` | Lock of the transmit PLL and of the receiver, loss of signal, ready flags, state of the DCU initialization |
+| `detect_status` | Detections requested, completed and timed out, and the last result |
+| `tx_idle_delay` | Delay of the transmit electrical idle, in lane clock cycles |
+
+### The DCU model {#soft-ecp5-model}
+
+The simulations replace the DCU by a behavioural model (`DCUAModel`, wrapped by `SerDesECP5Model`).
+It provides a serial loopback or a line between two models, a bit offset, the polarity bits of the
+register access, loss of signal, lock delays and the detection handshake. The model encodes
+assumptions about the DCU, not measured behaviour.
+
+### Board and host {#soft-ecp5-board}
+
+On the Lattice ECP5 Versa, jumper J4 must connect pins 3 and 5, so that the clock manager passes
+the 100 MHz reference clock of the slot.
+
+The BIOS of some hosts hides the root port when no card links during the power-on self-test. The
+bitstream therefore loads from the SPI flash, read at 62 MHz, with the LTSSM enabled at reset,
+and the host boots cold.
+
+Do not reconfigure the FPGA while the host runs with the card enumerated: the host of the
+measurements froze when it was.
+
+The measurements used a Fujitsu FUTRO S920 thin client (mainboard D3313-G1, BIOS V4.6.5.4 R1.16.0,
+AMD GX-222GC) running Linux 6.12.10. Its root port links at 2.5 GT/s, up to x4, in a slot that is
+electrically x4. The card uses one lane.
+
 ## Measured results {#soft-results}
 
 The repository records the DMA loopback throughput of the tools against the hard IP of the same
@@ -189,6 +266,15 @@ On the Alibaba XCKU3P, the soft PHY gives 1.72 Gb/s at 2.5 GT/s x1 and 3.39 Gb/s
 At 8.0 GT/s x8, a test program on the library of the driver received 23.8 Gb/s and checked the
 data of every buffer.
 
+On the Lattice ECP5 Versa, the soft PHY gives 1.66 Gb/s at 2.5 GT/s x1, with the data checked. Without
+DMA, a register read through BAR0 takes 1.65 µs, and a write with its readback 8.4 µs. The
+complete bring-up SoC, with DMA and the analyzer, takes 24400 LUT4, 10793 registers and 56 of 108
+block RAMs.
+
+A 15 min DMA soak and 20 link cycles passed without errors. A 15 min run of register writes with
+readback and of reads of the identifier memory, without DMA, found no mismatch in 106.5 million
+writes and 426.0 million words.
+
 ## How to try it {#soft-try}
 
 The simulations need Verilator and no hardware. They run two soft PHYs, or a soft PHY and a
@@ -202,6 +288,8 @@ python3 bench/soft/sim.py --timer-scale 100
 python3 bench/soft/sim.py --with-dll
 # SoC with DMA against a host model, x8 at 8.0 GT/s
 python3 bench/soft/sim_soc.py --gen3 --nlanes 8
+# Two ECP5 adapters on models of the DCU
+python3 bench/soft/sim.py --serdes ecp5 --link-freq 75e6 --with-dll
 ```
 
 On hardware, each bench target builds the endpoint on the soft PHY with `--with-endpoint`. With
@@ -213,6 +301,7 @@ comparison. The targets are in `bench/soft/`.
 | `ypcb.py` | YPCB-00338-1P1, GTX | Gen1 to Gen3, x1 to x8 | `--speed`, `--nlanes`, `--hard-ip` |
 | `ku3p.py` | Alibaba XCKU3P, GTY | Gen1, Gen2 x1; Gen3 x1, x4, x8 | `--speed`, `--nlanes` |
 | `acorn.py` | Acorn CLE-215+, GTP | Gen1, x1 | `--with-debug`, `--hard-ip` |
+| `versa.py` | Lattice ECP5 Versa, DCU | Gen1, x1 | `--analog`, `--sys-clk-freq`, `--link-freq`, `--flash-freq` |
 
 The bring-up registers keep the LTSSM disabled at reset and while PERST# is asserted. A design
 that hangs the host therefore does not hang it again at the next boot; software enables the LTSSM
@@ -223,6 +312,9 @@ python3 bench/soft/ypcb.py --with-endpoint --driver --build
 python3 bench/soft/status.py --csr-csv build/soft_ypcb/csr.csv \
     enable status trace
 ```
+
+The Versa target always builds the full endpoint, so it has no `--with-endpoint` option. See [Board and host](#soft-ecp5-board)
+before loading it.
 
 After enabling the LTSSM, rescan the PCI bus on the host. When the BIOS saw no device at boot,
 remove the root port before the rescan. `status.py` shows the LTSSM state, the counters and the
@@ -241,7 +333,8 @@ The points below are the known gaps; `doc/softphy.md` tracks them with the statu
 - No lane reversal, and no retimer SKP Ordered Sets of other lengths.
 - No link power management: no ASPM, L0s, L1 or L2, and no PME_TO_Ack at shutdown.
 - No MSI-X; the MSI-X enable register always reads 0.
-- Receiver detection is stubbed: a partner is always present.
+- Receiver detection is stubbed on the Xilinx adapters: a partner is always present. The ECP5 adapter detects the receiver.
+- The ECP5 adapter is Gen1 and x1 only, and was tested with one host.
 - A blocked non-posted request blocks the TLPs behind it: there is a single transmit queue.
 - The data link layer timers are fixed values, not yet checked against the specification tables.
 - Artix-7 GTP not run on hardware; the GTY runs at x1 only at 2.5 and 5.0 GT/s.
@@ -258,7 +351,7 @@ The points below are the known gaps; `doc/softphy.md` tracks them with the statu
 | `scrambler.py`, `coding.py` | Scrambler, 8b/10b tables and checker |
 | `gen3.py` | 128b/130b blocks, scrambler, alignment, equalization |
 | `dll/`, `tl/` | Data link layer, transaction layer glue and configuration space |
-| `serdes/` | Lane contract, clocking, GTP, GTX, GTY adapters, simulation model |
+| `serdes/` | Lane contract, clocking, GTP, GTX, GTY and ECP5 adapters, simulation models |
 | `debug.py` | Bring-up registers (`SoftPHYDebug`) |
 
 The files are in `litepcie/phy/soft/`; the bench targets and simulations are in `bench/soft/`.

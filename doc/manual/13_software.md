@@ -78,6 +78,7 @@ file per DMA channel.
 | Xilinx UltraScale | `0x10ee` | `0x8021` to `0x8028` (Gen2), `0x8031` to `0x8038` (Gen3) |
 | Xilinx UltraScale+ | `0x10ee` | `0x9021` to `0x9028`, `0x9036` (Gen2), `0x9031` to `0x9038`, `0x9046` (Gen3), `0x9041` to `0x9048`, `0x9056` (Gen4) |
 | Lattice CertusPro-NX | `0x1204` | `0x9c25` |
+| Lattice ECP5 (soft PHY) | `0x1204` | `0xec11` |
 | Gowin GW5A | `0x22c2` | `0x1100` |
 | Intel Stratix V | `0x1172` | `0xe001` |
 
