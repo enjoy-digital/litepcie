@@ -40,7 +40,7 @@ class TestC5PCIEPHY(unittest.TestCase):
             # Device Control: Max Payload = 256 bytes, Max Read Request = 512 bytes.
             dcommand = (1 << 5) | (2 << 12)
             yield dut.tl_cfg_add.eq(0x0)
-            yield dut.tl_cfg_ctl.eq(dcommand)
+            yield dut.tl_cfg_ctl.eq(dcommand << 16)
             yield dut.tl_cfg_ctl_wr.eq(1)
             for _ in range(3):
                 yield
@@ -74,7 +74,7 @@ class TestC5PCIEPHY(unittest.TestCase):
         def generator():
             # Device Control: Max Payload = 1024 bytes, Max Read Request = 4096 bytes.
             yield dut.tl_cfg_add.eq(0x0)
-            yield dut.tl_cfg_ctl.eq((3 << 5) | (5 << 12))
+            yield dut.tl_cfg_ctl.eq(((3 << 5) | (5 << 12)) << 16)
             yield dut.tl_cfg_ctl_wr.eq(1)
             for _ in range(3):
                 yield
