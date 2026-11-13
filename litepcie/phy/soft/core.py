@@ -127,13 +127,18 @@ class SoftPCIEPHY(LiteXModule, AutoCSR):
         ]
 
         # Clocking: "pcie" is "pcie_link" held in reset while the Data Link Layer is not active -----
+        # The two domains share the clock Signal: a separate "pcie" clock assigned from "pcie_link"
+        # is a second net, kept by its constraints (add_pcie's false paths), and Vivado then inserts
+        # a LUT1 between the two nets: the whole "pcie_link" clock on local routing (ns of skew).
         self.cd_pcie = ClockDomain()
         pcie_rst = Signal(reset=1)
         self.sync.pcie_link += pcie_rst.eq(~dll.dl_active)
-        self.comb += [
-            self.cd_pcie.clk.eq(ClockSignal("pcie_link")),
-            self.cd_pcie.rst.eq(pcie_rst),
-        ]
+        cd_pcie_link = getattr(getattr(serdes, "clocking", None), "cd_pcie_link", None)
+        if cd_pcie_link is not None:
+            self.cd_pcie.clk = cd_pcie_link.clk
+        else:
+            self.comb += self.cd_pcie.clk.eq(ClockSignal("pcie_link"))
+        self.comb += self.cd_pcie.rst.eq(pcie_rst)
 
         # Transaction Layer ------------------------------------------------------------------------
         tl_cls  = (lambda *args, **kwargs: WideTransactionLayer(ndw, *args, **kwargs)) if wide else SoftTransactionLayer
