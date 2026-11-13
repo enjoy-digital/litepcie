@@ -39,8 +39,10 @@ from litepcie.phy.soft.dll.core     import DataLinkLayer
 # IOs ----------------------------------------------------------------------------------------------
 
 _io = [
-    ("sys_clk", 0, Pins(1)),
-    ("sys_rst", 0, Pins(1)),
+    ("sys_clk",  0, Pins(1)),
+    ("sys_rst",  0, Pins(1)),
+    ("lane_clk", 0, Pins(1)), # Independent lane clock (--link-freq != 125 MHz).
+    ("dcu_clk",  0, Pins(1)), # ECP5 DCU clock, 2x the lane clock (--serdes ecp5).
 ]
 
 # Platform -----------------------------------------------------------------------------------------
@@ -253,19 +255,30 @@ class PCIeLinkSim(SoCMini):
     corrupt_every: a raw lane word corrupted after every Nth TLP from the upstream, drop_dllp_every:
     every Nth DLLP from the downstream dropped (Acks lost: replay timer)."""
     def __init__(self, timer_scale=100, packets=64, max_cycles=2**24, ts1_min=1024, with_dll=False,
-        corrupt_every=0, drop_dllp_every=0, debug=False, gen2=False, fail_5g=False):
-        sys_clk_freq = int(125e6)
+        corrupt_every=0, drop_dllp_every=0, debug=False, gen2=False, fail_5g=False, link_freq=125e6, serdes="model"):
+        # link_freq != 125 MHz: the lane clock (2.5 GT/s, 62.5 MHz) is an independent clock instead of sys/2, to
+        # check the Physical Layer/Data Link Layer with a link clock closer to the lane clock (ECP5).
+        independent_lane = (link_freq != 125e6)
+        assert not (independent_lane and gen2), "Gen2 needs the 125 MHz link clock."
+        # serdes="ecp5": the ECP5 PCIeSerDes adapter (LiteICLink SerDesECP5) on a behavioral DCU model (Gen1 only).
+        assert serdes in ["model", "ecp5"]
+        assert not (serdes == "ecp5" and (gen2 or not independent_lane)), "ECP5: Gen1 with --link-freq != 125 MHz."
+        sys_clk_freq = int(link_freq)
         platform     = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq)
 
-        # Clocks: link clocks = sys (125 MHz), lane clock = sys/2 (62.5 MHz, 2.5 GT/s).
+        # Clocks: link clocks = sys (link_freq, 125 MHz), lane clock = sys/2 (62.5 MHz, 2.5 GT/s).
         self.crg = CRG(platform.request("sys_clk"))
         self.cd_lane = ClockDomain()
-        lane_clk = Signal()
-        self.sync += lane_clk.eq(~lane_clk)
-        # Lane clock = sys (125 MHz, 5.0 GT/s) once both sides applied the rate.
         lane_5g = Signal()
-        self.comb += self.cd_lane.clk.eq(Mux(lane_5g, ClockSignal("sys"), lane_clk))
+        if independent_lane:
+            # Independent lane clock (separate Verilator clocker, see main).
+            self.comb += self.cd_lane.clk.eq(platform.request("lane_clk"))
+        else:
+            lane_clk = Signal()
+            self.sync += lane_clk.eq(~lane_clk)
+            # Lane clock = sys (125 MHz, 5.0 GT/s) once both sides applied the rate.
+            self.comb += self.cd_lane.clk.eq(Mux(lane_5g, ClockSignal("sys"), lane_clk))
         self.specials += AsyncResetSynchronizer(self.cd_lane, ResetSignal("sys"))
 
         # Timer.
@@ -273,25 +286,50 @@ class PCIeLinkSim(SoCMini):
         self.sync += timer.eq(timer + 1)
 
         # SerDes models and Physical Layers.
-        self.serdes_up = serdes_up = PCIeSerDesModel(tx_cd="lane", rx_cd="lane", rx_symbol_shift=1)
-        self.serdes_dn = serdes_dn = PCIeSerDesModel(tx_cd="lane", rx_cd="lane", rx_symbol_shift=3)
-        # Raw lanes, with a word corruption after every corrupt_every TLPs from the upstream.
         corrupt = Signal()
-        self.comb += [
-            serdes_dn.tx[0].connect(serdes_up.rx[0]),
-            serdes_up.tx[0].connect(serdes_dn.rx[0], omit={"data"}),
-            serdes_dn.rx[0].data.eq(serdes_up.tx[0].data ^ (corrupt << 17)),
-            serdes_dn.rx_idle.eq(serdes_up.tx_idle),
-            serdes_up.rx_idle.eq(serdes_dn.tx_idle),
-            serdes_up.partner_rate.eq(serdes_dn.applied_rate),
-            serdes_dn.partner_rate.eq(serdes_up.applied_rate),
-            serdes_up.fail_5g.eq(fail_5g),
-            lane_5g.eq(serdes_up.applied_rate & serdes_dn.applied_rate),
-        ]
-        renamer = ClockDomainsRenamer({"pcie_pipe": "lane", "pcie_link": "sys"})
-        self.phy_up = phy_up = renamer(PCIePhysicalLayer(serdes_up, sys_clk_freq, upstream=True,
+        if serdes == "ecp5":
+            # Two ECP5 PCIeSerDes on DCU models (serial line between them, any bit offset), domains per side.
+            from litepcie.phy.soft.serdes.ecp5 import ECP5PCIeSerDes
+            from litepcie.phy.soft.serdes.ecp5_model import SerDesECP5Model
+            lane_clk, dcu_clk = self.cd_lane.clk, platform.request("dcu_clk")
+            line_ud, line_du = Signal(20), Signal(20)
+            ei_ud,   ei_du   = Signal(), Signal()
+            sides = {}
+            for side, bit_offset, line_out, line_in, ei_out, ei_in, side_corrupt in [
+                ("u", 3, line_ud, line_du, ei_ud, ei_du, None),
+                ("d", 7, line_du, line_ud, ei_du, ei_ud, corrupt)]:
+                pads = Record([("tx_p", 1), ("tx_n", 1), ("rx_p", 1), ("rx_n", 1), ("perst", 1)])
+                self.comb += pads.perst.eq(1)
+                model_kwargs = dict(bit_offset=bit_offset, line_out=line_out, line_in=line_in, ei_out=ei_out, ei_in=ei_in,
+                    corrupt=side_corrupt, dcu_clk=dcu_clk, lane_clk=lane_clk)
+                serdes_cls = lambda *args, mk=model_kwargs, **kwargs: SerDesECP5Model(*args, model_kwargs=mk, **kwargs)
+                names = {"pcie_pipe": f"{side}_lane", "pcie_rx0": f"{side}_rx", "pcie_tx_full": f"{side}_txf",
+                    "pcie_rx_full": f"{side}_rxf", "pcie_link": "sys"}
+                ser = ClockDomainsRenamer(names)(ECP5PCIeSerDes(platform, pads, link_freq=link_freq, serdes_cls=serdes_cls,
+                    refclk=Signal(), with_clocking=False))
+                sides[side] = (ser, {"pcie_pipe": f"{side}_lane", "pcie_link": "sys"})
+            self.serdes_up, self.serdes_dn = serdes_up, serdes_dn = sides["u"][0], sides["d"][0]
+            renamer_up, renamer_dn = ClockDomainsRenamer(sides["u"][1]), ClockDomainsRenamer(sides["d"][1])
+        else:
+            self.serdes_up = serdes_up = PCIeSerDesModel(tx_cd="lane", rx_cd="lane", rx_symbol_shift=1)
+            self.serdes_dn = serdes_dn = PCIeSerDesModel(tx_cd="lane", rx_cd="lane", rx_symbol_shift=3)
+            # Raw lanes, with a word corruption after every corrupt_every TLPs from the upstream.
+            self.comb += [
+                serdes_dn.tx[0].connect(serdes_up.rx[0]),
+                serdes_up.tx[0].connect(serdes_dn.rx[0], omit={"data"}),
+                serdes_dn.rx[0].data.eq(serdes_up.tx[0].data ^ (corrupt << 17)),
+                serdes_dn.rx_idle.eq(serdes_up.tx_idle),
+                serdes_up.rx_idle.eq(serdes_dn.tx_idle),
+                serdes_up.partner_rate.eq(serdes_dn.applied_rate),
+                serdes_dn.partner_rate.eq(serdes_up.applied_rate),
+                serdes_up.fail_5g.eq(fail_5g),
+                lane_5g.eq(serdes_up.applied_rate & serdes_dn.applied_rate),
+            ]
+            renamer = ClockDomainsRenamer({"pcie_pipe": "lane", "pcie_link": "sys"})
+            renamer_up = renamer_dn = renamer
+        self.phy_up = phy_up = renamer_up(PCIePhysicalLayer(serdes_up, sys_clk_freq, upstream=True,
             timer_scale=timer_scale, ts1_min=ts1_min, gen2_capable=gen2))
-        self.phy_dn = phy_dn = renamer(PCIePhysicalLayer(serdes_dn, sys_clk_freq, upstream=False,
+        self.phy_dn = phy_dn = renamer_dn(PCIePhysicalLayer(serdes_dn, sys_clk_freq, upstream=False,
             timer_scale=timer_scale, ts1_min=ts1_min, gen2_capable=gen2))
         self.comb += phy_dn.link_number.eq(0x05)
 
@@ -523,11 +561,27 @@ def main():
     parser.add_argument("--corrupt-every", default=0, type=int, help="Corrupt a lane word after every Nth upstream TLP (--with-dll).")
     parser.add_argument("--drop-dllp-every", default=0, type=int, help="Drop every Nth downstream DLLP (--with-dll).")
     parser.add_argument("--debug",       action="store_true",  help="Display the DLLPs and Data Link Layer states (--with-dll).")
+    parser.add_argument("--link-freq",   default=125e6,   type=float, help="Link clock (Hz), != 125 MHz: independent lane clock (Gen1).")
+    parser.add_argument("--serdes",      default="model", choices=["model", "ecp5"], help="Lane: model, or ECP5 PCIeSerDes on a DCU model.")
     parser.add_argument("--max-cycles",  default=2**24, type=int, help="Simulation timeout (sys clock cycles).")
     parser.add_argument("--output-dir",  default="build/soft_sim", help="Build directory.")
     args = parser.parse_args()
 
-    sim_config = SimConfig(default_clk="sys_clk")
+    if args.link_freq == 125e6:
+        sim_config = SimConfig(default_clk="sys_clk")
+    else:
+        # Verilator clockers have integer ps periods and step at their GCD: keep the lane/link period ratio
+        # (62.5 MHz / link_freq) as a small fraction of a round period (the frequencies are relative, the
+        # Physical/Data Link Layer timers take link_freq).
+        from fractions import Fraction
+        ratio  = Fraction(62.5e6/args.link_freq).limit_denominator(32) # lane freq / link freq = link period / lane period.
+        unit   = 2500 # ps.
+        sim_config = SimConfig()
+        # Link clock: the shorter period (link_freq > 62.5 MHz).
+        sim_config.add_clocker("sys_clk",  freq_hz=1e12/(ratio.numerator*unit))
+        sim_config.add_clocker("lane_clk", freq_hz=1e12/(ratio.denominator*unit))
+        if args.serdes == "ecp5":
+            sim_config.add_clocker("dcu_clk", freq_hz=2e12/(ratio.denominator*unit)) # DCU clock: 2x the lane clock.
     soc = PCIeLinkSim(
         gen2    = args.gen2,
         fail_5g = args.fail_5g,
@@ -539,6 +593,8 @@ def main():
         corrupt_every   = args.corrupt_every,
         drop_dllp_every = args.drop_dllp_every,
         debug           = args.debug,
+        link_freq       = args.link_freq,
+        serdes          = args.serdes,
     )
     builder = Builder(soc, output_dir=args.output_dir, compile_software=False)
     builder.build(sim_config=sim_config,

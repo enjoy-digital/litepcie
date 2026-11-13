@@ -47,7 +47,13 @@ The options below exist only on some targets.
 | `--with-jtagbone` | `acorn` | off | JTAGBone instead of UARTBone |
 | `--with-debug` | `acorn` | off | Debug registers on the full endpoint |
 | `--with-ltssm-tracer` | `acorn` | off | LTSSM tracer on the full endpoint |
-| `--with-analyzer` | `acorn`, `ypcb` | off | LiteScope analyzer on Lane 0 |
+| `--with-analyzer` | `acorn`, `ypcb`, `versa` | off | LiteScope analyzer on Lane 0 |
+| `--analog` | `versa` | `wizard` | Analog attribute set of the DCU: `wizard` or `default` |
+| `--sys-clk-freq` | `versa` | 62.5e6 | System clock, in Hz |
+| `--link-freq` | `versa` | 75e6 | Link clock, in Hz |
+| `--flash-freq` | `versa` | none | SPI read frequency, in MHz, written in the bitstream: 62.0 for a bitstream in the flash |
+| `--seed` | `versa` | 1 | Place and route seed |
+| `--vendor-id`, `--device-id` | `versa` | `0x1204`, `0xec11` | PCI IDs |
 | `--hard-ip` | `acorn`, `ypcb` | off | Same endpoint on the hard IP |
 | `--speed` | `ypcb`, `ku3p` | `gen1` | Highest speed: `gen1`, `gen2`; `gen3` on `ypcb` with `--with-endpoint` |
 | `--nlanes` | `ypcb`, `ku3p` | 1 | Lanes: 1, 2, 4 or 8 (`ypcb`; x2 soft PHY only); 1 (`ku3p`) |
@@ -86,6 +92,7 @@ The four Verilator simulations of `bench/soft/` share the options below.
 | `--output-dir` | `build/soft_sim_<name>` | Build directory (`build/soft_sim` for `sim.py`) |
 | `--timer-scale` | 100 | Divide the LTSSM timers (1: specification timers); not on `sim_wide.py` |
 | `--ts1-min` | 64 (`sim.py`: 1024) | TS1 sent in Polling.Active (specification: 1024); not on `sim_wide.py` |
+| `--link-freq` | 125e6 | Link clock in Hz; another value makes the lane clock independent (Gen1); `sim.py` and `sim_endpoint.py` only |
 
 `sim.py` also takes `--trace-start` and `--trace-end`, the cycles where the VCD starts and ends.
 
@@ -98,6 +105,7 @@ The four Verilator simulations of `bench/soft/` share the options below.
 | `--gen2` | off | Speed change to 5.0 GT/s after the training |
 | `--fail-5g` | off | With `--gen2`: the upstream port cannot receive at 5.0 GT/s |
 | `--corrupt-every N` | 0 | Corrupt a lane word after every Nth upstream TLP |
+| `--serdes` | `model` | Lane: `model`, or `ecp5` for two ECP5 adapters on DCU models (Gen1, needs `--link-freq`) |
 | `--drop-dllp-every N` | 0 | Drop every Nth downstream DLLP |
 | `--debug` | off | Print the DLLPs and the data link layer states |
 

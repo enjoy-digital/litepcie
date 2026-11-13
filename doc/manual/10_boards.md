@@ -49,6 +49,7 @@ writes the driver and the tools that match the build.
 | Acorn CLE-215+ | Artix-7 | Hard IP, soft PHY | `acorn.py`, `soft/acorn.py` |
 | YPCB-00338-1P1 | Kintex-7 | Hard IP, soft PHY | `soft/ypcb.py` |
 | Alibaba XCKU3P | Kintex UltraScale+ | Soft PHY | `soft/ku3p.py` |
+| Lattice ECP5 Versa | ECP5 (LFE5UM) | Soft PHY | `soft/versa.py` |
 
 [Example designs and targets](#ex-glance) gives the link, the bridge and the design of each
 target, and [Build options](#build-options) their options. `bench/acorn.py` is the odd one: it
@@ -128,6 +129,16 @@ edge.](alibaba_xcku3p.jpg){width=70%}
 
 The board has no UART: its targets reach the register bus through JTAGBone. The same board serves
 as a root port in [Root port designs](#integ-rootport).
+
+## Lattice ECP5 Versa {#boards-versa}
+
+The Lattice ECP5 Versa carries an LFE5UM-45F FPGA, a DDR3 chip and an x1 PCIe edge connector wired
+to one channel of its first DCU. The FPGA has no PCI Express block, so the soft PHY is the only
+PCIe design for it (`bench/soft/versa.py`).
+
+The board takes its power from the slot only. Its USB serial port carries UARTBone. The jumper,
+the flash and the boot order that make the host enumerate the card are in [Board and
+host](#soft-ecp5-board).
 
 ## Other boards {#boards-other}
 

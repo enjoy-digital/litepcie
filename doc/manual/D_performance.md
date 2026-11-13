@@ -48,6 +48,10 @@ against 32 Gb/s on the link, is not identified.
 The soft PHY figure at 8.0 GT/s x8 comes from a test program on the library of the driver that
 checks each received buffer, since `dma_test` does not keep up at that rate.
 
+| Lattice ECP5 Versa | Soft PHY (DCU) |
+|---------------------------------------------------|------------------------------------|
+| 2.5 GT/s x1 | 1.66 Gb/s |
+
 A link narrowed by width negotiation is a little slower than a design of that width: 2.97 Gb/s
 for an x8 design trained at x1, against 3.39 Gb/s for an x1 design. The beats of a wider design are
 split between fewer lanes, with Logical Idle in them.
@@ -66,6 +70,9 @@ counts the 200 ms rows where the driver reported buffers lost by the application
 | YPCB-00338-1P1, hard 5.0 GT/s x1 | `dma_test`, 15 min | 3.36 Gb/s, 0 of 900 seconds with errors |
 | YPCB-00338-1P1, soft x2 to x8 | `dma_test`, 15 min each | 0 seconds with correctable errors |
 | Alibaba XCKU3P, soft 2.5 and 5.0 GT/s x1 | 15 min soak, 20 link cycles | 0 errors, 20 of 20 cycles |
+| Lattice ECP5 Versa, soft 2.5 GT/s x1 | `dma_test`, 15 min | 1.66 Gb/s, 0 errors, no correctable error |
+| Lattice ECP5 Versa, soft 2.5 GT/s x1 | 20 link cycles | 20 passed, link back in 0.6 s |
+| Lattice ECP5 Versa, soft 2.5 GT/s x1 | BAR0 writes and reads, 15 min, no DMA | 0 mismatches in 106.5 million writes and 426.0 million words |
 
 At 5.0 GT/s x1 the soft and hard designs lost buffers in 1 and 2 rows of 4477, against 1 and 3
 "too late" messages of the driver. At this rate the ring of 256 buffers lasts about 5 ms: the losses
@@ -169,6 +176,10 @@ table below shows.
 
 On the Alibaba XCKU3P (Kintex UltraScale+), the soft PHY x1 design uses 9465 CLB LUTs at
 2.5 GT/s and 9825 at 5.0 GT/s, with 1.104 and 0.804 ns of setup slack.
+
+On the Lattice ECP5 Versa, the whole bring-up SoC with DMA and the analyzer uses 24400 LUT4 (55 %),
+10793 registers (24 %) and 56 of 108 block RAMs. After place and route, the link clock closes at
+83 MHz against 75 MHz, and the lane clock at 88 MHz against 62.5 MHz.
 
 Where to go next: [Soft PHY](#soft-phy) for the status of the soft PHY, [Scatter-gather DMA](#dma)
 for the DMA parameters, and [Debugging](#debugging) for lost buffers.

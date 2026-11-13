@@ -211,3 +211,11 @@ class TestSoftSim(unittest.TestCase):
         # More TLPs than the 12-bit Sequence Number and the 8-bit header credits cover.
         output = self.run_sim("dll_wrap", "--with-dll", "--packets", "4500", "--max-cycles", "3000000")
         self.check_dll(output)
+
+    def test_ecp5_serdes(self):
+        # ECP5 PCIeSerDes adapter (LiteICLink SerDesECP5: init FSM, fabric 8b/10b, symbol aligner) on a behavioral
+        # DCU model, link clock 75 MHz: training, TLPs both ways, replays on corrupted words, Recovery.
+        self.check(self.run_sim("ecp5", "--serdes", "ecp5", "--link-freq", "75e6", "--packets", "32"))
+        output = self.run_sim("ecp5_dll_corrupt", "--serdes", "ecp5", "--link-freq", "75e6", "--with-dll",
+            "--packets", "64", "--corrupt-every", "5", "--drop-dllp-every", "7")
+        self.check_dll(output)
