@@ -198,6 +198,78 @@ class TestTLPController(unittest.TestCase):
         self.assertEqual([c["last"] for c in observed_completions], [0, 1, 0, 1])
         self.assertEqual([c["end"] for c in observed_completions], [0, 1, 0, 1])
 
+
+    def test_back_to_back_completions_accepted_every_cycle(self):
+        # Completions one after the other, in request order, output always ready: one beat
+        # accepted per cycle, no cycle lost between Completion TLPs.
+        for data_width in [128, 256, 512]:
+            with self.subTest(data_width=data_width):
+                nrequests  = 8
+                beats      = 2
+                controller = LitePCIeTLPController(
+                    data_width           = data_width,
+                    address_width        = 32,
+                    max_pending_requests = nrequests,
+                    cmp_bufs_buffered    = True,
+                )
+                tags        = []
+                accepted_at = []
+                received    = []
+
+                @passive
+                def monitor_requests():
+                    source = controller.master_out.sink
+                    while True:
+                        yield source.ready.eq(1)
+                        if (yield source.valid) and (yield source.ready):
+                            tags.append((yield source.tag))
+                        yield
+
+                @passive
+                def monitor_completions():
+                    source = controller.master_in.source
+                    while True:
+                        yield source.ready.eq(1)
+                        if (yield source.valid):
+                            received.append((yield source.dat))
+                        yield
+
+                def stim():
+                    for _ in range(nrequests + 4):
+                        yield
+                    for i in range(nrequests):
+                        yield from self._issue_read_request(controller, index=i,
+                            length_dwords=beats*data_width//32)
+                    for _ in range(4):
+                        yield
+                    sink  = controller.master_out.source
+                    cycle = 0
+                    for tag in tags:
+                        for beat in range(beats):
+                            yield sink.valid.eq(1)
+                            yield sink.first.eq(beat == 0)
+                            yield sink.last.eq(beat == beats - 1)
+                            yield sink.len.eq(beats*data_width//32)
+                            yield sink.end.eq(beat == beats - 1)
+                            yield sink.err.eq(0)
+                            yield sink.tag.eq(tag)
+                            yield sink.dat.eq(_completion_word(tag, beat))
+                            while True:
+                                yield
+                                cycle += 1
+                                if (yield sink.ready):
+                                    accepted_at.append(cycle)
+                                    break
+                    yield sink.valid.eq(0)
+                    for _ in range(4*nrequests):
+                        yield
+
+                run_simulation(controller, [stim(), monitor_requests(), monitor_completions()], vcd_name=None)
+
+                self.assertEqual(len(tags), nrequests)
+                self.assertEqual(received, [_completion_word(t, b) for t in tags for b in range(beats)])
+                self.assertEqual(accepted_at[-1] - accepted_at[0] + 1, nrequests*beats)
+
     def test_completion_buffer_depth_matches_request_footprint(self):
         data_width = 128
         request_beats = _completion_beats_for(data_width)
