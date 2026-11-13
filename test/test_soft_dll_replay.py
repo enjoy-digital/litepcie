@@ -191,3 +191,63 @@ class TestReplayCapacity(unittest.TestCase):
 
     def test_single_dw_tlps(self):
         self.check([1, 3] + [2]*8)
+
+
+class TestReplayThroughput(unittest.TestCase):
+    def check(self, size, ntlps=12, with_fc=False):
+        """TLPs of size words stored, then transmitted without pause: the next TLP starts one cycle
+        after the last word of the previous one (two cycles for 1-word TLPs), data and sequence
+        numbers in order."""
+        if with_fc:
+            dut = DUT()
+            replay = dut.replay
+        else:
+            dut = LiteXModule()
+            dut.replay = replay = ReplayBuffer(depth=256, descriptors=16, replay_timer=100000)
+            dut.comb += [replay.fc_ok.eq(1), replay.source.ready.eq(1)]
+        starts   = []
+        received = []
+        @passive
+        def monitor():
+            cycle = 0
+            while True:
+                if (yield replay.source.valid):
+                    received.append(((yield replay.source.seq), (yield replay.source.data)))
+                    if (yield replay.source.first):
+                        starts.append(cycle)
+                cycle += 1
+                yield
+        def generator():
+            if with_fc:
+                yield from set_limit(dut, FC_P, 0, 0) # Infinite.
+            for t in range(ntlps):
+                for i in range(size):
+                    yield replay.sink.valid.eq(1)
+                    yield replay.sink.first.eq(i == 0)
+                    yield replay.sink.last.eq(i == size - 1)
+                    yield replay.sink.data.eq(MWR if i == 0 else (t << 8) | i)
+                    yield
+                    while not (yield replay.sink.ready):
+                        yield
+            yield replay.sink.valid.eq(0)
+            for _ in range(8):
+                yield
+            yield replay.enable.eq(1)
+            for _ in range(ntlps*(size + 4) + 16):
+                yield
+        run_simulation(dut, [generator(), monitor()])
+        self.assertEqual(received, [(t, MWR if i == 0 else (t << 8) | i) for t in range(ntlps) for i in range(size)])
+        gap = size + (2 if size == 1 else 1)
+        self.assertEqual([b - a for a, b in zip(starts, starts[1:])], [gap]*(ntlps - 1))
+
+    def test_5_words(self):
+        self.check(5)
+
+    def test_2_words(self):
+        self.check(2)
+
+    def test_1_word(self):
+        self.check(1)
+
+    def test_5_words_flow_control(self):
+        self.check(5, with_fc=True)

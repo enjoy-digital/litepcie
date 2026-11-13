@@ -91,6 +91,14 @@ class ReplayBuffer(LiteXModule):
         count    = Signal(desc_width + 1) # Stored descriptors.
         self.comb += count.eq(wr_desc - ack_desc)
 
+        # Descriptor read by the transmitter: while a TLP is sent, the next one, its credits checked
+        # meanwhile (the credits of the TLP being sent are consumed when it starts): the next TLP
+        # starts one cycle after the last word of the current one instead of three.
+        sending   = Signal()
+        look_desc = Signal(desc_width + 1)
+        desc      = look_desc[:desc_width]
+        self.comb += look_desc.eq(Mux(sending, tx_desc + 1, tx_desc))
+
         # Write (Transaction Layer) ----------------------------------------------------------------
         wr_ptr   = Signal(adr_width)
         start    = Signal(adr_width)
@@ -122,7 +130,7 @@ class ReplayBuffer(LiteXModule):
             d_ack_wr.adr.eq(wr_desc[:desc_width]),
             d_ack_wr.we.eq(d_wr),
             d_ack_wr.dat_w.eq(Cat(d_tx_w.length, d_tx_w.seq)),
-            d_tx_rd.adr.eq(tx_desc[:desc_width]),
+            d_tx_rd.adr.eq(look_desc[:desc_width]),
             d_ack_rd.adr.eq(ack_desc[:desc_width]),
             d_tx_r.raw_bits().eq(d_tx_rd.dat_r),
             d_ack_r.raw_bits().eq(d_ack_rd.dat_r),
@@ -230,7 +238,6 @@ class ReplayBuffer(LiteXModule):
         remaining = Signal(adr_width + 1) # Words left, current one included.
         last      = Signal()              # remaining == 1, registered (source.last feeds the LCRC).
         consumed  = source.valid & source.ready
-        desc      = tx_desc[:desc_width]
         self.comb += [
             source.data.eq(rd_port.dat_r),
             source.last.eq(last),
@@ -245,6 +252,7 @@ class ReplayBuffer(LiteXModule):
         settle    = Signal(2)
         settled   = Signal()
         replay    = Signal()
+        starting  = Signal()
         self.comb += settled.eq(settle == 2)
         if ndw > 1:
             cur_dws = Signal(bits_for(ndw))
@@ -267,8 +275,9 @@ class ReplayBuffer(LiteXModule):
             ).Elif(sent_clr & (wr_desc[:desc_width] == d),
                 d_sent[d].eq(0)
             )
+        self.comb += sending.eq(fsm.ongoing("SEND"))
         self.sync += [
-            If(~fsm.ongoing("IDLE") | self.reset | replay | (tx_desc == wr_desc),
+            If(self.reset | replay | starting | (look_desc == wr_desc),
                 settle.eq(0)
             ).Elif(~settled,
                 settle.eq(settle + 1)
@@ -293,6 +302,7 @@ class ReplayBuffer(LiteXModule):
             ).Elif(self.enable & settled & (cur_sent | self.fc_ok),
                 self.fc_consume.eq(~cur_sent),
                 sent_set.eq(1),
+                starting.eq(1),
                 NextValue(rd_ptr, cur_start),
                 NextValue(remaining, cur_len),
                 NextValue(last, cur_len == 1),
