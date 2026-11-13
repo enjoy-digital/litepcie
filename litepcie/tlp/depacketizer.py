@@ -83,15 +83,11 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
 
         # FSM --------------------------------------------------------------------------------------
 
-        self.fsm = fsm = FSM(reset_state="IDLE")
+        # The header beat of a TLP is accepted right after the last beat of the previous one: no
+        # idle cycle between TLPs (on wide datapaths a TLP is a few beats, a cycle per TLP is a
+        # large part of the bandwidth).
+        self.fsm = fsm = FSM(reset_state="HEADER")
 
-        fsm.act("IDLE",
-            NextValue(first, 1),
-            NextValue(flush, 0),
-            If(sink.valid,
-                NextState("HEADER")
-            )
-        )
         fsm.act("HEADER",
             sink.ready.eq(1),
             If(sink.valid,
@@ -99,9 +95,8 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
                 NextValue(source.header[32*1:32*2], sink.dat[32*1:32*2]),
                 NextValue(source.header[32*2:32*3], sink.dat[32*2:32*3]),
                 NextValue(source.header[32*3:32*4], sink.dat[32*3:32*4]),
-                If(sink.last,
-                    NextValue(flush, 1)
-                ),
+                NextValue(first, 1),
+                NextValue(flush, sink.last),
                 NextState("COPY")
             )
         )
@@ -117,12 +112,12 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
                 NextValue(first, 0),
                 sink.ready.eq(~flush),
                 If(flush,
-                    NextState("IDLE")
+                    NextState("HEADER")
                 ).Elif(sink.last,
                     If(tail_valid,
                         NextValue(flush, 1),
                     ).Else(
-                        NextState("IDLE")
+                        NextState("HEADER")
                     )
                 )
             )
