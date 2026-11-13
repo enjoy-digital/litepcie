@@ -125,6 +125,9 @@ class MSIHandler(LiteXModule):
         while True:
             yield self.sink.ready.eq(1)
             if (yield self.sink.valid):
+                # No MSI accepted while this one is handled (it would be lost, not counted).
+                yield self.sink.ready.eq(0)
+
                 # Get IRQs.
                 irq_vector = (yield dut.msi.vector.status)
                 irq_clear  = 0
@@ -197,6 +200,14 @@ class TestDMA(unittest.TestCase):
                 cycle += 1
                 yield
 
+        writer_irqs = {"count": 0}
+        @passive
+        def writer_irq_monitor(dut):
+            while True:
+                if (yield dut.dma_writer.irq):
+                    writer_irqs["count"] += 1
+                yield
+
         def main_generator(dut):
             # Allocate Host's Memory.
             dut.host.malloc(0x00000000, test_size*2)
@@ -260,21 +271,25 @@ class TestDMA(unittest.TestCase):
                 yield from dma_writer_driver.enable()
 
             # Wait for all reader words or writes.
-            timeout = 0
+            timeout      = 0
+            writer_index = None
             while True:
                 if host_traffic and ((timeout % host_traffic_period) == 0):
                     yield from host_write_read()
                 if check_reader_stream:
                     done = (len(reader_data) >= reader_words)
                 else:
-                    done = (dut.msi_handler.dma_writer_irq_count == len(descriptor_lengths))
+                    # Writer descriptors done (Writer IRQ pulses): IRQs close together are coalesced
+                    # in one MSI, the MSI count is not the descriptor count.
+                    writer_index = writer_irqs["count"]
+                    done = (writer_index == len(descriptor_lengths))
                 if done:
                     break
                 timeout += 1
                 if timeout > timeout_cycles:
                     self.fail(
                         f"DMA loopback timed out (width={data_width}, address_width={address_width}, "
-                        f"descriptors={descriptor_lengths}, writes={dut.msi_handler.dma_writer_irq_count}, "
+                        f"descriptors={descriptor_lengths}, writes={writer_index}, "
                         f"reader_words={len(reader_data)}/{reader_words})"
                     )
                 yield
@@ -283,6 +298,7 @@ class TestDMA(unittest.TestCase):
                 # Delay to ensure all the data has been written.
                 for i in range(1024):
                     yield
+                self.assertGreater(dut.msi_handler.dma_writer_irq_count, 0)
                 for data in dut.host.read_mem(test_size, test_size):
                     loopback_data.append(data)
 
@@ -337,6 +353,7 @@ class TestDMA(unittest.TestCase):
         generators = {
             "sys" : [
                 main_generator(dut),
+                writer_irq_monitor(dut),
                 dut.msi_handler.generator(dut),
                 dut.host.generator(),
                 dut.host.chipset.generator(),

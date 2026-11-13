@@ -461,5 +461,104 @@ class TestLitePCIeTLPHeaderExtracter(unittest.TestCase):
         self._random_vectors(512, ntests=80)
 
 
+# Back to back TLPs --------------------------------------------------------------------------------
+
+class TestLitePCIeTLPHeaderExtracterBackToBack(unittest.TestCase):
+    """TLPs one after the other, without gaps: every TLP extracted, and one input beat accepted per
+    cycle when the output is always ready (no cycle lost between TLPs)."""
+    def _run(self, data_width, packets):
+        dut = _HeaderExtracterDUT(data_width=data_width)
+        ndws = _dws_per_beat(data_width)
+
+        phy_beats   = []
+        exp_beats   = []
+        exp_headers = []
+        extras      = []
+        for header_dws, header_4dws, payload_dws, payload_be in packets:
+            header_4dws[0] = (header_4dws[0] & ~(0b11 << 29)) | ((header_dws == 4) << 29) | ((len(payload_dws) > 0) << 30)
+            beats = _model_phy_packet_beats(data_width, header_dws, header_4dws, payload_dws, payload_be)
+            phy_beats   += beats
+            out          = _model_extracter_output_beats(data_width, beats)
+            exp_beats   += out
+            exp_headers += [_model_extracter_header_value(data_width, beats)]*len(out)
+            extras.append(len(out) - len(beats) + 1)
+
+        got_beats   = []
+        got_headers = []
+        accepted_at = []
+
+        @passive
+        def monitor(dut):
+            while True:
+                yield dut.source.ready.eq(1)
+                if (yield dut.source.valid):
+                    got_beats.append({
+                        "first": (yield dut.source.first),
+                        "last" : (yield dut.source.last),
+                        "dws"  : _unpack_dat_to_dwords((yield dut.source.dat), ndws),
+                        "be"   : _unpack_be_to_nibbles((yield dut.source.be),  ndws),
+                    })
+                    got_headers.append((yield dut.source.header))
+                yield
+
+        def stimulus(dut):
+            yield
+            cycle = 0
+            for beat in phy_beats:
+                yield dut.sink.valid.eq(1)
+                yield dut.sink.first.eq(beat["first"])
+                yield dut.sink.last.eq(beat["last"])
+                yield dut.sink.dat.eq(_pack_dwords_to_dat(beat["dws"]))
+                yield dut.sink.be.eq(_pack_be_nibbles_to_be(beat["be"]))
+                while True:
+                    yield
+                    cycle += 1
+                    if (yield dut.sink.ready):
+                        accepted_at.append(cycle)
+                        break
+            yield dut.sink.valid.eq(0)
+            for _ in range(8):
+                yield
+
+        run_simulation(dut, [stimulus(dut), monitor(dut)], vcd_name=None)
+
+        self.assertEqual(got_beats, exp_beats)
+        self.assertEqual(got_headers, exp_headers)
+        # No input cycle lost, except one per TLP whose tail spills in an extra output beat (out - in + 1
+        # per TLP: 1 with a flush beat, else 0); the last TLP's one is after its last input beat.
+        self.assertEqual(accepted_at[-1] - accepted_at[0] + 1, len(phy_beats) + sum(extras[:-1]))
+
+    def _completions(self, payload_dws_list):
+        return [(3, [0x4a000000 | (n & 0x3ff), 0x01000000 | (4*n), 0x00000000 | i, 0], [0xC0DE0000 | (i << 8) | d for d in range(n)], [0xF]*n)
+            for i, n in enumerate(payload_dws_list)]
+
+    def _random(self, data_width):
+        random.seed(data_width)
+        packets = []
+        for i in range(40):
+            header_dws = random.choice([3, 4])
+            payload, be = _rand_payload_dws_and_be(64, allow_empty=True)
+            packets.append((header_dws, [random.getrandbits(32) for _ in range(4)], payload, be))
+        self._run(data_width, packets)
+
+    def test_128b_completions(self):
+        self._run(128, self._completions([64]*8 + [32, 16, 64, 1]))
+
+    def test_256b_completions(self):
+        self._run(256, self._completions([64]*8 + [32, 16, 64, 1]))
+
+    def test_512b_completions(self):
+        self._run(512, self._completions([64]*8 + [32, 16, 64, 1]))
+
+    def test_128b_random(self):
+        self._random(128)
+
+    def test_256b_random(self):
+        self._random(256)
+
+    def test_512b_random(self):
+        self._random(512)
+
+
 if __name__ == "__main__":
     unittest.main()
