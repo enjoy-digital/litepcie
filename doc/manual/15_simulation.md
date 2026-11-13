@@ -134,6 +134,14 @@ the reads and writes of the device, with the TLPs compared on the wire.
 of the Linux driver. The completions are split at the 64-byte Read Completion Boundary, as a host
 does.
 
+In `sim_soc.py`, the link clock and the core clock are the same signal by default. On hardware
+they are unrelated: the core clock comes from a local oscillator and the link clock from the
+reference clock of the host.
+
+`--sys-link-ratio` gives the link clock, and the lane clock derived from it, a clock unrelated to
+the core clock, at the ratio of the two frequencies. The crossings between the SoC and the soft
+PHY then see two asynchronous clocks. Run it with a ratio below and above 1.
+
 ```sh
 # Link training, packets, Recovery (scaled timers)
 python3 bench/soft/sim.py --timer-scale 100
@@ -147,6 +155,9 @@ python3 bench/soft/sim_wide.py --phy --gen3 --nlanes 8 --eq-preset 8
 # SoC with DMA, then at 8.0 GT/s on x8
 python3 bench/soft/sim_soc.py --mps 256 --dma-size 1024 --dma-buffers 4
 python3 bench/soft/sim_soc.py --gen3 --nlanes 8
+# Core clock slower, then faster than the link clock, on unrelated clocks
+python3 bench/soft/sim_soc.py --sys-link-ratio 0.8333 --dma-size 4096 --dma-buffers 2
+python3 bench/soft/sim_soc.py --sys-link-ratio 1.37 --dma-size 4096 --dma-buffers 2
 ```
 
 Every script ends with `SIM OK`, or with a timeout or mismatch message. `--timer-scale` divides the

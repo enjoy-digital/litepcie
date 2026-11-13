@@ -167,6 +167,15 @@ class TestSoftSim(unittest.TestCase):
                     "--dma-size", "4096", "--dma-buffers", "2", script="sim_soc.py")
                 self.assertIn("SIM OK", output)
 
+    def test_soc_independent_clocks(self):
+        # DMA and MSI of the SoC with sys and pcie_link on unrelated clocks, as on hardware (sys from a local
+        # oscillator, pcie_link from the host's reference clock): sys slower and faster than the link.
+        for ratio in ["0.8333", "1.37"]:
+            with self.subTest(ratio=ratio):
+                output = self.run_sim(f"soc_async_{ratio}", "--sys-link-ratio", ratio, "--dma-size", "4096",
+                    "--dma-buffers", "2", script="sim_soc.py")
+                self.assertIn("SIM OK", output)
+
     def test_soc_gen3(self):
         # LitePCIe SoC on SoftPCIEPHY at 8.0 GT/s (2 DWs per lane: 64, 128 and 512-bit LitePCIe data paths): speed
         # change by the root before the enumeration, DMA loopback through the host model.
