@@ -228,11 +228,12 @@ class ReplayBuffer(LiteXModule):
         # source.data is the memory output, the next address is presented when a word is consumed.
         rd_ptr    = Signal(adr_width)
         remaining = Signal(adr_width + 1) # Words left, current one included.
+        last      = Signal()              # remaining == 1, registered (source.last feeds the LCRC).
         consumed  = source.valid & source.ready
         desc      = tx_desc[:desc_width]
         self.comb += [
             source.data.eq(rd_port.dat_r),
-            source.last.eq(remaining == 1),
+            source.last.eq(last),
         ]
         # Descriptor to transmit, registered, then fc_ok: valid 2 cycles after tx_desc changed or the
         # descriptor was written, and after the credits consumed by the previous TLP are counted.
@@ -294,6 +295,7 @@ class ReplayBuffer(LiteXModule):
                 sent_set.eq(1),
                 NextValue(rd_ptr, cur_start),
                 NextValue(remaining, cur_len),
+                NextValue(last, cur_len == 1),
                 NextValue(source.first, 1),
                 NextValue(source.seq, cur_seq),
                 *([NextValue(last_dws, cur_dws)] if ndw > 1 else []),
@@ -312,6 +314,7 @@ class ReplayBuffer(LiteXModule):
                     rd_port.adr.eq(rd_ptr + 1),
                     NextValue(rd_ptr, rd_ptr + 1),
                     NextValue(remaining, remaining - 1),
+                    NextValue(last, remaining == 2),
                 )
             ),
             If(self.reset,
