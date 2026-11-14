@@ -51,20 +51,20 @@ class Platform(SimPlatform):
     def __init__(self):
         SimPlatform.__init__(self, "SIM", _io)
 
-def mwr_tlp(rng, ndws, tag):
-    """Memory Write TLP DW words (byte 0 on bits 7:0): 3DW header + ndws DWs."""
-    header = bytes([0x40, 0x00, (ndws >> 8) & 0x3, ndws & 0xff])
+def mwr_tlp(rng, ndws, tag, cpl=False):
+    """Memory Write (or Completion with Data, cpl) TLP DW words (byte 0 on bits 7:0): 3DW header + ndws DWs."""
+    header = bytes([0x4a if cpl else 0x40, 0x00, (ndws >> 8) & 0x3, ndws & 0xff])
     header += bytes([0x01, 0x00, tag & 0xff, 0x0f])
     header += bytes([0x00, 0x00, 0x10, 0x00])
     data = header + bytes(rng.getrandbits(8) for _ in range(4*ndws))
     return [int.from_bytes(data[i:i+4], "little") for i in range(0, len(data), 4)]
 
-def beats_table(rng, ndw, count, max_dws=64):
+def beats_table(rng, ndw, count, max_dws=64, cpl=False):
     """TLPs as beats: lengths around the beat boundaries, then random ones up to max_dws."""
     lengths = (list(range(1, 3*ndw + 4)) + [rng.randrange(1, max_dws) for _ in range(count)])[:count]
     table   = []
     for i, length in enumerate(lengths):
-        tlp = mwr_tlp(rng, length, i)
+        tlp = mwr_tlp(rng, length, i, cpl=cpl)
         for j in range(0, len(tlp), ndw):
             beat = tlp[j:j+ndw]
             table.append(dict(
@@ -129,7 +129,7 @@ class BeatsChecker(LiteXModule):
         )
 
 class WideDLLSim(SoCMini):
-    def __init__(self, ndw, nlanes, tlps, corrupt_every, max_cycles=2**22):
+    def __init__(self, ndw, nlanes, tlps, corrupt_every, max_cycles=2**22, max_dws=64, rx_stall=0, completions=False):
         sys_clk_freq = int(125e6)
         platform = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq)
@@ -166,8 +166,8 @@ class WideDLLSim(SoCMini):
         ]
 
         # TLPs both ways.
-        table_ab = beats_table(random.Random(1), ndw, tlps)
-        table_ba = beats_table(random.Random(2), ndw, tlps)
+        table_ab = beats_table(random.Random(1), ndw, tlps, max_dws=max_dws, cpl=completions)
+        table_ba = beats_table(random.Random(2), ndw, tlps, max_dws=max_dws)
         self.gen_a = gen_a = BeatsGenerator(table_ab, ndw)
         self.gen_b = gen_b = BeatsGenerator(table_ba, ndw)
         self.chk_b = chk_b = BeatsChecker(table_ab, ndw)
@@ -175,10 +175,19 @@ class WideDLLSim(SoCMini):
         self.comb += [
             gen_a.source.connect(a.sink),
             gen_b.source.connect(b.sink),
-            b.source.connect(chk_b.sink),
+            b.source.connect(chk_b.sink, omit={"valid", "ready"}),
             a.source.connect(chk_a.sink),
             gen_a.enable.eq(a.dl_active & b.dl_active),
             gen_b.enable.eq(a.dl_active & b.dl_active),
+        ]
+
+        # b's Transaction Layer not ready for rx_stall cycles once the link is up: the TLPs from a
+        # (Completions in a real link: infinite credits) are held in b's receive buffer.
+        stall = Signal(max=rx_stall + 2)
+        self.sync += If(a.dl_active & b.dl_active & (stall != rx_stall), stall.eq(stall + 1))
+        self.comb += [
+            chk_b.sink.valid.eq(b.source.valid & (stall == rx_stall)),
+            b.source.ready.eq(chk_b.sink.ready & (stall == rx_stall)),
         ]
 
         done = Signal()
@@ -377,6 +386,9 @@ def main():
     parser.add_argument("--fail-8g",       action="store_true", help="With --gen3: nothing received at 8.0 GT/s (fallback).")
     parser.add_argument("--rate-stall",    default=0, type=int, help="With --phy: receivers stopped after a rate change, differently per lane.")
     parser.add_argument("--dead-lanes",    default="0", help="With --phy: lanes out of service on the upstream side (mask).")
+    parser.add_argument("--max-dws",       default=64, type=int, help="Largest TLP payload (DWs).")
+    parser.add_argument("--completions",   action="store_true", help="TLPs from a to b are Completions (infinite credits).")
+    parser.add_argument("--rx-stall",      default=0, type=int, help="Cycles the receiving Transaction Layer of b is not ready once the link is up.")
     parser.add_argument("--max-cycles",    default=2**22, type=int, help="Simulation timeout.")
     parser.add_argument("--output-dir",    default="build/soft_sim_wide", help="Build directory.")
     args = parser.parse_args()
@@ -386,7 +398,8 @@ def main():
             dead_lanes=int(args.dead_lanes, 0), ndw=args.ndw, gen3=args.gen3, eq_preset=args.eq_preset,
             fail_8g=args.fail_8g)
     else:
-        soc = WideDLLSim(args.ndw or args.nlanes, args.nlanes, args.tlps, args.corrupt_every)
+        soc = WideDLLSim(args.ndw or args.nlanes, args.nlanes, args.tlps, args.corrupt_every, max_dws=args.max_dws,
+            rx_stall=args.rx_stall, completions=args.completions)
     builder = Builder(soc, output_dir=args.output_dir, compile_software=False)
     builder.build(sim_config=sim_config, opt_level="O0", interactive=False)
 
