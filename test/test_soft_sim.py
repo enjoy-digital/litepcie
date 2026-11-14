@@ -86,11 +86,12 @@ class TestSoftSim(unittest.TestCase):
         self.assertRegex(output, r"mismatches +0/ +0")
 
     def test_wide_dll(self):
-        # Two wide Data Link Layers, with lane corruption: every TLP delivered once and in order.
+        # Two wide Data Link Layers, with lane corruption: every TLP delivered once and in order (a
+        # TLP corrupted every 7, not a divisor of the TLPs replayed at once).
         for ndw in [2, 4, 8]:
             with self.subTest(ndw=ndw):
                 output = self.run_sim(f"wide_dll_{ndw}", "--ndw", str(ndw), "--nlanes", str(ndw), "--tlps", "64",
-                    "--corrupt-every", "8", script="sim_wide.py")
+                    "--corrupt-every", "7", script="sim_wide.py")
                 self.assertIn("SIM OK", output)
                 self.assertRegex(output, r"replays +[1-9]")
 

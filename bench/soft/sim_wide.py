@@ -10,7 +10,7 @@
 cycle on ideal lanes, TLPs of all the lengths around the beat boundaries both ways (compared to a
 table), with a lane corruption every N TLPs (Naks and replays).
 
-python3 bench/soft/sim_wide.py --ndw 4 --nlanes 4 [--tlps 200] [--corrupt-every 8]
+python3 bench/soft/sim_wide.py --ndw 4 --nlanes 4 [--tlps 200] [--corrupt-every 7]
 
 With --phy: two multi-lane Physical Layers on transceiver models with Symbol shifts and skew per lane,
 training to L0 (with --gen2 and a speed change to 5.0 GT/s, with --gen3 to 8.0 GT/s and the equalization, 2 DWs
@@ -147,13 +147,14 @@ class WideDLLSim(SoCMini):
             a.phy_source.valid.eq(1), b.phy_source.valid.eq(1),
         ]
 
-        # Lanes, a bit flipped in every corrupt_every-th TLP from a to b.
+        # Lanes, a bit flipped in every corrupt_every-th TLP from a to b (replays included: a period
+        # sharing a factor with the TLPs replayed at once can corrupt the same TLP on every replay).
         tlp_count = Signal(16)
         corrupt   = Signal()
         is_stp    = a.phy_sink.valid & a.phy_sink.ctrl[0] & (a.phy_sink.data[0:8] == STP.value)
-        self.sync += If(is_stp, tlp_count.eq(tlp_count + 1))
         if corrupt_every:
-            self.comb += corrupt.eq(is_stp & ((tlp_count & (corrupt_every - 1)) == (corrupt_every - 1)))
+            self.sync += If(is_stp, If(tlp_count == (corrupt_every - 1), tlp_count.eq(0)).Else(tlp_count.eq(tlp_count + 1)))
+            self.comb += corrupt.eq(is_stp & (tlp_count == (corrupt_every - 1)))
         self.comb += [
             If(a.phy_sink.valid,
                 b.phy_source.data.eq(a.phy_sink.data ^ (corrupt << 45)),
@@ -369,7 +370,7 @@ def main():
     parser.add_argument("--ndw",           default=None, type=int, help="DWs per cycle (default: the lanes).")
     parser.add_argument("--nlanes",        default=4, type=int, help="Link width.")
     parser.add_argument("--tlps",          default=200, type=int, help="TLPs exchanged in each direction.")
-    parser.add_argument("--corrupt-every", default=0, type=int, help="Corrupt every Nth TLP from a to b (power of 2).")
+    parser.add_argument("--corrupt-every", default=0, type=int, help="Corrupt every Nth TLP from a to b.")
     parser.add_argument("--phy",           action="store_true", help="With the multi-lane Physical Layers and transceiver models.")
     parser.add_argument("--gen2",          action="store_true", help="With --phy: speed change to 5.0 GT/s.")
     parser.add_argument("--gen3",          action="store_true", help="With --phy: speed change to 8.0 GT/s (equalization).")
