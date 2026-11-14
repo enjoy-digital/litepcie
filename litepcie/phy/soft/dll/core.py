@@ -63,10 +63,13 @@ class DataLinkLayer(LiteXModule):
 
         # RX/TX ------------------------------------------------------------------------------------
         # Completions have infinite credits: the receive buffer holds all the Completions of the
-        # requests in flight, as many packets as 64-byte (16-DW) Completions fit in its depth.
+        # requests in flight, as many packets as 64-byte (16-DW) Completions fit in its depth. The
+        # framers' FIFO absorbs the bursts of short TLPs (a 64-byte Completion is 1.3 beats on the
+        # lanes and 2 beats aligned, under a beat of FIFO each): a quarter of the packets.
         rx_packets = max(64, rx_depth//16)
         if ndw > 1:
-            self.rx = rx = WideDLLRX(ndw, depth=rx_depth, packets=rx_packets, framing=framing, nlanes=nlanes)
+            self.rx = rx = WideDLLRX(ndw, depth=rx_depth, packets=rx_packets, framing=framing, nlanes=nlanes,
+                fifo_depth=max(64, rx_packets//4))
             self.tx = tx = WideDLLTX(ndw, nlanes, depth=tx_depth, descriptors=descriptors, replay_timer=replay_timer, framing=framing)
             self.comb += [rx.gen3.eq(self.gen3), tx.gen3.eq(self.gen3)]
         else:
