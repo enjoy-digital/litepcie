@@ -94,6 +94,14 @@ class TestSoftSim(unittest.TestCase):
                 self.assertIn("SIM OK", output)
                 self.assertRegex(output, r"replays +[1-9]")
 
+    def test_wide_dll_completions_held(self):
+        # 200 small Completions (infinite credits) while the receiving Transaction Layer is not ready:
+        # all held in the receive buffer (more packets than 64), no drop, no replay.
+        output = self.run_sim("wide_dll_cpl_held", "--ndw", "8", "--nlanes", "8", "--tlps", "200", "--max-dws", "8",
+            "--rx-stall", "4000", "--completions", script="sim_wide.py")
+        self.assertIn("SIM OK", output)
+        self.assertRegex(output, r"replays +0/ +0, errors +0/ +0")
+
     def test_multi_lane(self):
         # Two multi-lane Physical and Data Link Layers: Symbol shifts and skew per lane, training,
         # speed change to 5.0 GT/s, TLPs through a Link Retrain.
