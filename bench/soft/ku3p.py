@@ -96,6 +96,16 @@ class SoftPHYSoC(SoCMini):
             self.add_pcie(phy=pcie_phy, ndmas=1, address_width=64, with_dma_loopback=True,
                 max_pending_requests=max_pending_requests)
             serdes, phy = pcie_phy.serdes, pcie_phy.phy_layer
+            # DMA user streams, used with the loopback disabled (one direction rates): Reader data
+            # dropped, Writer data a counter, always valid.
+            dma     = self.pcie_dma0
+            counter = Signal(32)
+            self.sync += If(dma.sink.valid & dma.sink.ready, counter.eq(counter + 1))
+            self.comb += [
+                dma.source.ready.eq(1),
+                dma.sink.valid.eq(1),
+                dma.sink.data.eq(Replicate(counter, len(dma.sink.data)//32)),
+            ]
         else:
             # Physical Layer alone: L0 against the host, received Symbols dropped.
             assert nlanes == 1 and speed != "gen3"
