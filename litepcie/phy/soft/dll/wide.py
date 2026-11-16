@@ -789,7 +789,7 @@ class RXFramerSelect(LiteXModule):
     """8b/10b (WideRXFramer) and 8.0 GT/s (Gen3RXFramer) framers, the one of the rate selected by gen3 (the
     other one held in reset). Same interface as a framer. x1/x2 at 8.0 GT/s: Tokens on DWs for Gen3RXFramer
     through Gen3RXTokenAligner (a Token can follow an IDL Token on any Symbol or Symbol Time)."""
-    def __init__(self, ndw, nlanes=None):
+    def __init__(self, ndw, nlanes=None, fifo_depth=64):
         from litepcie.phy.soft.gen3 import Gen3RXFramer, Gen3RXTokenAligner
         self.gen3       = Signal()   # i
         self.sink       = sink = stream.Endpoint(lane_layout(4*ndw))
@@ -804,8 +804,8 @@ class RXFramerSelect(LiteXModule):
         # 8b/10b at half the width: at 2.5/5.0 GT/s a lane carries a DW per cycle, half the 8.0 GT/s width (the
         # beats come at most every other cycle): beats split in two halves, TLP beats of ndw//2 DWs out.
         ndw8 = ndw//2 if ndw >= 4 else ndw
-        self.f8 = f8 = ResetInserter()(WideRXFramer(ndw8))
-        self.f3 = f3 = ResetInserter()(Gen3RXFramer(ndw))
+        self.f8 = f8 = ResetInserter()(WideRXFramer(ndw8, fifo_depth=fifo_depth))
+        self.f3 = f3 = ResetInserter()(Gen3RXFramer(ndw, fifo_depth=fifo_depth))
         self.comb += [
             f8.reset.eq(self.gen3),
             f3.reset.eq(~self.gen3),
@@ -909,7 +909,7 @@ class TXFramerSelect(LiteXModule):
 
 class WideDLLRX(LiteXModule):
     """As DLLRX, on beats of ndw DWs. Same interface towards the Data Link Layer core."""
-    def __init__(self, ndw, depth=2048, packets=32, framing="8b10b", nlanes=None):
+    def __init__(self, ndw, depth=2048, packets=32, framing="8b10b", nlanes=None, fifo_depth=64):
         self.reset        = Signal()
         self.gen3         = Signal() # i: 8.0 GT/s framing (framing="both").
         self.sink         = sink   = stream.Endpoint(lane_layout(4*ndw))
@@ -929,7 +929,7 @@ class WideDLLRX(LiteXModule):
         # Framing.
         if framing == "gen3":
             from litepcie.phy.soft.gen3 import Gen3RXFramer, Gen3RXTokenAligner
-            self.framer = framer = Gen3RXFramer(ndw)
+            self.framer = framer = Gen3RXFramer(ndw, fifo_depth=fifo_depth)
             if nlanes in [1, 2]:
                 self.aligner = aligner = Gen3RXTokenAligner(ndw, unit=nlanes)
                 self.comb += [
@@ -939,10 +939,10 @@ class WideDLLRX(LiteXModule):
             else:
                 self.comb += sink.connect(framer.sink, omit={"ctrl"})
         elif framing == "both":
-            self.framer = framer = RXFramerSelect(ndw, nlanes=nlanes)
+            self.framer = framer = RXFramerSelect(ndw, nlanes=nlanes, fifo_depth=fifo_depth)
             self.comb += [sink.connect(framer.sink), framer.gen3.eq(self.gen3)]
         else:
-            self.framer = framer = WideRXFramer(ndw)
+            self.framer = framer = WideRXFramer(ndw, fifo_depth=fifo_depth)
             self.comb += sink.connect(framer.sink)
         self.comb += [
             self.dllp.eq(framer.dllp),
