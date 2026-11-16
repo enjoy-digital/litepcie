@@ -70,7 +70,7 @@ class GTStatus(LiteXModule, AutoCSR):
 
 class SoftPHYSoC(SoCMini):
     def __init__(self, platform, sys_clk_freq=int(125e6), with_endpoint=False, ltssm_autostart=False,
-        speed="gen1", nlanes=1):
+        speed="gen1", nlanes=1, max_pending_requests=8):
         SoCMini.__init__(self, platform, sys_clk_freq, ident="LitePCIe soft PHY bring-up on KU3P", ident_version=True)
 
         # CRG --------------------------------------------------------------------------------------
@@ -93,8 +93,22 @@ class SoftPHYSoC(SoCMini):
             pcie_phy.add_timing_constraints(self.crg.cd_sys.clk)
             pcie_phy.add_debug(enable_reset=int(ltssm_autostart))
             pcie_phy.add_ltssm_tracer()
-            self.add_pcie(phy=pcie_phy, ndmas=1, address_width=64, with_dma_loopback=True)
+            self.add_pcie(phy=pcie_phy, ndmas=1, address_width=64, with_dma_loopback=True,
+                max_pending_requests=max_pending_requests)
             serdes, phy = pcie_phy.serdes, pcie_phy.phy_layer
+            # DMA user streams, used with the loopback disabled (one direction rates): Reader data
+            # dropped, Writer data a counter, always valid.
+            dma     = self.pcie_dma0
+            counter = Signal(32)
+            self.sync += If(dma.sink.valid & dma.sink.ready, counter.eq(counter + 1))
+            self.comb += [
+                dma.source.ready.eq(1),
+                dma.sink.valid.eq(1),
+                dma.sink.data.eq(Replicate(counter, len(dma.sink.data)//32)),
+            ]
+            # TLPs received (PHY to endpoint) and sent (endpoint to PHY), sys domain.
+            self.rx_stats = TLPStreamStats(pcie_phy.source)
+            self.tx_stats = TLPStreamStats(pcie_phy.sink)
         else:
             # Physical Layer alone: L0 against the host, received Symbols dropped.
             assert nlanes == 1 and speed != "gen3"
@@ -121,6 +135,58 @@ class SoftPHYSoC(SoCMini):
             leds[2].eq(~phy.ltssm.l0),
         ]
 
+# TLP Stream Stats ---------------------------------------------------------------------------------
+
+class TLPStreamStats(LiteXModule):
+    """Counters on a PHY stream (phy_layout) over 2**window_log2 cycles, started (and cleared) by a
+    write to control: beats, TLPs, Completions with Data and their data DWs, Completions with Data by
+    length (up to 16, 32, 64 DWs and more), cycles with valid and not ready (stalls), cycles without
+    valid (idles), and the first DW of the last TLP."""
+    def __init__(self, endpoint, window_log2=27):
+        self.control  = CSRStorage(1)
+        self.last_dw0 = CSRStatus(32)
+        counters = {n: Signal(32) for n in ["beats", "tlps", "cplds", "cpld_dws", "len16", "len32", "len64",
+            "len_more", "stalls", "idles"]}
+        for n in counters:
+            setattr(self, n, CSRStatus(32, name=n))
+
+        # # #
+
+        count  = Signal(window_log2 + 1)
+        active = Signal()
+        self.sync += If(self.control.re,
+            count.eq(0),
+            active.eq(1),
+            *[c.eq(0) for c in counters.values()],
+        ).Elif(active,
+            count.eq(count + 1),
+            If(count == (2**window_log2 - 1), active.eq(0)),
+        )
+        dw0     = endpoint.dat[0:32] # TLP DW0 (Fmt/Type on bits 31:24).
+        length  = dw0[0:10]
+        ndws    = Cat(length, length == 0) # Length 0: 1024 DWs.
+        is_cpld = (dw0[29:31] == 0b10) & (dw0[24:29] == 0b01010)
+        start   = endpoint.valid & endpoint.ready & endpoint.first
+        inc     = lambda n: counters[n].eq(counters[n] + 1)
+        self.sync += If(active,
+            If(endpoint.valid &  endpoint.ready, inc("beats")),
+            If(endpoint.valid & ~endpoint.ready, inc("stalls")),
+            If(~endpoint.valid, inc("idles")),
+            If(start,
+                inc("tlps"),
+                self.last_dw0.status.eq(dw0),
+                If(is_cpld,
+                    inc("cplds"),
+                    counters["cpld_dws"].eq(counters["cpld_dws"] + ndws),
+                    If(ndws <= 16, inc("len16")
+                    ).Elif(ndws <= 32, inc("len32")
+                    ).Elif(ndws <= 64, inc("len64")
+                    ).Else(inc("len_more")),
+                ),
+            ),
+        )
+        self.comb += [getattr(self, n).status.eq(c) for n, c in counters.items()]
+
 # Build --------------------------------------------------------------------------------------------
 
 def main():
@@ -131,6 +197,7 @@ def main():
     parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2", "gen3"], help="Soft PHY maximum speed (gen3: --with-endpoint).")
     parser.add_argument("--nlanes",          default=1, type=int, choices=[1, 4, 8], help="Lanes.")
     parser.add_argument("--driver",          action="store_true", help="Generate the PCIe driver.")
+    parser.add_argument("--max-pending-requests", default=8, type=int, help="DMA Reader requests in flight (with --with-endpoint).")
     parser.add_argument("--output-dir",      default="build/soft_ku3p", help="Build directory.")
     args = parser.parse_args()
 
@@ -140,6 +207,7 @@ def main():
         speed           = args.speed,
         nlanes          = args.nlanes,
         ltssm_autostart = args.ltssm_autostart,
+        max_pending_requests = args.max_pending_requests,
     )
     builder = Builder(soc, output_dir=args.output_dir, csr_csv=os.path.join(args.output_dir, "csr.csv"))
     builder.build(run=args.build)

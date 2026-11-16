@@ -13,6 +13,7 @@ python3 bench/soft/status.py --csr-csv csr.csv [status] [trace] [enable] [disabl
 """
 
 import sys
+import time
 import argparse
 
 from litex import RemoteClient
@@ -68,6 +69,15 @@ def main():
                     print(f"{counter}: {reg(counter).read()}")
             if hasattr(regs, "pcie_phy_link_status"):
                 print(f"dl_active: {regs.pcie_phy_link_status.read() & 1}")
+        elif command == "tlp":
+            # TLP counters between the PHY and the endpoint (bench/soft/ku3p.py), 2**27 sys cycles.
+            for stats in ["rx_stats", "tx_stats"]:
+                getattr(regs, stats + "_control").write(1)
+            time.sleep(1.5)
+            for stats in ["rx_stats", "tx_stats"]:
+                names  = ["beats", "tlps", "stalls", "idles", "cplds", "cpld_dws", "len16", "len32", "len64", "len_more"]
+                values = " ".join(f"{n} {getattr(regs, f'{stats}_{n}').read()}" for n in names)
+                print(f"{stats}: {values}, last DW0 {getattr(regs, stats + '_last_dw0').read():#010x}")
         elif command == "trace":
             while True:
                 entry = tracer.read()
