@@ -70,7 +70,7 @@ class GTStatus(LiteXModule, AutoCSR):
 
 class SoftPHYSoC(SoCMini):
     def __init__(self, platform, sys_clk_freq=int(125e6), with_endpoint=False, ltssm_autostart=False,
-        speed="gen1", nlanes=1):
+        speed="gen1", nlanes=1, max_pending_requests=8):
         SoCMini.__init__(self, platform, sys_clk_freq, ident="LitePCIe soft PHY bring-up on KU3P", ident_version=True)
 
         # CRG --------------------------------------------------------------------------------------
@@ -93,7 +93,8 @@ class SoftPHYSoC(SoCMini):
             pcie_phy.add_timing_constraints(self.crg.cd_sys.clk)
             pcie_phy.add_debug(enable_reset=int(ltssm_autostart))
             pcie_phy.add_ltssm_tracer()
-            self.add_pcie(phy=pcie_phy, ndmas=1, address_width=64, with_dma_loopback=True)
+            self.add_pcie(phy=pcie_phy, ndmas=1, address_width=64, with_dma_loopback=True,
+                max_pending_requests=max_pending_requests)
             serdes, phy = pcie_phy.serdes, pcie_phy.phy_layer
         else:
             # Physical Layer alone: L0 against the host, received Symbols dropped.
@@ -131,6 +132,7 @@ def main():
     parser.add_argument("--speed",           default="gen1", choices=["gen1", "gen2", "gen3"], help="Soft PHY maximum speed (gen3: --with-endpoint).")
     parser.add_argument("--nlanes",          default=1, type=int, choices=[1, 4, 8], help="Lanes.")
     parser.add_argument("--driver",          action="store_true", help="Generate the PCIe driver.")
+    parser.add_argument("--max-pending-requests", default=8, type=int, help="DMA Reader requests in flight (with --with-endpoint).")
     parser.add_argument("--output-dir",      default="build/soft_ku3p", help="Build directory.")
     args = parser.parse_args()
 
@@ -140,6 +142,7 @@ def main():
         speed           = args.speed,
         nlanes          = args.nlanes,
         ltssm_autostart = args.ltssm_autostart,
+        max_pending_requests = args.max_pending_requests,
     )
     builder = Builder(soc, output_dir=args.output_dir, csr_csv=os.path.join(args.output_dir, "csr.csv"))
     builder.build(run=args.build)
