@@ -195,9 +195,14 @@ class LitePCIeTLPController(LiteXModule):
         cmp_fsm.act("WAIT",
             tag_queue.sink.valid.eq(tag_retire),
             tag_queue.sink.tag.eq(req_queue.source.tag),
-            # Wait for a TLP Completion...
-            If(cmp_sink.valid & cmp_sink.first,
-                NextState("RUN")
+            # Wait for a TLP Completion, its first beat forwarded in the same cycle (no cycle lost
+            # between Completion TLPs)...
+            If(cmp_sink.first,
+                cmp_sink.connect(cmp_reorder, keep={"valid", "ready"}),
+                If(cmp_sink.valid & cmp_sink.ready & ~cmp_sink.last,
+                    NextState("RUN")
+                )
+            # ...and drop beats outside a TLP.
             ).Else(
                 cmp_sink.ready.eq(1)
             )
