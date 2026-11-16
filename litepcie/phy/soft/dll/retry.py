@@ -91,6 +91,14 @@ class ReplayBuffer(LiteXModule):
         count    = Signal(desc_width + 1) # Stored descriptors.
         self.comb += count.eq(wr_desc - ack_desc)
 
+        # Descriptor read by the transmitter: while a TLP is sent, the next one, its credits checked
+        # meanwhile (the credits of the TLP being sent are consumed when it starts): the next TLP
+        # starts one cycle after the last word of the current one instead of three.
+        sending   = Signal()
+        look_desc = Signal(desc_width + 1)
+        desc      = look_desc[:desc_width]
+        self.comb += look_desc.eq(Mux(sending, tx_desc + 1, tx_desc))
+
         # Write (Transaction Layer) ----------------------------------------------------------------
         wr_ptr   = Signal(adr_width)
         start    = Signal(adr_width)
@@ -122,7 +130,7 @@ class ReplayBuffer(LiteXModule):
             d_ack_wr.adr.eq(wr_desc[:desc_width]),
             d_ack_wr.we.eq(d_wr),
             d_ack_wr.dat_w.eq(Cat(d_tx_w.length, d_tx_w.seq)),
-            d_tx_rd.adr.eq(tx_desc[:desc_width]),
+            d_tx_rd.adr.eq(look_desc[:desc_width]),
             d_ack_rd.adr.eq(ack_desc[:desc_width]),
             d_tx_r.raw_bits().eq(d_tx_rd.dat_r),
             d_ack_r.raw_bits().eq(d_ack_rd.dat_r),
@@ -228,11 +236,11 @@ class ReplayBuffer(LiteXModule):
         # source.data is the memory output, the next address is presented when a word is consumed.
         rd_ptr    = Signal(adr_width)
         remaining = Signal(adr_width + 1) # Words left, current one included.
+        last      = Signal()              # remaining == 1, registered (source.last feeds the LCRC).
         consumed  = source.valid & source.ready
-        desc      = tx_desc[:desc_width]
         self.comb += [
             source.data.eq(rd_port.dat_r),
-            source.last.eq(remaining == 1),
+            source.last.eq(last),
         ]
         # Descriptor to transmit, registered, then fc_ok: valid 2 cycles after tx_desc changed or the
         # descriptor was written, and after the credits consumed by the previous TLP are counted.
@@ -244,6 +252,7 @@ class ReplayBuffer(LiteXModule):
         settle    = Signal(2)
         settled   = Signal()
         replay    = Signal()
+        starting  = Signal()
         self.comb += settled.eq(settle == 2)
         if ndw > 1:
             cur_dws = Signal(bits_for(ndw))
@@ -266,8 +275,9 @@ class ReplayBuffer(LiteXModule):
             ).Elif(sent_clr & (wr_desc[:desc_width] == d),
                 d_sent[d].eq(0)
             )
+        self.comb += sending.eq(fsm.ongoing("SEND"))
         self.sync += [
-            If(~fsm.ongoing("IDLE") | self.reset | replay | (tx_desc == wr_desc),
+            If(self.reset | replay | starting | (look_desc == wr_desc),
                 settle.eq(0)
             ).Elif(~settled,
                 settle.eq(settle + 1)
@@ -292,8 +302,10 @@ class ReplayBuffer(LiteXModule):
             ).Elif(self.enable & settled & (cur_sent | self.fc_ok),
                 self.fc_consume.eq(~cur_sent),
                 sent_set.eq(1),
+                starting.eq(1),
                 NextValue(rd_ptr, cur_start),
                 NextValue(remaining, cur_len),
+                NextValue(last, cur_len == 1),
                 NextValue(source.first, 1),
                 NextValue(source.seq, cur_seq),
                 *([NextValue(last_dws, cur_dws)] if ndw > 1 else []),
@@ -312,6 +324,7 @@ class ReplayBuffer(LiteXModule):
                     rd_port.adr.eq(rd_ptr + 1),
                     NextValue(rd_ptr, rd_ptr + 1),
                     NextValue(remaining, remaining - 1),
+                    NextValue(last, remaining == 2),
                 )
             ),
             If(self.reset,
