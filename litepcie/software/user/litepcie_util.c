@@ -474,6 +474,61 @@ end:
     litepcie_dma_cleanup(&dma);
 }
 
+/* DMA Rate */
+/*----------*/
+
+static void dma_rate(uint8_t zero_copy, const char *mode, int duration)
+{
+    static struct litepcie_dma_ctrl dma;
+    int rd = strchr(mode, 'r') != NULL;
+    int wr = strchr(mode, 'w') != NULL;
+
+    if (!rd && !wr) {
+        fprintf(stderr, "Invalid mode %s (r, w or rw)\n", mode);
+        exit(1);
+    }
+    if (duration <= 0)
+        duration = 5;
+
+    /* Reader (host to FPGA) and/or Writer (FPGA to host), loopback disabled: the design consumes
+       the Reader's data and produces the Writer's. Rates from the hardware buffer counts. */
+    dma.use_reader = rd;
+    dma.use_writer = wr;
+    dma.loopback   = 0;
+    if (litepcie_dma_init(&dma, litepcie_device, zero_copy))
+        exit(1);
+    dma.reader_enable = rd;
+    dma.writer_enable = wr;
+
+    signal(SIGINT, intHandler);
+
+    printf("\e[1m[> DMA rate (%s):\e[0m\n", mode);
+    printf("------------------\n");
+    printf("\e[1mREADER Gbps  WRITER Gbps\e[0m\n");
+    int64_t start_time = get_time_ms();
+    int64_t last_time  = start_time;
+    int64_t reader_last = 0, writer_last = 0;
+    while (keep_running && (get_time_ms() - start_time) < duration*1000) {
+        litepcie_dma_process(&dma);
+        while (litepcie_dma_next_write_buffer(&dma));
+        while (litepcie_dma_next_read_buffer(&dma));
+        int64_t now = get_time_ms();
+        if (now - last_time >= 1000) {
+            double ms = (double)(now - last_time);
+            printf("%11.2f  %11.2f\n",
+                (double)(dma.reader_hw_count - reader_last)*DMA_BUFFER_SIZE*8/(ms*1e6),
+                (double)(dma.writer_hw_count - writer_last)*DMA_BUFFER_SIZE*8/(ms*1e6));
+            reader_last = dma.reader_hw_count;
+            writer_last = dma.writer_hw_count;
+            last_time   = now;
+        }
+    }
+
+    dma.reader_enable = 0;
+    dma.writer_enable = 0;
+    litepcie_dma_cleanup(&dma);
+}
+
 /* Help */
 /*------*/
 
@@ -495,6 +550,7 @@ static void help(void)
            "info                              Get Board information.\n"
            "\n"
            "dma_test                          Test DMA.\n"
+           "dma_rate [r|w|rw]                 DMA rates, loopback disabled (the design consumes/produces the DMA streams).\n"
            "scratch_test                      Test Scratch register.\n"
            "\n"
 #ifdef CSR_FLASH_BASE
@@ -608,6 +664,13 @@ int main(int argc, char **argv)
             litepcie_data_width,
             litepcie_auto_rx_delay,
             test_duration);
+
+    else if (!strcmp(cmd, "dma_rate")) {
+        const char *mode = "rw";
+        if (optind < argc)
+            mode = argv[optind++];
+        dma_rate(litepcie_device_zero_copy, mode, test_duration);
+    }
 
     /* Show help otherwise. */
     else
