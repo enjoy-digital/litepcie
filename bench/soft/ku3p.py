@@ -106,6 +106,9 @@ class SoftPHYSoC(SoCMini):
                 dma.sink.valid.eq(1),
                 dma.sink.data.eq(Replicate(counter, len(dma.sink.data)//32)),
             ]
+            # TLPs received (PHY to endpoint) and sent (endpoint to PHY), sys domain.
+            self.rx_stats = TLPStreamStats(pcie_phy.source)
+            self.tx_stats = TLPStreamStats(pcie_phy.sink)
         else:
             # Physical Layer alone: L0 against the host, received Symbols dropped.
             assert nlanes == 1 and speed != "gen3"
@@ -131,6 +134,58 @@ class SoftPHYSoC(SoCMini):
             leds[1].eq(~phy.ltssm.link_up),
             leds[2].eq(~phy.ltssm.l0),
         ]
+
+# TLP Stream Stats ---------------------------------------------------------------------------------
+
+class TLPStreamStats(LiteXModule):
+    """Counters on a PHY stream (phy_layout) over 2**window_log2 cycles, started (and cleared) by a
+    write to control: beats, TLPs, Completions with Data and their data DWs, Completions with Data by
+    length (up to 16, 32, 64 DWs and more), cycles with valid and not ready (stalls), cycles without
+    valid (idles), and the first DW of the last TLP."""
+    def __init__(self, endpoint, window_log2=27):
+        self.control  = CSRStorage(1)
+        self.last_dw0 = CSRStatus(32)
+        counters = {n: Signal(32) for n in ["beats", "tlps", "cplds", "cpld_dws", "len16", "len32", "len64",
+            "len_more", "stalls", "idles"]}
+        for n in counters:
+            setattr(self, n, CSRStatus(32, name=n))
+
+        # # #
+
+        count  = Signal(window_log2 + 1)
+        active = Signal()
+        self.sync += If(self.control.re,
+            count.eq(0),
+            active.eq(1),
+            *[c.eq(0) for c in counters.values()],
+        ).Elif(active,
+            count.eq(count + 1),
+            If(count == (2**window_log2 - 1), active.eq(0)),
+        )
+        dw0     = endpoint.dat[0:32] # TLP DW0 (Fmt/Type on bits 31:24).
+        length  = dw0[0:10]
+        ndws    = Cat(length, length == 0) # Length 0: 1024 DWs.
+        is_cpld = (dw0[29:31] == 0b10) & (dw0[24:29] == 0b01010)
+        start   = endpoint.valid & endpoint.ready & endpoint.first
+        inc     = lambda n: counters[n].eq(counters[n] + 1)
+        self.sync += If(active,
+            If(endpoint.valid &  endpoint.ready, inc("beats")),
+            If(endpoint.valid & ~endpoint.ready, inc("stalls")),
+            If(~endpoint.valid, inc("idles")),
+            If(start,
+                inc("tlps"),
+                self.last_dw0.status.eq(dw0),
+                If(is_cpld,
+                    inc("cplds"),
+                    counters["cpld_dws"].eq(counters["cpld_dws"] + ndws),
+                    If(ndws <= 16, inc("len16")
+                    ).Elif(ndws <= 32, inc("len32")
+                    ).Elif(ndws <= 64, inc("len64")
+                    ).Else(inc("len_more")),
+                ),
+            ),
+        )
+        self.comb += [getattr(self, n).status.eq(c) for n, c in counters.items()]
 
 # Build --------------------------------------------------------------------------------------------
 
