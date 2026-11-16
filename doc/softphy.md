@@ -276,6 +276,9 @@ Alibaba Cloud KU3P board (`xcku3p-ffvb676-2-e`, GTY) on Lane 0 in the x16 slot o
     64-beat FIFO overflowed, TLPs were dropped and the DMA Reader stalled).
   - Timing: the "pcie" clock domain had its own clock net assigned from "pcie_link"; Vivado inserted a LUT1 between
     the two (27k registers on local routing), and timing at x8 depended on the placement. One net now.
+  - Against the hard IP of the same board in the same slot (`litex_boards.targets.alibaba_xcku3p --with-pcie
+    --pcie-lanes 8`, 256-bit): 9.45 Gb/s DMA loopback with its default 100 MHz system clock, 32.5 Gb/s with
+    `--sys-clk-freq 200e6` (every buffer checked), against 31.3 Gb/s for the soft PHY (512-bit at 125 MHz).
   - Reader only: mostly 256-byte Completions, the receive side idle 31 % of the time and the endpoint not refusing
     any: the 34 Gb/s are the host's. Reader and Writer together: a read request may not pass the posted writes
     ahead of it, the reads slow down under a full write load (20.2 + 36.1 Gb/s). Above about 13 Gb/s the host
