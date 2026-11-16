@@ -244,9 +244,12 @@ Alibaba Cloud KU3P board (`xcku3p-ffvb676-2-e`, GTY) on Lane 0 in the x16 slot o
 | Training, enumeration | Yes, equalization Phase 0-3 | Yes, equalization Phase 0-3 | Yes, equalization Phase 0-3 |
 | `scratch_test`, MSI | OK | OK | OK |
 | Root port errors, link idle | none | none | none in 3 minutes |
-| DMA loopback | 6.29 Gb/s (`dma_test`, before the packetizer fix) | about 30 Gb/s (`dma_test`, before the packetizer fix, the host hung) | 23.8 Gb/s received, data checked (with the packetizer fix) |
-| Retrain Link from 5.0/2.5 GT/s | | | 60 of 60 |
-| CLB LUTs | | | about 83k (with the wide DLL area changes) |
+| DMA loopback | 6.29 Gb/s (`dma_test`, before the packetizer fix) | about 30 Gb/s (`dma_test`, before the packetizer fix, the host hung) | 31.3 Gb/s, every buffer checked (23.8 Gb/s before the throughput changes) |
+| DMA Reader only / Writer only / both (`litepcie_util dma_rate`) | | | 34.2 / 41.7 / 20.2 + 36.1 Gb/s |
+| 15 min soak (DMA loopback) | | | 430M buffers checked, none wrong, no root port error |
+| Retrain Link 8.0 to 5.0/2.5 GT/s | | | 60 of 60 each, and 40 speed changes with DMA after each |
+| Link Disable/enable cycles | | | 30 of 30 back at 8 GT/s x8 |
+| CLB LUTs | | | about 83k (8 reads in flight), about 106k (32 reads in flight, the bench counters) |
 
 - Transceivers: Quad PLL1 at 8 GHz next to the Quad PLL0 of each quad, the rate ports at divider 1, PLL
   selection, PMA resets and the DRP writes of the Xilinx wrapper's rate sequence (CDR and drive mode) through the
@@ -260,6 +263,23 @@ Alibaba Cloud KU3P board (`xcku3p-ffvb676-2-e`, GTY) on Lane 0 in the x16 slot o
   the pattern and clears it: 1.78M buffers in 5 s, none wrong. `dma_test` doesn't keep up at that rate (about
   15 Gb/s, buffers of zeros reported), as at x8 on the GTX. x8 needs the wide Data Link Layer area changes to fit
   the `xcku3p`.
+- DMA throughput at 8 GT/s x8 (32 reads of 512 bytes in flight, 256-byte Max Payload Size, the host's 64-byte
+  Read Completion Boundary), found with the bench TLP counters between the PHY and the endpoint and one-direction
+  DMA rates (`bench/soft/ku3p.py --max-pending-requests`, `status.py tlp`, `litepcie_util dma_rate`):
+  - Received TLPs: the depacketizer and the completion controller each lost a cycle per TLP (the endpoint
+    refused 27 % of the received beats). Now one beat per cycle.
+  - Transmitted TLPs: the replay buffer waited three cycles between TLPs (descriptor read, credit check), the PHY
+    refused 39 % of the Writer's beats (31.1 Gb/s). The next descriptor is now read and checked while a TLP is
+    sent: one cycle between TLPs, 41.7 Gb/s.
+  - Completions have infinite credits, so the receiver holds the bursts of the reads in flight: the receive
+    framers' FIFO and the receive buffer's packets are sized from the buffer depth (with 32 reads in flight the
+    64-beat FIFO overflowed, TLPs were dropped and the DMA Reader stalled).
+  - Timing: the "pcie" clock domain had its own clock net assigned from "pcie_link"; Vivado inserted a LUT1 between
+    the two (27k registers on local routing), and timing at x8 depended on the placement. One net now.
+  - Reader only: mostly 256-byte Completions, the receive side idle 31 % of the time and the endpoint not refusing
+    any: the 34 Gb/s are the host's. Reader and Writer together: a read request may not pass the posted writes
+    ahead of it, the reads slow down under a full write load (20.2 + 36.1 Gb/s). Above about 13 Gb/s the host
+    check of the loopback tests loses whole buffers (the driver's "too late"), never a buffer with wrong data.
 
 ## Resources and timing against the hard IP
 
