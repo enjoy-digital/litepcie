@@ -8,13 +8,13 @@
 
 The PHY expects a Platform Designer system named ``pcie_phy``. The system owns the PCIe hard IP
 and its transceiver reconfiguration controller and exposes the Avalon-ST application interface
-used below.
+used below. ``generate_hard_ip`` generates this system at build time (qsys-generate) and
+``use_external_hard_ip`` takes a pre-generated one.
 """
 
 import os
 import shutil
 import subprocess
-from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from migen import *
@@ -22,10 +22,160 @@ from migen.genlib.cdc import BusSynchronizer
 
 from litex.gen import *
 
-from litex.soc.interconnect import packet, stream
+from litex.soc.interconnect import stream
+from litex.soc.interconnect.packet import PacketFIFO
 from litex.soc.interconnect.avalon import Native2AvalonST, AvalonST2Native
 
 from litepcie.common import *
+from litepcie.phy.svpciephy import _TXQwordAligner, _RXQwordDealigner
+
+# Quartus / Qsys Discovery -------------------------------------------------------------------------
+
+def _find_qsys_generate():
+    """Locate qsys-generate from QUARTUS_ROOTDIR, or from the Quartus installation on PATH."""
+    quartus = os.environ.get("QUARTUS_ROOTDIR")
+    if quartus is None:
+        quartus_map = shutil.which("quartus_map")
+        if quartus_map is None:
+            raise OSError("Put Quartus on PATH or set QUARTUS_ROOTDIR")
+        quartus = os.path.dirname(os.path.dirname(os.path.realpath(quartus_map)))
+    return os.path.join(os.path.realpath(quartus), "sopc_builder", "bin", "qsys-generate")
+
+# Platform Designer System -------------------------------------------------------------------------
+
+def _build_qsys(device, nlanes, data_width, bar0_size):
+    """Return the ``pcie_phy`` Platform Designer system (.qsys) as text.
+
+    The system holds the native endpoint (Avalon-ST), its reconfiguration driver and the transceiver
+    reconfiguration controller, and exports the interfaces C5PCIEPHY connects.
+    """
+    # System.
+    system = ET.Element("system", name="pcie_phy")
+    ET.SubElement(system, "component", name="pcie_phy", version="1.0")
+
+    def parameters(element, **values):
+        for name, value in values.items():
+            ET.SubElement(element, "parameter", name=name, value=str(value))
+
+    def module(name, kind, version="25.1", **values):
+        element = ET.SubElement(system, "module",
+            name    = name,
+            kind    = kind,
+            version = version,
+            enabled = "1",
+        )
+        parameters(element, **values)
+
+    parameters(system,
+        device       = device,
+        deviceFamily = "Cyclone V",
+        hdlLanguage  = "VERILOG",
+    )
+
+    # Modules.
+    rate = "Gen2 (5.0 Gbps)"
+    module("app", "clock_source",
+        clockFrequency        = 125000000,
+        clockFrequencyKnown   = "true",
+        resetSynchronousEdges = "NONE",
+    )
+    module("mgmt", "clock_source",
+        clockFrequency        = 50000000,
+        clockFrequencyKnown   = "true",
+        resetSynchronousEdges = "NONE",
+    )
+    module("driver", "altera_pcie_reconfig_driver",
+        INTENDED_DEVICE_FAMILY        = "Cyclone V",
+        gen123_lane_rate_mode_hwtcl   = rate,
+        number_of_reconfig_interfaces = nlanes + 1,
+    )
+    module("xcvr", "alt_xcvr_reconfig", "19.1",
+        device_family                 = "Cyclone V",
+        enable_analog                 = 1,
+        enable_offset                 = 1,
+        number_of_reconfig_interfaces = nlanes + 1,
+    )
+    bars = {
+        f"bar{i}_{field}_0_hwtcl" : 0 for i in range(1, 6) for field in ("type", "size_mask")
+    }
+    module("hip", "altera_pcie_cv_hip_ast",
+        INTENDED_DEVICE_FAMILY            = "Cyclone V",
+        ast_width_hwtcl                   = f"Avalon-ST {data_width}-bit",
+        lane_mask_hwtcl                   = f"x{nlanes}",
+        gen12_lane_rate_mode_hwtcl        = rate,
+        pll_refclk_freq_hwtcl             = "100 MHz",
+        porttype_func_hwtcl               = "Native endpoint",
+        vendor_id_0_hwtcl                 = 0x1172,
+        device_id_0_hwtcl                 = 0xc504,
+        class_code_0_hwtcl                = 0xff0000,
+        revision_id_0_hwtcl               = 1,
+        subsystem_device_id_0_hwtcl       = 0,
+        subsystem_vendor_id_0_hwtcl       = 0,
+        bar0_size_mask_0_hwtcl            = bar0_size.bit_length() - 1,
+        bar0_type_0_hwtcl                 = 2,
+        max_payload_size_hwtcl            = 256,
+        msi_support_0_hwtcl               = "true",
+        msi_multi_message_capable_0_hwtcl = 1,
+        use_rx_st_be_hwtcl                = 0,
+        **bars,
+    )
+
+    # Exported interfaces (inserted before the modules).
+    for name, internal, kind, direction in [
+        ("app_reset",      "app.clk_in_reset",   "reset",            "end"),
+        ("pld_clk",        "app.clk_in",         "clock",            "end"),
+        ("reconfig_clk",   "mgmt.clk_in",        "clock",            "end"),
+        ("reconfig_reset", "mgmt.clk_in_reset",  "reset",            "end"),
+        ("coreclkout_hip", "hip.coreclkout_hip", "clock",            "start"),
+        ("refclk",         "hip.refclk",         "clock",            "end"),
+        ("rx_st",          "hip.rx_st",          "avalon_streaming", "start"),
+        ("tx_st",          "hip.tx_st",          "avalon_streaming", "end"),
+        ("config_tl",      "hip.config_tl",      "conduit",          "end"),
+        ("hip_rst",        "hip.hip_rst",        "conduit",          "end"),
+        ("hip_serial",     "hip.hip_serial",     "conduit",          "end"),
+        ("int_msi",        "hip.int_msi",        "conduit",          "end"),
+        ("npor",           "hip.npor",           "conduit",          "end"),
+        ("power_mngt",     "hip.power_mngt",     "conduit",          "end"),
+    ]:
+        interface = ET.Element("interface",
+            name     = name,
+            internal = internal,
+            type     = kind,
+            dir      = direction,
+        )
+        system.insert(list(system).index(system.find("module")), interface)
+
+    # Connections.
+    for kind, start, end in [
+        ("avalon",  "driver.reconfig_mgmt",   "xcvr.reconfig_mgmt"),
+        ("clock",   "mgmt.clk",               "xcvr.mgmt_clk_clk"),
+        ("clock",   "app.clk",                "hip.pld_clk"),
+        ("clock",   "app.clk",                "driver.pld_clk"),
+        ("clock",   "mgmt.clk",               "driver.reconfig_xcvr_clk"),
+        ("conduit", "hip.hip_currentspeed",   "driver.hip_currentspeed"),
+        ("conduit", "hip.hip_status",         "driver.hip_status_drv"),
+        ("conduit", "xcvr.reconfig_busy",     "driver.reconfig_busy"),
+        ("conduit", "hip.reconfig_from_xcvr", "xcvr.reconfig_from_xcvr"),
+        ("conduit", "hip.reconfig_to_xcvr",   "xcvr.reconfig_to_xcvr"),
+        ("reset",   "mgmt.clk_reset",         "xcvr.mgmt_rst_reset"),
+        ("reset",   "mgmt.clk_reset",         "driver.reconfig_xcvr_rst"),
+    ]:
+        connection = ET.SubElement(system, "connection",
+            kind    = kind,
+            version = "25.1",
+            start   = start,
+            end     = end,
+        )
+        if kind == "avalon":
+            parameters(connection,
+                arbitrationPriority = 1,
+                baseAddress         = "0x0000",
+                defaultConnection   = "false",
+            )
+
+    # Text.
+    ET.indent(system)
+    return ET.tostring(system, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
 # Configuration Space Decode -----------------------------------------------------------------------
 
@@ -212,8 +362,6 @@ class C5PCIEPHY(LiteXModule):
 
         # Qword Alignment (128-bit) ----------------------------------------------------------------
         if data_width == 128:
-            from litepcie.phy.svpciephy import _TXQwordAligner, _RXQwordDealigner
-
             self.tx_align = ClockDomainsRenamer("pcie")(_TXQwordAligner(data_width))
             self.rx_align = ClockDomainsRenamer("pcie")(_RXQwordDealigner(data_width))
             self.comb += [
@@ -224,7 +372,7 @@ class C5PCIEPHY(LiteXModule):
             # The hard IP requires valid on every ready cycle from SOP to EOP: buffer the complete
             # aligned TLP before starting its transmission. 512 beats cover a 4 KiB payload plus
             # header and alignment padding.
-            self.tx_packets = ClockDomainsRenamer("pcie")(packet.PacketFIFO(
+            self.tx_packets = ClockDomainsRenamer("pcie")(PacketFIFO(
                 layout        = phy_layout(data_width),
                 payload_depth = 512,
                 param_depth   = 32,
@@ -332,155 +480,27 @@ class C5PCIEPHY(LiteXModule):
 
     # Hard IP Generation ---------------------------------------------------------------------------
     def generate_hard_ip(self, output_dir):
-        """Generate the native endpoint and transceiver reconfiguration system."""
-        # Quartus.
-        quartus = os.environ.get("QUARTUS_ROOTDIR")
-        if quartus is None:
-            quartus_map = shutil.which("quartus_map")
-            if quartus_map is None:
-                raise OSError("Put Quartus on PATH or set QUARTUS_ROOTDIR")
-            quartus = Path(quartus_map).resolve().parent.parent
-        generator = Path(quartus).resolve() / "sopc_builder/bin/qsys-generate"
+        """Generate the ``pcie_phy`` Platform Designer system and use it as the hard IP."""
+        qsys_generate = _find_qsys_generate()
+        output_dir    = os.path.realpath(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
 
-        # Output directory.
-        output_dir = Path(output_dir).resolve()
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # System.
-        system = ET.Element("system", name="pcie_phy")
-        ET.SubElement(system, "component", name="pcie_phy", version="1.0")
-
-        def parameters(element, **values):
-            for name, value in values.items():
-                ET.SubElement(element, "parameter", name=name, value=str(value))
-
-        def module(name, kind, version="25.1", **values):
-            element = ET.SubElement(system, "module",
-                name    = name,
-                kind    = kind,
-                version = version,
-                enabled = "1",
-            )
-            parameters(element, **values)
-
-        parameters(system,
-            device       = self.platform.device,
-            deviceFamily = "Cyclone V",
-            hdlLanguage  = "VERILOG",
+        # Platform Designer system.
+        qsys = _build_qsys(
+            device     = self.platform.device,
+            nlanes     = self.nlanes,
+            data_width = self.data_width,
+            bar0_size  = self.bar0_size,
         )
-
-        # Modules.
-        rate = "Gen2 (5.0 Gbps)"
-        module("app", "clock_source",
-            clockFrequency        = 125000000,
-            clockFrequencyKnown   = "true",
-            resetSynchronousEdges = "NONE",
-        )
-        module("mgmt", "clock_source",
-            clockFrequency        = 50000000,
-            clockFrequencyKnown   = "true",
-            resetSynchronousEdges = "NONE",
-        )
-        module("driver", "altera_pcie_reconfig_driver",
-            INTENDED_DEVICE_FAMILY        = "Cyclone V",
-            gen123_lane_rate_mode_hwtcl   = rate,
-            number_of_reconfig_interfaces = self.nlanes + 1,
-        )
-        module("xcvr", "alt_xcvr_reconfig", "19.1",
-            device_family                 = "Cyclone V",
-            enable_analog                 = 1,
-            enable_offset                 = 1,
-            number_of_reconfig_interfaces = self.nlanes + 1,
-        )
-        bars = {
-            f"bar{i}_{field}_0_hwtcl" : 0 for i in range(1, 6) for field in ("type", "size_mask")
-        }
-        module("hip", "altera_pcie_cv_hip_ast",
-            INTENDED_DEVICE_FAMILY            = "Cyclone V",
-            ast_width_hwtcl                   = f"Avalon-ST {self.data_width}-bit",
-            lane_mask_hwtcl                   = f"x{self.nlanes}",
-            gen12_lane_rate_mode_hwtcl        = rate,
-            pll_refclk_freq_hwtcl             = "100 MHz",
-            porttype_func_hwtcl               = "Native endpoint",
-            vendor_id_0_hwtcl                 = 0x1172,
-            device_id_0_hwtcl                 = 0xc504,
-            class_code_0_hwtcl                = 0xff0000,
-            revision_id_0_hwtcl               = 1,
-            subsystem_device_id_0_hwtcl       = 0,
-            subsystem_vendor_id_0_hwtcl       = 0,
-            bar0_size_mask_0_hwtcl            = self.bar0_size.bit_length() - 1,
-            bar0_type_0_hwtcl                 = 2,
-            max_payload_size_hwtcl            = 256,
-            msi_support_0_hwtcl               = "true",
-            msi_multi_message_capable_0_hwtcl = 1,
-            use_rx_st_be_hwtcl                = 0,
-            **bars,
-        )
-
-        # Exported interfaces (inserted before the modules).
-        for name, internal, kind, direction in [
-            ("app_reset",      "app.clk_in_reset",   "reset",            "end"),
-            ("pld_clk",        "app.clk_in",         "clock",            "end"),
-            ("reconfig_clk",   "mgmt.clk_in",        "clock",            "end"),
-            ("reconfig_reset", "mgmt.clk_in_reset",  "reset",            "end"),
-            ("coreclkout_hip", "hip.coreclkout_hip", "clock",            "start"),
-            ("refclk",         "hip.refclk",         "clock",            "end"),
-            ("rx_st",          "hip.rx_st",          "avalon_streaming", "start"),
-            ("tx_st",          "hip.tx_st",          "avalon_streaming", "end"),
-            ("config_tl",      "hip.config_tl",      "conduit",          "end"),
-            ("hip_rst",        "hip.hip_rst",        "conduit",          "end"),
-            ("hip_serial",     "hip.hip_serial",     "conduit",          "end"),
-            ("int_msi",        "hip.int_msi",        "conduit",          "end"),
-            ("npor",           "hip.npor",           "conduit",          "end"),
-            ("power_mngt",     "hip.power_mngt",     "conduit",          "end"),
-        ]:
-            interface = ET.Element("interface",
-                name     = name,
-                internal = internal,
-                type     = kind,
-                dir      = direction,
-            )
-            system.insert(list(system).index(system.find("module")), interface)
-
-        # Connections.
-        for kind, start, end in [
-            ("avalon",  "driver.reconfig_mgmt",   "xcvr.reconfig_mgmt"),
-            ("clock",   "mgmt.clk",               "xcvr.mgmt_clk_clk"),
-            ("clock",   "app.clk",                "hip.pld_clk"),
-            ("clock",   "app.clk",                "driver.pld_clk"),
-            ("clock",   "mgmt.clk",               "driver.reconfig_xcvr_clk"),
-            ("conduit", "hip.hip_currentspeed",   "driver.hip_currentspeed"),
-            ("conduit", "hip.hip_status",         "driver.hip_status_drv"),
-            ("conduit", "xcvr.reconfig_busy",     "driver.reconfig_busy"),
-            ("conduit", "hip.reconfig_from_xcvr", "xcvr.reconfig_from_xcvr"),
-            ("conduit", "hip.reconfig_to_xcvr",   "xcvr.reconfig_to_xcvr"),
-            ("reset",   "mgmt.clk_reset",         "xcvr.mgmt_rst_reset"),
-            ("reset",   "mgmt.clk_reset",         "driver.reconfig_xcvr_rst"),
-        ]:
-            connection = ET.SubElement(system, "connection",
-                kind    = kind,
-                version = "25.1",
-                start   = start,
-                end     = end,
-            )
-            if kind == "avalon":
-                parameters(connection,
-                    arbitrationPriority = 1,
-                    baseAddress         = "0x0000",
-                    defaultConnection   = "false",
-                )
+        with open(os.path.join(output_dir, "pcie_phy.qsys"), "w", encoding="utf-8") as f:
+            f.write(qsys)
 
         # Generation.
-        ET.indent(system)
-        ET.ElementTree(system).write(output_dir / "pcie_phy.qsys",
-            encoding        = "utf-8",
-            xml_declaration = True,
-        )
-        subprocess.run([str(generator), "pcie_phy.qsys", "--synthesis=VERILOG"],
+        subprocess.run([qsys_generate, "pcie_phy.qsys", "--synthesis=VERILOG"],
             cwd   = output_dir,
             check = True,
         )
-        self.use_external_hard_ip(output_dir / "pcie_phy/synthesis/pcie_phy.qip")
+        self.use_external_hard_ip(os.path.join(output_dir, "pcie_phy", "synthesis", "pcie_phy.qip"))
 
     # External Hard IP -----------------------------------------------------------------------------
     def use_external_hard_ip(self, hard_ip_path):
