@@ -384,9 +384,21 @@ class C5PCIEPHY(LiteXModule):
             rx_st = self.rx_align.sink
 
         # Native Stream <-> Avalon-ST --------------------------------------------------------------
+        # Avalon-ST readyLatency. The hard IP component declares 3 for rx_st and tx_st (Quartus
+        # pcie_av_port.tcl, shared with Arria V). The Cyclone V Avalon-ST PCIe user guide (UG-01110)
+        # gives 2 for rx_st_ready in its signal table, but "within three cycles" in its RX
+        # back-pressure figures and "Changed the readyLatency of the RX interface to 3 cycles" in
+        # its revision history (2019.01.18): size for 3. For TX, the guide recommends a readyLatency
+        # of 2 (tx_st_valid deasserts within 1 or 2 cycles of tx_st_ready).
+        # On RX the hard IP may still present a beat on each of the readyLatency cycles after
+        # rx_st_ready deasserts. AvalonST2Native drives rx_st_ready straight from the downstream
+        # ready and sizes its FIFO to `latency` entries, but the beat accepted in the cycle before
+        # the deassertion is still in that FIFO (it cannot pass through combinatorially), so a
+        # readyLatency of N needs N + 1 entries: 4 here (with 3, the third in-flight beat is lost).
+        rx_ready_latency = 3
         tx_n2av = Native2AvalonST(phy_layout(data_width), latency=2)
         tx_n2av = ClockDomainsRenamer("pcie")(tx_n2av)
-        rx_av2n = AvalonST2Native(phy_layout(data_width), latency=3)
+        rx_av2n = AvalonST2Native(phy_layout(data_width), latency=rx_ready_latency + 1)
         rx_av2n = ClockDomainsRenamer("pcie")(rx_av2n)
         self.submodules += tx_n2av, rx_av2n
         self.comb += [
