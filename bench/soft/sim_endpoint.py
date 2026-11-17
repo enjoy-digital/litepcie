@@ -43,8 +43,9 @@ from litepcie.phy.soft.serdes.model import PCIeSerDesModel
 # IOs/Platform -------------------------------------------------------------------------------------
 
 _io = [
-    ("sys_clk", 0, Pins(1)),
-    ("sys_rst", 0, Pins(1)),
+    ("sys_clk",  0, Pins(1)),
+    ("sys_rst",  0, Pins(1)),
+    ("lane_clk", 0, Pins(1)), # Independent lane clock (--link-freq != 125 MHz).
 ]
 
 class Platform(SimPlatform):
@@ -298,17 +299,21 @@ class ScriptedRoot(LiteXModule):
 # Simulation SoC -----------------------------------------------------------------------------------
 
 class SoftPHYEndpointSim(SoCMini):
-    def __init__(self, data_width=64, timer_scale=100, ts1_min=64, max_cycles=2**22, nlanes=1, dead_lanes=0, width=None):
-        sys_clk_freq = int(125e6)
+    def __init__(self, data_width=64, timer_scale=100, ts1_min=64, max_cycles=2**22, nlanes=1, dead_lanes=0, width=None,
+        link_freq=125e6):
+        # link_freq != 125 MHz: the lane clock (62.5 MHz) is an independent clock instead of sys/2 (ECP5 check).
+        independent_lane = (link_freq != 125e6)
+        sys_clk_freq = int(link_freq)
         platform     = Platform()
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq)
 
-        # Clocks: "pcie_link" = sys (125 MHz), "pcie_pipe" = sys/2 (62.5 MHz, 2.5 GT/s).
+        # Clocks: "pcie_link" = sys (link_freq, 125 MHz), "pcie_pipe" = sys/2 (62.5 MHz, 2.5 GT/s).
         self.crg = CRG(platform.request("sys_clk"))
         self.cd_pcie_link = ClockDomain()
         self.cd_pcie_pipe = ClockDomain()
-        lane_clk = Signal()
-        self.sync += lane_clk.eq(~lane_clk)
+        lane_clk = platform.request("lane_clk") if independent_lane else Signal()
+        if not independent_lane:
+            self.sync += lane_clk.eq(~lane_clk)
         self.comb += [
             self.cd_pcie_link.clk.eq(ClockSignal("sys")),
             self.cd_pcie_link.rst.eq(ResetSignal("sys")),
@@ -454,6 +459,7 @@ def main():
     parser.add_argument("--width",       default=None, type=int, help="Negotiated width expected in Link Status.")
     parser.add_argument("--timer-scale", default=100, type=int, help="LTSSM timers scale.")
     parser.add_argument("--ts1-min",     default=64, type=int,  help="TS1 transmitted in Polling.Active (specification: 1024).")
+    parser.add_argument("--link-freq",   default=125e6, type=float, help="Link clock (Hz). Other than 125 MHz: independent 62.5 MHz lane clock.")
     parser.add_argument("--max-cycles",  default=2**22, type=int, help="Simulation timeout (sys clock cycles).")
     parser.add_argument("--output-dir",  default="build/soft_sim_endpoint", help="Build directory.")
     args = parser.parse_args()
@@ -466,9 +472,21 @@ def main():
         timer_scale = args.timer_scale,
         ts1_min     = args.ts1_min,
         max_cycles  = args.max_cycles,
+        link_freq   = args.link_freq,
     )
+    if args.link_freq == 125e6:
+        sim_config = SimConfig(default_clk="sys_clk")
+    else:
+        # Integer-ps clockers stepping at their GCD: keep the lane/link period ratio as a small fraction of a
+        # round period (the frequencies are relative, the layers' timers take link_freq).
+        from fractions import Fraction
+        ratio = Fraction(62.5e6/args.link_freq).limit_denominator(32) # lane freq / link freq = link period / lane period.
+        unit  = 2500 # ps.
+        sim_config = SimConfig()
+        sim_config.add_clocker("sys_clk",  freq_hz=1e12/(ratio.numerator*unit))
+        sim_config.add_clocker("lane_clk", freq_hz=1e12/(ratio.denominator*unit))
     builder = Builder(soc, output_dir=args.output_dir, compile_software=False)
-    builder.build(sim_config=SimConfig(default_clk="sys_clk"), opt_level="O0", interactive=False, trace=args.trace)
+    builder.build(sim_config=sim_config, opt_level="O0", interactive=False, trace=args.trace)
 
 if __name__ == "__main__":
     main()

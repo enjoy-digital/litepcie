@@ -149,6 +149,16 @@ python3 bench/soft/sim_soc.py --mps 256 --dma-size 1024 --dma-buffers 4
 python3 bench/soft/sim_soc.py --gen3 --nlanes 8
 ```
 
+`sim.py` and `sim_endpoint.py` take `--link-freq` to run the link at a frequency other than 125 MHz. The
+lane clock, 62.5 MHz at 2.5 GT/s, then becomes an independent clock instead of half of the link
+clock. This suits FPGAs where the data link layer does not close timing at 125 MHz. It applies to
+Gen1 only.
+
+```sh
+# Link clock at 75 MHz, lane clock independent
+python3 bench/soft/sim.py --link-freq 75e6
+```
+
 Every script ends with `SIM OK`, or with a timeout or mismatch message. `--timer-scale` divides the
 LTSSM timers to shorten the runs; `--timer-scale 1` uses the timers of the specification.
 `--trace` writes a VCD in the build directory, except on `sim_wide.py`. [Simulation
