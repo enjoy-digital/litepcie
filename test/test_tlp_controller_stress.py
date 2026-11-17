@@ -317,11 +317,10 @@ class TestTLPControllerStress(unittest.TestCase):
         self.assertTrue(any("DEADLOCK" in e for e in st["errors"]))
 
     def test_late_completions(self):
-        # Completions arriving after their request timed out, their tags possibly reused: the
-        # requests reusing them may get wrong data, but nothing is left behind (no deadlock, the
-        # requests sent after the last late Completion are delivered correctly).
+        # Completions arriving after their request timed out, while no tag is reused: dropped,
+        # the requests sent afterwards are delivered correctly.
         for data_width, policy in [(64, "random"), (256, "youngest"), (512, "oldest_last")]:
-            st = self.stress(data_width=data_width, policy=policy, late_p=0.1, late_delay=1500,
+            st = self.stress(data_width=data_width, policy=policy, late_p=0.1, late_delay=600,
                 cmp_timeout=400, timeout=4000, user_stall_max=100, hold=20, requests=450)
             self.assertGreater(st["late"], 0)
 

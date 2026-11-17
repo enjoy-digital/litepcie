@@ -42,11 +42,14 @@ class LitePCIeTLPController(LiteXModule):
       request whose Completion is incomplete (``cmp_timeout=None`` disables it).
 
     A Completion received for a tag with no request outstanding (unexpected, or late after a
-    timeout) is dropped, and a tag's buffer is emptied when the tag is sent again: a late Completion
-    can at worst corrupt the data of the request that reuses its tag, it leaves nothing behind.
+    timeout) is dropped, and a tag's buffer is emptied when the tag is sent again. After a timeout,
+    no read request is sent until ``cmp_timeout`` cycles have elapsed without such a Completion:
+    the tags of the lost requests are not reused while their Completions may still arrive (a
+    Completion arriving later than that can't be told from the one of the request reusing its
+    tag).
     """
     def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True,
-        with_configuration=False, cmp_buf_depth=None, cmp_timeout=2**24):
+        with_configuration=False, cmp_buf_depth=None, cmp_timeout=2**27):
         self.ctrl_rst  = Signal() # Flush (level or pulse).
         self.timeout   = Signal() # Completion timeout (pulse).
         self.master_in  = LitePCIeMasterInternalPort(data_width, address_width, with_configuration=with_configuration)
@@ -81,10 +84,12 @@ class LitePCIeTLPController(LiteXModule):
         # Flush / Abort ----------------------------------------------------------------------------
         # Flush: the outstanding requests are terminated as their Completions arrive.
         # Abort: the outstanding requests are terminated without waiting for more Completions.
-        flush = Signal()
-        abort = Signal()
-        hold  = Signal()
-        self.comb += hold.eq(self.ctrl_rst | flush | abort)
+        # Quarantine: after an Abort, no read request until the late Completions have stopped.
+        flush      = Signal()
+        abort      = Signal()
+        quarantine = Signal()
+        hold       = Signal()
+        self.comb += hold.eq(self.ctrl_rst | flush | abort | quarantine)
 
         # Requests Management ----------------------------------------------------------------------
 
@@ -187,12 +192,14 @@ class LitePCIeTLPController(LiteXModule):
         ]
 
         # Connect Cmp Input to Buffers (based on incoming Tag), drop the Completions of tags not owned.
+        cmp_drop = Signal()
         cases = {
             i: [
                 If(tag_owned[i],
                     cmp_reorder.connect(cmp_bufs[i].sink)
                 ).Else(
-                    cmp_reorder.ready.eq(1)
+                    cmp_reorder.ready.eq(1),
+                    cmp_drop.eq(cmp_reorder.valid),
                 )
             ] for i in range(len(cmp_bufs))
         }
@@ -326,7 +333,20 @@ class LitePCIeTLPController(LiteXModule):
                 self.timeout.eq(0),
                 If(abort,
                     timer.eq(0),
-                    If(idle, abort.eq(0)),
+                    If(idle,
+                        abort.eq(0),
+                        quarantine.eq(1),
+                    ),
+                ).Elif(quarantine,
+                    # Completions dropped during the Abort or for a tag not owned restart it.
+                    If(cmp_drop | (cmp_phy.valid & cmp_phy.ready),
+                        timer.eq(0),
+                    ).Elif(timer == cmp_timeout,
+                        timer.eq(0),
+                        quarantine.eq(0),
+                    ).Else(
+                        timer.eq(timer + 1),
+                    )
                 ).Elif(~req_queue.source.valid | activity,
                     timer.eq(0),
                 ).Elif(timer == cmp_timeout,
