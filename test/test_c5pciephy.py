@@ -5,15 +5,16 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import os
+import random
 import tempfile
 import unittest
 from unittest import mock
 from xml.etree import ElementTree as ET
 
-from migen import Signal
+from migen import Module, Signal
 from migen.fhdl.specials import Instance
 from migen.fhdl.structure import Constant
-from migen.sim import run_simulation
+from migen.sim import passive, run_simulation
 
 from litepcie.phy import c5pciephy
 from litepcie.phy.c5pciephy import C5PCIEPHY, _C5Config, _build_qsys
@@ -258,6 +259,111 @@ class TestC5PCIEPHY(unittest.TestCase):
         self.assertEqual(platform.ips, [])
         self.assertFalse(phy.external_hard_ip)
 
+
+# Hard IP RX Avalon-ST Interface -------------------------------------------------------------------
+
+class _NoInstance:
+    # The hard IP and the reference clock buffer are vendor Instances; the test plays the hard IP.
+    @staticmethod
+    def lower(dr):
+        return Module()
+
+
+class TestC5PCIEPHYRXReadyLatency(unittest.TestCase):
+    """rx_st is an Avalon-ST source with readyLatency 3 (pcie_av_port.tcl: `rx_st readyLatency 3`):
+    the hard IP may assert rx_st_valid in cycle k whenever rx_st_ready was asserted in cycle k-3, so
+    up to 3 beats arrive after rx_st_ready deasserts. None of them may be lost."""
+
+    def run_rx(self, data_width, npackets=64, ready_latency=3, ready_rate=0.7, cycles=3000):
+        prng = random.Random(data_width)
+        phy  = C5PCIEPHY(DummyPlatform(), DummyPads(), data_width=data_width, cd="pcie")
+        phy.use_external_hard_ip("/tmp/c5-ip")
+        p    = phy.pcie_phy_params
+
+        # Memory Writes with a 3-DW header at a qword aligned address, as the hard IP presents
+        # them: payload from the third qword, 3 to 10 qwords.
+        qwords  = data_width//64
+        tlps    = []
+        packets = []
+        for n in range(npackets):
+            length  = prng.randrange(1, 17)
+            header  = [(1 << 30) | length, 0x000000ff, n << 3]
+            payload = [prng.getrandbits(32) for _ in range(length)]
+            dwords  = header + [0] + payload + [0]*(length % 2)
+            tlps.append(header + payload)
+            packets.append([dwords[i] | (dwords[i + 1] << 32) for i in range(0, len(dwords), 2)])
+
+        beats = []
+        for packet in packets:
+            for i in range(0, len(packet), qwords):
+                chunk = packet[i:i + qwords]
+                data  = sum(qword << (64*j) for j, qword in enumerate(chunk))
+                beats.append((data, i == 0, i + qwords >= len(packet), qwords - len(chunk)))
+        received = []
+
+        @passive
+        def hard_ip():
+            # Worst-case source: a beat on every ready cycle while data is pending.
+            ready = {}
+            k     = 0
+            while True:
+                if beats and ready.get(k - ready_latency, 0):
+                    data, sop, eop, empty = beats.pop(0)
+                    yield p["o_rx_st_valid"].eq(1)
+                    yield p["o_rx_st_data"].eq(data)
+                    yield p["o_rx_st_startofpacket"].eq(sop)
+                    yield p["o_rx_st_endofpacket"].eq(eop)
+                    if data_width == 128:
+                        yield p["o_rx_st_empty"].eq(empty)
+                else:
+                    yield p["o_rx_st_valid"].eq(0)
+                yield
+                ready[k] = (yield p["i_rx_st_ready"])
+                k += 1
+
+        def litepcie():
+            # Random back-pressure, then ready until the end to drain the PHY.
+            for cycle in range(cycles):
+                yield phy.source.ready.eq(cycle >= cycles - 64 or prng.random() < ready_rate)
+                yield
+                if (yield phy.source.valid) and (yield phy.source.ready):
+                    received.append((
+                        (yield phy.source.dat),
+                        (yield phy.source.be),
+                        (yield phy.source.first),
+                        (yield phy.source.last),
+                    ))
+
+        run_simulation(phy, {"pcie": [hard_ip(), litepcie()]}, clocks={"pcie": 10},
+            special_overrides={Instance: _NoInstance})
+        self.assertEqual(len(beats), 0)
+        return tlps, received
+
+    def test_rx_backpressure_with_ready_latency_3(self):
+        for data_width in [64, 128]:
+            with self.subTest(data_width=data_width):
+                tlps, received = self.run_rx(data_width)
+
+                # Packets received, as dwords.
+                packets = [[]]
+                for dat, be, first, last in received:
+                    self.assertEqual(first, len(packets[-1]) == 0)
+                    for i in range(data_width//32):
+                        if (be >> (4*i)) & 0xf:
+                            packets[-1].append((dat >> (32*i)) & 0xffffffff)
+                    if last:
+                        packets.append([])
+                self.assertEqual(packets.pop(), [])
+
+                # No beat lost: every TLP is received, in order and complete. The 64-bit PHY
+                # keeps the qword alignment (padding dword after the header), the 128-bit PHY
+                # removes it; byte enables are qword-granular (one unused trailing dword).
+                self.assertEqual(len(packets), len(tlps))
+                for tlp, packet in zip(tlps, packets):
+                    if data_width == 64:
+                        del packet[3]
+                    self.assertEqual(packet[:len(tlp)], tlp)
+                    self.assertIn(len(packet) - len(tlp), [0, 1])
 
 if __name__ == "__main__":
     unittest.main()
