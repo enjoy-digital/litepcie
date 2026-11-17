@@ -196,7 +196,7 @@ class LitePCIeTLPController(LiteXModule):
         cases = {
             i: [
                 If(tag_owned[i],
-                    cmp_reorder.connect(cmp_bufs[i].sink)
+                    cmp_reorder.connect(cmp_bufs[i].sink, keep={"valid", "ready"})
                 ).Else(
                     cmp_reorder.ready.eq(1),
                     cmp_drop.eq(cmp_reorder.valid),
@@ -205,11 +205,14 @@ class LitePCIeTLPController(LiteXModule):
         }
         cases["default"] = [cmp_reorder.ready.eq(1)]
         self.comb += Case(cmp_reorder.tag, cases)
+        # The data goes to all the buffers, only valid/ready are steered (no data mux per buffer).
+        self.comb += [cmp_reorder.connect(cmp_buf.sink, omit={"valid", "ready"}) for cmp_buf in cmp_bufs]
 
         # Connect Buffers to Cmp Output (based on Tag from req_queue).
         self.comb += Case(req_queue.source.tag,
             {i: cmp_bufs[i].source.connect(cmp_out) for i in range(len(cmp_bufs))})
         cmp_out_done = Signal()
+        cmp_out_ctrl = {"valid", "ready", "first", "last", "end", "err", "be", "tag"}
         self.comb += [
             cmp_out_done.eq(cmp_out.valid & cmp_out.last & (cmp_out.end | cmp_out.err)),
             # Abort: deliver what has been received for the oldest request, then terminate it with an
@@ -231,9 +234,11 @@ class LitePCIeTLPController(LiteXModule):
                 cmp_out.ready.eq(~cmp_out_done | cmp_source.ready),
             # Else deliver the oldest request's Completions.
             ).Else(
-                cmp_out.connect(cmp_source),
+                cmp_out.connect(cmp_source, keep=cmp_out_ctrl),
             )
         ]
+        # The data always comes from the oldest request's buffer (not valid on an error beat).
+        self.comb += cmp_out.connect(cmp_source, omit=cmp_out_ctrl)
         self.comb += [
             # Pop Req from req_queue when Req is fully received.
             # Retire on a normal end-of-completion OR on an error completion (UR/CA):
