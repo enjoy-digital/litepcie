@@ -372,6 +372,14 @@ class LitePCIeDMAReader(LiteXModule):
         max_pending_words     = endpoint.max_pending_requests*max_words_per_request
         request_words         = Signal(24)
 
+        # Run / Drain ------------------------------------------------------------------------------
+        # The requests sent before a disable still get their Completions: they are drained (and
+        # dropped) before the Reader runs again, a re-enable in between has to wait for them.
+        run      = Signal()
+        draining = Signal()
+        drained  = Signal()
+        self.comb += run.eq(enable & ~draining)
+
         # Table ------------------------------------------------------------------------------------
         if with_table:
             self.table = LitePCIeDMAScatterGather(table_depth,
@@ -405,6 +413,7 @@ class LitePCIeDMAReader(LiteXModule):
                 ("loop_mode",       1),
                 ("irq_disable",     1),
                 ("last_disable",    1),
+                ("words",           bits_for(max_words_per_request)),
             ],
             depth    = endpoint.max_pending_requests,
             buffered = True,
@@ -425,7 +434,7 @@ class LitePCIeDMAReader(LiteXModule):
         else:
             data_conv = stream.Converter(endpoint.phy.data_width, self.data_width)
         self.data_conv = data_conv = ResetInserter()(data_conv)
-        self.comb += data_conv.reset.eq(~enable)
+        self.comb += data_conv.reset.eq(~run)
         self.comb += data_conv.source.connect(self.source)
 
         # Data FIFO --------------------------------------------------------------------------------
@@ -442,8 +451,8 @@ class LitePCIeDMAReader(LiteXModule):
         request_done = Signal()
         self.comb += [
             request_done.eq(port.sink.last & (port.sink.end | port.sink.err)),
-            # When Enabled, connect Sink to Data FIFO.
-            If(enable,
+            # When running, connect Sink to Data FIFO.
+            If(run,
                 port.sink.connect(data_fifo.sink, keep={"valid", "ready"}),
                 data_fifo.sink.data.eq(port.sink.dat),
                 data_fifo.sink.be.eq(port.sink.be),
@@ -457,29 +466,34 @@ class LitePCIeDMAReader(LiteXModule):
             ).Else(
                 port.sink.ready.eq(1)
             ),
+            # A request is done on its last Completion, also when draining.
             request_metadata.source.ready.eq(
-                enable & port.sink.valid & port.sink.ready & request_done
+                port.sink.valid & port.sink.ready & request_done
             ),
         ]
 
         # Pending words ----------------------------------------------------------------------------
-        pending_words         = Signal(max=data_fifo_depth + 1)
-        pending_words_queue   = Signal.like(pending_words)
-        pending_words_dequeue = Signal.like(pending_words)
+        # Words reserved in the Data FIFO by the requests sent and not done yet (released per
+        # request, when it is done: a request terminated with an error, or one whose Completions
+        # are not packed as its words were counted, leaves nothing behind), plus the words in the
+        # Data FIFO. The request being received is counted in both, hence the margin of one more
+        # request (and one for the registered comparison).
+        reserved_words = Signal(max=max_pending_words + max_words_per_request + 1)
+        request_ok     = Signal()
+        request_sent   = Signal()
+        request_ended  = Signal()
         self.comb += [
             request_words.eq(dma_words_for_bytes(splitter.source.length, endpoint.phy.data_width)),
-            # Queue Pending words as Read Requests are emitted.
-            If(splitter.source.valid & splitter.source.ready,
-                pending_words_queue.eq(request_words)
-            ),
-            # Dequeue Pending words as Read Responses are received.
-            If(data_fifo.source.valid & data_fifo.source.ready,
-                pending_words_dequeue.eq(1)
-            ),
+            request_sent.eq(splitter.source.valid & splitter.source.ready),
+            request_ended.eq(request_metadata.source.valid & request_metadata.source.ready),
         ]
-        # Update Pending words.
-        self.sync += pending_words.eq(pending_words + pending_words_queue - pending_words_dequeue)
-        self.sync += If(~enable, pending_words.eq(0))
+        self.sync += [
+            reserved_words.eq(reserved_words
+                + Mux(request_sent,  request_words,                 0)
+                - Mux(request_ended, request_metadata.source.words, 0)
+            ),
+            request_ok.eq((reserved_words + data_fifo.level) < (data_fifo_depth - 3*max_words_per_request)),
+        ]
 
         # FSM --------------------------------------------------------------------------------------
         self.fsm = fsm = FSM(reset_state="IDLE")
@@ -491,23 +505,31 @@ class LitePCIeDMAReader(LiteXModule):
             request_metadata.sink.loop_first.eq(splitter.sink.first),
             request_metadata.sink.irq_disable.eq(splitter.source.irq_disable),
             request_metadata.sink.last_disable.eq(splitter.source.last_disable),
+            request_metadata.sink.words.eq(request_words),
         ]
         self.comb += request_metadata.sink.loop_mode.eq(
             self.table.loop_prog_n.storage if with_table else 0
         )
         fsm.act("IDLE",
-            # Reset Splitter/FIFO when disabled.
-            If(~enable,
+            # Reset Splitter/FIFO when disabled (or draining).
+            If(~run,
                 splitter.reset.eq(1),
                 data_fifo.reset.eq(1),
-                request_metadata.reset.eq(1),
             # Else wait for a Descriptor and to have enough Space to generate the Request.
-            ).Elif(splitter.source.valid & (pending_words < (data_fifo_depth - max_words_per_request)),
+            ).Elif(splitter.source.valid & request_ok,
                 NextState("MEM-RD-REQ"),
             )
         )
+        self.comb += drained.eq(fsm.ongoing("IDLE") & ~request_metadata.source.valid)
+        self.sync += [
+            If(drained,
+                draining.eq(0)
+            ).Elif(~enable,
+                draining.eq(1)
+            )
+        ]
         # Report Idle Status.
-        self.sync += self._enable.storage[1].eq(fsm.ongoing("IDLE"))
+        self.sync += self._enable.storage[1].eq(fsm.ongoing("IDLE") & ~draining)
         # Request Data-Path.
         self.comb += [
             port.source.channel.eq(port.channel),
@@ -539,7 +561,7 @@ class LitePCIeDMAReader(LiteXModule):
         # of any downstream backpressure on the Reader's output.
         descriptor_retire = Signal()
         self.comb += descriptor_retire.eq(
-            request_metadata.source.valid & request_metadata.source.ready &
+            run & request_metadata.source.valid & request_metadata.source.ready &
             request_metadata.source.descriptor_last
         )
         if with_table:
