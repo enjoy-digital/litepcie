@@ -40,6 +40,10 @@ class LitePCIeTLPController(LiteXModule):
       for them (lost Completions, link down), ``timeout`` pulses and the outstanding requests are
       terminated in order: the data already received is delivered, then an error beat for each
       request whose Completion is incomplete (``cmp_timeout=None`` disables it).
+
+    A Completion received for a tag with no request outstanding (unexpected, or late after a
+    timeout) is dropped, and a tag's buffer is emptied when the tag is sent again: a late Completion
+    can at worst corrupt the data of the request that reuses its tag, it leaves nothing behind.
     """
     def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True,
         with_configuration=False, cmp_buf_depth=None, cmp_timeout=2**24):
@@ -159,12 +163,39 @@ class LitePCIeTLPController(LiteXModule):
         if cmp_buf_depth is None:
             cmp_buf_depth = get_completion_buffer_depth(data_width, buffered=cmp_bufs_buffered)
         for i in range(max_pending_requests):
-            cmp_buf       = SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered)
+            cmp_buf       = ResetInserter()(SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered))
             cmp_bufs.append(cmp_buf)
         self.submodules += cmp_bufs
 
-        # Connect Cmp Input to Buffers (based on incoming Tag).
-        cases = {i: [cmp_reorder.connect(cmp_bufs[i].sink)] for i in range(len(cmp_bufs))}
+        # Tags owned by a request: from the request sent to its ordered retirement.
+        tag_owned  = Signal(max_pending_requests)
+        tag_issue  = Signal()
+        tag_retire = Signal()
+        self.comb += tag_issue.eq(tag_queue.source.valid & tag_queue.source.ready)
+        self.sync += [
+            If(tag_retire, tag_owned.eq(tag_owned & ~(1 << req_queue.source.tag))),
+            If(tag_issue,  tag_owned.eq(tag_owned |  (1 << tag_queue.source.tag))),
+            If(tag_retire & tag_issue,
+                tag_owned.eq((tag_owned & ~(1 << req_queue.source.tag)) | (1 << tag_queue.source.tag))
+            ),
+        ]
+
+        # A tag's buffer is emptied when the tag is sent: anything in it belongs to no request.
+        self.comb += [
+            cmp_buf.reset.eq(tag_issue & (tag_queue.source.tag == i))
+            for i, cmp_buf in enumerate(cmp_bufs)
+        ]
+
+        # Connect Cmp Input to Buffers (based on incoming Tag), drop the Completions of tags not owned.
+        cases = {
+            i: [
+                If(tag_owned[i],
+                    cmp_reorder.connect(cmp_bufs[i].sink)
+                ).Else(
+                    cmp_reorder.ready.eq(1)
+                )
+            ] for i in range(len(cmp_bufs))
+        }
         cases["default"] = [cmp_reorder.ready.eq(1)]
         self.comb += Case(cmp_reorder.tag, cases)
 
@@ -209,7 +240,6 @@ class LitePCIeTLPController(LiteXModule):
         ]
 
         # Retire Tag once the buffered Completion has been consumed in request order.
-        tag_retire = Signal()
         self.comb += tag_retire.eq(
             cmp_source.valid & cmp_source.ready & cmp_source.last &
             (cmp_source.end | cmp_source.err)

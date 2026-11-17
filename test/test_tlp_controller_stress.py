@@ -54,7 +54,7 @@ def run(args, seed):
     st = dict(issued=[], host=[], retired=0, progress=0, cycle=0, errors=[], maxout=0)
     outstanding = {}   # idx -> dict(idx, tag, pkts, pos)
     order       = []   # idx in issue order (host view), still having packets.
-    st.update(exp=0, hold=False, stale=set(), lost=set(), resets=0, tagdup=0, terms=0, timeouts=0)
+    st.update(exp=0, hold=False, stale=set(), lost=set(), late=0, resets=0, tagdup=0, terms=0, timeouts=0)
 
     @passive
     def req_gen():
@@ -93,19 +93,22 @@ def run(args, seed):
                     st["errors"].append(f"request {k} mismatch")
                 if tag in [o["tag"] for o in outstanding.values()]:
                     st["tagdup"] += 1
-                    st["errors"].append(f"cycle {st['cycle']}: tag {tag} reissued while outstanding at the Host")
+                    if not args.late_p: st["errors"].append(f"cycle {st['cycle']}: tag {tag} reissued while outstanding at the Host")
                 pkts = split_request(rng, adr, ndw*4, args.rcb, args.mps, args.merge_p)
                 if rng.random() < args.lose_p:
                     st["lost"].add(k)     # The Host never completes it.
                 else:
-                    outstanding[k] = dict(idx=k, tag=tag, pkts=pkts, pos=0, t=st["cycle"])
+                    late = (k < args.requests//3) and (rng.random() < args.late_p)
+                    st["late"] += late
+                    outstanding[k] = dict(idx=k, tag=tag, pkts=pkts, pos=0, t=st["cycle"],
+                        lat=args.late_delay if late else args.latency)
                     order.append(k)
                 st["maxout"] = max(st["maxout"], len(order))
                 k += 1
 
     def pick():
         if not order: return None
-        lat = [t for t in order if st["cycle"] - outstanding[t]["t"] >= args.latency]
+        lat = [t for t in order if st["cycle"] - outstanding[t]["t"] >= outstanding[t]["lat"]]
         if not lat: return None
         if args.policy == "inorder":
             return lat[0]
@@ -164,12 +167,13 @@ def run(args, seed):
             yield
             if (yield src.valid) and (yield src.ready):
                 st["progress"] = st["cycle"]
+                strict = (not args.late_p) or (st["exp"] >= 2*args.requests//3)
                 if (yield src.err):
                     # Error termination: one beat, in request order, for a flushed/lost request.
                     st["terms"] += 1
                     if not ((yield src.last) and (yield src.first)):
                         st["errors"].append(f"cycle {st['cycle']}: error beat without first/last")
-                    if st["exp"] not in st["stale"] and st["exp"] not in st["lost"] and len(st["errors"]) < 5:
+                    if strict and st["exp"] not in st["stale"] and st["exp"] not in st["lost"] and len(st["errors"]) < 5:
                         st["errors"].append(f"cycle {st['cycle']}: request {st['exp']} terminated with an error")
                     st["exp"] += 1; exp_pos = 0; exp_b = 0
                     st["retired"] += 1
@@ -177,6 +181,13 @@ def run(args, seed):
                 d = (yield src.dat)
                 got = (d >> 32, (d >> 16) & 0xffff, d & 0xffff)
                 exp_idx = st["exp"]
+                if not strict:
+                    # Late Completions may corrupt the requests reusing their tags: only count the
+                    # terminations (one per request).
+                    if (yield src.last) and (yield src.end):
+                        st["exp"] += 1; exp_pos = 0; exp_b = 0
+                        st["retired"] += 1
+                    continue
                 if got != (exp_idx, exp_pos, exp_b) and len(st["errors"]) < 5:
                     st["errors"].append(f"cycle {st['cycle']}: data {got}, expected {(exp_idx, exp_pos, exp_b)}")
                     st["exp"], exp_pos, exp_b = got
@@ -244,6 +255,8 @@ def stress_args(**kwargs):
         timeout        = 3000,   # Cycles without progress reported as a deadlock.
         reset_every    = 0,      # ctrl_rst about every N cycles (0: never).
         lose_p         = 0,      # Probability that the Host never completes a request.
+        late_p         = 0,      # Probability that the Host completes a request after late_delay
+        late_delay     = 0,      # cycles (first third of the requests, last third checked).
         cmp_timeout    = 0,      # Controller's cmp_timeout (0: default).
     )
     args.update(kwargs)
@@ -259,7 +272,8 @@ class TestTLPControllerStress(unittest.TestCase):
                 st = run(args, seed)
                 self.assertEqual(st["errors"], [])
                 self.assertEqual(st["retired"], args.requests)
-                self.assertEqual(st["tagdup"], 0)
+                if not args.late_p:
+                    self.assertEqual(st["tagdup"], 0)
         return st
 
     def test_completion_orders(self):
@@ -301,6 +315,15 @@ class TestTLPControllerStress(unittest.TestCase):
     def test_lost_completions_without_timeout_deadlock(self):
         st = run(stress_args(lose_p=0.05, cmp_timeout=None, timeout=4000), seed=0)
         self.assertTrue(any("DEADLOCK" in e for e in st["errors"]))
+
+    def test_late_completions(self):
+        # Completions arriving after their request timed out, their tags possibly reused: the
+        # requests reusing them may get wrong data, but nothing is left behind (no deadlock, the
+        # requests sent after the last late Completion are delivered correctly).
+        for data_width, policy in [(64, "random"), (256, "youngest"), (512, "oldest_last")]:
+            st = self.stress(data_width=data_width, policy=policy, late_p=0.1, late_delay=1500,
+                cmp_timeout=400, timeout=4000, user_stall_max=100, hold=20, requests=450)
+            self.assertGreater(st["late"], 0)
 
     def test_flush_and_lost_completions(self):
         self.stress(data_width=128, pending=16, policy="youngest", latency=60, reset_every=3000,
