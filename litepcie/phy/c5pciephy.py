@@ -426,11 +426,17 @@ class C5PCIEPHY(LiteXModule):
             # Power Management
             i_power_mngt_pme_to_cr      = pme_to_sr,
             o_power_mngt_pme_to_sr      = pme_to_sr,
+            i_power_mngt_pm_auxpwr      = 0,
+            i_power_mngt_pm_data        = 0,
+            i_power_mngt_pm_event       = 0,
 
             # Configuration Space
             o_config_tl_tl_cfg_ctl      = config.tl_cfg_ctl,
             o_config_tl_tl_cfg_add      = config.tl_cfg_add,
             o_config_tl_tl_cfg_ctl_wr   = config.tl_cfg_ctl_wr,
+            i_config_tl_hpg_ctrler      = 0,
+            i_config_tl_cpl_err         = 0,
+            i_config_tl_cpl_pending     = 0,
 
             # Control
             o_hip_rst_serdes_pll_locked = serdes_pll_locked,
@@ -449,6 +455,7 @@ class C5PCIEPHY(LiteXModule):
             i_tx_st_endofpacket         = tx_avst.last,
             o_tx_st_ready               = tx_avst.ready,
             i_tx_st_data                = tx_avst.dat,
+            i_tx_st_error               = 0,
 
             # MSI
             i_int_msi_app_msi_num       = 0,
@@ -458,20 +465,20 @@ class C5PCIEPHY(LiteXModule):
             i_int_msi_app_int_sts       = 0,
         )
 
-        # 128-bit Avalon-ST / Application ports.
+        # 128-bit Avalon-ST ports.
         if data_width == 128:
             self.pcie_phy_params.update(
-                o_rx_st_empty           = rx_empty,
-                i_tx_st_empty           = tx_avst.last & (tx_avst.be[8:16] == 0),
-                i_tx_st_error           = 0,
-                i_app_reset_reset_n     = ~reset_status,
-                i_config_tl_hpg_ctrler  = 0,
-                i_config_tl_cpl_err     = 0,
-                i_config_tl_cpl_pending = 0,
-                i_power_mngt_pm_auxpwr  = 0,
-                i_power_mngt_pm_data    = 0,
-                i_power_mngt_pm_event   = 0,
+                o_rx_st_empty = rx_empty,
+                i_tx_st_empty = tx_avst.last & (tx_avst.be[8:16] == 0),
             )
+
+        # Application Reset (app_reset interface of the generated system). An external 64-bit
+        # system may not export it: at 64-bit, generate_hard_ip connects it.
+        self.app_reset_params = dict(
+            i_app_reset_reset_n = ~reset_status,
+        )
+        if data_width == 128:
+            self.pcie_phy_params.update(self.app_reset_params)
 
         # Serial lanes.
         for n in range(nlanes):
@@ -500,6 +507,7 @@ class C5PCIEPHY(LiteXModule):
             cwd   = output_dir,
             check = True,
         )
+        self.pcie_phy_params.update(self.app_reset_params) # Exported by the generated system.
         self.use_external_hard_ip(os.path.join(output_dir, "pcie_phy", "synthesis", "pcie_phy.qip"))
 
     # External Hard IP -----------------------------------------------------------------------------

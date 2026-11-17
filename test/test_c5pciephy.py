@@ -11,6 +11,8 @@ from unittest import mock
 from xml.etree import ElementTree as ET
 
 from migen import Signal
+from migen.fhdl.specials import Instance
+from migen.fhdl.structure import Constant
 from migen.sim import run_simulation
 
 from litepcie.phy import c5pciephy
@@ -38,6 +40,29 @@ class DummyPads:
         self.rst_n = Signal()
         self.rx_p  = Signal(nlanes)
         self.tx_p  = Signal(nlanes)
+
+
+def hard_ip_ports(phy, generated):
+    """Elaborate the PHY and return the inputs and the outputs of its hard IP Instance."""
+    if generated:
+        with tempfile.TemporaryDirectory() as tmp:
+            # Stand-in for qsys-generate: create the QIP it would generate.
+            def run(command, cwd, check):
+                os.makedirs(os.path.join(cwd, "pcie_phy", "synthesis"))
+                with open(os.path.join(cwd, "pcie_phy", "synthesis", "pcie_phy.qip"), "w") as f:
+                    f.write("")
+
+            with mock.patch.dict(os.environ, {"QUARTUS_ROOTDIR": os.path.join(tmp, "quartus")}), \
+                 mock.patch.object(c5pciephy.subprocess, "run", side_effect=run):
+                phy.generate_hard_ip(os.path.join(tmp, "pcie"))
+    else:
+        phy.use_external_hard_ip("/tmp/c5-ip")
+    phy.finalize()
+
+    instance, = [s for s in phy._fragment.specials if getattr(s, "of", None) == "pcie_phy"]
+    inputs  = {item.name: item.expr for item in instance.items if isinstance(item, Instance.Input)}
+    outputs = {item.name: item.expr for item in instance.items if isinstance(item, Instance.Output)}
+    return inputs, outputs
 
 # Tests --------------------------------------------------------------------------------------------
 
@@ -173,6 +198,56 @@ class TestC5PCIEPHY(unittest.TestCase):
         self.assertEqual(platform.ips, [qip])
         self.assertEqual(platform.sources, [])
         self.assertTrue(phy.external_hard_ip)
+
+    def test_hard_ip_inputs_64_bit(self):
+        # Inputs tied to 0 by the PHY (ports of the tx_st, config_tl and power_mngt interfaces).
+        tied = [
+            "tx_st_error",
+            "config_tl_hpg_ctrler",
+            "config_tl_cpl_err",
+            "config_tl_cpl_pending",
+            "power_mngt_pm_auxpwr",
+            "power_mngt_pm_data",
+            "power_mngt_pm_event",
+        ]
+
+        def check(inputs, outputs, app_reset):
+            for name in tied:
+                self.assertIn(name, inputs)
+                self.assertIsInstance(inputs[name], Constant, name)
+                self.assertEqual(inputs[name].value, 0, name)
+
+            # The application reset follows the reset status of the hard IP.
+            self.assertEqual("app_reset_reset_n" in inputs, app_reset)
+            if app_reset:
+                reset_n = inputs["app_reset_reset_n"]
+                self.assertEqual(reset_n.op, "~")
+                self.assertIs(reset_n.operands[0], outputs["hip_rst_reset_status"])
+
+        # Reference: 128-bit with the generated system.
+        ref_inputs, ref_outputs = hard_ip_ports(
+            C5PCIEPHY(DummyPlatform(), DummyPads(4), data_width=128), generated=True)
+        check(ref_inputs, ref_outputs, app_reset=True)
+
+        for nlanes in [1, 4]:
+            with self.subTest(nlanes=nlanes):
+                # Generated system: every input driven at 128-bit is driven at 64-bit (the
+                # interface has no empty at 64-bit).
+                phy             = C5PCIEPHY(DummyPlatform(), DummyPads(nlanes), data_width=64)
+                inputs, outputs = hard_ip_ports(phy, generated=True)
+                expected        = {
+                    name for name in ref_inputs
+                    if not name.startswith("hip_serial_rx_in") and name != "tx_st_empty"
+                }
+                expected.update(f"hip_serial_rx_in{n}" for n in range(nlanes))
+                self.assertEqual(set(inputs), expected)
+                check(inputs, outputs, app_reset=True)
+
+                # External system: same inputs, without the application reset it does not export.
+                phy             = C5PCIEPHY(DummyPlatform(), DummyPads(nlanes), data_width=64)
+                inputs, outputs = hard_ip_ports(phy, generated=False)
+                self.assertEqual(set(inputs), expected - {"app_reset_reset_n"})
+                check(inputs, outputs, app_reset=False)
 
     def test_external_hard_ip_missing_qip(self):
         platform = DummyPlatform()
