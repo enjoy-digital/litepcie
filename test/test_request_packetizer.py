@@ -86,14 +86,24 @@ class TestRequestPacketizer(unittest.TestCase):
                     self.assertEqual([beat["last"] for beat in beats].count(1), 1)
 
     def test_3dw_write_tail_drains_before_4dw_read(self):
-        dut = LitePCIeTLPPacketizer(128, "little", address_width=64, capabilities=["REQUEST"])
-        received = []
+        dut = LitePCIeTLPPacketizer(
+            data_width    = 128,
+            endianness    = "little",
+            address_width = 64,
+            capabilities  = ["REQUEST"],
+        )
+        beats = []
 
         def stimulus():
             sink = dut.req_sink
-            for write, address, length in [(1, 0x1000, 4), (0, 0x1_0000_2000, 128)]:
-                yield sink.we.eq(write)
-                yield sink.adr.eq(address)
+            # A 32-bit address Write (3-DW header, 4 DWs) directly followed by a 64-bit address
+            # Read (4-DW header).
+            for we, adr, length in [
+                (1,        0x1000,   4),
+                (0, 0x1_0000_2000, 128),
+            ]:
+                yield sink.we.eq(we)
+                yield sink.adr.eq(adr)
                 yield sink.len.eq(length)
                 yield sink.dat.eq(0x44444444333333332222222211111111)
                 yield sink.first.eq(1)
@@ -111,16 +121,23 @@ class TestRequestPacketizer(unittest.TestCase):
             yield dut.source.ready.eq(1)
             while True:
                 if (yield dut.source.valid) and (yield dut.source.ready):
-                    received.append(((yield dut.source.first), (yield dut.source.last),
-                                     (yield dut.source.dat), (yield dut.source.be)))
+                    beats.append({
+                        "first" : (yield dut.source.first),
+                        "last"  : (yield dut.source.last),
+                        "dat"   : (yield dut.source.dat),
+                        "be"    : (yield dut.source.be),
+                    })
                 yield
 
         run_simulation(dut, [stimulus(), monitor()])
-        self.assertEqual([(first, last) for first, last, _, _ in received],
-                         [(1, 0), (0, 1), (1, 1)])
-        self.assertEqual(received[1][2], 0x444444443333333322222222)
-        self.assertEqual(received[1][3], 0x0fff)
-        self.assertEqual(received[2][2] & 0xffffffff, 0x20000080)
+
+        # Write: header + first DW, then the 3-DW tail. Read: header only.
+        self.assertEqual(
+            [(beat["first"], beat["last"]) for beat in beats],
+            [(1, 0), (0, 1), (1, 1)])
+        self.assertEqual(beats[1]["dat"], 0x444444443333333322222222)
+        self.assertEqual(beats[1]["be"],  0x0fff)
+        self.assertEqual(beats[2]["dat"] & 0xffffffff, 0x20000080)
 
     def test_512b_32byte_tail_fits_one_rq_beat(self):
         beats = self.packetize_write(data_width=512, length=8)
