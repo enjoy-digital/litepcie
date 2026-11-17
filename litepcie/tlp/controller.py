@@ -28,10 +28,23 @@ class LitePCIeTLPController(LiteXModule):
     """LitePCIe TLP requests/completions controller.
 
     Arbitrate/throttle TLP requests and reorder/assemble/redirect completions.
+
+    Every read request sent to the Host is terminated by exactly one last Completion beat on the
+    user side (``last`` with ``end`` or ``err``), in request order, and its tag is only reused after
+    that:
+    - ``ctrl_rst`` flushes the controller: no new read request is sent and the requests still
+      outstanding at the Host are terminated in order with an error beat (``err``, no data) once
+      their Completions have been received (and discarded). The Host still owns these requests,
+      so their tags can't be reused before.
+    - When ``cmp_timeout`` cycles elapse with requests outstanding and nothing sent or received
+      for them (lost Completions, link down), ``timeout`` pulses and the outstanding requests are
+      terminated in order: the data already received is delivered, then an error beat for each
+      request whose Completion is incomplete (``cmp_timeout=None`` disables it).
     """
     def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True,
-        with_configuration=False, cmp_buf_depth=None):
-        self.ctrl_rst  = Signal()
+        with_configuration=False, cmp_buf_depth=None, cmp_timeout=2**24):
+        self.ctrl_rst  = Signal() # Flush (level or pulse).
+        self.timeout   = Signal() # Completion timeout (pulse).
         self.master_in  = LitePCIeMasterInternalPort(data_width, address_width, with_configuration=with_configuration)
         self.master_out = LitePCIeMasterInternalPort(data_width, address_width, with_configuration=with_configuration)
 
@@ -61,26 +74,30 @@ class LitePCIeTLPController(LiteXModule):
             buffered = True,
         ))
 
+        # Flush / Abort ----------------------------------------------------------------------------
+        # Flush: the outstanding requests are terminated as their Completions arrive.
+        # Abort: the outstanding requests are terminated without waiting for more Completions.
+        flush = Signal()
+        abort = Signal()
+        hold  = Signal()
+        self.comb += hold.eq(self.ctrl_rst | flush | abort)
+
         # Requests Management ----------------------------------------------------------------------
 
         # Connect Data-Path.
         self.comb += req_sink.connect(req_source, omit={"valid", "ready", "tag"})
 
         # FSM.
-        self.req_fsm = req_fsm = ResetInserter()(FSM(reset_state="WAIT-REQ"))
-        self.comb += [
-            tag_queue.reset.eq(self.ctrl_rst),
-            req_queue.reset.eq(self.ctrl_rst),
-            req_fsm.reset.eq(self.ctrl_rst),
-        ]
+        self.req_fsm = req_fsm = FSM(reset_state="WAIT-REQ")
         req_fsm.act("WAIT-REQ",
             # Wait for a TLP Request...
             If(req_sink.valid & req_sink.first,
                 # TLP Write: We can send the request directly.
                 If(req_sink.we,
                    NextState("SEND-WRITE-REQ")
-                # TLP Read:  We can send the request when one tag available and space in req_queue.
-                ).Elif(tag_queue.source.valid & req_queue.sink.ready,
+                # TLP Read:  We can send the request when one tag available and space in req_queue
+                # (and no Flush/Abort ongoing).
+                ).Elif(tag_queue.source.valid & req_queue.sink.ready & ~hold,
                    NextState("SEND-READ-REQ")
                 )
             )
@@ -133,17 +150,18 @@ class LitePCIeTLPController(LiteXModule):
         #
         #
 
+        cmp_in      = stream.Endpoint(completion_layout(data_width))
         cmp_reorder = stream.Endpoint(completion_layout(data_width))
+        cmp_out     = stream.Endpoint(completion_layout(data_width))
         cmp_bufs    = []
 
         # Create Buffers.
         if cmp_buf_depth is None:
             cmp_buf_depth = get_completion_buffer_depth(data_width, buffered=cmp_bufs_buffered)
         for i in range(max_pending_requests):
-            cmp_buf       = ResetInserter()(SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered))
+            cmp_buf       = SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered)
             cmp_bufs.append(cmp_buf)
         self.submodules += cmp_bufs
-        self.comb += [cmp_buf.reset.eq(self.ctrl_rst) for cmp_buf in cmp_bufs]
 
         # Connect Cmp Input to Buffers (based on incoming Tag).
         cases = {i: [cmp_reorder.connect(cmp_bufs[i].sink)] for i in range(len(cmp_bufs))}
@@ -152,7 +170,32 @@ class LitePCIeTLPController(LiteXModule):
 
         # Connect Buffers to Cmp Output (based on Tag from req_queue).
         self.comb += Case(req_queue.source.tag,
-            {i: cmp_bufs[i].source.connect(cmp_source) for i in range(len(cmp_bufs))})
+            {i: cmp_bufs[i].source.connect(cmp_out) for i in range(len(cmp_bufs))})
+        cmp_out_done = Signal()
+        self.comb += [
+            cmp_out_done.eq(cmp_out.valid & cmp_out.last & (cmp_out.end | cmp_out.err)),
+            # Abort: deliver what has been received for the oldest request, then terminate it with an
+            # error beat when its Completion is incomplete.
+            If(abort & ~cmp_out.valid,
+                cmp_source.valid.eq(req_queue.source.valid),
+                cmp_source.first.eq(1),
+                cmp_source.last.eq(1),
+                cmp_source.err.eq(1),
+                cmp_source.tag.eq(req_queue.source.tag),
+            # Flush: discard the oldest request's data and terminate it with an error beat on its
+            # last Completion beat.
+            ).Elif(self.ctrl_rst | flush,
+                cmp_source.valid.eq(cmp_out_done),
+                cmp_source.first.eq(1),
+                cmp_source.last.eq(1),
+                cmp_source.err.eq(1),
+                cmp_source.tag.eq(req_queue.source.tag),
+                cmp_out.ready.eq(~cmp_out_done | cmp_source.ready),
+            # Else deliver the oldest request's Completions.
+            ).Else(
+                cmp_out.connect(cmp_source),
+            )
+        ]
         self.comb += [
             # Pop Req from req_queue when Req is fully received.
             # Retire on a normal end-of-completion OR on an error completion (UR/CA):
@@ -175,14 +218,23 @@ class LitePCIeTLPController(LiteXModule):
         # Completions Management -------------------------------------------------------------------
 
         fill_tag = Signal(tag_bits)
-        self.sync += If(self.ctrl_rst, fill_tag.eq(0))
+
+        # Completions received during an Abort are dropped: they belong to requests being terminated.
+        self.comb += [
+            cmp_sink.connect(cmp_in, omit={"valid", "ready"}),
+            If(abort,
+                cmp_sink.ready.eq(1),
+            ).Else(
+                cmp_sink.connect(cmp_in, keep={"valid", "ready"}),
+            )
+        ]
+        cmp_sink = cmp_in
 
         # Connect Data-Path.
         self.comb += cmp_sink.connect(cmp_reorder, omit={"valid", "ready"})
 
         # FSM
-        self.cmp_fsm = cmp_fsm = ResetInserter()(FSM(reset_state="FILL-TAG-QUEUE"))
-        self.comb += cmp_fsm.reset.eq(self.ctrl_rst)
+        self.cmp_fsm = cmp_fsm = FSM(reset_state="FILL-TAG-QUEUE")
         cmp_fsm.act("FILL-TAG-QUEUE",
             # Pre-fill Tags.
             tag_queue.sink.valid.eq(1),
@@ -216,3 +268,45 @@ class LitePCIeTLPController(LiteXModule):
                 NextState("WAIT")
             )
         )
+
+        # Flush / Abort Control --------------------------------------------------------------------
+        cmp_phy  = self.master_out.source
+        idle     = Signal()
+        activity = Signal()
+        self.comb += [
+            # No read request outstanding and none being sent.
+            idle.eq(~req_queue.source.valid & ~req_fsm.ongoing("SEND-READ-REQ")),
+            # A request sent, a Completion beat received or data available for the user.
+            activity.eq(
+                (req_queue.sink.valid & req_queue.sink.ready) |
+                (cmp_phy.valid & cmp_phy.ready) |
+                cmp_out.valid
+            ),
+        ]
+        self.sync += [
+            If(self.ctrl_rst,
+                flush.eq(1)
+            ).Elif(idle,
+                flush.eq(0)
+            )
+        ]
+        if cmp_timeout is not None:
+            timer = Signal(max=cmp_timeout + 1)
+            self.sync += [
+                self.timeout.eq(0),
+                If(abort,
+                    timer.eq(0),
+                    If(idle, abort.eq(0)),
+                ).Elif(~req_queue.source.valid | activity,
+                    timer.eq(0),
+                ).Elif(timer == cmp_timeout,
+                    # A read request being sent is not aborted (the Host would still complete it):
+                    # wait for it, it restarts the timer.
+                    If(~req_fsm.ongoing("SEND-READ-REQ"),
+                        abort.eq(1),
+                        self.timeout.eq(1),
+                    )
+                ).Else(
+                    timer.eq(timer + 1),
+                )
+            ]
