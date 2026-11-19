@@ -525,12 +525,14 @@ class S7PCIEPHY(LiteXModule):
                 m_axis_rx.last.eq( rx_markers.last),
                 m_axis_rx.be.eq(   rx_markers.be),
                 self.rx_datapath.aligner.first_dword.eq(rx_markers.first_dword),
+                m_axis_rx.bar_hit.eq(m_axis_rx_tuser[2:10]), # BAR hit (PG054, bit 6: Expansion ROM).
             ]
         else:
             self.comb += [
                 m_axis_rx.first.eq(0),
                 m_axis_rx.last.eq(m_axis_rx_tlast),
                 m_axis_rx.be.eq(m_axis_rx_tkeep),
+                # FIXME: bar_hit not decoded, Expansion ROM only supported in 128-bit mode.
             ]
 
     # PTM Receive Sniffer --------------------------------------------------------------------------
