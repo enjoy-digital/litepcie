@@ -138,7 +138,7 @@ class LitePCIeDMAScatterGather(LiteXModule):
     potentially be lost, it's safer for the software to just use the hardware loop status than to
     maintain a software loop status based MSI IRQ reception).
     """
-    def __init__(self, depth, address_width=32, with_external_retire=False):
+    def __init__(self, depth, address_width=32, with_external_retire=False, buffered=False):
         assert address_width in [32, 64]
         # Stream Endpoint.
         self.source = source = stream.Endpoint(descriptor_layout(address_width=address_width))
@@ -172,7 +172,8 @@ class LitePCIeDMAScatterGather(LiteXModule):
         # # #
 
         # Table (FIFO) -----------------------------------------------------------------------------
-        table = stream.SyncFIFO(descriptor_layout(address_width=address_width), depth)
+        # Buffered: synchronous read with an output register (Block RAM) instead of distributed RAM.
+        table = stream.SyncFIFO(descriptor_layout(address_width=address_width), depth, buffered=buffered)
         table = ResetInserter()(table)
         self.submodules += table
         self.comb += table.reset.eq(self.reset.storage & self.reset.wr_stb)
@@ -350,7 +351,8 @@ class LitePCIeDMAReader(LiteXModule):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None):
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None,
+        table_buffered=False):
         self.port       = port
         self.data_width = data_width or endpoint.phy.data_width
         # Stream Endpoint.
@@ -385,6 +387,7 @@ class LitePCIeDMAReader(LiteXModule):
             self.table = LitePCIeDMAScatterGather(table_depth,
                 address_width        = address_width,
                 with_external_retire = True,
+                buffered             = table_buffered,
             )
         else:
             self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
@@ -606,7 +609,8 @@ class LitePCIeDMAWriter(LiteXModule):
 
     A MSI IRQ can be generated when a descriptor has been executed.
     """
-    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None):
+    def __init__(self, endpoint, port, with_table=True, table_depth=256, address_width=32, data_width=None,
+        table_buffered=False):
         self.port       = port
         self.data_width = data_width or endpoint.phy.data_width
         # Stream Endpoint.
@@ -628,7 +632,7 @@ class LitePCIeDMAWriter(LiteXModule):
 
         # Table ------------------------------------------------------------------------------------
         if with_table:
-            self.table = LitePCIeDMAScatterGather(table_depth, address_width)
+            self.table = LitePCIeDMAScatterGather(table_depth, address_width, buffered=table_buffered)
         else:
             self.desc_sink = stream.Endpoint(descriptor_layout(address_width=address_width)) # Expose a Descriptor sink.
 
@@ -1161,6 +1165,7 @@ class LitePCIeDMA(LiteXModule):
     Optional buffering, loopback, synchronization and monitoring.
     """
     def __init__(self, phy, endpoint, with_table=True, table_depth=256, address_width=32, data_width=None,
+        table_buffered    = False,
         with_writer       = True,
         with_reader       = True,
         # Loopback.
@@ -1188,6 +1193,7 @@ class LitePCIeDMA(LiteXModule):
                 port                 = endpoint.crossbar.get_master_port(write_only=True),
                 with_table           = with_table,
                 table_depth          = table_depth,
+                table_buffered       = table_buffered,
                 address_width        = address_width,
                 data_width           = self.data_width,
             )
@@ -1199,6 +1205,7 @@ class LitePCIeDMA(LiteXModule):
                 port                 = endpoint.crossbar.get_master_port(read_only=True),
                 with_table           = with_table,
                 table_depth          = table_depth,
+                table_buffered       = table_buffered,
                 address_width        = address_width,
                 data_width           = self.data_width,
             )
