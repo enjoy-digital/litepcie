@@ -98,6 +98,7 @@ attribute, and `add_pcie` passes it on. The table below lists the endpoint param
 | `address_width` | 32 | Address width of FPGA-initiated requests: 32 or 64 |
 | `endianness` | `"big"` | Byte order of the DWs of the PHY: `"big"` or `"little"` |
 | `cmp_bufs_buffered` | `True` | Completion buffers with an output register |
+| `cmp_bufs_shared` | `False` | Completion buffers of all the tags in one memory |
 | `with_ptm` | `False` | PTM Request generation, configuration TLP decoding |
 | `with_configuration` | `False` | CfgRd0 and CfgWr0 requests on the master ports |
 | `address_mask` | BAR0 mask | Mask applied to the addresses of host requests |
@@ -268,6 +269,43 @@ Each buffer holds one read of 512 bytes plus one beat, for a read that does not 
 boundary. The FIFO has one entry per beat of 512 bytes, and its output register holds the extra
 beat; without the output register (`cmp_bufs_buffered=False`), the FIFO has one more entry. A
 128-bit core with 8 tags thus has 8 buffers of 32 entries (`get_completion_buffer_depth`).
+
+### Shared completion buffers {#core-controller-shared}
+
+Only one buffer is written at a time, and only one is read. With `cmp_bufs_shared=True`, the
+completions of all the tags go in one memory instead of one FIFO per tag.
+
+![Shared completion buffers. Follow the two addresses: the tag of the completion and its write
+pointer select where the beat is stored, the tag of the oldest request and its read pointer
+select the beat that leaves.](core_reorder_shared.svg)
+
+The memory has one area per tag, and each tag keeps its write pointer, its read pointer and its
+level. An area holds one read of 512 bytes plus one beat, rounded up to a power of two. The
+memory is read synchronously, so the FPGA tools map it to block RAM, and one output register
+serves all the tags. Its class is `LitePCIeTLPCompletionBuffers`.
+
+The behavior on the ports is the one of the per-tag FIFOs, with one difference. The output
+register reloads when the oldest request changes, so the output is idle for one cycle between
+two reads. A 512-bit core delivers a read of 512 bytes in 8 or 9 beats: its completion path then
+carries about 90 % of what the datapath could. This only matters when the link is as fast as
+the datapath.
+
+The table below gives the size of an endpoint with MMAP, MSI and DMA, synthesized alone with
+Vivado 2024.1, with both kinds of buffers.
+
+| Configuration | Buffers | LUTs | Registers | Block RAM tiles |
+|------------------------------------|-----------|--------|-----------|-----------------|
+| 64-bit, 8 tags, XC7A200T | Per tag | 3972 | 2328 | 25.5 |
+| | Shared | 3849 | 2348 | 13 |
+| 128-bit, 8 tags, XC7A200T | Per tag | 4522 | 2570 | 34.5 |
+| | Shared | 4277 | 2605 | 14 |
+| 512-bit, 16 tags, XCAU15P | Per tag | 19079 | 18719 | 17 |
+| | Shared | 11277 | 9451 | 26.5 |
+
+On 7-Series, the per-tag FIFOs already use block RAM, two tiles or more per tag: the shared
+memory frees block RAM. On a wide core, the per-tag FIFOs are shallow and go to distributed
+RAM, with a wide multiplexer behind them: the shared memory frees LUTs and registers for a few
+block RAMs. The first two rows have one DMA channel and the last one has two.
 
 ## Root port {#core-rootport}
 

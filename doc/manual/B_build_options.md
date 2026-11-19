@@ -167,6 +167,7 @@ keys without one. The PHY keys come first.
 | `csr_ordering` | `big` | Ordering of the registers wider than 32 bits |
 | `ep_address_width` | 32 | DMA address width: 32 or 64 |
 | `ep_max_pending_requests` | 4 | Read requests in flight |
+| `ep_cmp_bufs_shared` | `False` | Completion buffers of all the tags in one memory |
 | `ptm` | `False` | PTM capability and requester, with the 7-Series or UltraScale+ PHY |
 
 The `phy` key takes `S7PCIEPHY`, `USPCIEPHY`, `USPPCIEPHY`, `SVPCIEPHY`, `GW5APCIEPHY` or
