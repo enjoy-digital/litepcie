@@ -161,7 +161,7 @@ class TestDMA(unittest.TestCase):
     def dma_test(self, data_width, address_width, descriptor_lengths=None, test_size=256,
         chipset_split=True, chipset_reordering=True, chipset_split_sizes=(64, 128, 256),
         dma_data_width=None, check_reader_stream=False, reader_last_disable=False,
-        timeout_cycles=20000, max_pending_requests=8, cmp_bufs_buffered=True,
+        timeout_cycles=20000, max_pending_requests=8, cmp_bufs_buffered=True, cmp_bufs_shared=False,
         phy_rx_interface="exact", host_traffic=False, host_traffic_period=256, host_read_timeout=4000):
         """Run a DMA Reader -> Writer loopback through the Host model.
 
@@ -323,6 +323,7 @@ class TestDMA(unittest.TestCase):
                     address_width        = address_width,
                     max_pending_requests = max_pending_requests,
                     cmp_bufs_buffered    = cmp_bufs_buffered,
+                    cmp_bufs_shared      = cmp_bufs_shared,
                 )
 
                 # Host MMIO path -------------------------------------------------------------------
@@ -495,6 +496,26 @@ class TestDMA(unittest.TestCase):
             chipset_split       = True,
             chipset_reordering  = True,
             check_reader_stream = True,
+        )
+
+    def test_dma_shared_completion_buffers(self):
+        # Completion buffers of all the tags in one memory, reordered and split Completions.
+        for data_width in [64, 512]:
+            with self.subTest(data_width=data_width):
+                self.dma_test(data_width, 32, cmp_bufs_shared=True)
+
+    @pytest.mark.slow
+    def test_dma_128b_s7_rx_interface_shared_completion_buffers(self):
+        self.dma_test(
+            data_width           = 128,
+            address_width        = 32,
+            descriptor_lengths   = [2044, 2052, 2048, 2048],
+            max_pending_requests = 16,
+            phy_rx_interface     = "s7-128b",
+            chipset_split        = True,
+            chipset_reordering   = True,
+            cmp_bufs_shared      = True,
+            timeout_cycles       = 40000,
         )
 
     @pytest.mark.slow

@@ -191,6 +191,7 @@ class LitePCIeCore(SoCMini):
 
         ep_address_width        = core_config.get("ep_address_width", 32)
         ep_max_pending_requests = core_config.get("ep_max_pending_requests", 4)
+        ep_cmp_bufs_shared      = core_config.get("ep_cmp_bufs_shared", False)
 
         # SoCMini ----------------------------------------------------------------------------------
         SoCMini.__init__(self, platform, clk_freq=sys_clk_freq,
@@ -244,6 +245,7 @@ class LitePCIeCore(SoCMini):
             endianness           = self.pcie_phy.endianness,
             address_width        = ep_address_width,
             max_pending_requests = ep_max_pending_requests,
+            cmp_bufs_shared      = ep_cmp_bufs_shared,
             with_ptm             = core_config.get("ptm", False),
         )
 

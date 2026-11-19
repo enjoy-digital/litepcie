@@ -12,6 +12,7 @@
 
 import random
 import unittest
+import pytest
 
 from types import SimpleNamespace
 
@@ -49,6 +50,8 @@ def run(args, seed):
         kw["cmp_buf_depth"] = args.depth
     if args.cmp_timeout != 0:
         kw["cmp_timeout"] = args.cmp_timeout
+    if args.shared:
+        kw["cmp_bufs_shared"] = True
     dut  = cls(**kw)
 
     st = dict(issued=[], host=[], retired=0, progress=0, cycle=0, errors=[], maxout=0)
@@ -258,6 +261,7 @@ def stress_args(**kwargs):
         late_p         = 0,      # Probability that the Host completes a request after late_delay
         late_delay     = 0,      # cycles (first third of the requests, last third checked).
         cmp_timeout    = 0,      # Controller's cmp_timeout (0: default).
+        shared         = False,  # Completion buffers of all the tags in one memory.
     )
     args.update(kwargs)
     return SimpleNamespace(**args)
@@ -265,8 +269,13 @@ def stress_args(**kwargs):
 # Tests --------------------------------------------------------------------------------------------
 
 class TestTLPControllerStress(unittest.TestCase):
+    shared = False
+
+    def stress_args(self, **kwargs):
+        return stress_args(shared=self.shared, **kwargs)
+
     def stress(self, seeds=2, **kwargs):
-        args = stress_args(**kwargs)
+        args = self.stress_args(**kwargs)
         for seed in range(seeds):
             with self.subTest(seed=seed, **kwargs):
                 st = run(args, seed)
@@ -294,7 +303,7 @@ class TestTLPControllerStress(unittest.TestCase):
         # Completion comes last: the default depth is the minimum.
         for data_width in [64, 512]:
             depth = get_completion_buffer_depth(data_width, buffered=True) - 1
-            st = run(stress_args(data_width=data_width, depth=depth, policy="oldest_last",
+            st = run(self.stress_args(data_width=data_width, depth=depth, policy="oldest_last",
                 aligned_p=0, merge_p=0.3, requests=300), seed=0)
             self.assertTrue(any("DEADLOCK" in e for e in st["errors"]))
 
@@ -313,7 +322,7 @@ class TestTLPControllerStress(unittest.TestCase):
         self.assertEqual(st["terms"], len(st["lost"]))
 
     def test_lost_completions_without_timeout_deadlock(self):
-        st = run(stress_args(lose_p=0.05, cmp_timeout=None, timeout=4000), seed=0)
+        st = run(self.stress_args(lose_p=0.05, cmp_timeout=None, timeout=4000), seed=0)
         self.assertTrue(any("DEADLOCK" in e for e in st["errors"]))
 
     def test_late_completions(self):
@@ -327,6 +336,11 @@ class TestTLPControllerStress(unittest.TestCase):
     def test_flush_and_lost_completions(self):
         self.stress(data_width=128, pending=16, policy="youngest", latency=60, reset_every=3000,
             lose_p=0.03, cmp_timeout=500, timeout=4000, user_stall_max=100, hold=20, requests=300)
+
+@pytest.mark.slow
+class TestTLPControllerStressSharedBuffers(TestTLPControllerStress):
+    # Same tests with the Completion buffers of all the tags in one memory.
+    shared = True
 
 if __name__ == "__main__":
     unittest.main()

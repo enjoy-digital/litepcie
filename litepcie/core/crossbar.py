@@ -15,11 +15,12 @@ from litepcie.tlp.controller import LitePCIeTLPController
 # LitePCIe Crossbar --------------------------------------------------------------------------------
 
 class LitePCIeCrossbar(LiteXModule):
-    def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True, with_configuration=False):
+    def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True, with_configuration=False, cmp_bufs_shared=False):
         self.data_width           = data_width
         self.address_width        = address_width
         self.max_pending_requests = max_pending_requests
         self.cmp_bufs_buffered    = cmp_bufs_buffered
+        self.cmp_bufs_shared      = cmp_bufs_shared
         self.with_configuration   = with_configuration
 
         self.master     = LitePCIeMasterInternalPort(data_width, address_width, with_configuration=with_configuration)
@@ -135,6 +136,7 @@ class LitePCIeCrossbar(LiteXModule):
                     address_width        = self.address_width,
                     max_pending_requests = self.max_pending_requests,
                     cmp_bufs_buffered    = self.cmp_bufs_buffered,
+                    cmp_bufs_shared      = self.cmp_bufs_shared,
                     with_configuration   = self.with_configuration,
                 )
                 self.submodules.controller = controller
