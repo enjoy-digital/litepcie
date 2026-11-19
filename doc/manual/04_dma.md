@@ -59,6 +59,7 @@ self.comb += self.pcie_dma0.source.connect(my_sink)
 |------------------------------------|---------|-----------------------------------------|
 | `with_table` | `True` | Descriptor tables; without them, a `desc_sink` stream per engine |
 | `table_depth` | 256 | Descriptors per table |
+| `table_buffered` | `False` | Descriptor tables in block RAM |
 | `address_width` | 32 | Host address width: 32 or 64 |
 | `data_width` | PHY | Width of the user streams, in bits |
 | `with_writer`, `with_reader` | `True` | Build the Writer, the Reader |
@@ -118,6 +119,12 @@ again.](dma_table.svg)
   The engine stops when the table is empty.
 - **Loop mode** (`loop_prog_n` at 1): each descriptor taken by the engine is pushed back into the
   table. The engine runs through the ring of buffers until it is disabled.
+
+The table is read asynchronously by default, so the FPGA tools build it with distributed RAM:
+400 to 500 LUTs for a table of 256 descriptors with 64-bit addresses on a 7-Series or
+UltraScale+ FPGA. With `table_buffered=True`, the table has a synchronous read and an output
+register, and goes to block RAM: one more cycle from a descriptor written to its execution, and
+one block RAM tile or two per table instead of the LUTs.
 
 The usual sequence programs the ring in Prog mode, then switches to Loop mode and enables the
 engine. The Linux driver does it in six steps for each engine:

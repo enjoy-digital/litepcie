@@ -162,6 +162,7 @@ class TestDMA(unittest.TestCase):
         chipset_split=True, chipset_reordering=True, chipset_split_sizes=(64, 128, 256),
         dma_data_width=None, check_reader_stream=False, reader_last_disable=False,
         timeout_cycles=20000, max_pending_requests=8, cmp_bufs_buffered=True, cmp_bufs_shared=False,
+        table_buffered=False,
         phy_rx_interface="exact", host_traffic=False, host_traffic_period=256, host_read_timeout=4000):
         """Run a DMA Reader -> Writer loopback through the Host model.
 
@@ -335,9 +336,9 @@ class TestDMA(unittest.TestCase):
                 dma_reader_port = self.endpoint.crossbar.get_master_port(read_only=True)
                 dma_writer_port = self.endpoint.crossbar.get_master_port(write_only=True)
                 self.dma_reader = LitePCIeDMAReader(self.endpoint, dma_reader_port,
-                    address_width=address_width, data_width=dma_data_width)
+                    address_width=address_width, data_width=dma_data_width, table_buffered=table_buffered)
                 self.dma_writer = LitePCIeDMAWriter(self.endpoint, dma_writer_port,
-                    address_width=address_width, data_width=dma_data_width)
+                    address_width=address_width, data_width=dma_data_width, table_buffered=table_buffered)
                 if not check_reader_stream:
                     self.comb += self.dma_reader.source.connect(self.dma_writer.sink)
 
@@ -517,6 +518,14 @@ class TestDMA(unittest.TestCase):
             cmp_bufs_shared      = True,
             timeout_cycles       = 40000,
         )
+
+    def test_dma_buffered_descriptor_tables(self):
+        # Descriptor tables with a synchronous read and an output register (Block RAM).
+        for data_width, address_width in [(64, 32), (512, 64)]:
+            with self.subTest(data_width=data_width):
+                self.dma_test(data_width, address_width, table_buffered=True)
+        # With the Completion buffers of all the tags in one memory.
+        self.dma_test(512, 64, table_buffered=True, cmp_bufs_shared=True)
 
     @pytest.mark.slow
     def test_dma_reader_last_disable(self):
