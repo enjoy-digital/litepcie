@@ -19,6 +19,7 @@ from litepcie.core.crossbar    import LitePCIeCrossbar
 class LitePCIeEndpoint(LiteXModule):
     def __init__(self, phy, max_pending_requests=4, address_width=32, endianness="big",
         cmp_bufs_buffered  = True,
+        cmp_bufs_shared    = False,
         with_ptm           = False,
         with_configuration = False,
         address_mask       = None,
@@ -115,6 +116,7 @@ class LitePCIeEndpoint(LiteXModule):
             address_width        = address_width,
             max_pending_requests = max_pending_requests,
             cmp_bufs_buffered    = cmp_bufs_buffered,
+            cmp_bufs_shared      = cmp_bufs_shared,
             with_configuration   = with_configuration,
         )
         self.tlp_ctrl_rst = crossbar.tlp_ctrl_rst

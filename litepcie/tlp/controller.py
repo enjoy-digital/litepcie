@@ -22,6 +22,104 @@ def get_completion_buffer_depth(data_width, max_request_size_bytes=max_request_s
     # A buffered SyncFIFO already provides the additional beat in its output register.
     return request_beats + (0 if buffered else 1)
 
+# LitePCIe TLP Completion Buffers ------------------------------------------------------------------
+
+class LitePCIeTLPCompletionBuffers(LiteXModule):
+    """Per-tag Completion buffers sharing one memory.
+
+    Behaves as ``n`` FIFOs of ``depth`` words (one per tag, ``depth`` rounded up to a power of two)
+    with a single write port (``sink_tag`` selects the FIFO) and a single read port (``source_tag``
+    selects the FIFO): only one FIFO is written and one read at a time. The storage is one
+    ``n*depth`` words memory with a synchronous read (Block RAM) instead of ``n`` memories with
+    their output registers and the ``n``:1 output multiplexer.
+
+    The output register is shared: after a change of ``source_tag``, ``source`` takes one cycle to
+    present the data of the new tag, and ``pending`` tells that this data exists.
+    """
+    def __init__(self, layout, n, depth):
+        self.sink       = sink   = stream.Endpoint(layout)
+        self.sink_tag   = Signal(max=max(n, 2))
+        self.source     = source = stream.Endpoint(layout)
+        self.source_tag = Signal(max=max(n, 2))
+        self.pending    = Signal()            # Data of source_tag not yet on source.
+        self.reset      = Signal()            # Empty the FIFO of reset_tag.
+        self.reset_tag  = Signal(max=max(n, 2))
+
+        # # #
+
+        depth    = 2**bits_for(depth - 1)
+        ptr_bits = log2_int(depth)
+        tag_bits = max(log2_int(n, need_pow2=False), 1)
+
+        produce = Array(Signal(ptr_bits,     name=f"produce{i}") for i in range(n))
+        consume = Array(Signal(ptr_bits,     name=f"consume{i}") for i in range(n))
+        level   = Array(Signal(ptr_bits + 1, name=f"level{i}")   for i in range(n))
+
+        # Memory.
+        dat_w   = Signal(len(sink.payload.raw_bits()) + 2)
+        dat_r   = Signal(len(sink.payload.raw_bits()) + 2)
+        mem     = Memory(len(dat_w), n*depth)
+        wrport  = mem.get_port(write_capable=True)
+        rdport  = mem.get_port(has_re=True)
+        self.specials += mem, wrport, rdport
+
+        # Write.
+        do_write = Signal()
+        self.comb += [
+            sink.ready.eq(level[self.sink_tag] != depth),
+            do_write.eq(sink.valid & sink.ready),
+            dat_w.eq(Cat(sink.payload.raw_bits(), sink.first, sink.last)),
+            wrport.adr.eq(Cat(produce[self.sink_tag], self.sink_tag)),
+            wrport.dat_w.eq(dat_w),
+            wrport.we.eq(do_write),
+        ]
+
+        # Read (registered output, refilled from the FIFO of source_tag).
+        do_read  = Signal()
+        readable = Signal()
+        out_tag  = Signal(tag_bits)
+        self.comb += [
+            source.valid.eq(readable & (out_tag == self.source_tag)),
+            do_read.eq((level[self.source_tag] != 0) & (~source.valid | source.ready)),
+            rdport.adr.eq(Cat(consume[self.source_tag], self.source_tag)),
+            self.pending.eq(level[self.source_tag] != 0),
+            rdport.re.eq(do_read),
+            dat_r.eq(rdport.dat_r),
+            Cat(source.payload.raw_bits(), source.first, source.last).eq(dat_r),
+        ]
+        self.sync += [
+            If(do_read,
+                readable.eq(1),
+                out_tag.eq(self.source_tag),
+            ).Elif(source.valid & source.ready,
+                readable.eq(0),
+            ),
+            # The output register is emptied with the FIFO it was read from.
+            If(self.reset & (out_tag == self.reset_tag) & ~do_read,
+                readable.eq(0),
+            )
+        ]
+
+        # Pointers / Levels.
+        for i in range(n):
+            wr = Signal(name=f"wr{i}")
+            rd = Signal(name=f"rd{i}")
+            self.comb += [
+                wr.eq(do_write & (self.sink_tag   == i)),
+                rd.eq(do_read  & (self.source_tag == i)),
+            ]
+            self.sync += [
+                If(wr, produce[i].eq(produce[i] + 1)),
+                If(rd, consume[i].eq(consume[i] + 1)),
+                If(wr & ~rd, level[i].eq(level[i] + 1)),
+                If(rd & ~wr, level[i].eq(level[i] - 1)),
+                If(self.reset & (self.reset_tag == i),
+                    produce[i].eq(0),
+                    consume[i].eq(0),
+                    level[i].eq(0),
+                )
+            ]
+
 # LitePCIe TLP Controller --------------------------------------------------------------------------
 
 class LitePCIeTLPController(LiteXModule):
@@ -47,9 +145,13 @@ class LitePCIeTLPController(LiteXModule):
     the tags of the lost requests are not reused while their Completions may still arrive (a
     Completion arriving later than that can't be told from the one of the request reusing its
     tag).
+
+    ``cmp_bufs_shared`` stores the Completions of all the tags in one memory (Block RAM) instead of
+    one FIFO per tag: fewer LUTs and registers, mostly with wide datapaths and many tags, for a few
+    Block RAMs. The output is then always registered.
     """
     def __init__(self, data_width, address_width, max_pending_requests, cmp_bufs_buffered=True,
-        with_configuration=False, cmp_buf_depth=None, cmp_timeout=2**27):
+        with_configuration=False, cmp_buf_depth=None, cmp_timeout=2**27, cmp_bufs_shared=False):
         self.ctrl_rst  = Signal() # Flush (level or pulse).
         self.timeout   = Signal() # Completion timeout (pulse).
         self.master_in  = LitePCIeMasterInternalPort(data_width, address_width, with_configuration=with_configuration)
@@ -167,10 +269,6 @@ class LitePCIeTLPController(LiteXModule):
         # Create Buffers.
         if cmp_buf_depth is None:
             cmp_buf_depth = get_completion_buffer_depth(data_width, buffered=cmp_bufs_buffered)
-        for i in range(max_pending_requests):
-            cmp_buf       = ResetInserter()(SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered))
-            cmp_bufs.append(cmp_buf)
-        self.submodules += cmp_bufs
 
         # Tags owned by a request: from the request sent to its ordered retirement.
         tag_owned  = Signal(max_pending_requests)
@@ -184,40 +282,75 @@ class LitePCIeTLPController(LiteXModule):
                 tag_owned.eq((tag_owned & ~(1 << req_queue.source.tag)) | (1 << tag_queue.source.tag))
             ),
         ]
+        cmp_drop    = Signal()
+        cmp_out_any = Signal() # Data available for the oldest request (on cmp_out or about to be).
 
-        # A tag's buffer is emptied when the tag is sent: anything in it belongs to no request.
-        self.comb += [
-            cmp_buf.reset.eq(tag_issue & (tag_queue.source.tag == i))
-            for i, cmp_buf in enumerate(cmp_bufs)
-        ]
-
-        # Connect Cmp Input to Buffers (based on incoming Tag), drop the Completions of tags not owned.
-        cmp_drop = Signal()
-        cases = {
-            i: [
-                If(tag_owned[i],
-                    cmp_reorder.connect(cmp_bufs[i].sink, keep={"valid", "ready"})
+        if cmp_bufs_shared:
+            # One memory for all the tags. The output register is shared by the tags: the memory
+            # holds the request and its additional beat.
+            self.cmp_buf = cmp_buf = LitePCIeTLPCompletionBuffers(completion_layout(data_width),
+                n     = max_pending_requests,
+                depth = cmp_buf_depth + (1 if cmp_bufs_buffered else 0),
+            )
+            cmp_owned = Signal()
+            self.comb += [
+                # A tag's buffer is emptied when the tag is sent: anything in it belongs to no request.
+                cmp_buf.reset.eq(tag_issue),
+                cmp_buf.reset_tag.eq(tag_queue.source.tag),
+                # Connect Cmp Input to Buffers (based on incoming Tag), drop the Completions of tags not owned.
+                cmp_owned.eq((cmp_reorder.tag < max_pending_requests) & (tag_owned >> cmp_reorder.tag[:tag_bits])[0]),
+                cmp_reorder.connect(cmp_buf.sink, omit={"valid", "ready"}),
+                cmp_buf.sink_tag.eq(cmp_reorder.tag),
+                If(cmp_owned,
+                    cmp_reorder.connect(cmp_buf.sink, keep={"valid", "ready"})
                 ).Else(
                     cmp_reorder.ready.eq(1),
-                    cmp_drop.eq(cmp_reorder.valid),
-                )
-            ] for i in range(len(cmp_bufs))
-        }
-        cases["default"] = [cmp_reorder.ready.eq(1)]
-        self.comb += Case(cmp_reorder.tag, cases)
-        # The data goes to all the buffers, only valid/ready are steered (no data mux per buffer).
-        self.comb += [cmp_reorder.connect(cmp_buf.sink, omit={"valid", "ready"}) for cmp_buf in cmp_bufs]
+                    cmp_drop.eq(cmp_reorder.valid & (cmp_reorder.tag < max_pending_requests)),
+                ),
+                # Connect Buffers to Cmp Output (based on Tag from req_queue).
+                cmp_buf.source_tag.eq(req_queue.source.tag),
+                cmp_buf.source.connect(cmp_out),
+                cmp_out_any.eq(cmp_out.valid | cmp_buf.pending),
+            ]
+        else:
+            for i in range(max_pending_requests):
+                cmp_buf       = ResetInserter()(SyncFIFO(completion_layout(data_width), cmp_buf_depth, buffered=cmp_bufs_buffered))
+                cmp_bufs.append(cmp_buf)
+            self.submodules += cmp_bufs
 
-        # Connect Buffers to Cmp Output (based on Tag from req_queue).
-        self.comb += Case(req_queue.source.tag,
-            {i: cmp_bufs[i].source.connect(cmp_out) for i in range(len(cmp_bufs))})
+            # A tag's buffer is emptied when the tag is sent: anything in it belongs to no request.
+            self.comb += [
+                cmp_buf.reset.eq(tag_issue & (tag_queue.source.tag == i))
+                for i, cmp_buf in enumerate(cmp_bufs)
+            ]
+
+            # Connect Cmp Input to Buffers (based on incoming Tag), drop the Completions of tags not owned.
+            cases = {
+                i: [
+                    If(tag_owned[i],
+                        cmp_reorder.connect(cmp_bufs[i].sink, keep={"valid", "ready"})
+                    ).Else(
+                        cmp_reorder.ready.eq(1),
+                        cmp_drop.eq(cmp_reorder.valid),
+                    )
+                ] for i in range(len(cmp_bufs))
+            }
+            cases["default"] = [cmp_reorder.ready.eq(1)]
+            self.comb += Case(cmp_reorder.tag, cases)
+            # The data goes to all the buffers, only valid/ready are steered (no data mux per buffer).
+            self.comb += [cmp_reorder.connect(cmp_buf.sink, omit={"valid", "ready"}) for cmp_buf in cmp_bufs]
+
+            # Connect Buffers to Cmp Output (based on Tag from req_queue).
+            self.comb += Case(req_queue.source.tag,
+                {i: cmp_bufs[i].source.connect(cmp_out) for i in range(len(cmp_bufs))})
+            self.comb += cmp_out_any.eq(cmp_out.valid)
         cmp_out_done = Signal()
         cmp_out_ctrl = {"valid", "ready", "first", "last", "end", "err", "be", "tag"}
         self.comb += [
             cmp_out_done.eq(cmp_out.valid & cmp_out.last & (cmp_out.end | cmp_out.err)),
             # Abort: deliver what has been received for the oldest request, then terminate it with an
             # error beat when its Completion is incomplete.
-            If(abort & ~cmp_out.valid,
+            If(abort & ~cmp_out_any,
                 cmp_source.valid.eq(req_queue.source.valid),
                 cmp_source.first.eq(1),
                 cmp_source.last.eq(1),
@@ -322,7 +455,7 @@ class LitePCIeTLPController(LiteXModule):
             activity.eq(
                 (req_queue.sink.valid & req_queue.sink.ready) |
                 (cmp_phy.valid & cmp_phy.ready) |
-                cmp_out.valid
+                cmp_out_any
             ),
         ]
         self.sync += [

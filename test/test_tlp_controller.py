@@ -202,8 +202,8 @@ class TestTLPController(unittest.TestCase):
     def test_back_to_back_completions_accepted_every_cycle(self):
         # Completions one after the other, in request order, output always ready: one beat
         # accepted per cycle, no cycle lost between Completion TLPs.
-        for data_width in [128, 256, 512]:
-            with self.subTest(data_width=data_width):
+        for data_width, cmp_bufs_shared in [(128, False), (256, False), (512, False), (128, True), (512, True)]:
+            with self.subTest(data_width=data_width, cmp_bufs_shared=cmp_bufs_shared):
                 nrequests  = 8
                 beats      = 2
                 controller = LitePCIeTLPController(
@@ -211,6 +211,7 @@ class TestTLPController(unittest.TestCase):
                     address_width        = 32,
                     max_pending_requests = nrequests,
                     cmp_bufs_buffered    = True,
+                    cmp_bufs_shared      = cmp_bufs_shared,
                 )
                 tags        = []
                 accepted_at = []
@@ -546,13 +547,15 @@ class TestTLPController(unittest.TestCase):
         run_simulation(controller, [stim(), monitor_requests()], vcd_name=None)
         self.assertEqual(len(accepted), 2 * request_beats)
 
-    def _check_completion_buffer_accounts_for_packet_boundary_rounding(self, cmp_bufs_buffered):
+    def _check_completion_buffer_accounts_for_packet_boundary_rounding(self, cmp_bufs_buffered,
+        cmp_bufs_shared=False):
         data_width = 128
         controller = LitePCIeTLPController(
             data_width           = data_width,
             address_width        = 32,
             max_pending_requests = 2,
             cmp_bufs_buffered    = cmp_bufs_buffered,
+            cmp_bufs_shared      = cmp_bufs_shared,
         )
 
         observed_requests = []
@@ -650,3 +653,7 @@ class TestTLPController(unittest.TestCase):
     def test_buffered_completion_buffer_accounts_for_packet_boundary_rounding(self):
         self._check_completion_buffer_accounts_for_packet_boundary_rounding(
             cmp_bufs_buffered=True)
+
+    def test_shared_completion_buffers_account_for_packet_boundary_rounding(self):
+        self._check_completion_buffer_accounts_for_packet_boundary_rounding(
+            cmp_bufs_buffered=True, cmp_bufs_shared=True)
