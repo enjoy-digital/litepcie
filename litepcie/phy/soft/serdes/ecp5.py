@@ -170,7 +170,7 @@ class ECP5PCIeClocking(LiteXModule):
 
 # ECP5 PCIe SerDes ---------------------------------------------------------------------------------
 
-class ECP5PCIeSerDes(PCIeSerDes, AutoCSR):
+class ECP5PCIeSerDes(PCIeSerDes):
     """ECP5 (LFE5UM) Gen1 x1 PCIeSerDes: ``pads`` has clk_p/clk_n (reference clock), tx_p/tx_n,
     rx_p/rx_n and perst (or rst_n), as the boards' ``pcie_x1`` resource (the DCU pins are fixed).
 
@@ -183,7 +183,7 @@ class ECP5PCIeSerDes(PCIeSerDes, AutoCSR):
     analog: DCU analog/PLL/CDR/driver attributes: "wizard" (Lattice's PCI Express wizard values as in Yumewatari,
     ECP5_PCIE_WIZARD_PARAMS) or "default" (the 10BSER ones of LiteICLink's SerDesECP5)."""
     def __init__(self, platform, pads, link_freq=125e6, refclk_freq=100e6, skp_interval=None, dual=0, channel=0,
-        sys_clk_freq=None, serdes_cls=None, refclk=None, with_clocking=True, tx_idle_delay=2, analog="wizard"):
+        serdes_cls=None, refclk=None, with_clocking=True, tx_idle_delay=2, analog="wizard"):
         assert analog in ["wizard", "default"]
         # serdes_cls/refclk/with_clocking: for simulations (DCU model, clocks from the testbench).
         from liteiclink.serdes.serdes_ecp5 import SerDesECP5PLL, SerDesECP5
