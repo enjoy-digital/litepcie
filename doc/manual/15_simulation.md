@@ -134,6 +134,16 @@ the reads and writes of the device, with the TLPs compared on the wire.
 of the Linux driver. The completions are split at the 64-byte Read Completion Boundary, as a host
 does.
 
+In `sim_soc.py`, the link clock and the core clock are the same signal by default. On hardware
+they are unrelated: the core clock comes from a local oscillator and the link clock from the
+reference clock of the host.
+
+`--sys-clk-freq` sets the frequency of the core clock, in Hz; the link clock stays at 125 MHz. With
+a value other than 125 MHz, the link clock, and the lane clock derived from it, are on a clock
+unrelated to the core clock, as `--link-freq` does for the lane clock of `sim.py`. The crossings
+between the SoC and the soft PHY then see two asynchronous clocks. Run it with a core clock slower
+and faster than the link clock.
+
 ```sh
 # Link training, packets, Recovery (scaled timers)
 python3 bench/soft/sim.py --timer-scale 100
@@ -147,6 +157,9 @@ python3 bench/soft/sim_wide.py --phy --gen3 --nlanes 8 --eq-preset 8
 # SoC with DMA, then at 8.0 GT/s on x8
 python3 bench/soft/sim_soc.py --mps 256 --dma-size 1024 --dma-buffers 4
 python3 bench/soft/sim_soc.py --gen3 --nlanes 8
+# Core clock slower, then faster than the link clock, on unrelated clocks
+python3 bench/soft/sim_soc.py --sys-clk-freq 104.17e6 --dma-size 4096 --dma-buffers 2
+python3 bench/soft/sim_soc.py --sys-clk-freq 171.25e6 --dma-size 4096 --dma-buffers 2
 ```
 
 `sim.py` and `sim_endpoint.py` take `--link-freq` to run the link at a frequency other than 125 MHz. The
