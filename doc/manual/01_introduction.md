@@ -55,7 +55,7 @@ the transceivers, with no vendor IP. It is in development; [Soft PHY](#soft-phy)
 
 | Area | Features |
 |--------------------|------------------------------------------------------------------------|
-| PHYs | Hard IPs of Xilinx 7-Series, UltraScale and UltraScale+, Intel Cyclone V and Stratix V, Gowin GW5A, Lattice CertusPro-NX; soft PHY on Xilinx GTP, GTX and GTY transceivers |
+| PHYs | Hard IPs of Xilinx 7-Series, UltraScale and UltraScale+, Intel Cyclone V and Stratix V, Gowin GW5A, Lattice CertusPro-NX; soft PHY on Xilinx GTP, GTX and GTY transceivers and on the Lattice ECP5 DCU |
 | Roles | Endpoint on every PHY; root port on Xilinx 7-Series, UltraScale and UltraScale+ |
 | Core | TLP packetizer and depacketizer from 64 to 512 bits, crossbar, request tags and completion reordering, clock domain crossing |
 | DMA | Scatter-gather Writer and Reader per channel, descriptor tables, loopback, PPS synchronizer, run-time buffering, monitor, status written to host memory |
@@ -82,6 +82,7 @@ details of each family.
 | Gowin GW5A | `GW5APCIEPHY` | Gen2 | x1, x4 | Validated on hardware |
 | Lattice CertusPro-NX | `LFCPNXPCIEPHY` | Gen3 | x4 | Validated on hardware |
 | Xilinx GTP, GTX, GTY | `SoftPCIEPHY` | Gen3 | x1 to x8 | In development |
+| Lattice ECP5 DCU | `SoftPCIEPHY` | Gen1 | x1 | In development |
 
 For the Xilinx and Stratix V PHYs, the rate and the lanes are the values the wrapper accepts. The
 Cyclone V, GW5A and CertusPro-NX wrappers do not set the rate, the vendor IP configuration does:
@@ -89,8 +90,8 @@ the Cyclone V rate is the one the repository README gives, and the GW5A and Cert
 come from the device ID names of the driver (Gen2 x4 and Gen3 x4).
 
 The soft PHY runs Gen1 and Gen2 links with a host, up to x8 on Kintex-7 GTX and x1 on Kintex
-UltraScale+ GTY, and Gen3 links at x1, x4 and x8 on the GTY. [Soft PHY](#soft-phy) details each
-state.
+UltraScale+ GTY, and Gen3 links at x1, x4 and x8 on the GTY. On the Lattice ECP5 DCU it runs a Gen1 x1 link.
+[Soft PHY](#soft-phy) details each state.
 
 ## Status {#intro-status}
 

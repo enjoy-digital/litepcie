@@ -44,6 +44,7 @@ DEFAULT_DEVICES = (
     ("10ee", "9056"),
     # Lattice / Gowin.
     ("1204", "9c25"),
+    ("1204", "ec11"),
     ("22c2", "1100"),
     # Altera Stratix V.
     ("1172", "e001"),
