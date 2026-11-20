@@ -8,6 +8,8 @@
 
 The DCU runs in raw 10BSER mode with PCIE_MODE set: the 8b/10b is in the fabric (SerDesECP5, 40-bit
 words on the CLKDIVF /2 of the DCU clocks, 62.5 MHz at 2.5 GT/s), the lane datapaths are the soft PHY's.
+The PCIe attributes and ports of the DCU are set here through SerDesECP5's serdes_params (pcie_gt_params),
+as on the Xilinx transceivers: the LiteICLink wrapper has no PCIe option.
 
 Clocks: the host's 100 MHz reference clock enters the DCU's EXTREFB and feeds the DCU TX PLL. "pcie_pipe"
 is the DCU's lane clock (TX clock /2) and a fabric PLL fed by the DCU's TX clock (125 MHz) generates
@@ -33,6 +35,26 @@ from litex.soc.interconnect.csr import *
 
 from litepcie.phy.soft.datapath    import RXErrorSubstitution
 from litepcie.phy.soft.serdes.base import PCIeSerDes
+
+# Constants ----------------------------------------------------------------------------------------
+
+# DCU analog/PLL/CDR/driver/receiver attributes of Lattice's PCI Express 2.5 Gbps wizard output, as documented by
+# whitequark in Yumewatari (0BSD), instead of the 10BSER sample code ones of LiteICLink's SerDesECP5.
+ECP5_PCIE_WIZARD_PARAMS = dict(
+    p_D_CMUSETI4CPP       = "0d4",
+    p_D_CMUSETZGM         = "0b100",
+    p_D_RG_EN             = "0b1",
+    p_D_SETIRPOLY_AUX     = "0b10",
+    p_D_SETIRPOLY_CH      = "0b10",
+    p_CHX_DCOCALDIV       = "0b010",
+    p_CHX_DCODISBDAVOID   = "0b1",
+    p_CHX_DCOFTNRG        = "0b010",
+    p_CHX_DCONUOFLSB      = "0b101",
+    p_CHX_RTERM_RX        = "0d22", # 50 Ohm (wizard value, does not match the datasheet table).
+    p_CHX_TDRV_SLICE3_CUR = "0b11", # 3200 uA.
+    p_CHX_TDRV_SLICE4_CUR = "0b11", # 3200 uA.
+    p_CHX_TDRV_SLICE4_SEL = "0b01", # Main data.
+)
 
 # ECP5 Receiver Detection --------------------------------------------------------------------------
 
@@ -158,10 +180,11 @@ class ECP5PCIeSerDes(PCIeSerDes, AutoCSR):
     TX_EIDLE_ASSERT_DELAY). 2 from the simulation (data takes 4 lane cycles to the line, the idle input 2), to be
     tuned on hardware through the ``tx_idle_delay`` CSR (the DCU's own pipeline is not modeled).
 
-    analog: DCU analog/PLL/CDR/driver attributes, see LiteICLink's SerDesECP5 ``pcie_analog``: "wizard" (Lattice's
-    PCI Express wizard values as in Yumewatari) or "default" (LiteICLink's 10BSER ones)."""
+    analog: DCU analog/PLL/CDR/driver attributes: "wizard" (Lattice's PCI Express wizard values as in Yumewatari,
+    ECP5_PCIE_WIZARD_PARAMS) or "default" (the 10BSER ones of LiteICLink's SerDesECP5)."""
     def __init__(self, platform, pads, link_freq=125e6, refclk_freq=100e6, skp_interval=None, dual=0, channel=0,
         sys_clk_freq=None, serdes_cls=None, refclk=None, with_clocking=True, tx_idle_delay=2, analog="wizard"):
+        assert analog in ["wizard", "default"]
         # serdes_cls/refclk/with_clocking: for simulations (DCU model, clocks from the testbench).
         from liteiclink.serdes.serdes_ecp5 import SerDesECP5PLL, SerDesECP5
         serdes_cls = serdes_cls or SerDesECP5
@@ -212,8 +235,6 @@ class ECP5PCIeSerDes(PCIeSerDes, AutoCSR):
             tx_polarity = tx_polarity,
             rx_polarity = rx_polarity,
             with_oob    = True,
-            pcie        = True,
-            pcie_analog = analog,
         )
         gt.add_stream_endpoints()
         # DCU TX clock /2 is the lane clock ("pcie_pipe").
@@ -294,11 +315,9 @@ class ECP5PCIeSerDes(PCIeSerDes, AutoCSR):
             detect.request.eq(request.o),
             done.i.eq(detect.done),
             lane.detect_done.eq(done.o),
-            gt.pcie_det_en.eq(detect.det_en),
-            gt.pcie_ct.eq(detect.ct),
-            detect.dcu_done.eq(gt.pcie_done),
-            detect.dcu_con.eq(gt.pcie_con),
         ]
+        # PCIe DCU attributes/ports (in the DCUA instance of SerDesECP5, built when it is finalized).
+        gt.serdes_params.update(self.pcie_gt_params(detect, analog))
         self.specials += MultiReg(detect.connected, lane.rx_detected, "pcie_pipe")
         # Detection counters for bring-up ("sys", sampled as they change: debug precision).
         self._detect_status = CSRStatus(fields=[
@@ -316,6 +335,23 @@ class ECP5PCIeSerDes(PCIeSerDes, AutoCSR):
 
         # 2.5 GT/s only.
         self.comb += self.rate_done.eq(1)
+
+    def pcie_gt_params(self, detect, analog):
+        """DCU parameters of the PCIe mode (CHX: the channel, replaced by SerDesECP5): PCIE_MODE, 2.5 Gbps rate
+        attributes and receiver detection ports (sequence: Lattice TN1261), as documented by whitequark in Yumewatari
+        (0BSD) and used by Vegard Storheil Eriksen (zyp) in katsuo-pcie (MIT), and the analog attributes."""
+        params = dict(
+            p_D_TX_MAX_RATE       = "2.5",
+            p_CHX_CDR_MAX_RATE    = "2.5",
+            p_CHX_PCIE_MODE       = "0b1",
+            i_CHX_FFC_PCIE_DET_EN = detect.det_en,   # TX driver in receiver detect mode (TX idle, >= 120ns before CT).
+            i_CHX_FFC_PCIE_CT     = detect.ct,       # Detection strobe (4 DCU TX clock cycles).
+            o_CHX_FFS_PCIE_DONE   = detect.dcu_done, # Detection done (low during the detection).
+            o_CHX_FFS_PCIE_CON    = detect.dcu_con,  # Receiver connected (valid when done is high again).
+        )
+        if analog == "wizard":
+            params.update(ECP5_PCIE_WIZARD_PARAMS)
+        return params
 
     def add_timing_constraints(self, sys_clk):
         platform = self.platform
