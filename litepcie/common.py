@@ -36,7 +36,11 @@ def phy_layout(data_width):
         ("dat", data_width),
         ("be",  data_width//8)
     ]
-    return EndpointDescription(layout)
+    # Per-packet sideband (not converted with the data on width changes).
+    param_layout = [
+        ("bar_hit", 8), # BAR hit of RX Requests (bit 0-5: BAR0-5, bit 6: Expansion ROM).
+    ]
+    return EndpointDescription(layout, param_layout)
 
 def configuration_layout(data_width, address_width=32):
     layout = [
@@ -71,6 +75,7 @@ def request_layout(data_width, address_width=32, with_configuration=False):
         ("first_be",         4), # First Dword Byte Enables.
         ("last_be",          4), # Last Dword Byte Enables.
         ("tag",              8), # Request tag.
+        ("bar_hit",          8), # BAR hit (see phy_layout).
 
         # Data Stream.
         ("dat", data_width),

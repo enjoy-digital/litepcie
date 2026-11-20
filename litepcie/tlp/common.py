@@ -236,10 +236,11 @@ def tlp_raw_layout(data_width):
     Generate a raw TLP endpoint description.
     """
     layout = [
-        ("fmt",    2),            # Format field.
-        ("header", 4*32),         # Header field.
-        ("dat",    data_width),   # Data field.
-        ("be",     data_width//8) # Byte Enable field.
+        ("fmt",     2),             # Format field.
+        ("header",  4*32),          # Header field.
+        ("dat",     data_width),    # Data field.
+        ("be",      data_width//8), # Byte Enable field.
+        ("bar_hit", 8),             # BAR hit (RX sideband, not part of the TLP).
     ]
     return EndpointDescription(layout)
 
