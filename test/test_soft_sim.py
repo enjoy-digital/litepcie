@@ -170,9 +170,10 @@ class TestSoftSim(unittest.TestCase):
     def test_soc_independent_clocks(self):
         # DMA and MSI of the SoC with sys and pcie_link on unrelated clocks, as on hardware (sys from a local
         # oscillator, pcie_link from the host's reference clock): sys slower and faster than the link.
-        for ratio in ["0.8333", "1.37"]:
-            with self.subTest(ratio=ratio):
-                output = self.run_sim(f"soc_async_{ratio}", "--sys-link-ratio", ratio, "--dma-size", "4096",
+        # (104.17 and 171.25 MHz against the 125 MHz link: ratios of 5/6, as the ECP5 Versa bench, and 11/8).
+        for sys_clk_freq in ["104.17e6", "171.25e6"]:
+            with self.subTest(sys_clk_freq=sys_clk_freq):
+                output = self.run_sim(f"soc_async_{sys_clk_freq}", "--sys-clk-freq", sys_clk_freq, "--dma-size", "4096",
                     "--dma-buffers", "2", script="sim_soc.py")
                 self.assertIn("SIM OK", output)
 
