@@ -177,8 +177,10 @@ The ECP5 adapter runs the soft PHY on one channel of a DCU of an LFE5UM FPGA, at
 lane. These FPGAs have no PCI Express block, and the non-5G part reaches 3.2 Gbps on its
 transceivers. The soft PHY is the only PCI Express design for them.
 
-The adapter, `ECP5PCIeSerDes`, wraps `SerDesECP5` of LiteICLink in its PCI Express mode, with
-40-bit words and the 8b/10b in the fabric.
+The adapter, `ECP5PCIeSerDes`, wraps `SerDesECP5` of LiteICLink, with 40-bit words and the 8b/10b
+in the fabric. It sets the PCI Express mode of the DCU, its receiver detection ports and its analog
+attributes itself, through the parameters of the wrapper, as the adapters of the Xilinx
+transceivers do.
 
 ### Clocking {#soft-ecp5-clocks}
 

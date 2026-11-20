@@ -15,7 +15,8 @@ the elastic buffer from the recovered clock to the lane clock. The upper layers 
 Training Sequences, Ordered Sets and packets, at any Symbol position on RX.
 
 Lane clock domains come from the serdes: "pcie_pipe" (lane clock, all lanes), "pcie_link" (fixed
-125 MHz), per-lane recovered clocks (internal). Controls/status are in "pcie_pipe" unless noted.
+frequency: 125 MHz, or the link_freq of the serdes and of the upper layers where 125 MHz is not reached, ex: ECP5),
+per-lane recovered clocks (internal). Controls/status are in "pcie_pipe" unless noted.
 
 At 8.0 GT/s (rate 2, 128b/130b), the lanes exchange raw 40-bit words (raw_tx/raw_rx, first bit in the
 LSB, in "pcie_g3": the lane clock at 8.0 GT/s, "pcie_pipe" in a simulation) instead of Symbols: the 8b/10b and the lane datapaths are bypassed, Block alignment, scrambling and

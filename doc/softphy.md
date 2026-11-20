@@ -282,14 +282,14 @@ its root port is Gen1 only, 2.5 GT/s up to x4; Linux 6.12.10), the unmodified Li
 | `dma_test` soak, 15 min | 1.66 Gb/s, 22.8M buffers, 0 errors; no replay, no receiver error, no AER |
 | 20 link cycles (unload, remove, Retrain Link, rescan, load, scratch and DMA test) | 20 of 20, the link back in 0.6 s |
 
-- Transceiver: one DCU channel through LiteICLink's `SerDesECP5` (`pcie=True`: `PCIE_MODE`, 2.5 Gb/s rate attributes, receiver detection ports), raw
+- Transceiver: one DCU channel through LiteICLink's `SerDesECP5` (the adapter sets `PCIE_MODE`, the 2.5 Gb/s rate attributes and the receiver detection ports through its `serdes_params`), raw
   10BSER mode with 40-bit words and the 8b/10b in the fabric, as on the Xilinx transceivers. The lane clock `pcie_pipe` (62.5 MHz) is the DCU's
   TX clock divided by 2; `pcie_link` comes from a PLL fed by the DCU's 125 MHz TX clock (the EXTREFB output cannot be routed to a fabric PLL by nextpnr), so both
   derive from the host's reference clock.
 - Receiver detection: `ECP5PCIeDetect` runs the DCU handshake of Lattice TN1261 (detect mode at least 120 ns before a 4-cycle strobe, then
   `FFS_PCIE_DONE` and `FFS_PCIE_CON`) for the LTSSM's Detect state.
 - Electrical Idle: `FFC_EI_EN` is a direct DCU input, so the adapter delays it (`tx_idle_delay`, 2 lane clock cycles) to follow the EIOS in the transmit pipeline.
-- The hardware runs used the analog attribute set `pcie_analog="wizard"`, the adapter's default.
+- The hardware runs used the analog attribute set `analog="wizard"`, the adapter's default.
 - Board and host: the board's J4 jumper has to ground the PRSNT net (pins 3 and 5) so that the clock manager passes the slot's 100 MHz reference clock.
   The host's BIOS hides the slot's root port when no card links during POST, so the bitstream is loaded from the SPI flash
   (`ecppack --freq 62.0`, LTSSM enabled at start-up) and the host is cold-booted. Reconfiguring the FPGA under a running link froze the host.
@@ -301,7 +301,7 @@ its root port is Gen1 only, 2.5 GT/s up to x4; Linux 6.12.10), the unmodified Li
 The ECP5 adapter builds on the following work, which deserves credit:
 
 - [Yumewatari](https://github.com/whitequark/Yumewatari) (whitequark, 0BSD): the first open source ECP5 DCU/PCIe PHY. LiteICLink's `SerDesECP5` already relies on its DCU
-  documentation; the PCIe-mode attributes, the analog values of Lattice's PCI Express wizard (`pcie_analog="wizard"`) and the receiver detection sequence
+  documentation; the PCIe-mode attributes, the analog values of Lattice's PCI Express wizard (`analog="wizard"`) and the receiver detection sequence
   (`ECP5PCIeDetect`) are taken from it.
 - [katsuo-pcie](https://github.com/zyp/katsuo-pcie) and [litepcie-katsuo-poc](https://github.com/zyp/litepcie-katsuo-poc) (Vegard Storheil Eriksen, MIT; LitePCIe issue #20): a PCIe
   stack in Amaranth that enumerates on the ECP5 Versa, showing that the DCU can do it with LitePCIe above it. Its DCU settings confirmed the PCIe-mode attributes. No code was taken from it.
