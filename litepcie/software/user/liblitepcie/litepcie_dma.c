@@ -176,7 +176,7 @@ void litepcie_dma_process(struct litepcie_dma_ctrl *dma)
 
     /* polling */
     ret = poll(&dma->fds, 1, 100);
-    if (poll < 0) {
+    if (ret < 0) {
         perror("poll");
         return;
     } else if (ret == 0) {
