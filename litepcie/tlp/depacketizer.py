@@ -95,6 +95,7 @@ class _LitePCIeTLPHeaderExtracter(LiteXModule):
                 NextValue(source.header[32*1:32*2], sink.dat[32*1:32*2]),
                 NextValue(source.header[32*2:32*3], sink.dat[32*2:32*3]),
                 NextValue(source.header[32*3:32*4], sink.dat[32*3:32*4]),
+                NextValue(source.bar_hit, sink.bar_hit), # Held for the whole TLP.
                 NextValue(first, 1),
                 NextValue(flush, sink.last),
                 NextState("COPY")
@@ -407,7 +408,9 @@ class LitePCIeTLPDepacketizer(LiteXModule):
                 req_source.tc.eq(tlp_req.tc),
                 req_source.attr.eq(tlp_req.attr),
                 req_source.tag.eq(tlp_req.tag),
-                req_source.dat.eq(tlp_req.dat)
+                req_source.dat.eq(tlp_req.dat),
+                # BAR hit: REQUEST-only sideband, taken from the header extracter (not dispatched).
+                req_source.bar_hit.eq(header_extracter.source.bar_hit),
             ]
 
         # Decode/Dispatch TLP Completions ----------------------------------------------------------

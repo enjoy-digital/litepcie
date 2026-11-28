@@ -10,9 +10,10 @@ from litex.gen import *
 
 from litex.soc.interconnect.csr import *
 
-from litepcie.tlp.depacketizer import LitePCIeTLPDepacketizer
-from litepcie.tlp.packetizer   import LitePCIeTLPPacketizer
-from litepcie.core.crossbar    import LitePCIeCrossbar
+from litepcie.tlp.depacketizer   import LitePCIeTLPDepacketizer
+from litepcie.tlp.packetizer     import LitePCIeTLPPacketizer
+from litepcie.core.crossbar      import LitePCIeCrossbar
+from litepcie.core.expansion_rom import LitePCIeExpansionROM
 
 # LitePCIe Endpoint --------------------------------------------------------------------------------
 
@@ -123,10 +124,10 @@ class LitePCIeEndpoint(LiteXModule):
 
         # Slave: HOST initiates the transactions ---------------------------------------------------
 
-        self.comb += [
-            req_source.connect(crossbar.phy_slave.sink),
-            crossbar.phy_slave.source.connect(cmp_sink),
-        ]
+        # Connected in do_finalize() (depends on add_expansion_rom()).
+        self.expansion_rom = None
+        self._req_source   = req_source
+        self._cmp_sink     = cmp_sink
 
         # Master: FPGA initiates the transactions --------------------------------------------------
 
@@ -134,3 +135,49 @@ class LitePCIeEndpoint(LiteXModule):
             crossbar.phy_master.source.connect(req_sink),
             cmp_source.connect(crossbar.phy_master.sink),
         ]
+
+    def add_expansion_rom(self, size, init=None, bar_hit_bit=6):
+        """Add a read-only Expansion ROM responder.
+
+        size        : ROM size in bytes (must match the PHY's Expansion ROM BAR size).
+        init        : ROM content (list of 32-bit words).
+        bar_hit_bit : bar_hit bit of the Expansion ROM BAR (6 on 7-Series).
+        """
+        assert self.expansion_rom is None, "add_expansion_rom() can only be called once."
+        self.expansion_rom = LitePCIeExpansionROM(
+            data_width = self.phy.data_width,
+            size       = size,
+            init       = init,
+        )
+        self.comb += self.expansion_rom.id.eq(self.phy.id)
+        self._expansion_rom_bar_hit_bit = bar_hit_bit
+
+    def do_finalize(self):
+        req_source = self._req_source
+        cmp_sink   = self._cmp_sink
+        crossbar   = self.crossbar
+
+        if self.expansion_rom is None:
+            # Default: everything goes to the Crossbar.
+            self.comb += [
+                req_source.connect(crossbar.phy_slave.sink),
+                crossbar.phy_slave.source.connect(cmp_sink),
+            ]
+        else:
+            # Requests: Expansion ROM BAR hits go to the ROM, others to the Crossbar.
+            self.comb += [
+                If(req_source.bar_hit[self._expansion_rom_bar_hit_bit],
+                    req_source.connect(self.expansion_rom.sink),
+                ).Else(
+                    req_source.connect(crossbar.phy_slave.sink),
+                ),
+            ]
+
+            # Completions: Mux, a Request only goes to one of the branches (no arbitration needed).
+            self.comb += [
+                If(self.expansion_rom.source.valid,
+                    self.expansion_rom.source.connect(cmp_sink),
+                ).Else(
+                    crossbar.phy_slave.source.connect(cmp_sink),
+                ),
+            ]
